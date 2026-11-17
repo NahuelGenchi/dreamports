@@ -1,7 +1,7 @@
 // npm run dp -- prove <game> [recording…]: plays each recording, from power-on, in the original (in the reference
 // emulator) and in the Dreamport (in a headless browser), compares every frame, its picture and its sound
-// (lib/sound.mjs), notes which of the original's functions ran in the frames that matched, updates the game's progress.json, which its code ported and its gameplay
-// proven are measured with (docs/STANDARD.md#how-progress-is-measured),
+// (lib/sound.mjs), notes which of the original's functions ran in the frames that matched, updates the game's progress.json, which its gameplay
+// proven is measured with (docs/STANDARD.md#how-progress-is-measured), as its code ported is with its port map alone,
 // and makes a clip and stills of both side by side, with a clip and a still of the
 // Dreamport on its own. To help find where each of the game's parts starts and ends, it lists the frames where the
 // original's screen is one colour, as between one screen and the next, and with --stills <frames> keeps pictures of
@@ -227,7 +227,7 @@ export async function run(args) {
   // the two numbers the game shows now
   try {
     const { ported, gameplay } = readProof(game) ?? {};
-    console.log([ported && `Code ported: ${percentText(ported.percent)}${totals.proven ? `, ${totals.proven.functions} of ${totals.codeMap.functions} functions` : ''}.`,
+    console.log([ported && `Code ported: ${percentText(ported.percent)}${totals.codeMap ? `, ${ported.functions} of ${totals.codeMap.functions} functions` : ''}.`,
       gameplay && `Gameplay proven: ${gameplayText(gameplay)}.`].filter(Boolean).join(' '));
     // what keeps it from done, whatever the numbers say (docs/STANDARD.md#stops)
     const { saves } = readProof(game) ?? {};
@@ -238,7 +238,7 @@ export async function run(args) {
     console.log(left.length ? `Not done yet (docs/STANDARD.md#done): ${left.join('; ')}. npm run dp -- untouched ${game} lists what hasn't been played.` : 'Done: all of the original is ported and proven.');
     if (ported && (ported.stops || ported.unnamed)) {
       console.log([ported.stops && `Stops, paths the code says it hasn't ported: ${ported.stops}, in ${ported.stopped} function${ported.stopped === 1 ? '' : 's'}, which don't count as ported.`,
-        ported.unnamed && `Functions of the original no code names yet: ${ported.unnamed}.`,
+        ported.unnamed && `Functions of the original no code names yet: ${ported.unnamed}${ported.played ? `, ${ported.played} of which ran in matching play, and don't count as ported without a twin` : ''}.`,
         `games/${game}/proof/port-map.json lists the stops.`].filter(Boolean).join(' '));
     }
   } catch (error) {

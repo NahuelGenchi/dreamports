@@ -1,7 +1,7 @@
 // npm run dp -- portmap [<game>] [--check]: writes games/<game>/proof/port-map.json, the port map: each function of
 // the original that the Dreamport's code names, with the first place it names it, and every name that lands inside a
-// function of the code map but not at its start, so it can be put right. It's what code ported is measured with, beside the functions
-// that ran in matching play (docs/STANDARD.md#how-progress-is-measured). It also lists the Dreamport's stops: each
+// function of the code map but not at its start, so it can be put right. It's what code ported is measured with, alone since #1452: a function
+// the original only ran in matching play has no twin and doesn't count (docs/STANDARD.md#how-progress-is-measured). It also lists the Dreamport's stops: each
 // path of the original its code says it hasn't ported, with the function of the original the path is in, which doesn't
 // count towards code ported while it has one (docs/STANDARD.md#stops). Without a game it does every game with a
 // code map. With --check it changes nothing and fails when a port map is out of date, which `npm run check` uses.

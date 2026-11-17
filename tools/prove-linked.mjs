@@ -1,7 +1,7 @@
 // The proof of a recording with `players` (lib/recording.mjs): two to four GBAs on one link, each with its own buttons,
 // from power-on, in the original (in the reference emulator, tools/gba/linked.mjs) and in the Dreamport (in a headless
-// browser, the page's own GBAs on its own link). Every player's picture is compared at every frame. Nothing is traced,
-// so these recordings prove the gameplay they show and add no functions to the code ported.
+// browser, the page's own GBAs on its own link). Every player's picture is compared at every frame. These recordings
+// prove the gameplay they show: code ported counts only the functions the code names (src/lib/entries.mjs).
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -161,7 +161,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   // what of the original's code ran on any console in the frames where every screen matched (lib/played.mjs): the
   // page's frame f is the original's frame f + 1, which the original works out in its frame f. The cartridge's data
   // those frames used counts the same way, and the functions that started in them are those the row lists as found
-  // running, for code ported.
+  // running.
   let played = null;
   if (seesPlayed) {
     const matchedInOriginal = new Uint8Array(frames + 1), differing = new Set(differ);
