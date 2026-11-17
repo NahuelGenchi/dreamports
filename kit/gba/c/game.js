@@ -47,6 +47,9 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
   const sound = heard ? createSound(game, code, rom) : SILENT;
   game.dp_start();
   sound.started();
+  // the work memory of a game that keeps it at the console's addresses (memory.c): the bytes there now, or null where
+  // the game's memory doesn't reach
+  const held = (address, bytes) => (address + bytes <= memory.buffer.byteLength ? new Uint8Array(memory.buffer, address, bytes) : null);
 
   const video = {
     get vram() { return view().vram; },
@@ -57,8 +60,11 @@ export async function loadGame(url, rom, { save = null, query = globalThis.locat
     /** Draws the frame into `out`, 240 × 160 words as an ImageData holds them. */
     drawFrame(out) {
       out.set(new Uint32Array(memory.buffer, game.dp_draw(), out.length));
-      // with ?proof, what prove compares with the original's (proof.js)
-      if (globalThis.dreamportsProof) dreamportsProof.video = video;
+      // with ?proof, what prove compares with the original's (proof.js): the video hardware, and the work memory
+      if (globalThis.dreamportsProof) {
+        dreamportsProof.video = video;
+        dreamportsProof.memory = held;
+      }
     },
   };
   // `next`, when given, is what the frame's V-blank finds held (input.js nextGbaKeys), for gba_vblank_keys

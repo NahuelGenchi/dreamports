@@ -40,3 +40,6 @@ jobs:
       - run: npm run test:twin
       - run: npm run test:match
       - run: npm run test:nes-twin
+      # test:same-memory builds a program of the project's own as a cartridge and as a Dreamport from the same C, and has
+      # prove find every frame and the whole work memory the same in mGBA and in a browser (tools/README.md)
+      - run: npm run test:same-memory

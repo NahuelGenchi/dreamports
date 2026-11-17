@@ -22,6 +22,24 @@
   // how many samples a frame with no sound stands for
   const SILENCE = Math.floor(__console.sound * __console.frame[0] / __console.frame[1]);
   let heard = false, pictureDiffered = false, ownWidth = 0, ownHeight = 0, savesSeen = false;
+  // for a game that keeps its memory at the console's addresses, the stretches of work memory to hash after each frame
+  // (lib/memory.mjs), and their bytes at the first frame whose hash isn't the original's
+  const stretches = globalThis.__memory ?? null, MEMORY_BYTES = (stretches ?? []).reduce((sum, { bytes }) => sum + bytes, 0);
+  let memoryDiffered = false, firstMemory = null;
+  function memoryNow(keep) {
+    if (typeof dreamportsProof.memory !== 'function') throw new Error('The game\'s original.json lists work memory to compare, and its kit doesn\'t say where the game keeps it.');
+    const all = keep ? new Uint8Array(MEMORY_BYTES) : null;
+    let hash = 0x811C9DC5, kept = 0;
+    for (const { address, bytes } of stretches) {
+      const held = dreamportsProof.memory(address, bytes);
+      if (!held) throw new Error(`The game's original.json lists work memory to compare, and the game doesn't keep its memory at the console's addresses: nothing of it reaches 0x${address.toString(16).toUpperCase().padStart(8, '0')}. A game does with the kit's gba_console_memory (kit/gba/c/gba.h).`);
+      for (let i = 0; i < bytes; i++) hash = Math.imul(hash ^ held[i], 0x01000193);
+      all?.set(held, kept);
+      kept += bytes;
+    }
+    return { hash: hash >>> 0, bytes: all };
+  }
+
   // for a game proven by draw lists, the whole list of the first frame whose list differs, as the kit kept it
   let firstList = null;
 
@@ -183,8 +201,8 @@
      *  the console holds at the first frame whose picture isn't the hash in `expected`, and at those `wantStates` names.
      *  It stops after the first frame from `stopsFrom` on whose picture isn't. `after` is what the frame after the last holds. Each size the pictures changed to comes too, as [frame, width, height].
      *  A game that throws stops there, with `stopped` saying what it threw. */
-    async run(from, held, expected, stopsFrom = Infinity, after = null) {
-      const hashes = [], sound = [], neverInPlay = [], sizes = [], saves = [];
+    async run(from, held, expected, stopsFrom = Infinity, after = null, expectedMemory = null) {
+      const hashes = [], sound = [], neverInPlay = [], sizes = [], saves = [], memory = [];
       // what the game wrote to its save memory as it started, before its first frame, as a cartridge with no save does
       // at power-on: the frame before the first
       if (!savesSeen && dreamportsProof.saved) saves.push({ frame: from - 1, bytes: toBase64(dreamportsProof.saved) });
@@ -200,7 +218,7 @@
           image = await played({ held: held[i], next: held[i + 1] ?? after ?? undefined });
         } catch (error) {
           // the game stopped, as one does on a path it hasn't ported yet: this frame and the rest differ
-          return { hashes, sound, neverInPlay, sizes, saves, stopped: String(error) };
+          return { hashes, sound, neverInPlay, sizes, saves, memory, stopped: String(error) };
         }
         if (!image) throw new Error('The game handed over no picture.');
         if (__console.id === 'gba' && (image.width !== WIDTH || image.height !== HEIGHT)) {
@@ -219,6 +237,15 @@
         if (first) pictureDiffered = true;
         if (first || wantedStates.has(frame)) keepState(frame);
         if (first && __drawLists) firstList = { frame, bytes: dreamportsProof.drawListBytes?.() ?? null };
+        // the work memory as the frame leaves it, kept whole the first time it isn't the original's
+        if (stretches) {
+          const now = memoryNow(false);
+          memory.push(now.hash);
+          if (!memoryDiffered && expectedMemory && now.hash !== expectedMemory[i]) {
+            memoryDiffered = true;
+            firstMemory = { frame, bytes: memoryNow(true).bytes };
+          }
+        }
         // a game's own word that no player could ever see this frame
         if (dreamportsProof.neverInPlay) neverInPlay.push({ frame, why: dreamportsProof.neverInPlay });
         // what the game wrote to its save memory in this frame, the last if more than once (kit/gba/save.js)
@@ -228,9 +255,9 @@
         if (samples) { filter(samples, energies); heard = true; }
         sound.push({ energies: Array.from(energies), samples: samples ? samples.length / 2 : SILENCE });
         if (first) kept.set(frame, fromRing(frame));
-        if (frame >= stopsFrom && hash !== expected[i]) break;
+        if (frame >= stopsFrom && (hash !== expected[i] || (stretches && expectedMemory && memory.at(-1) !== expectedMemory[i]))) break;
       }
-      return { hashes, sound, neverInPlay, sizes, saves };
+      return { hashes, sound, neverInPlay, sizes, saves, memory };
     },
 
     /** The frames whose state to keep as they're played, besides the first whose picture differs. */
@@ -251,6 +278,9 @@
     /** For a game proven by draw lists, the first frame whose list differs and its whole list in base64, or null when
      *  every list was the same, or a list too long to keep. */
     drawList() { return firstList?.bytes ? { frame: firstList.frame, bytes: toBase64(firstList.bytes) } : null; },
+
+    /** The first frame whose work memory wasn't the original's, and the bytes it held, in base64, or null. */
+    memory() { return firstMemory ? { frame: firstMemory.frame, bytes: toBase64(firstMemory.bytes) } : null; },
 
     /** What the console held at a frame kept, in base64, or null. */
     state(frame) {

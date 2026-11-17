@@ -84,6 +84,21 @@ int gba_sqrt(uint32_t n);
 /** The BIOS's ArcTan2, as the console works it out: the angle from (0, 0) to (`x`, `y`), 0 to 0xFFFF a full turn. */
 int gba_arctan2(int x, int y);
 
+// The console's memory at the console's own addresses (memory.c), for a game whose every function is a twin of one of
+// the original's (docs/STANDARD.md): its work memory, and its cartridge.
+#define GBA_EWRAM 0x02000000u
+#define GBA_EWRAM_BYTES 0x40000u
+#define GBA_IWRAM 0x03000000u
+#define GBA_IWRAM_BYTES 0x8000u
+#define GBA_CARTRIDGE 0x08000000u
+/** Makes the console's work memory real at its addresses, zeroed: 256 KB from 0x02000000 and 32 KB from 0x03000000.
+ *  With `cartridge`, the player's copy is at 0x08000000 too, and gba_rom is that address from then on. Call it first
+ *  thing in game_start, before anything asks for memory. Only as WebAssembly. */
+void gba_console_memory(int cartridge);
+/** Writes one byte to video memory at byte `at`, as the console does: video memory takes 16 bits at a time, so the byte
+ *  lands in both halves of its halfword, and one written among the sprites' tiles is lost. */
+void gba_vram_write8(uint32_t at, uint8_t value);
+
 /** The buttons held at the V-blank that ends this frame, as KEYINPUT has them, for a game that reads them there as
  *  well as at the frame's start, as a soft reset's V-blank does: what the page finds held as the frame ends, or what a
  *  proof tool says the next frame holds, as the original's frames are counted from the V-blank before them

@@ -15,6 +15,7 @@ Like the rest of the kits it's under [GPL-3.0-or-later](LICENSE), and nothing fr
 | `kit.h`, `kit.c` | The player's copy, the save memory, the words of the page's address, memory for the game and the picture the page shows, and what the page calls to give the game the copy and the words |
 | `page.h` | What a kit uses to meet the page, which a game doesn't need |
 | `libc.c` | The few C library functions the compiler calls on its own, as WebAssembly has no C library |
+| `pause.c` | `kit_wait_frame()` and `kit_run()`: ending a frame from anywhere in a game's C and going on from there in the next, for a game that waits for the screen from inside its functions as its original does ([the same-memory build](../../tools/README.md#the-same-memory-build)). A game that doesn't call them has none of it |
 | `game.js` | The page's side: it loads the game's WebAssembly, hands it the copy, the save memory and the words, and plays sound on an audio thread of its own. A console's kit builds on it, and `loadGame` runs a game on a console with none |
 | `console.c` | A game on a console with no kit in C of its own: what the page calls to start it, run its frames, draw them and hear them |
 | `worklet.js` | That game's sound on its audio thread: the samples each frame made, played as they come |

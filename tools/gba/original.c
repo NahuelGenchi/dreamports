@@ -21,6 +21,12 @@
 // order of their frames: each its frame, its address and how many bytes (32 bits each). The JSON on stderr then has
 // them, in that order, under "reads", which is how the tools learn what the original holds, such as who is playing.
 //
+// The environment's DP_MEMORY, when it's set, names a file of stretches of the work RAM to compare with a Dreamport's
+// that keeps its memory at the console's addresses (lib/memory.mjs): the frame whose bytes to write as well, or
+// 0xFFFFFFFF for none, then each stretch's address and how many bytes (32 bits each). It writes "<that file>.out": a
+// hash of all the stretches' bytes as each frame ends (32 bits, FNV-1a, as the pictures are hashed), then the bytes
+// themselves as they were at the frame asked for, when the run reaches it.
+//
 // The environment's DP_RAM_CODE, when it's set, names a file to write the code that runs in the work RAM to, for the
 // code map (codemap.mjs): each time an instruction runs at an address there with other bytes than the last time,
 // its frame, its address (+1 for Thumb) and its bytes (32 bits each).
@@ -252,6 +258,18 @@ static void draw(uint32_t* hash, uint32_t* plain) {
 		if (!i) *plain = colour;
 		else if (colour != *plain) *plain = 0xFFFFFFFF;
 	}
+}
+
+// the bytes of a stretch of the work RAM, as the console holds them now: only ever one that is all inside it
+static const uint8_t* workMemory(struct GBA* gba, uint32_t address, uint32_t bytes) {
+	if (address >= BASE_WORKING_RAM && address - BASE_WORKING_RAM <= SIZE_WORKING_RAM && bytes <= SIZE_WORKING_RAM - (address - BASE_WORKING_RAM)) {
+		return (const uint8_t*) gba->memory.wram + (address - BASE_WORKING_RAM);
+	}
+	if (address >= BASE_WORKING_IRAM && address - BASE_WORKING_IRAM <= SIZE_WORKING_IRAM && bytes <= SIZE_WORKING_IRAM - (address - BASE_WORKING_IRAM)) {
+		return (const uint8_t*) gba->memory.iwram + (address - BASE_WORKING_IRAM);
+	}
+	fprintf(stderr, "The tools can only compare the work RAM, and the %u bytes from 0x%08X aren't all in it\n", bytes, address);
+	exit(2);
 }
 
 // what the console holds as a frame ends, before its V-blank starts: what it has just drawn the frame from
@@ -547,6 +565,21 @@ int main(int argc, char** argv) {
 	size_t readCount = readsSize / 12, nextRead = 0;
 	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
 
+	// the stretches of the work RAM whose hash to write as each frame ends, and the frame whose bytes to write too
+	size_t memorySize = 0;
+	uint32_t* memory = getenv("DP_MEMORY") ? readAll(getenv("DP_MEMORY"), &memorySize) : NULL;
+	size_t stretchCount = memorySize >= 4 ? (memorySize - 4) / 8 : 0, memoryBytes = 0;
+	FILE* memoryOut = NULL;
+	uint8_t* memoryKept = NULL;
+	if (memory) {
+		char name[1024];
+		snprintf(name, sizeof name, "%s.out", getenv("DP_MEMORY"));
+		memoryOut = fopen(name, "wb");
+		if (!memoryOut) { fprintf(stderr, "Can't write %s\n", name); exit(2); }
+		for (size_t i = 0; i < stretchCount; i++) memoryBytes += memory[2 + i * 2];
+		memoryKept = malloc(memoryBytes ? memoryBytes : 1);
+	}
+
 	// the code that runs in the work RAM, for the code map, and what last ran at each of its addresses
 	FILE* ramCode = getenv("DP_RAM_CODE") ? fopen(getenv("DP_RAM_CODE"), "wb") : NULL;
 	if (getenv("DP_RAM_CODE") && !ramCode) { fprintf(stderr, "Can't write %s\n", getenv("DP_RAM_CODE")); exit(2); }
@@ -686,6 +719,18 @@ int main(int argc, char** argv) {
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			readValues[nextRead] = readValue(core, reads[nextRead * 3 + 1], reads[nextRead * 3 + 2]);
 		}
+		if (memoryOut) {
+			uint32_t held = 0x811C9DC5;
+			size_t kept = 0;
+			for (size_t i = 0; i < stretchCount; i++) {
+				uint32_t length = memory[2 + i * 2];
+				const uint8_t* bytes = workMemory(gba, memory[1 + i * 2], length);
+				for (uint32_t at = 0; at < length; at++) held = (held ^ bytes[at]) * 0x01000193;
+				if (memory[0] == (uint32_t) frame) memcpy(memoryKept + kept, bytes, length);
+				kept += length;
+			}
+			fwrite(&held, 4, 1, memoryOut);
+		}
 		uint32_t hash, plain;
 		draw(&hash, &plain);
 		fwrite(&hash, 4, 1, stdout);
@@ -707,6 +752,10 @@ int main(int argc, char** argv) {
 	if (soundFile) fclose(soundFile);
 	if (ramCode) fclose(ramCode);
 	if (saves) fclose(saves);
+	if (memoryOut) {
+		if (memory[0] < (uint32_t) frames) fwrite(memoryKept, 1, memoryBytes, memoryOut);
+		fclose(memoryOut);
+	}
 	usedClose();
 	ranClose();
 	if (playedCode) fclose(playedCode);

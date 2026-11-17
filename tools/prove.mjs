@@ -7,7 +7,8 @@
 // original's screen is one colour, as between one screen and the next, and with --stills <frames> keeps pictures of
 // those frames, as it does of each part's first and last, and it names any notes people left on what differs
 // (docs/NOTES.md). At the first picture that differs, and with --state <frames> at others, it says what the console
-// holds that differs (lib/state.mjs). A recording fails if the game says no player could ever see a frame of it
+// holds that differs (lib/state.mjs). For a game that keeps its memory at the console's own addresses, it compares the
+// work memory too, every byte original.json lists, after every frame (lib/memory.mjs). A recording fails if the game says no player could ever see a frame of it
 // (tools/README.md, Start points), and it reminds a game whose code never can say so when a start point plays. A
 // recording also fails when its name names a character, or anything else original.json lists under `shows`, that the
 // original's own memory says it doesn't show as it ends (src/lib/shows.mjs), and when a part of it names what it reaches
@@ -34,6 +35,7 @@ import { atOnce } from './lib/at-once.mjs';
 import { mp4 } from './lib/mp4.mjs';
 import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
 import { compareState, describeState } from './lib/state.mjs';
+import { compareMemory, describeMemory, memoryBytes, memorySpec, workMemoryOf } from './lib/memory.mjs';
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
@@ -308,6 +310,9 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
   const main = quick ? null : mainProof(game);
   const kinds = kindsOf(original, `games/${versionOf(game).game}/proof/original.json`);
   const reference = await referenceOf(original), copy = copyWith(original.sha1).path, codeMap = readCodeMap(game), parts = readParts(game);
+  // the work memory a game that keeps it at the console's addresses asks to have compared (lib/memory.mjs)
+  const memory = workMemoryOf(original, `games/${versionOf(game).game}/proof/original.json`);
+  if (memory && reference.seesMemory !== true) throw new Error(`${reference.machine.name}'s emulator can't have its work memory compared yet, which this game asks for (original.json).`);
   // what the game says of its original, for the parts that name what they reach (src/lib/reaches.mjs)
   const route = parts.some(part => part.reaches !== undefined) ? readRoute(game, reference.KEY) : null;
   const server = await serveRepository();
@@ -319,8 +324,9 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
       const own = parts.filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
+        if (recording.players && memory) log(`\n${name} links several consoles, whose work memory isn't compared yet: only its pictures and sound are.`);
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, codeMap: reference.seesInstructions === true ? codeMap : null, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, memory, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -371,7 +377,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, keysLate, drawLists, paced, quick, log, say }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, memory, keysLate, drawLists, paced, quick, log, say }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -394,7 +400,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   {
     await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}`, saves: startSaves && Object.fromEntries(Object.entries(startSaves).map(([key, save]) => [key, save.bytes])) });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
-    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
+    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__memory = ${JSON.stringify(memory)}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
     await page.evaluate(IN_PAGE);
     const buttons = await page.evaluate('dreamportsProof.buttons');
     // the recording's buttons as the Dreamport names them, and as the console's buttons for the original
@@ -434,7 +440,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
     // with a code map, every instruction that ran and each way every branch went, where the program says them
     const seesPlayed = !quick && !!codeMap && reference.seesInstructions === true;
-    const first = await runOriginal({ copy, startSave, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    const first = await runOriginal({ copy, startSave, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, memory: memory ? { spec: memorySpec(memory) } : null, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -450,6 +456,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (drawLists && !first.draws) throw new Error(`${machine.name}'s emulator keeps no draw lists, which this game is proven by (original.json).`);
     const compared = drawLists ? first.draws.hashes : first.hashes;
     const expected = Array.from(originalOf, g => compared[g + 1]);
+    // the work memory as each of those frames left it, by its hash, which the Dreamport's has to be after the same frame
+    const expectedMemory = memory ? Array.from(originalOf, g => first.memory.hashes[g + 1]) : null;
     // where this step's change starts, as main's proof tells it, for the clip to start a second before (lib/clips.mjs):
     // a guess now, from main alone, and known once the Dreamport has played
     const recordingText = readFileSync(recording.file, 'utf8'), recordingFile = relative(REPO, recording.file).replaceAll('\\', '/');
@@ -472,8 +480,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // --quick goes on no further than the first difference and what's asked for
     const lastAsked = Math.max(-1, ...asked, ...askedState);
     // each frame's picture hash, and how its sound differs, or null when it's the same
-    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [], ownSaves = [];
-    const differs = f => hashes[f] !== expected[f] || sounds[f] !== null;
+    const hashes = [], heard = [], sounds = [], keptFrames = new Set(), neverInPlay = [], ownSizes = [], ownSaves = [], ownMemory = [];
+    const memoryDiffers = f => memory !== null && ownMemory[f] !== expectedMemory[f];
+    const differs = f => hashes[f] !== expected[f] || sounds[f] !== null || memoryDiffers(f);
     let firstDifference = -1, firstNew = -1, firstPicture = -1, stopped = null;
     // the frames whose state to compare: those asked for, and the first picture that differs
     const stateFrames = new Set(askedState);
@@ -484,8 +493,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       say(`frame ${from + count} of ${frames}`);
       const batch = held.slice(from, from + count).map(list => list.map(b => named.get(b)));
       const after = from + count < frames ? held[from + count].map(b => named.get(b)) : null;
-      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${quick ? lastAsked : Infinity}, ${JSON.stringify(after)})`);
+      const played = await page.evaluate(`__proof.run(${from}, ${JSON.stringify(batch)}, ${JSON.stringify(expected.slice(from, from + count))}, ${quick ? lastAsked : Infinity}, ${JSON.stringify(after)}, ${JSON.stringify(expectedMemory?.slice(from, from + count) ?? null)})`);
       hashes.push(...played.hashes);
+      ownMemory.push(...played.memory);
       heard.push(...played.sound);
       neverInPlay.push(...played.neverInPlay);
       for (const { frame, bytes } of played.saves ?? []) ownSaves.push({ frame, bytes: Buffer.from(bytes, 'base64') });
@@ -520,7 +530,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // a game that stopped drew nothing more: the frame it stopped at and every one after differ
     const reached = hashes.length;
     if (stopped) {
-      for (let f = reached; f < frames; f++) { hashes.push(null); sounds.push(null); }
+      for (let f = reached; f < frames; f++) { hashes.push(null); sounds.push(null); ownMemory.push(null); }
       if (firstPicture < 0) firstPicture = stopped.frame;
       if (firstDifference < 0) {
         firstDifference = stopped.frame;
@@ -537,11 +547,12 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
     // what matched, picture and sound, and the functions that ran in those frames
     let matched = 0;
-    const proven = new Set(), different = [], soundDifferent = [], pictureDifferent = [];
+    const proven = new Set(), different = [], soundDifferent = [], pictureDifferent = [], memoryDifferent = [];
     const matchedInOriginal = new Uint8Array(originalHeld.length + 1);
     for (let frame = 0; frame < hashes.length; frame++) {
       if (sounds[frame]) soundDifferent.push(frame);
       if (hashes[frame] !== expected[frame]) pictureDifferent.push(frame);
+      if (memoryDiffers(frame)) memoryDifferent.push(frame);
       if (differs(frame)) {
         different.push(frame);
         continue;
@@ -590,7 +601,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
         name: part, frames: [a, b], proven: b < frames && first === undefined && !gap && !never && !short, fromStart: fromStartPoint(recording, a),
         ...(short ? { unreached: short.goal } : {}),
         ...(b >= frames ? { past: frames - 1 } : {}),
-        ...(first !== undefined ? { differs: first, ...(hashes[first] === expected[first] ? { soundOnly: true } : {}) } : {}),
+        ...(first !== undefined ? { differs: first, ...(hashes[first] !== expected[first] ? {} : sounds[first] ? { soundOnly: true } : { memoryOnly: true }) } : {}),
         ...(gap ? { gap: gap.at } : {}),
         ...(never ? { neverInPlay: never.from } : {}),
       };
@@ -687,6 +698,16 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       }
       else states.push({ frame, ...compareState(shown.states.get(originalOf[frame] + 1), Buffer.from(ours, 'base64')) });
     }
+    // where the work memory first differs: the original plays to that frame again and hands over the bytes it held,
+    // next to those the page kept of the Dreamport's
+    let memoryApart = null;
+    if (memoryDifferent.length && memoryDifferent[0] < reached) {
+      const frame = memoryDifferent[0], ours = await page.evaluate('__proof.memory()');
+      say('playing the original to the frame whose work memory differs…');
+      const at = originalOf[frame] + 1;
+      const theirs = await runOriginal({ copy, startSave, frames: at + 1, buttons: masks, sets, memory: { spec: memorySpec(memory, at) } });
+      memoryApart = { frame, ...(ours?.frame === frame && theirs.memory.bytes ? compareMemory(memory, theirs.memory.bytes, Buffer.from(ours.bytes, 'base64')) ?? { unknown: true } : { unknown: true }) };
+    }
     // where the first frame whose sound differs is furthest from the original's
     const firstSound = soundDifferent.length ? { frame: soundDifferent[0], ...sounds[soundDifferent[0]] } : null;
     if (quick) return finish({});
@@ -725,6 +746,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const outside = first.outside;
     const report = {
       recording: name, recordingFile, recordingSha1: recordingHash(recordingText), frames, matched, ...(stopped ? { stopped } : {}), differs: differing, neverInPlay: neverSeen, firstDifference: difference, ...(pictureDifference ? { firstPictureDifference: pictureDifference } : {}), ...(listApart ? { drawListApart: listApart } : {}), onlyInOriginal, oneColour, parts: partsFound, stills, pixels: stillsFound, states,
+      ...(memory ? { memory: { bytes: memoryBytes(memory), differs: stretchesOf(memoryDifferent), firstDifference: memoryApart } } : {}),
       sound: { heard: madeSound, differs: soundDiffers, firstDifference: firstSound, ...(unheard.size ? { notCompared: stretchesOf([...unheard].sort((a, b) => a - b)) } : {}), ...(compareSound.dips.length ? { dips: stretchesOf(compareSound.dips) } : {}) },
       ...(wasDifferent ? { sinceLastProven: { differs: newly, firstDifference: newDifference, matches: fixed } } : {}),
       clip: {
@@ -746,14 +768,15 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const at = d => (stopped && d.frame >= stopped.frame ? `frame ${d.frame}, where the Dreamport stopped`
       : d.pixels || hashes[d.frame] !== expected[d.frame]
       ? `frame ${d.frame}: ${d.pixels} pixels${d.box ? `, from ${d.box[0]},${d.box[1]} to ${d.box[2]},${d.box[3]}` : ''}`
-      : `frame ${d.frame}, by its sound`);
-    if (firstDifference < 0) log(`${name}: all ${frames} frames the same in both, pictures and sound${onlyInOriginal ? ` (and ${onlyInOriginal} only the original has)` : ''}.`);
+      : sounds[d.frame] ? `frame ${d.frame}, by its sound` : `frame ${d.frame}, by its work memory`);
+    const andMemory = memory ? `, and the ${memoryBytes(memory).toLocaleString('en-US')} bytes of work memory after each` : '';
+    if (firstDifference < 0) log(`${name}: all ${frames} frames the same in both, pictures and sound${andMemory}${onlyInOriginal ? ` (and ${onlyInOriginal} only the original has)` : ''}.`);
     else if (quick) {
       const picture = pictureDifference ? `, and the first picture that differs is ${at(pictureDifference)}` : '';
       log(`${name}: the first of ${frames} frames that differs is ${at(difference)}${picture}.`);
     } else {
       const picture = pictureDifference ? `, and the first picture that differs is ${at(pictureDifference)}` : firstPicture < 0 ? ', and every picture is the same' : '';
-      log(`${name}: ${matched} of ${frames} frames the same, pictures and sound. The first that differs is ${at(difference)}${picture}.`);
+      log(`${name}: ${matched} of ${frames} frames the same, pictures and sound${andMemory}. The first that differs is ${at(difference)}${picture}.`);
       log(`  Frames that differ: ${listed(differing)}.`);
     }
     if (listApart?.unknown) log(`  Frame ${listApart.frame}'s draw list differs, and which write can't be said: ${listApart.unknown}.`);
@@ -764,6 +787,10 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       log(`    the original:  ${original}`);
       log(`    the Dreamport: ${dreamport}`);
       if (before.length) log(`    after the same ${before.length === 1 ? 'write' : `${before.length} writes`}: ${before.join('; ')}`);
+    }
+    if (memoryApart) {
+      log(`  ${memoryApart.unknown ? describeMemory(memoryApart.frame, null) : describeMemory(memoryApart.frame, memoryApart, memoryBytes(memory))}`);
+      if (memoryDifferent.length > 1) log(`  Frames whose work memory differs: ${listed(stretchesOf(memoryDifferent))}.`);
     }
     if (stopped) log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.error}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
     for (const { from, to, why } of neverSeen) {
@@ -803,7 +830,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (provenParts.length && !quick) log(`  Proven, every frame the same: ${provenParts.map(part => `${part.name}, frames ${part.frames[0]} to ${part.frames[1]}`).join('; ')}.`);
     for (const part of quick ? [] : partsFound.filter(part => !provenParts.includes(part))) {
       const state = part.past !== undefined ? `ends past the recording's last frame, ${part.past}`
-        : part.differs !== undefined ? `not proven, as ${part.soundOnly ? 'the sound of ' : ''}frame ${part.differs} differs`
+        : part.differs !== undefined ? `not proven, as ${part.soundOnly ? 'the sound of ' : part.memoryOnly ? 'the work memory after ' : ''}frame ${part.differs} differs`
           : part.neverInPlay !== undefined ? `not proven, as no player could ever see frame ${part.neverInPlay}`
           : part.gap !== undefined ? `not proven, as the original has frames of its own before frame ${part.gap}`
             : part.unreached !== undefined ? `not proven, though every frame is the same, as it doesn't get to ${part.unreached}`

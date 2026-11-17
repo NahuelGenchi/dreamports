@@ -27,7 +27,18 @@ void *kit_alloc(size_t size) {
   heap_top = end;
   return __builtin_memset((void *)at, 0, size);
 }
+// the stretch is above everything given out so far, and what's given out after it comes from above it: the addresses
+// in between are never touched, so the browser gives them no memory of its own
+void kit_memory_keep(uintptr_t from, uintptr_t to) {
+  if (!heap_top) heap_top = (uintptr_t)&__heap_base;
+  if (from >= to || from < heap_top) kit_trap();
+  size_t have = __builtin_wasm_memory_size(0) * 65536;
+  if (to > have && __builtin_wasm_memory_grow(0, (to - have + 65535) / 65536) == (size_t)-1) kit_trap();
+  heap_top = to;
+  __builtin_memset((void *)from, 0, to - from);
+}
 #else
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 static void kit_trap(void) { abort(); }
@@ -35,6 +46,13 @@ void *kit_alloc(size_t size) {
   void *at = calloc(1, size ? size : 1);
   if (!at) kit_trap();
   return at;
+}
+// a computer's program doesn't choose its addresses
+void kit_memory_keep(uintptr_t from, uintptr_t to) {
+  (void)from;
+  (void)to;
+  fputs("A game that keeps its console's memory at the console's addresses runs as WebAssembly only.\n", stderr);
+  kit_trap();
 }
 #endif
 
