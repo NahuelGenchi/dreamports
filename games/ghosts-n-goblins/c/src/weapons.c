@@ -64,7 +64,7 @@ static uint8_t block_above(uint8_t object) {
 // stopped by a gravestone.
 static void fly(uint8_t object, uint8_t speed) {
   took(CALLS);
-  move_object(object, speed);
+  move_object(object, speed, Y_NOT_FOLLOWED);
   if (!object_in_view(object)) {
     RAM[OBJECT_STATE + object] = 0;
     RAM[OBJECT_FLAGS + object] = 0;

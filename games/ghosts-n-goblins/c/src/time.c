@@ -19,6 +19,34 @@ static const uint16_t CYCLES[] = {
 #undef COST
 };
 
+#ifdef DP_TWIN_CHECK
+// The function check (tools/README.md) calls one function of the game by itself, with no frames and no interrupt, and
+// compares what it spends and what reaches the hardware with the original's. So under it this file keeps nothing:
+// time and hardware go straight to the kit, as the original's own instructions would.
+
+void took(cost what) { nes_spend(CYCLES[what]); }
+void took_times(cost what, uint32_t times) { nes_spend((int)(CYCLES[what] * times)); }
+void took_instead(cost assumed, cost real) { nes_spend((int)CYCLES[real] - (int)CYCLES[assumed]); }
+void hardware_write(uint16_t address, uint8_t value) { nes_write(address, value); }
+void hardware_ppu_latch(void) { nes_read(0x2002); }
+uint8_t hardware_read(uint16_t address) { return nes_read(address); }
+void hardware_send_sprites(uint8_t page) { nes_write(0x4014, page); }
+void hardware_read_pads(uint8_t guessed) { read_pads(guessed); }
+void vblank_interrupt_wanted(uint8_t on) { (void)on; }
+// a wait for V-blank is what no function can be checked across: the kit notes it, so the two sides differ
+void loop_begins(uint8_t instructions) { (void)instructions; nes_wait_line(0); }
+uint8_t loop_was_interrupted(void) { return 1; }
+uint8_t interrupt_runs_ahead(void) { return 0; }
+void loop_goes_on(void) {}
+void loop_left(void) {}
+void time_starts(void) {}
+void start_waited_for_vblank(void) {}
+void frame_begins(void) {}
+uint8_t frame_is_over(void) { return 1; }
+void frame_ends(void) {}
+
+#else
+
 enum { DOTS_A_CYCLE = 3, FIRST_FRAME_DOTS = 89342 };
 
 static uint64_t now;            // the processor's time
@@ -48,6 +76,9 @@ static void keep(uint8_t kind, uint16_t address, uint8_t value) {
 void hardware_write(uint16_t address, uint8_t value) { keep(WRITE, address, value); }
 void hardware_ppu_latch(void) { keep(PPU_LATCH, 0x2002, 0); }
 void hardware_read_pads(uint8_t guessed) { keep(PADS, 0x4016, guessed); }
+// What's written waits here for its frame, so a read can't be answered at its own moment: it gives 0 and doesn't reach
+// the kit. No recording makes one.
+uint8_t hardware_read(uint16_t address) { (void)address; return 0; }
 
 // A write of $4014: the page of sprites as it is at this moment.
 void hardware_send_sprites(uint8_t page) {
@@ -212,3 +243,4 @@ void start_waited_for_vblank(void) {
   uint64_t passes = (seen - first - read + pass - 1) / pass;
   now = first + passes * pass + read + (uint64_t)CYCLES[START_WAIT_OVER] * DOTS_A_CYCLE;
 }
+#endif

@@ -25,6 +25,7 @@ static uint8_t flag(uint8_t object, uint8_t which) {
 }
 
 /** sub_02_8610. */
+// dp:twin sub_02_8610 forest_enemies_come(&X)
 void forest_enemies_come(uint8_t *x) {
   if (RAM[0xC2] >= 3) { took(FOREST_OTHER_PART); return; }
   if (RAM[0x65] < 9) { took(FOREST_BEFORE); return; }
@@ -82,7 +83,7 @@ static void shoot(uint8_t object) {
   RAM[0x27] = 0x50;
   RAM[0x26] = 0x20;
   took(FOREST_SHOT_LOOKS);
-  if (arthur_near(object)) {
+  if (arthur_near(object, Y_NOT_FOLLOWED)) {
     heading = DOWN;
     took(FOREST_SHOT_DOWN);
   } else if (arthur_is_right_of(object)) {
@@ -130,7 +131,7 @@ static void attack(uint8_t object) {
   RAM[0x27] = 0x60;
   RAM[0x26] = 0x28;
   took(FOREST_LOOKS);
-  if (arthur_near(object)) took(BRANCH_TAKEN);
+  if (arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
     if (arthur_is_right_of(object)) {
@@ -151,7 +152,7 @@ static void attack(uint8_t object) {
 static void turn_round(uint8_t object) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object], *state = &RAM[OBJECT_STATE + object];
   took(FOREST_TURN_MOVES);
-  move_object(object, 4);
+  move_object(object, 4, Y_NOT_FOLLOWED);
   ++*count;
   took(FOREST_TURN_COUNTED);
   if (*count >= 8) {
@@ -298,7 +299,7 @@ void forest_enemy(uint8_t object) {
   }
   if (moves) {
     took(FOREST_MOVES);
-    move_object(object, 0x16);
+    move_object(object, 0x16, Y_NOT_FOLLOWED);
   }
   attack(object);
   took(JUMPS);

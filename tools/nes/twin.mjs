@@ -147,7 +147,7 @@ export function contractsIn(text, banks) {
 function unitFor(file, contracts) {
   const locals = constant => `  ${constant}uint8_t A = dp_r->A, X = dp_r->X, Y = dp_r->Y; ${constant}int N = dp_r->N, V = dp_r->V, Z = dp_r->Z, C = dp_r->C;\n  (void)A; (void)X; (void)Y; (void)N; (void)V; (void)Z; (void)C;\n`;
   const at = contract => `#line ${contract.line} ${JSON.stringify(file)}\n`;
-  return `#include ${JSON.stringify(file)}\n#include "contract.h"\n${[...REGISTERS].map(register => `#undef ${register}\n`).join('')}${contracts.map(contract => `
+  return `#include ${JSON.stringify(file)}\n${[...REGISTERS].map(register => `#undef ${register}\n`).join('')}#include "contract.h"\n${contracts.map(contract => `
 static void dp_call_${contract.index}(twin_regs *dp_r, long *dp_gave) {
 ${locals('')}${at(contract)}  ${contract.back ? `*dp_gave = (long)(${contract.call});` : `(void)dp_gave; ${contract.call};`}
   dp_r->A = A; dp_r->X = X; dp_r->Y = Y; dp_r->N = N; dp_r->V = V; dp_r->Z = Z; dp_r->C = C;

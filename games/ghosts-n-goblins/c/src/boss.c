@@ -88,7 +88,7 @@ static void head_for_him(uint8_t object) {
 // sub_F0A0's call and what follows it: it moves, and is hidden once it's out of the view.
 static void move(uint8_t object, uint8_t speed) {
   took(CALLS);
-  move_object(object, speed);
+  move_object(object, speed, Y_NOT_FOLLOWED);
   if (object_in_view(object)) { took(BOSS_STAYS_IN_VIEW); return; }
   took(GOES_ON);
   hide_object(object);
@@ -164,7 +164,7 @@ static void next_step(uint8_t object) {
   RAM[0x26] = 0x68;
   RAM[0x27] = 0x10;
   took(BOSS_NEXT_STEP);
-  if (!arthur_near(object)) {
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) {
     RAM[OBJECT_HEADING + object] = 0x04;
     took(BOSS_FAR);
     if (arthur_is_right_of(object)) took(BOSS_FAR_RIGHT);
@@ -176,7 +176,7 @@ static void next_step(uint8_t object) {
     RAM[0x26] = 0x50;
     RAM[0x27] = 0x10;
     took(BOSS_NEAR_LOOKS);
-    if (!arthur_near(object)) took(BRANCH_TAKEN);
+    if (!arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
     else {
       RAM[OBJECT_HEADING + object] = 0x04;
       took(BOSS_CLOSE);
@@ -265,7 +265,7 @@ static void dodge(uint8_t object) {
   uint8_t speed = cart(7, (uint16_t)(0xFF0D + (STEP(object) & 0x0F)));
   took(BOSS_DODGE_SPEED);
   took(CALLS);
-  move_object(object, speed);
+  move_object(object, speed, Y_NOT_FOLLOWED);
   if (object_in_view(object)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
@@ -296,7 +296,7 @@ static void leap(uint8_t object) {
   jump_height(object);
   took(BOSS_LEAP_SPEED);
   took(CALLS);
-  move_object(object, 0x2E);
+  move_object(object, 0x2E, Y_NOT_FOLLOWED);
   if (object_in_view(object)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
@@ -405,7 +405,7 @@ void boss(uint8_t object) {
   RAM[0x26] = 0x50;
   RAM[0x27] = 0x10;
   took(BOSS_LOOKS);
-  if (arthur_near(object)) took(BOSS_NEAR);
+  if (arthur_near(object, Y_NOT_FOLLOWED)) took(BOSS_NEAR);
   else {
     RAM[OBJECT_COUNT + object]++;
     if ((uint8_t)(RAM[OBJECT_SCREEN_Y + object] + 0x10) < RAM[OBJECT_SCREEN_Y + ARTHUR]) { took(BOSS_ARTHUR_BELOW); return; }
