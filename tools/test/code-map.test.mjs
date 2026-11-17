@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatCodeMap, parseCodeMap, watchesOf } from '../lib/proof-files.mjs';
 import { findInMemory } from '../gba/functions.mjs';
-import { splitAt } from '../codemap.mjs';
+import { splitAt, startsFromPlay } from '../codemap.mjs';
 
 const halfwords = list => Buffer.from(Uint16Array.from(list).buffer);
 
@@ -55,4 +55,21 @@ test('a copy splits the cartridge function it shows starts partway', () => {
     { address: 0x08002000, size: 0x10 },
     { address: 0x08003000, size: 0x30 },
   ]);
+});
+
+test('what play sends an NES game\'s processor to starts a function where the map has none', () => {
+  // a program of 0x40 bytes with a JSR at 0x05, so 0x08 is where that call comes back to
+  const prg = new Uint8Array(0x40);
+  prg[0x05] = 0x20;
+  const functions = [{ address: 0x00, size: 0x10 }, { address: 0x20, size: 0x08 }];
+  const sent = [
+    { address: 0x20, way: 'called' },     // a function the map has
+    { address: 0x0C, way: 'called' },     // called inside one: it starts a function there
+    { address: 0x0E, way: 'jumped' },     // jumped to inside one: that function's own code
+    { address: 0x30, way: 'jumped' },     // jumped to outside every function
+    { address: 0x08, way: 'returned' },   // where a call came back
+    { address: 0x24, way: 'returned' },   // returned to inside one, not after a call: its own code
+    { address: 0x38, way: 'returned' },   // an address a routine pushed, outside every function
+  ];
+  assert.deepEqual(startsFromPlay(prg, functions, sent), [0x0C, 0x30, 0x38]);
 });

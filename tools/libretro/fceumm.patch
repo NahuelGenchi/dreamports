@@ -1,0 +1,65 @@
+FCEUmm (https://github.com/libretro/libretro-fceumm, GNU General Public License version 2) runs the NES, and like every
+libretro core it says nothing of the instructions it runs. The tools apply this change of Dreamports' own to its source
+before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so the program that
+plays the original (tools/libretro/host.c) can ask to be told of each one: its address, where that is in the
+cartridge's program whatever bank is switched in there, its first byte, and the processor's registers. That's how the
+code map learns which functions ran in play, and gameplay proven which instructions and which way each branch went
+(tools/lib/played.mjs).
+
+The processor only calls the function it was given, when it was given one, between reading an instruction and running
+it: nothing of the console changes, so every frame's picture and sound are the same with it or without, which
+tools/test/nes-ran.mjs checks. Nothing of FCEUmm is in the repository but the lines of its own this change sits between.
+
+diff --git a/src/drivers/libretro/libretro.c b/src/drivers/libretro/libretro.c
+index 55cf607..9dd860a 100644
+--- a/src/drivers/libretro/libretro.c
++++ b/src/drivers/libretro/libretro.c
+@@ -3392,6 +3392,25 @@ static void retro_run_blit(uint8_t *gfx)
+ #endif
+ }
+ 
++/* Dreamports: the processor tells the tools' program of every instruction (x6502.c), with where its address is in the
++ * cartridge's program, as an offset from its first byte, whatever bank is switched in there, or 0xFFFFFFFF outside
++ * it, as in the console's memory. retro_dreamports_ran gives the function to tell, or none. Its name starts as
++ * libretro's own do, as those are the only names this core lets out (link.T). */
++extern void (*DreamportsRan)(uint32_t pc, uint32_t op, uint32_t axys, uint32_t p);
++static void (*dreamports_told)(uint32_t pc, uint32_t place, uint32_t op, uint32_t axys, uint32_t p);
++
++static void dreamports_ran(uint32_t pc, uint32_t op, uint32_t axys, uint32_t p)
++{
++   uintptr_t at = (uintptr_t)Page[pc >> 11] + pc - (uintptr_t)PRGptr[0];
++   dreamports_told(pc, PRGptr[0] && Page[pc >> 11] && at < PRGsize[0] ? (uint32_t)at : 0xFFFFFFFF, op, axys, p);
++}
++
++RETRO_API void retro_dreamports_ran(void (*told)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t))
++{
++   dreamports_told = told;
++   DreamportsRan   = told ? dreamports_ran : NULL;
++}
++
+ void retro_run(void)
+ {
+    uint8_t *gfx;
+diff --git a/src/x6502.c b/src/x6502.c
+index 6250f2a..57103ea 100644
+--- a/src/x6502.c
++++ b/src/x6502.c
+@@ -26,6 +26,10 @@
+ #include "fceu.h"
+ #include "sound.h"
+ 
++/* Dreamports: what the tools' program asks to be told of every instruction, between reading it and running it: its
++ * address, its first byte, and the registers. It only looks, so the game plays the same with it or without. */
++void (*DreamportsRan)(uint32_t pc, uint32_t op, uint32_t axys, uint32_t p);
++
+ X6502 X;
+ uint8_t encryptOpcodes = 0;
+ uint8_t encryptOpcodesConfig = 0;
+@@ -447,6 +451,7 @@ void X6502_Run(int32_t cycles)
+ 
+ 		_PI = _P;
+ 		b1 = RdMem(_PC);
++		if (DreamportsRan) DreamportsRan(_PC, b1, _A | _X << 8 | _Y << 16 | (uint32_t)_S << 24, _P);
+ 
+ 		ADDCYC(CycTable[b1]);
+ 

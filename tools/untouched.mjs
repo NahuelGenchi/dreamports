@@ -18,7 +18,7 @@
 import { readCodeMap, readOriginal, readRecordings, cartridgeOf, hex, proofVersions } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { referenceOf } from './lib/reference.mjs';
-import { NOT_TAKEN, TAKEN, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
+import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
@@ -35,14 +35,16 @@ export async function run(args) {
   if (!game || flagged('--why') === '' || flagged('--in') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]');
   const original = readOriginal(game), codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game.split('/')[0]}/proof/ has no code map yet: npm run dp -- codemap ${game.split('/')[0]} makes one.`);
-  if ((await referenceOf(original)).seesInstructions !== true) throw new Error("The tools don't see this console's instructions run yet, so they can't say what's untouched.");
+  const reference = await referenceOf(original);
+  if (reference.seesInstructions !== true) throw new Error("The tools don't see this console's instructions run yet, so they can't say what's untouched.");
+  if (reference.saysWhy !== true && ['--decided', '--sort', '--why'].some(flag => args.includes(flag))) throw new Error("The tools say what a branch went by, and work out which can only go one way, on the Game Boy Advance so far.");
   if (!readPlayed(game).places) throw new Error(`games/${game}/proof/played.json isn't there yet: npm run dp -- prove ${game} writes it.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if (args.includes('--decided')) return decided(game, { original, codeMap, copy, write: args.includes('--write') });
   if (args.includes('--sort')) return sort(game, { original, codeMap, copy, all, atOnce: Number(flagged('--at-once') ?? 0) });
   if (flagged('--why') !== null) return why(game, { original, codeMap, copy, address: flagged('--why'), asked: flagged('--in') });
-  const { functions, content } = untouchedOf(game, codeMap, cartridgeOf(copy.path));
+  const { functions, content } = untouchedOf(game, codeMap, cartridgeOf(copy.path, original.console));
   const never = functions.filter(f => f.never), partly = functions.filter(f => !f.never);
   const most = list => (all ? list : list.slice(0, 20));
   const more = list => (!all && list.length > 20 ? [`  and ${count(list.length - 20)} more: --all prints them.`] : []);
@@ -60,6 +62,7 @@ export async function run(args) {
   }
   for (const line of more(partly)) console.log(line);
 
+  if (!followsContent(codeMap)) return 0;
   console.log(`\nStretches of the cartridge's data never used: ${count(content.length)}, ${count(content.reduce((sum, [from, to]) => sum + to - from + 1, 0))} bytes.`);
   for (const [from, to] of most(content)) console.log(`  ${hex(from)} to ${hex(to)}, ${count(to - from + 1)} bytes`);
   for (const line of more(content)) console.log(line);

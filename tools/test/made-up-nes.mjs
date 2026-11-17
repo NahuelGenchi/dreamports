@@ -34,12 +34,33 @@ const and = v => [0x29, v], cpx = v => [0xE0, v], cpy = v => [0xC0, v], adc = a 
 const here = name => ({ here: name }), branch = (op, name) => ({ op, name }), jmp = name => ({ jump: name });
 const bpl = name => branch(0x10, name), bne = name => branch(0xD0, name), beq = name => branch(0xF0, name);
 const table = name => ({ table: name });
+// a call, and LDA with the low byte of a name's address, less something, or with its high byte
+const jsr = name => ({ call: name }), lowOf = (name, less = 0) => ({ low: name, less }), highOf = name => ({ high: name });
+const DEY = 0x88, RTS = 0x60;
 
 const waitForVBlank = name => [here(name), bit(0x2002), bpl(name)];
 
+// With `calls`, the program has four small functions more, for the tools that say what ran (real-console.mjs), all at
+// power-on, before it first waits for the V-blank, so everything it shows and plays comes when it did: one it calls,
+// one it would call if X weren't zero, which it always is there, one it jumps to through a pointer it works out with
+// a sum, which following the code can't read, and one it calls from that. CALLS says what the processor does at each.
+const CALLS_AT_RESET = [
+  jsr('helper'), ldx(0), here('skips'), beq('skipped'), jsr('never'), here('skipped'),
+  lowOf('hidden', 1), CLC, [0x69, 1], save(0x02), highOf('hidden'), save(0x03), [0x6C, 0x02, 0x00], here('back'),
+];
+const CALLS_AFTER = [
+  here('helper'), INY, DEY, RTS,
+  here('never'), INY, INY, RTS,
+  Array(16).fill(0xFF),
+  here('hidden'), jsr('deeper'), jmp('back'),
+  Array(16).fill(0xFF),
+  here('deeper'), [0xA9, 0x01], RTS,
+];
+
 // what it does at power-on, each step as a real game's does it, and then only waits
-const RESET = [
+const RESET = calls => [
   SEI, CLD, ldx(0x40), stx(0x4017), ldx(0xFF), TXS, INX, stx(0x2000), stx(0x2001), stx(0x4010), bit(0x2002),
+  calls ? CALLS_AT_RESET : [],
   waitForVBlank('warm'),
   here('clear'), lda(0), [0x95, 0x00], lda(0xFF), putX(0x0200), INX, bne('clear'),
   waitForVBlank('warmer'),
@@ -57,6 +78,7 @@ const RESET = [
   waitForVBlank('ready'),
   lda(0), put(0x2005), put(0x2005), lda(0x80), put(0x2000), lda(0x1E), put(0x2001),
   here('wait'), jmp('wait'),
+  calls ? CALLS_AFTER : [],
 ];
 
 const ifHeld = (mask, name, action) => [load(RAM.buttons), and(mask), beq(name), action, here(name)];
@@ -88,6 +110,9 @@ function assemble(list, origin, tables) {
       else if (item.here) names[item.here] = at;
       else if (item.op) bytes.push(item.op, ((names[item.name] ?? at) - at - 2) & 255);
       else if (item.jump) bytes.push(0x4C, ...word(names[item.jump] ?? 0));
+      else if (item.call) bytes.push(0x20, ...word(names[item.call] ?? 0));
+      else if (item.low) bytes.push(0xA9, ((names[item.low] ?? 0) - item.less) & 255);
+      else if (item.high) bytes.push(0xA9, (names[item.high] ?? 0) >> 8);
       else if (item.table) bytes.push(0xBD, ...word(tables[item.table]));
     }
     return bytes;
@@ -96,10 +121,11 @@ function assemble(list, origin, tables) {
   return { bytes: place(), names };
 }
 
-/** The program as a copy of an NES game: { rom, sha1 }, one 16 KB block of code and one 8 KB block of tiles. With `pal`, its header says it's for a European console, in the header's newer form. */
-export function madeUpNes({ pal = false } = {}) {
+/** The program as a copy of an NES game: { rom, sha1, at }, one 16 KB block of code and one 8 KB block of tiles. With `pal`, its header says it's for a European console, in the header's newer form.
+ *  With `calls`, it has the four functions more, and `at` says where each thing is in the program, as a code map's address: `reset`, `nmi`, `helper`, `never`, `hidden`, `deeper`, and `skips`, the branch that goes past the call to `never`. */
+export function madeUpNes({ pal = false, calls = false } = {}) {
   const PRG = 0xC000, palette = PRG + PALETTE_AT - 16;
-  const reset = assemble(RESET, PRG, { palette });
+  const reset = assemble(RESET(calls), PRG, { palette });
   const nmiAt = PRG + reset.bytes.length;
   const nmi = assemble(NMI, nmiAt, {});
   const prg = Buffer.alloc(0x4000, 0xFF);
@@ -116,7 +142,8 @@ export function madeUpNes({ pal = false } = {}) {
   });
   const header = Buffer.from([0x4E, 0x45, 0x53, 0x1A, 1, 1, 0, pal ? 0x08 : 0, 0, 0, 0, 0, pal ? 1 : 0, 0, 0, 0]);
   const rom = Buffer.concat([header, prg, chr]);
-  return { rom, sha1: createHash('sha1').update(rom).digest('hex') };
+  const at = Object.fromEntries(['helper', 'never', 'hidden', 'deeper', 'skips'].filter(name => name in reset.names).map(name => [name, reset.names[name] - PRG]));
+  return { rom, sha1: createHash('sha1').update(rom).digest('hex'), at: { reset: 0, nmi: nmiAt - PRG, ...at } };
 }
 
 /** A second program, for the tools that read a game's code and never run it (nes-functions.test.mjs, nes-read.test.mjs):

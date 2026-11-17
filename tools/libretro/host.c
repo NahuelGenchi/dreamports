@@ -1,19 +1,24 @@
 // Plays the original of any console with a libretro core: the core is a small emulator with one way of being driven, so
 // this one program drives them all, and writes what tools/gba/original.c writes, for the same tools.
 //
-// host CORE ROM FRAMES BUTTONS - PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]
+// host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM route SPEC [KEY=VALUE…]
 //
 // BUTTONS holds each frame's buttons, 32 bits each, PICTURES the frames whose picture is wanted, SETS the values to write
 // to the console's work memory ({ frame, address, bytes, value }, 32 bits each) and KEY=VALUE the core's settings. For
 // each frame it writes to stdout: a hash of the picture (FNV-1a over each pixel's 15-bit colour, then its width and height,
-// as lib/in-page.js hashes the Dreamport's), its one colour if it has only one or else -1, a 0, as no functions are seen
-// through a core, and the picture if it's wanted, WIDTH x HEIGHT, cut or filled with black when the core's screen is another
+// as lib/in-page.js hashes the Dreamport's), its one colour if it has only one or else -1, how many of FUNCTIONS' functions ran
+// in it and their numbers in the code map, 32 bits each, or a 0 with FUNCTIONS -, and the picture if it's wanted, WIDTH x HEIGHT, cut or filled with black when the core's screen is another
 // size. To SOUND it writes each frame's sample count and its samples, left and right, in the same 10-bit units as the Game
 // Boy Advance's. `live` plays along with a person: each frame's buttons come in on stdin, and out goes its picture, the size
 // the core's picture really has, its sample count and its samples. Its last line on stderr says what the core runs at and
 // each size its picture had, from which frame, as JSON. What the core prints goes nowhere.
+//
+// FUNCTIONS, a file or -, is where the code map's functions are, for a core that tells the tools of every instruction it
+// runs, as the NES's does with the tools' change to it (fceumm.patch). ran.h says what's in it, and what the environment's
+// DP_PLAYED, DP_ENTRIES and DP_REGISTERS ask to be written of what ran. The JSON on stderr then says how many instructions
+// ran outside every function of FUNCTIONS, in the program under "cartridge" and outside it under "memory".
 //
 // The environment's DP_READS, when it's set, names a file of values to read from the console's work memory as a frame
 // ends, in the order of their frames: each its frame, its address and how many bytes (32 bits each), little-endian. The
@@ -144,6 +149,8 @@ static double wantedRate, soundAt;   // the rate the tools hear at, or 0 for the
 static int16_t soundBefore[2];
 static uint32_t* sizes;   // each size the picture had: the frame it started at, its width and its height
 static size_t sizeCount, sizeRoom;
+
+#include "ran.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -575,7 +582,7 @@ static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t 
 int main(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
 	if (argc < (live ? 6 : route ? 5 : 12)) {
-		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS - PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n");
+		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n");
 		return 2;
 	}
 	// what the core prints goes nowhere: stdout is for the tools alone
@@ -707,6 +714,17 @@ int main(int argc, char** argv) {
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
 	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
+	// what ran, from a core that tells of every instruction, only when something of it is asked for
+	size_t functionsSize = 0;
+	uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
+	if (ranOpen(functions, functionsSize / 4)) {
+		void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
+		if (!tell) {
+			fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
+			return 2;
+		}
+		tell(ranInstruction);
+	}
 
 	for (long frame = 0; frame < frames; frame++) {
 		held = (size_t) frame < buttonsSize / 4 ? buttons[frame] : 0;
@@ -715,6 +733,7 @@ int main(int argc, char** argv) {
 			for (uint32_t i = 0; i < bytes && memory && address + i < memorySize; i++) memory[address + i] = value >> (i * 8);
 		}
 		sampleCount = 0;
+		ran.frame = frame;
 		retro_run();
 		noteSize(frame);
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
@@ -726,11 +745,13 @@ int main(int argc, char** argv) {
 			for (uint32_t i = 0; i < bytes; i++) value |= (uint32_t) memory[address + i] << (i * 8);
 			readValues[nextRead] = value;
 		}
-		uint32_t hash, plain, none = 0;
+		uint32_t hash, plain, ranCount;
 		hashOf(&hash, &plain);
+		const uint32_t* ranNow = ranInFrame(&ranCount);
 		fwrite(&hash, 4, 1, out);
 		fwrite(&plain, 4, 1, out);
-		fwrite(&none, 4, 1, out);
+		fwrite(&ranCount, 4, 1, out);
+		fwrite(ranNow, 4, ranCount, out);
 		if (nextPicture < pictureCount && pictures[nextPicture] == (uint32_t) frame) {
 			writePicture();
 			nextPicture++;
@@ -748,8 +769,9 @@ int main(int argc, char** argv) {
 	}
 	if (soundFile) fclose(soundFile);
 	if (drawsFile) fclose(drawsFile);
+	ranClose();
 	fflush(out);
-	fprintf(err, "{\"cartridge\":0,\"memory\":0,\"rate\":%g,\"fps\":%g,\"sizes\":[", wantedRate ? wantedRate : av.sampleRate, av.fps);
+	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
 	fprintf(err, "],\"drawnBy\":\"%s\",\"reads\":[", drawnBy);
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);

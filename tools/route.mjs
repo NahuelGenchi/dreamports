@@ -101,11 +101,11 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   // `untouched:<address>` is one thing alone: the branch there going the way nobody has played, or an instruction
   // that never ran running, in the cartridge or in code the game runs from its work RAM
   // `frames`, how long the console has played, is a value any search can spread over, for a part with no place values
-  if (reference.seesInstructions === true) route.values = { ...route.values, frames: { address: 'FFFF0004', bytes: 4 } };
+  if (reference.searchesWhatRan === true) route.values = { ...route.values, frames: { address: 'FFFF0004', bytes: 4 } };
   const untouched = /^untouched(?::[0-9A-Fa-f]{7,8})?$/.test(goalText);
   if (untouched) {
     const codeMap = readCodeMap(game);
-    if (reference.seesInstructions !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose instructions the tools see run.");
+    if (reference.searchesWhatRan !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose search counts what hasn't been played, which is the Game Boy Advance so far.");
     route.values = { ...route.values, untouched: { address: 'FFFF0000', bytes: 4 } };
     route.goals = { ...route.goals, [goalText]: 'untouched>0' };
     provenFile = Buffer.from(provenUnits(game, codeMap).buffer);

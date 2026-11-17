@@ -14,6 +14,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 
 import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
+import { nesProgram } from '../nes/functions.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -92,7 +93,10 @@ export const readParts = game => readPartsFile(game).parts ?? [];
  *  cartridge's code the game copies into its work RAM to run there, which counts as the cartridge's functions. */
 export function readCodeMap(game) {
   const file = join(sharedProofFolder(game), 'code-map.json');
-  return existsSync(file) ? parseCodeMap(JSON.parse(readFileSync(file, 'utf8'))) : null;
+  if (!existsSync(file)) return null;
+  // with the console it's a map of, which says how its instructions are counted (lib/played.mjs)
+  const original = join(sharedProofFolder(game), 'original.json');
+  return { ...parseCodeMap(JSON.parse(readFileSync(file, 'utf8'))), ...(existsSync(original) ? { console: JSON.parse(readFileSync(original, 'utf8')).console } : {}) };
 }
 
 /** A code map's JSON, read as readCodeMap gives it. */
@@ -124,14 +128,16 @@ const wordsOf = text => [0, 8].map(at => [0, 2, 4, 6].reduce((word, i) => word |
 /** 8 bytes as a key writes them. */
 export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
 
-/** A copy's bytes at a cartridge address, read from the file only when asked: the code map's copies are a Game Boy
- *  Advance's, whose cartridge starts at 0x08000000, the only console whose code that runs the tools see yet. */
-export function cartridgeOf(path) {
-  let bytes = null;
-  return (address, count) => {
-    bytes ??= readFileSync(path);
-    return bytes.subarray(address - 0x08000000, address - 0x08000000 + count);
-  };
+/** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
+ *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
+ *  (nes/functions.mjs). Its `copy()` gives the whole file. */
+export function cartridgeOf(path, console = 'gba') {
+  let bytes = null, program = null;
+  const copy = () => (bytes ??= readFileSync(path));
+  const read = console === 'nes'
+    ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
+    : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
+  return Object.assign(read, { copy });
 }
 
 /** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its

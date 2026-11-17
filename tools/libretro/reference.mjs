@@ -57,6 +57,11 @@ export function libretroReference(machine) {
   };
   return {
     KEY: machine.keys,
+    // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
+    // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
+    // as each function started
+    seesInstructions: core.ran === true,
+    seesEntries: core.ran === true,
     ensureOriginal: log => buildReference(machine, log),
     async runOriginal({ copy, ...rest }) {
       const named = forRun(copy);
@@ -64,7 +69,7 @@ export function libretroReference(machine) {
       try {
         result = await runReference({
           ...rest, program: HOST, env: named.env, width, height, buttonBytes: 4,
-          args: names => [coreFile(core), named.path, String(rest.frames), names.buttons, '-', names.pictures, names.sound, names.sets, '-', String(width), String(height), ...options],
+          args: names => [coreFile(core), named.path, String(rest.frames), names.buttons, core.ran ? names.functions : '-', names.pictures, names.sound, names.sets, '-', String(width), String(height), ...options],
         });
       } finally {
         named.done();
