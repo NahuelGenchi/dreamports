@@ -25,7 +25,8 @@
 // On the NES a place is one byte, as its instructions are one to three bytes long, and an address is where the
 // instruction is in the cartridge's program, as in its code map (libretro/ran.h, nes/functions.mjs). Where its
 // instructions are comes from the function finder, which knows the tables its code jumps with from its code. Its
-// data isn't followed yet, so an NES game's file has no "cells" and no "content".
+// data isn't followed yet, so an NES game's file has no "cells" and no "content", and its gameplay proven stays its
+// parts' share: prove keeps this file's total out of its progress.json until the data is followed (prove.mjs).
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';

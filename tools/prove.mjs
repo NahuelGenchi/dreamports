@@ -217,9 +217,10 @@ export async function run(args) {
       for (const [index, bytes] of results[at].played.made) made.set(index, bytes);
     });
     const { total, played, percent, content } = writePlayed(game, { original: original.sha1, codeMap, cartridge: cartridgeOf(copyWith(original.sha1).path, original.console), sets, used, made, all });
-    totals.played = { total, played, percent };
-    // none on a console whose data the tools don't follow yet, where gameplay proven is the code's share alone
-    if (content) totals.content = content;
+    // Gameplay proven is the lower of the code played and the content used (docs/STANDARD.md), so the code's share
+    // alone must not become the number: on a console whose data the tools don't follow yet, as the NES, progress.json
+    // gets neither, and the game's gameplay proven stays its parts. played.json still says what ran, for untouched
+    if (content) Object.assign(totals, { played: { total, played, percent }, content });
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)

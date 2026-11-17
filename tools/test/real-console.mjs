@@ -15,6 +15,7 @@ import { connect, findChrome, until } from '../lib/chrome.mjs';
 import { CHR_AT, PALETTE, PALETTE_AT, RAM, START, TIMER, madeUpNes } from './made-up-nes.mjs';
 import { hex, readCodeMap } from '../lib/proof-files.mjs';
 import { consoleOf } from '../consoles.mjs';
+import { readProof } from '../readme.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 
 const GAME = 'test-real-nes';
@@ -335,6 +336,8 @@ async function main() {
   if (run.status) console.log(run.out);
   check(/ran outside every function of the code map: [\d,]+ in the cartridge/.test(run.out), 'and that instructions ran outside every function of the code map');
 
+  // two parts, one of them played through, for what the game's card would show as gameplay proven
+  writeFileSync(join(proofFolder(GAME), 'parts.json'), `${JSON.stringify({ about: 'The program\'s parts.', parts: [{ name: 'All it does', recording: 'buttons', frames: [0, 239] }, { name: 'Something it doesn\'t have' }] }, null, 2)}\n`);
   run = dp('codemap', GAME, '--fill');
   check(run.status === 0 && run.out.includes(`Found by playing: 2 functions`) && run.out.includes(`0x${hex(at.hidden)}`) && run.out.includes(`0x${hex(at.deeper)}`) && has(starts(), 'reset', 'nmi', 'helper', 'never', 'hidden', 'deeper'),
     `codemap --fill plays the recordings and adds the function only a pointer leads to, and the one it calls: ${run.out.trim().split('\n').find(line => line.startsWith('Found by playing'))}`);
@@ -343,8 +346,12 @@ async function main() {
   check(run.status === 0 && has(ran(), 'reset', 'nmi', 'helper', 'hidden', 'deeper') && !ran().includes(at.never) && !run.out.includes('ran outside every function'),
     `and then it ran in matching play too, with nothing outside the code map: ${ran().map(hex).join(', ')}`);
   if (run.status) console.log(run.out);
-  const { played, content } = proven();
-  check(played?.played > 0 && played.played < played.total && content === undefined, `gameplay proven counts its instructions and branch ways, and no content, which isn't followed on the NES: ${played?.played} of ${played?.total}`);
+  const { units } = JSON.parse(readFileSync(join(proofFolder(GAME), 'played.json'), 'utf8'));
+  check(units?.played > 0 && units.played < units.total, `played.json counts its instructions and branch ways: ${units?.played} of ${units?.total}`);
+  // the cartridge's data isn't followed on the NES, so what ran doesn't become the game's gameplay proven
+  const shown = readProof(GAME)?.gameplay, gameplayLine = run.out.split('\n').find(line => line.includes('Gameplay proven'));
+  check(proven().played === undefined && proven().content === undefined && shown && shown.units === undefined && shown.proven === 1 && shown.total === 2 && shown.percent === 50 && / parts\./.test(gameplayLine ?? '') && !/instructions/.test(gameplayLine ?? ''),
+    `and gameplay proven stays the parts' share, as nothing follows the NES's data yet: ${gameplayLine?.trim()}`);
   run = dp('untouched', GAME, '--all');
   const neverRan = run.out.split('Functions played in part')[0];
   check(run.status === 0 && neverRan.includes(hex(at.never)) && !neverRan.includes(hex(at.helper)) && run.out.includes(`${hex(at.skips)} not taken`),
