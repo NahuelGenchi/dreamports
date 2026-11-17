@@ -150,6 +150,7 @@ static uint8_t last_index;
 
 // sub_D8D8: the score's six digits at the top of the picture, empty until its first that isn't 0. It leaves 12 in the
 // processor's X register.
+// dp:twin sub_D8D8 show_score() -> X if RAM[0xBA] < 2
 static uint8_t show_score(void) {
   uint8_t empty = 0xFF, digit = 0;
   took(SCORE_SHOWN_BEGINS);
@@ -164,13 +165,31 @@ static uint8_t show_score(void) {
   return digit;
 }
 
+// sub_D9F8, with its call: the lives left after this one, as two digits at the top of the picture.
+// dp:twin sub_D9F8 +6 show_lives() if RAM[0xBA] < 2
+static void show_lives(void) {
+  uint8_t left = (uint8_t)(RAM[LIVES + PLAYER] - 1);
+  RAM[0x22] = 0;
+  took(TOP_LIVES);
+  while (left >= 10) {
+    left = (uint8_t)(left - 10);
+    RAM[0x22]++;
+    took(TOP_LIVES_TEN);
+  }
+  RAM[0x0702] = left;
+  RAM[0x0700] = RAM[0x22];
+}
+
 // The score is six digits and a seventh that's always 0, a byte each, the two players' turn about from $04E0. The best
-// score, seven digits at $8D, takes any score that passes it. The life a score gives, at $D9BF, isn't ported yet. dp:stop sub_D9BF
+// score, seven digits at $8D, takes any score that passes it. A score that reaches the next life's, three digits from
+// $070D with the players turn about, gives a life: the first at 20,000, and one every 70,000 after it.
+// dp:twin sub_D8FC add_score(X, Y) if RAM[0xBA] < 2
 void add_score(uint8_t x, uint8_t y) {
   RAM[0x25] = RAM[0x24] = 0;
   took(SCORE_TENS_AND_HUNDREDS);
   add_score_with_thousands(x, y);
 }
+// dp:twin sub_D902 add_score_with_thousands(X, Y) if RAM[0xBA] < 2
 void add_score_with_thousands(uint8_t x, uint8_t y) {
   enum { SCORE = 0x04E0, BEST = 0x8D, HOLDS_BEST = 0x04EE, DIGITS = 6 };
   static const uint8_t ADDED[] = { 0x26, 0x27, 0x24, 0x25 };   // where what's added to each digit is, from the last
@@ -206,7 +225,30 @@ void add_score_with_thousands(uint8_t x, uint8_t y) {
       took(SCORE_BEST_MARKED);
     }
   }
-  took(SCORE_LIFE_LOOKED_AT);
+  enum { NEXT_LIFE = 0x070D, LIFE_GIVEN = 0x0713 };   // the next life's score: its hundred thousands, and from $070F and $0711 the two digits after
+  uint32_t score = (uint32_t)(RAM[SCORE + PLAYER] << 16 | RAM[SCORE + 2 + PLAYER] << 8 | RAM[SCORE + 4 + PLAYER]);
+  uint32_t next = (uint32_t)(RAM[NEXT_LIFE + PLAYER] << 16 | RAM[NEXT_LIFE + 2 + PLAYER] << 8 | RAM[NEXT_LIFE + 4 + PLAYER]);
+  if (score < next) took(SCORE_LIFE_LOOKED_AT);
+  else {
+    took(SCORE_LIFE_GIVEN);
+    RAM[LIVES + PLAYER]++;
+    show_lives();
+    took(SCORE_LIFE_SOUND);
+    took(CALLS);
+    sound_play(0x20);
+    if (!RAM[LIFE_GIVEN + PLAYER]) {
+      RAM[NEXT_LIFE + 2 + PLAYER] = 1;
+      RAM[LIFE_GIVEN + PLAYER] = 0xFF;
+      took(SCORE_NEXT_LIFE_FIRST);
+    } else if ((uint8_t)(RAM[NEXT_LIFE + 2 + PLAYER] + 1) < 10) {
+      RAM[NEXT_LIFE + 2 + PLAYER]++;
+      took(SCORE_NEXT_LIFE);
+    } else {
+      RAM[NEXT_LIFE + 2 + PLAYER] = (uint8_t)(RAM[NEXT_LIFE + 2 + PLAYER] + 1 - 10);
+      RAM[NEXT_LIFE + PLAYER]++;
+      took(SCORE_NEXT_LIFE_CARRIES);
+    }
+  }
   took(CALLS);
   show_score();
   took(SCORE_ENDS);
@@ -226,11 +268,7 @@ static void start_top_of_picture(void) {
   RAM[OBJECT_SHAPE + TOP_WORDS] = 0xFF;
   RAM[OBJECT_COLOURS + TOP_WORDS] = 0x20;
   took(TOP_WORDS_PLACED);
-  // sub_D9F8: the lives left after this one. Ten or more, at $DA08, isn't ported yet. dp:stop sub_DA08
-  RAM[0x22] = 0;
-  RAM[0x0702] = (uint8_t)(RAM[LIVES + PLAYER] - 1);
-  RAM[0x0700] = 0;
-  took(TOP_LIVES);
+  show_lives();
   // sub_D82B: the stage's time, three digits from the table at $D847
   RAM[0x06F6] = cart(7, (uint16_t)(0xD847 + STAGE * 3));
   RAM[0x06FA] = cart(7, (uint16_t)(0xD847 + STAGE * 3 + 1));
@@ -239,6 +277,7 @@ static void start_top_of_picture(void) {
 }
 
 // sub_CAFD: the stage's music, unless it plays already.
+// dp:twin sub_CAFD stage_music()
 static void stage_music(void) {
   if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
   else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);

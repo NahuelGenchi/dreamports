@@ -72,6 +72,7 @@ void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
 }
 
 /** sub_02_8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
+// dp:twin sub_02_8416 zombies_come(&X)
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
   took(STAGE ? ZOMBIES_EIGHTH_PLACE : ZOMBIES_FIRST_STAGE);
@@ -121,6 +122,7 @@ void zombies_come(uint8_t *x) {
 /** sub_02_8748: in the second set of stages, on Arthur's fifth screen and on his seventh to tenth, a count at $0718
  *  runs down, sooner the harder the game is, and at its end a crow, kind $14, comes at his height, so far across from
  *  him and up or down as the next of the 16 places in the copy's list at $87DA says, facing him. */
+// dp:twin sub_02_8748 -14 tower_crows_come(&X)
 void tower_crows_come(uint8_t *x) {
   enum { CROW = 0x14, TURNED = 0x04 };
   if (RAM[0xCF] != 1) return;   // its first test, and its return, are counted in DANGERS_OTHERS
@@ -175,6 +177,7 @@ void tower_crows_come(uint8_t *x) {
 // sub_F5A0: what touches an enemy this round, whose half width and half height are in $26 and $27. The first of
 // Arthur's three weapons that's flying, hasn't hit anything yet and touches it is gone, and is the answer: the enemy's
 // hits, at $0647, count it. With none, Arthur is hit if he touches it.
+// dp:twin sub_F5F9 weapon_that_touches(X) -> C ? Y : 0 if X < 25
 uint8_t weapon_that_touches(uint8_t enemy) {
   enum { SPENT = 0x01 };
   took(WEAPONS_BEGIN);
@@ -229,7 +232,7 @@ uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched) {
   }
   took(ENEMY_NO_WEAPON_HIT);
   flags_past_page(enemy, 1);
-  if (!arthur_touches(enemy)) { took(ENEMY_NOT_TOUCHED); return 0; }
+  if (!arthur_touches(enemy, Y_NOT_FOLLOWED)) { took(ENEMY_NOT_TOUCHED); return 0; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   *arthur_touched = 1;
   took(ENEMY_TOUCHES_ARTHUR);
@@ -407,7 +410,7 @@ void zombie(uint8_t object) {
   took(OBJECT_FLAG_READ);
   flags_past_page(object, 1);
   took(*flags & FAST ? ZOMBIE_SPEED_FAST : ZOMBIE_SPEED_ORDINARY);
-  move_object(object, (uint8_t)((*flags & FAST ? 0x0E : 0x09) + HARDER));
+  move_object(object, (uint8_t)((*flags & FAST ? 0x0E : 0x09) + HARDER), Y_NOT_FOLLOWED);
   // its two walking shapes, four rounds each, facing the way it's headed
   RAM[OBJECT_SHAPE + object] = (uint8_t)(0x54 + ((*count >> 2) & 1) + ((RAM[OBJECT_HEADING + object] & HEADS_LEFT) << 1));
   took(ZOMBIE_STEP_SHAPE);
@@ -439,7 +442,7 @@ void pot(uint8_t object) {
       took(POT_LANDS);
     } else {
       took(POT_FALLS_ON);
-      move_object(object, 0x14);
+      move_object(object, 0x14, Y_NOT_FOLLOWED);
     }
     return;
   }
@@ -487,6 +490,7 @@ void pot(uint8_t object) {
 /** sub_02_84E0: in the first set of stages, from 64 pixels into the eighth screen to 144 into the ninth, three flying
  *  knights come every so many rounds, sooner the harder the game is, each eight rounds after the last, at one of three
  *  heights and places in their wave that the copy's list at $8554 gives. */
+// dp:twin sub_02_84E0 knights_come(&X)
 void knights_come(uint8_t *x) {
   enum { KNIGHT = 3 };
   if (RAM[0xCF]) { took(KNIGHTS_OTHER_SET); return; }
@@ -605,7 +609,7 @@ void knight(uint8_t object) {
   if (0xEB + at > 0xFF) took(READ_PAST_PAGE);
   move_down(object);
   took(KNIGHT_MOVES);
-  move_object(object, 0x0C);
+  move_object(object, 0x0C, Y_NOT_FOLLOWED);
   *count = (uint8_t)((*count + 1) & 0x1F);
   took(KNIGHT_ROUND_COUNTED);
 }
@@ -638,7 +642,7 @@ static void crow_flies(uint8_t object) {
   }
   took(CROW_IN_FLIGHT);
   took(CROW_SPEED);
-  move_object(object, (uint8_t)(0x10 + RAM[0xD3]));
+  move_object(object, (uint8_t)(0x10 + RAM[0xD3]), Y_NOT_FOLLOWED);
   uint16_t height = (uint16_t)(0xFA0E + (*count & 0x0F) * 2);
   RAM[0x73] = cart(7, height);
   RAM[0x77] = cart(7, (uint16_t)(height + 1));
@@ -765,7 +769,7 @@ void water_crow(uint8_t object) {
     took(WATER_CROW_SITS);
     crow_sits(object);
     took(WATER_CROW_AIMS);
-    RAM[OBJECT_HEADING + object] = way_to_arthur(object);
+    RAM[OBJECT_HEADING + object] = way_to_arthur(object, Y_NOT_FOLLOWED);
     took(WATER_CROW_AIMED);
     *flags |= (RAM[OBJECT_HEADING + object] >> 1) & SINKS;   // aimed left, it faces left
     took(WATER_CROW_FACES);
@@ -781,7 +785,7 @@ void water_crow(uint8_t object) {
     return;
   }
   took(WATER_CROW_SPEED);
-  move_object(object, (uint8_t)(0x18 + RAM[0xD3]));
+  move_object(object, (uint8_t)(0x18 + RAM[0xD3]), Y_NOT_FOLLOWED);
   took(JUMPS);
   crow_wings(object);
 }
@@ -837,7 +841,7 @@ static void plant_shoots(uint8_t object) {
   took(SHOT_MADE);
   took(SHOT_SAME_SCREEN);
   took(SHOT_AIMED);
-  RAM[OBJECT_HEADING + shot] = way_to_arthur(shot);
+  RAM[OBJECT_HEADING + shot] = way_to_arthur(shot, Y_NOT_FOLLOWED);
   RAM[OBJECT_KIND + shot] = SHOT;
   took(SHOT_HEADED);
   sound_play(0x1A);
@@ -848,7 +852,8 @@ static void plant_shoots(uint8_t object) {
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
 // rounds each, and is gone. The kinds 5, 9 and $15, the bosses, burn with the bigger shapes at $F768, and one that's
 // gone takes one off the stage's count of bosses at $C3, if its flag $04 says it was counted: with none left, $C4 has
-// the key come. Kind $1F, which sets $BF, isn't ported yet. dp:stop sub_F6F6
+// the key come (remove_object).
+// dp:twin sub_F6F6 enemy_burns_away(X) if X < 25
 void enemy_burns_away(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object], kind = RAM[OBJECT_KIND + object];
   int boss = kind == 0x05 || kind == 0x09 || kind == 0x15;
@@ -860,21 +865,6 @@ void enemy_burns_away(uint8_t object) {
   }
   if (*count >= 0x10) {
     took(BURNT_AWAY);
-    if (boss) {
-      took(kind == 0x05 ? BOSS_BURNT_AWAY : kind == 0x09 ? BOSS_9_BURNT_AWAY : BOSS_15_BURNT_AWAY);
-      took(OBJECT_FLAG_READ);
-      if (object >= 0x10) took(READ_PAST_PAGE);
-      if (!(RAM[OBJECT_FLAGS + object] & 0x04)) took(BOSS_NOT_COUNTED);
-      else if (--RAM[0xC3]) took(BOSS_OTHERS_LEFT);
-      else {
-        RAM[0xC4] = 0xFF;
-        took(BOSS_WAS_THE_LAST);
-      }
-      RAM[0x0647 + object] = 0;
-      RAM[OBJECT_FLAGS + object] = 0;
-      took(BOSS_REMOVED);
-      return;
-    }
     remove_object(object);
     return;
   }
@@ -951,7 +941,7 @@ void plant(uint8_t object) {
 // and is gone once it's out of the view.
 static int shot_moves(uint8_t object, uint8_t speed, cost gone) {
   took(CALLS);
-  move_object(object, (uint8_t)(speed + RAM[0xD3]));
+  move_object(object, (uint8_t)(speed + RAM[0xD3]), Y_NOT_FOLLOWED);
   if (object_in_view(object)) return 1;
   RAM[OBJECT_FLAGS + object] = 0;
   took(gone);
@@ -964,7 +954,7 @@ static void shot_tests(uint8_t object) {
   place_on_screen(object);
   took(SHOT_TESTS);
   if (object >= 0x10) took(READ_PAST_PAGE);
-  if (!arthur_touches(object)) { took(ENEMY_NOT_TOUCHED); return; }
+  if (!arthur_touches(object, Y_NOT_FOLLOWED)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
 }

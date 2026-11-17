@@ -113,7 +113,7 @@ static void drops(uint8_t object) {
     }
   }
   took(BAT_DROP_MOVE);
-  move_object(object, 0x18);
+  move_object(object, 0x18, Y_NOT_FOLLOWED);
   took(JUMPS);
   wings(object);
 }
@@ -123,13 +123,13 @@ static void flies(uint8_t object) {
   if (!in_view(object)) return;
   if (killed(object)) { took(BAT_KILLED_RETURNS); return; }
   took(BAT_FLIES_ACROSS);
-  move_object(object, (uint8_t)(0x10 + WALK_SPEED_ADDED));
+  move_object(object, (uint8_t)(0x10 + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
   uint8_t heading = RAM[OBJECT_HEADING + object];
   int down = (RAM[OBJECT_COUNT + object] >> 1) & 1;
   RAM[OBJECT_HEADING + object] = down ? 0x08 : 0x00;
   took(down ? BAT_WAVE_DOWN : BAT_WAVE_UP);
   if (object >= 0x0F) took(READ_PAST_PAGE);
-  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED));
+  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
   RAM[OBJECT_HEADING + object] = heading;
   took(BAT_WAVE_BACK);
   wings(object);

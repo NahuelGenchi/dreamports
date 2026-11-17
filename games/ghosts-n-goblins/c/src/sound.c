@@ -28,16 +28,19 @@ enum { SOUNDS = 0x89AF, TEMPOS = 0x883A, TRIPLETS = 0x888E };
 // the last tune voice's "silenced" answer stays in work memory, and the effect voice reads it when it plays as a tune's
 #define SILENCED RAM[0xFE]
 
-static uint8_t copy(uint16_t address) { return cart(3, address); }
+// the sound's bank is switched in while its code runs; a part that isn't in the cartridge is read where it says all the same
+static uint8_t copy(uint16_t address) { return address < 0x8000 ? peek(address) : cart(3, address); }
 static uint16_t copy16(uint16_t address) { return (uint16_t)(copy(address) | copy((uint16_t)(address + 1)) << 8); }
 static uint16_t at(const uint8_t *voice) { return (uint16_t)(voice[V_AT] | voice[V_AT + 1] << 8); }
 static void move_to(uint8_t *voice, uint16_t address) { voice[V_AT] = (uint8_t)address; voice[V_AT + 1] = (uint8_t)(address >> 8); }
 
 // sub_ED97: all the sound registers to 0, from the last down.
+// dp:twin sub_ED97 sound_registers_off()
 void sound_registers_off(void) {
   took(SOUND_REGISTERS_BEGIN);
   for (int i = 0x0F; i >= 0; i--) {
     took(SOUND_REGISTER_OFF);
+    hardware_read((uint16_t)(0x4000 + i));   // the processor's store through a count reads the place first
     hardware_write((uint16_t)(0x4000 + i), 0);
     took(SOUND_REGISTER_NEXT);
     took(i ? GOES_ROUND : GOES_ON);
@@ -46,6 +49,7 @@ void sound_registers_off(void) {
 }
 
 // sub_ED72: no voice plays.
+// dp:twin sub_ED72 sound_reset()
 void sound_reset(void) {
   for (int i = 0; i < 0x50; i++) RAM[VOICES + i] = 0;
   took(SOUND_MEMORY_CLEARED);
@@ -61,8 +65,12 @@ static void voice_ends(uint8_t *voice, uint16_t registers) {
 // A byte of the copy read through a pointer and a count on from it, as the original's instructions read it: a cycle
 // more when the two cross into the next page.
 static uint8_t read(uint16_t from, uint8_t on) {
-  if ((from & 0xFF) + on > 0xFF) took(READ_PAST_PAGE);
-  return copy((uint16_t)(from + on));
+  uint16_t address = (uint16_t)(from + on), first = address ^ 0x100;
+  if ((from & 0xFF) + on > 0xFF) {
+    took(READ_PAST_PAGE);
+    if (first >= 0x2000 && first < 0x4020) hardware_read(first);   // as peek_counted (game.h)
+  }
+  return copy(address);
 }
 
 // sub_03_8626: a tune's voice, when its note is over: the next thing in its part of the copy. A byte with any of its top
@@ -334,22 +342,29 @@ static void start_voice(uint8_t *voice, uint8_t flags, uint8_t tempo, uint16_t p
 
 // sub_ED51, $8383: plays the sound `number`. The copy's list at $89AF has 12 bytes for each: its flags, its tempo, and
 // where each of the five voices' parts is, or 0 for a voice it leaves alone.
+// dp:twin sub_ED51 sound_play(A) if A < 0x40
 void sound_play(uint8_t number) {
   took(SOUND_PLAY_BEGINS);
-  RAM[0x23] = number;
   RAM[0xD4] = BANK_NOW;
+  // a sound's 12 bytes in the list: four times its number, as a byte, and three times that
   uint16_t sound = (uint16_t)(SOUNDS + (uint8_t)(number << 2) * 3);
+  RAM[0x47] = (uint8_t)((uint8_t)(number << 2) * 3);
+  set_ram16(0x22, sound);
   took(SOUND_PLAY_FOUND);
   if ((uint8_t)(number << 2) & 0x80) took(SOUND_PLAY_FAR);
   uint8_t flags = read(sound, 0), tempo = read(sound, 1);
   RAM[0x48] = flags;
   RAM[0x49] = tempo;
+  RAM[0x24] = 5;                // the voices left,
+  set_ram16(0x25, VOICES);      // and where the next one's record is
   for (uint8_t i = 0; i < 5; i++) {
     took(SOUND_VOICE_READ);
     uint16_t part = (uint16_t)(read(sound, (uint8_t)(2 + i * 2)) | read(sound, (uint8_t)(3 + i * 2)) << 8);
     set_ram16(0x4A, part);
     took(part ? SOUND_VOICE_PART : SOUND_VOICE_NO_PART);
     if (part) start_voice(&RAM[VOICES + i * VOICE_BYTES], flags, tempo, part);
+    set_ram16(0x25, (uint16_t)(ram16(0x25) + VOICE_BYTES));
+    RAM[0x24]--;
     took(SOUND_VOICE_NEXT);
     took(i < 4 ? GOES_ROUND : GOES_ON);
   }

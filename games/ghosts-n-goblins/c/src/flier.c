@@ -31,11 +31,12 @@ static uint8_t flag(uint8_t object, uint8_t which) {
 }
 
 // sub_F687, with its call: whether Arthur is within the box in $26 and $27 around it, while it's shown.
-int arthur_near(uint8_t object) {
+// dp:twin sub_F687 +6 arthur_near(X, Y) -> C if X < 25
+int arthur_near(uint8_t object, uint8_t y) {
   if (object >= 0x10) took(READ_PAST_PAGE);
   if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(NEAR_NOT_SHOWN); return 0; }
   took(NEAR_LOOKED_AT);
-  return arthur_touches(object);
+  return arthur_touches(object, y);
 }
 
 // sub_F585, with its call: the tests every enemy has, and a weapon that hits it stays as a spark, with its sound.
@@ -85,7 +86,7 @@ static void fly(uint8_t object, uint8_t speed) {
   speed = (uint8_t)(speed + COUNT_HIGH(object));
   speed = (uint8_t)(speed + SPEED_ADDED);
   took(speed >= 0x20 ? FLIER_SPEED_MOST : FLIER_SPEED);
-  move_object(object, speed >= 0x20 ? 0x20 : speed);
+  move_object(object, speed >= 0x20 ? 0x20 : speed, Y_NOT_FOLLOWED);
 }
 
 // sub_04_A474: its rounds are counted. After 1,024 it flashes for 32, and from then on has its other colours.
@@ -115,7 +116,7 @@ static void shoot(uint8_t object) {
   enum { FIRST_SHOT = 0x14, SHOT = 0x2C };
   RAM[0x26] = RAM[0x27] = 0x30;
   took(FLIER_SHOOT_BEGINS);
-  if (arthur_near(object)) { took(FLIER_TOO_NEAR); return; }
+  if (arthur_near(object, Y_NOT_FOLLOWED)) { took(FLIER_TOO_NEAR); return; }
   uint8_t when = RAM[OBJECT_COUNT + object] & 0x1F;
   if (when == 0x10) took(FLIER_SHOOTS_NOW);
   else if (!RAM[0x5B]) { took(FLIER_NO_SHOT); return; }
@@ -136,7 +137,7 @@ static void shoot(uint8_t object) {
   RAM[TO_X] = RAM[OBJECT_X + ARTHUR];
   RAM[TO_X_SCREEN] = RAM[OBJECT_X_SCREEN + ARTHUR];
   took(FLIER_SHOT_MADE);
-  RAM[OBJECT_HEADING + shot] = way_to_first();
+  RAM[OBJECT_HEADING + shot] = way_to_first(Y_NOT_FOLLOWED);
   RAM[OBJECT_FLAGS + shot] = 0x40;
   took(FLIER_SHOT_HEADED);
   sound_play(0x1B);
@@ -234,9 +235,9 @@ static void fly_to_place(uint8_t object, int high) {
   RAM[FROM_X] = RAM[OBJECT_X + object];
   RAM[FROM_X_SCREEN] = RAM[OBJECT_X_SCREEN + object];
   took(FLIER_PLACE_WAY);
-  RAM[OBJECT_HEADING + object] = way_to_first();
+  RAM[OBJECT_HEADING + object] = way_to_first(Y_NOT_FOLLOWED);
   took(FLIER_PLACE_HEADED);
-  move_object(object, 0x28);
+  move_object(object, 0x28, Y_NOT_FOLLOWED);
 }
 
 // $A1E3: its shape in the air. After a shot it holds its arms out for three rounds.
@@ -400,7 +401,7 @@ static void wait_to_dive(uint8_t object) {
     RAM[TO_X] = RAM[OBJECT_X + ARTHUR];
     RAM[TO_X_SCREEN] = RAM[OBJECT_X_SCREEN + ARTHUR];
     took(FLIER_DIVE_AIMED);
-    *heading = way_to_first();
+    *heading = way_to_first(Y_NOT_FOLLOWED);
     took(FLIER_DIVE_HEADED);
     if (*heading >= 8) {
       --*heading;
@@ -544,7 +545,7 @@ static void awake_on_the_ground(uint8_t object) {
       head_for_his_side(object);
       RAM[0x26] = RAM[0x27] = 0x58;
       took(FLIER_TESTS_BOX);
-      if (!arthur_near(object)) took(FLIER_NOT_YET);
+      if (!arthur_near(object, Y_NOT_FOLLOWED)) took(FLIER_NOT_YET);
       else {
         RAM[OBJECT_HEADING + object] ^= 0x08;
         took(FLIER_GROUND_STEPS_AWAY);
@@ -644,7 +645,7 @@ void flier(uint8_t object) {
     RAM[0x27] = 0x20;
   }
   took(STAGE_SET == 5 ? FLIER_SITS_IN_SIXTH_SET : FLIER_SITS);
-  if (!arthur_near(object)) took(FLIER_NOT_YET);
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) took(FLIER_NOT_YET);
   else {
     took(FLIER_SEES_HIM);
     wake(object);

@@ -113,7 +113,7 @@ static int way_blocked(void) {
 static void drift_unless(int blocked, uint8_t speed) {
   if (blocked) { took(JUMP_BLOCKED); return; }
   took(JUMP_DRIFTS);
-  move_object(ARTHUR, speed);
+  move_object(ARTHUR, speed, Y_NOT_FOLLOWED);
   took(JUMPS);
   view_follows_across();
 }
@@ -202,7 +202,7 @@ static void climb_shape(void) {
 // $DCAC and $DD05: a step up or down the ladder, the way he's heading, with the view after him.
 static void climb(void) {
   took(CLIMB_MOVES);
-  move_object(ARTHUR, 0x0C);
+  move_object(ARTHUR, 0x0C, Y_NOT_FOLLOWED);
   took(JUMPS);
   view_follows_across();
   climb_shape();
@@ -759,7 +759,7 @@ wait arthur_task(void) {
       // $E52B: to the right, a step a round, until he has his armour
       HEADING = 0x04;
       took(ARTHUR_STEP_BEGINS);
-      move_object(ARTHUR, 0x0C);
+      move_object(ARTHUR, 0x0C, Y_NOT_FOLLOWED);
       place_on_screen(ARTHUR);
       choose_shape();
       COUNT++;
@@ -1199,7 +1199,7 @@ wait arthur_task(void) {
         return ENDS;
       }
       took(block < 0x60 ? GATE_NOT_YET : GATE_NOT_YET_PAST);
-      move_object(ARTHUR, 0x0C);
+      move_object(ARTHUR, 0x0C, Y_NOT_FOLLOWED);
       took(JUMPS);
       view_follows_across();
       COUNT++;

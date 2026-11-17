@@ -174,6 +174,7 @@ wait picture_off(void) {
 }
 
 // sub_F17A
+// dp:twin sub_F17A picture_on()
 void picture_on(void) {
   PPU_MASK |= 0x18;
   took(PICTURE_COMES_ON);

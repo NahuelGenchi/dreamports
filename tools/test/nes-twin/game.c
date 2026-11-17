@@ -7,6 +7,9 @@
 
 #define RAM nes_ram
 // dp:bank $10
+// A name of the file's own that is a register's letter, as a game's C can have: the check puts it aside before it reads
+// the contracts, where Y is the register.
+#define Y RAM[0x21]
 
 /** The byte at `address` of the last bank, which is always at $C000. */
 static uint8_t last_bank(uint16_t address) { return nes_prg[nes_prg_size - 0x4000 + (address - 0xC000)]; }
@@ -18,7 +21,7 @@ static uint8_t in_bank(uint8_t bank, uint16_t address) { return nes_prg[(uint32_
 int add_to_total(uint8_t amount) {
   uint16_t sum = (uint16_t)(RAM[0x20] + amount);
   RAM[0x20] = (uint8_t)sum;
-  if (sum > 0xFF) RAM[0x21]++;
+  if (sum > 0xFF) Y++;
   RAM[0x22]++;
   nes_spend(sum > 0xFF ? 26 : 22);
   return sum > 0xFF;
