@@ -10,6 +10,8 @@ import { addsSteps, goTo, stepTo } from '../../kit/gba/ui/steps.js';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
 import { LOGO_KEYS, logoKept, showLogo } from './mark';
+import { TRANSITIONS, TRANSITION_KEY, type TransitionName } from '../lib/transitions';
+import { transitionFor, type Scene, type Transition } from './launch-transitions';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -95,6 +97,7 @@ function start(launcher: HTMLElement) {
   const versionPicks: (() => void)[] = [];
   const storedTheme = store.get('theme');
   const storedMotion = store.get('motion');
+  const storedTransition = store.get(TRANSITION_KEY);
   const storedLogo = logoKept();
 
   // ---------- Elements ----------
@@ -164,6 +167,7 @@ function start(launcher: HTMLElement) {
     motion: (storedMotion === 'full' || storedMotion === 'calm' ? storedMotion : 'auto') as Motion,
     theme: (storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : null) as Theme | null,
     // the logo's pose and colour, the site's own until the visitor picks
+    transition: (TRANSITIONS as readonly string[]).includes(storedTransition ?? '') ? (storedTransition as TransitionName) : TRANSITIONS[0],
     logoPose: storedLogo.pose,
     logoColour: storedLogo.colour,
     aboutSec: 'dreamport',
@@ -1433,6 +1437,7 @@ function start(launcher: HTMLElement) {
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
     $<HTMLInputElement>('#motion-calm', settingsCard).checked = calm();
+    $<HTMLInputElement>(`#transition-${state.transition}`, settingsCard).checked = true;
     $<HTMLInputElement>(`#pose-${state.logoPose}`, settingsCard).checked = true;
     $<HTMLInputElement>(`#colour-${state.logoColour}`, settingsCard).checked = true;
     const kept: string[] = [];
@@ -1440,6 +1445,7 @@ function start(launcher: HTMLElement) {
     if (store.get('theme')) kept.push(store.get('theme') + ' appearance');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
     if (store.get('unfinished')) kept.push('unfinished Dreamports shown');
+    if (store.get(TRANSITION_KEY)) kept.push('your transition');
     if (store.get(LOGO_KEYS.pose) || store.get(LOGO_KEYS.colour)) kept.push('your logo');
     const versions = store.keys('version:').length;
     if (versions) kept.push(versions === 1 ? 'the language you play a game in' : `the languages you play ${versions} games in`);
@@ -1500,6 +1506,14 @@ function start(launcher: HTMLElement) {
       sound.play('tick');
     });
   }
+  for (const input of $$<HTMLInputElement>('input[name="transition"]', settingsCard)) {
+    input.addEventListener('change', () => {
+      state.transition = input.value as TransitionName;
+      store.set(TRANSITION_KEY, state.transition);
+      syncSettings();
+      sound.play('tick');
+    });
+  }
   // once picked, a pose or a colour is kept even when it is the site's own: an app on the Home Screen opens with its
   // icon's logo when the browser keeps none (Base.astro), which must not come back over a pick of the site's own
   for (const input of $$<HTMLInputElement>('input[name="logo-pose"]', settingsCard)) {
@@ -1521,11 +1535,12 @@ function start(launcher: HTMLElement) {
     });
   }
   $('#btn-forget', settingsCard).addEventListener('click', () => {
-    for (const key of ['sound', 'theme', 'motion', 'unfinished', LOGO_KEYS.pose, LOGO_KEYS.colour, ...store.keys('version:')]) store.del(key);
+    for (const key of ['sound', 'theme', 'motion', 'unfinished', TRANSITION_KEY, LOGO_KEYS.pose, LOGO_KEYS.colour, ...store.keys('version:')]) store.del(key);
     for (const pick of versionPicks) pick();
     state.sound = false;
     state.theme = null;
     state.motion = 'auto';
+    state.transition = TRANSITIONS[0];
     state.logoPose = 'leap';
     state.logoColour = 'deep';
     showUnfinished(false);
@@ -2016,11 +2031,10 @@ function start(launcher: HTMLElement) {
 
   // ---------- The launch ----------
 
-  // Play fades the screen to black at once and opens the game's page inside this one, behind the black, which lifts
-  // once the game says it has drawn (#1443). The page stays this one, so the press on Play counts for the game's
+  // Play takes the menu to night at once, the way the player picked in Settings (#1446), and opens the game's page
+  // inside this one, behind the night, which comes off once the game says it has drawn (#1443). The page stays this one, so the press on Play counts for the game's
   // sound, as a press on a page left behind doesn't in every browser. The game's page finds `dreamportsHost` on this
   // window (kit/gba/ui/host.js).
-  const FADE = 180;
   type Host = { readonly opening: boolean; takeSound(): { context: AudioContext; Node: typeof AudioWorkletNode } | null; shown(): void; leave(): void };
   const hostWindow = window as Window & { dreamportsHost?: Host };
   type Game = {
@@ -2031,15 +2045,16 @@ function start(launcher: HTMLElement) {
     sound: AudioContext | null;
     lent: boolean;
     shown: boolean;
-    // the black coming up over the menu, which the game waits for before it shows
+    // what plays between the menu and the game (launch-transitions.ts), and what it plays on
+    move: Transition;
+    scene: Scene;
+    // the menu going to night, which the game waits for before it shows
     black: Promise<unknown>;
     paused: HTMLVideoElement[];
     watch: MutationObserver | null;
   };
   let game: Game | null = null;
   let slowTimer = 0;
-  const fade = (el: HTMLElement, from: number, to: number) =>
-    el.animate([{ opacity: from }, { opacity: to }], { duration: FADE, easing: 'ease-in-out', fill: 'forwards' }).finished.catch(() => {});
   // the browser's own bars take the colour the game's page names in its head, while it shows, or else the colour of
   // that page, as a browser gives a page that names none
   function followBar(frame: HTMLIFrameElement) {
@@ -2060,6 +2075,8 @@ function start(launcher: HTMLElement) {
   function openGame(href: string, title: string, step = true) {
     if (state.launching) return;
     state.launching = true;
+    landing?.clear();
+    landing = null;
     const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const before = { address: location.href, state: history.state as unknown, title: document.title, focus };
     if (step) stepTo({ play: href, title }, href);
@@ -2074,7 +2091,17 @@ function start(launcher: HTMLElement) {
     frame.title = title;
     frame.allow = 'autoplay; fullscreen; gamepad';
     frame.src = href;
-    const now: Game = { frame, before, stepped: step, sound, lent: false, shown: false, black: Promise.resolve(), paused: [], watch: null };
+    const scene: Scene = {
+      launcher,
+      box: gameBox,
+      picture: () => (state.view?.dataset.card === 'inspect' ? state.view.querySelector<HTMLElement>('.show-tile .screen[data-clip]') : null),
+      screen: () => {
+        const at = frame.contentDocument?.getElementById('screen')?.getBoundingClientRect();
+        return at?.width ? at : null;
+      },
+    };
+    const move = transitionFor(state.transition, calm(), scene);
+    const now: Game = { frame, before, stepped: step, sound, lent: false, shown: false, move, scene, black: Promise.resolve(), paused: [], watch: null };
     game = now;
     hostWindow.dreamportsHost = {
       get opening() {
@@ -2097,16 +2124,19 @@ function start(launcher: HTMLElement) {
     launcher.inert = true;
     gameBack.hidden = true;
     gameCover.hidden = false;
-    for (const a of gameCover.getAnimations()) a.cancel();
+    // the game's page loads and takes its size out of sight, until the menu has gone to night over it
+    gameBox.classList.add('is-waiting');
     gameBox.hidden = false;
     gameBox.prepend(frame);
-    now.black = fade(gameBox, 0, 1).then(() => {
+    now.black = now.move.cover().then(() => {
       if (game !== now) return;
-      // under the black nothing of the menu draws or plays
+      gameBox.classList.remove('is-waiting');
+      // under the night nothing of the menu draws or plays
       sleepRow();
       now.paused = $$<HTMLVideoElement>('video', launcher).filter((v) => !v.paused);
       for (const v of now.paused) v.pause();
       launcher.classList.add('is-under');
+      now.move.settle();
     });
     frame.addEventListener('load', () => {
       if (game !== now) return;
@@ -2124,7 +2154,7 @@ function start(launcher: HTMLElement) {
     }, 6000);
   }
 
-  // the game has drawn: the black lifts off it
+  // the game has drawn: the night comes off it, the way the player picked
   async function showGame(now: Game) {
     if (now.shown) return;
     now.shown = true;
@@ -2133,25 +2163,34 @@ function start(launcher: HTMLElement) {
     await now.black;
     if (game !== now || closing) return;
     now.watch = followBar(now.frame);
-    await fade(gameCover, 1, 0);
-    if (game !== now || closing) return;
+    // the move has its own night up by the time it's called, so the launcher's goes in the same frame
+    const shown = now.move.reveal();
     gameCover.hidden = true;
     gameBack.hidden = true;
+    await shown;
+    if (game !== now || closing) return;
     now.frame.contentWindow?.focus();
   }
 
-  /** Back to the menu as it was left, through black; `step` is false when the browser has gone back already. */
+  /** Back to the menu as it was left, through night; `step` is false when the browser has gone back already. */
   let closing = false;
+  // the move still taking the night off the menu, after a game has closed
+  let landing: Transition | null = null;
   async function closeGame(step = true) {
     const now = game;
     if (!now || closing) return;
     closing = true;
     clearTimeout(slowTimer);
-    if (now.shown) {
-      gameCover.hidden = false;
-      gameBack.hidden = true;
-      await fade(gameCover, 0, 1);
+    // a game called off while the menu is still going to night lets that finish
+    await now.black;
+    // one that never showed has nothing to play backwards: its night fades off the menu
+    let move = now.move;
+    if (!now.shown) {
+      move.clear();
+      move = transitionFor(state.transition, true, now.scene);
     }
+    await move.hide();
+    gameBox.hidden = true;
     now.watch?.disconnect();
     now.frame.remove();
     if (now.sound && now.sound.state !== 'closed') void now.sound.close().catch(() => {});
@@ -2166,12 +2205,13 @@ function start(launcher: HTMLElement) {
     state.launching = false;
     now.before.focus?.focus({ preventScroll: true });
     wakeRow();
-    await fade(gameBox, 1, 0);
+    // the menu is back and can be used while the night comes off it; a game opened meanwhile takes this move away
     closing = false;
-    // unless another game opened meanwhile
-    if (game) return;
-    gameBox.hidden = true;
-    for (const a of [...gameBox.getAnimations(), ...gameCover.getAnimations()]) a.cancel();
+    landing = move;
+    await move.uncover();
+    if (landing !== move) return;
+    move.clear();
+    landing = null;
   }
   // the address the game took goes: a step back where it was a step, and the address put back where the step doesn't
   // lead there, as when the game's page added steps of its own

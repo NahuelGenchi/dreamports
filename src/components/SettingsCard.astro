@@ -1,9 +1,11 @@
 ---
-// Settings: menu sounds, light or dark, full or calm motion, whether unfinished Dreamports show, and the logo's pose and colour. Each
+// Settings: menu sounds, light or dark, full or calm motion, whether unfinished Dreamports show, how a game comes up
+// over the menu (#1446), and the logo's pose and colour. Each
 // has its name on the left and its switch or choice on the right, with no line of description (#1328). It needs JavaScript,
 // like everything it changes, so the menu shows its button only when JavaScript runs.
 import ViewBar from './ViewBar.astro';
 import { COLOURS, POSES } from '../lib/mark';
+import { TRANSITIONS } from '../lib/transitions';
 
 const named = (word: string) => word[0].toUpperCase() + word.slice(1);
 ---
@@ -37,6 +39,19 @@ const named = (word: string) => word[0].toUpperCase() + word.slice(1);
         <button type="button" class="switch" role="switch" aria-checked="false" aria-labelledby="unfinished-label" id="unfinished-switch">
           <span class="switch-track"><span class="switch-knob"></span></span>
         </button>
+      </div>
+      <div class="set-row">
+        <span class="set-label" id="transition-label">Transition</span>
+        <div class="seg" role="radiogroup" aria-labelledby="transition-label">
+          {
+            TRANSITIONS.map((name) => (
+              <>
+                <input type="radio" name="transition" id={`transition-${name}`} value={name} />
+                <label for={`transition-${name}`}>{named(name)}</label>
+              </>
+            ))
+          }
+        </div>
       </div>
       <div class="set-row set-logo">
         <span class="set-label">Logo</span>
