@@ -57,8 +57,9 @@ export function addressFinder({ named = new Map(), twins = new Map(), shifts = [
   };
 }
 
-/** The functions a file of C defines, each { name, address, line }: `address` is the function of the original it's the
- *  twin of, which the comment just above it names, or else its own name when that's a label, or null. */
+/** The functions a file of C defines, each { name, address, line, own }: `address` is the function of the original it's
+ *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, and `own`
+ *  whether it's the file's own, a static function no other file can name. */
 export function twinsIn(text, shifts = []) {
   // the code with every comment and every text in quotes blanked, so nothing in them reads as code, and the comments
   let code = '';
@@ -108,7 +109,7 @@ export function twinsIn(text, shifts = []) {
         at = comment.from;
       }
       const name = m[1];
-      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length });
+      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)) });
     }
   }
   return twins;
@@ -129,7 +130,7 @@ let clang;
 // The file as the compiler reads it, with every #include and #define done. The console's compiler has no preprocessor
 // of its own, and the one a computer has isn't the same everywhere, so this is the one `npm ci` brings, clang's, told
 // to define nothing of its own.
-async function preprocess(file, root, includes) {
+export async function preprocess(file, root, includes) {
   if (!clang) {
     try {
       clang = await import('@yowasp/clang');

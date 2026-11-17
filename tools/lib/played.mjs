@@ -23,7 +23,7 @@
 // where the original's instructions are and nothing of what they are, as the code map does.
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
@@ -464,6 +464,8 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   const text = `{\n  "original": ${JSON.stringify(original)},\n  "percent": ${percent},\n  "units": ${JSON.stringify({ total, played })},\n  "places": ${layout.places},\n`
     + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  },\n`
     + `  "cells": ${JSON.stringify(ofContent)},\n  "content": {\n${Object.entries(content).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }\n}\n`;
+  // a version whose proof has nothing yet has no folder for it
+  mkdirSync(proofFolder(game), { recursive: true });
   writeFileSync(join(proofFolder(game), 'played.json'), text);
   return { percent, total, played, content: ofContent };
 }

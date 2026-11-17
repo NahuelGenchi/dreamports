@@ -54,8 +54,11 @@ function soundIn(file, frames) {
  * game made in memory as { index, address, bytes }, and the cartridge's data it used, as written for DP_CONTENT, three
  * words a record. With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
  * `draws` { hashes, counts }: for each frame, the hash of what the console gave its graphics chip and how many things.
+ * With `memory`, { spec } as lib/memory.mjs makes it for a program that compares work memory (gba/original.c), also
+ * `memory` { hashes, bytes }: the hash of the stretches' bytes as each frame ended, and the bytes at the frame the spec
+ * names, or null.
  */
-export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, played = false, saves = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false }) {
+export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, played = false, saves = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false, memory = null }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${threadId}-${Date.now()}-${++runs}`;
@@ -64,6 +67,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
     reads: join(folder, `reads-${id}.bin`), draws: join(folder, `draws-${id}.bin`), ramCode: join(folder, `ram-code-${id}.bin`),
     played: join(folder, `played-${id}.bin`), playedCode: join(folder, `played-code-${id}.bin`), content: join(folder, `content-${id}.bin`), saves: join(folder, `saves-${id}.bin`),
+    memory: join(folder, `memory-${id}.bin`), memoryOut: join(folder, `memory-${id}.bin.out`),
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 6);
@@ -72,12 +76,13 @@ export async function runReference({ program, args, env, width, height, stateByt
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
   writeFileSync(files.states, new Uint8Array(Uint32Array.from(states).buffer));
+  if (memory) writeFileSync(files.memory, memory.spec);
   writeFileSync(files.reads, new Uint8Array(Uint32Array.from(reads.flatMap(({ frame, address, bytes }) => [frame, address, bytes])).buffer));
   try {
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode } : {}) } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(memory ? { DP_MEMORY: names.memory } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
@@ -146,7 +151,14 @@ export async function runReference({ program, args, env, width, height, stateByt
         at += 8 + Math.ceil(size / 4) * 4;
       }
     }
-    return { ...(saved ? { saves: saved } : {}), ...(whatPlayed ? { played: whatPlayed } : {}), hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, ...(codeInRam ? { ramCode: codeInRam } : {}), outside: JSON.parse(stderr.split('\n').pop()) };
+    // the work memory's hash as each frame ended, and its bytes at the frame asked for (lib/memory.mjs)
+    let workMemory = null;
+    if (memory) {
+      const all = readFileSync(files.memoryOut);
+      if (all.length < frames * 4) throw new Error('The program that runs the original wrote nothing of its work memory: npm run dp -- setup builds it again.');
+      workMemory = { hashes: new Uint32Array(new Uint8Array(all.subarray(0, frames * 4)).buffer), bytes: all.length > frames * 4 ? all.subarray(frames * 4) : null };
+    }
+    return { ...(workMemory ? { memory: workMemory } : {}), ...(saved ? { saves: saved } : {}), ...(whatPlayed ? { played: whatPlayed } : {}), hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, ...(codeInRam ? { ramCode: codeInRam } : {}), outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

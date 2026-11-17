@@ -16,6 +16,9 @@ export const seesInstructions = true;
 /** It also gives the cartridge's save memory each time it changes (lib/saves.mjs). */
 export const seesSaves = true;
 
+/** It hashes stretches of the work memory as each frame ends, for a game that keeps its own at the console's addresses (lib/memory.mjs). */
+export const seesMemory = true;
+
 /** It can start the original from a save memory, a file given as `startSave`, in place of one never written. */
 export const startsFromSave = true;
 
