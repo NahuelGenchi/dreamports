@@ -13,11 +13,14 @@
 //   --calls     how many calls of each function are compared: 2,000 unless said, and on the NES 5,000 of each kind
 //   --seed      what the calls are made up from, 1 unless said
 //   --seconds   how long a twin may take over one call before it's stopped: 2 unless said, and on the NES a fifth of one
+//   --memories  takes real memories from the game's recordings, or those named, for the calls to start from, kept
+//               in .dreamports/twin/ on this computer only: on the Game Boy Advance the console's memory as it was
+//               each time a function started in play, with what it was given, and on the NES the work memory every
+//               so many frames
 // and on the Game Boy Advance (gba/twin.mjs):
 //   --frames    how long the original plays from power-on before the first call, 600 frames unless said
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
 // and on the NES, where each twin has a contract beside it and several functions can be named (nes/twin.mjs):
-//   --memories  takes real memories from the game's recordings, or those named, for the calls to start from
 //   --from      another folder of the game's C than its src/
 //   --without   bytes of the work memory left out of what's compared
 //
@@ -39,7 +42,7 @@ import { CONSOLES } from './consoles.mjs';
 const SHARED = 'npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--seconds <n>]';
 const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- help twin).`;
 // the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
-const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>]`;
+const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]]`;
 // the consoles the check knows, and where each one's is
 const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
@@ -69,6 +72,10 @@ export async function run(args) {
     } else if (flag === '--addresses') {
       if (!args[++i]) throw new Error(`--addresses needs a file. ${USAGE_HERE}`);
       options.addresses = resolvePath(args[i]);
+    } else if (flag === '--memories') {
+      // the recordings to take them from, every word up to the next option, or all of the game's
+      options.memories = [];
+      while (i + 1 < args.length && !args[i + 1].startsWith('--')) options.memories.push(args[++i]);
     } else if (flag.startsWith('--')) throw new Error(`twin has no ${flag}. ${USAGE_HERE}`);
     else rest.push(flag);
   }

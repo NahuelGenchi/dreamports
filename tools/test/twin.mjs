@@ -8,17 +8,24 @@
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked.
+//
+// Then the cartridge is given a game to play (twin/play.c), and the check memories of that play (--memories): a
+// function that reads what only play makes isn't checked from the memory of power-on and is from its own memories, a
+// wrong twin of it is found, the same recording and seed give the same memories and the same calls, and nothing of
+// the memories is in a file the repository tracks.
 
+import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { assemble } from '../gba/thumb.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, openOriginal } from '../gba/twin.mjs';
+import { checkFile, ensureCaller, openCaller, openOriginal } from '../gba/twin.mjs';
+import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
@@ -31,6 +38,10 @@ const NAMED = new Map([['gBall', 0x03000100], ['gFrame', 0x03000020], ['gHandler
 // what the compiler calls to call through a pointer: one instruction each, which the test puts in the cartridge itself
 const VIA = { _call_via_r0: 0x08000500, _call_via_r1: 0x08000504, _call_via_r2: 0x08000508, _call_via_r3: 0x0800050C };
 const STEPS = [1, 2, 5, 9];
+// what only play reaches, in a file of its own (twin/play.c): a function that reads what play makes, the game itself,
+// which the cartridge starts, and the value play keeps the stage in
+const PLAYED = { Shine: 0x08000400, Play: 0x08000440 };
+NAMED.set('gStage', 0x03000060);
 const CALLS = 400;
 
 const failures = [];
@@ -42,12 +53,22 @@ const check = (ok, what) => {
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
 function cartridge(assembly) {
+  const { rom } = madeUpGame({ size: 0x1000 });
+  place(rom, assembly, FUNCTIONS);
+  // bx r0 to bx r3
+  Object.values(VIA).forEach((address, register) => rom.writeUInt16LE(0x4700 | register << 3, address - CARTRIDGE));
+  Buffer.from(STEPS).copy(rom, NAMED.get('gSteps') - CARTRIDGE);
+  return rom;
+}
+
+// one file's functions, from the assembly the compiler wrote, each where `where` says in the cartridge
+function place(rom, assembly, where) {
   const { sections, symbols, relocations } = assemble(assembly);
-  const text = Buffer.from(sections['.text'].bytes), { rom } = madeUpGame({ size: 0x1000 });
+  const text = Buffer.from(sections['.text'].bytes);
   const all = [...symbols].filter(([, symbol]) => symbol.function).map(([name, symbol]) => ({ name, at: symbol.at })).sort((a, b) => a.at - b.at);
   all.forEach((f, i) => { f.until = all[i + 1]?.at ?? text.length; });
   const around = at => all.find(f => at >= f.at && at < f.until);
-  const moved = at => { const f = around(at); return FUNCTIONS[f.name] + at - f.at; };
+  const moved = at => { const f = around(at); return where[f.name] + at - f.at; };
   for (const { at, kind, name, addend } of relocations) {
     const symbol = symbols.get(name);
     const target = symbol?.section === '.text' ? moved(symbol.at) + addend + (symbol.function ? 1 : 0) : (NAMED.get(name) ?? VIA[name]) + addend;
@@ -58,11 +79,18 @@ function cartridge(assembly) {
       text.writeUInt16LE(0xF800 | ((jump >> 1) & 0x7FF), at + 2);
     }
   }
-  for (const f of all) text.copy(rom, FUNCTIONS[f.name] - CARTRIDGE, f.at, f.until);
-  // bx r0 to bx r3
-  Object.values(VIA).forEach((address, register) => rom.writeUInt16LE(0x4700 | register << 3, address - CARTRIDGE));
-  Buffer.from(STEPS).copy(rom, NAMED.get('gSteps') - CARTRIDGE);
-  return rom;
+  for (const f of all) text.copy(rom, where[f.name] - CARTRIDGE, f.at, f.until);
+}
+
+// The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of
+// the loop that does nothing.
+function withPlay(rom, assembly) {
+  const played = Buffer.from(rom);
+  place(played, assembly, PLAYED);
+  played.writeUInt32LE(0xE59F0000, 0xC0);         // ldr r0, [pc]: the word two after this one
+  played.writeUInt32LE(0xE12FFF10, 0xC4);         // bx r0
+  played.writeUInt32LE(PLAYED.Play | 1, 0xC8);
+  return played;
 }
 
 rmSync(work, { recursive: true, force: true });
@@ -83,6 +111,10 @@ check(Object.keys(FUNCTIONS).every((name, i, names) => i === names.length - 1 ||
 check(/strb/.test(assembly) && /_call_via_r/.test(assembly), 'it writes single bytes and calls through a pointer');
 const copy = join(work, 'cartridge.gba');
 writeFileSync(copy, cartridge(assembly));
+
+// what git says has changed in the repository, to see that nothing the check keeps is among it
+const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
+const before = changed();
 
 const { original, start, stack } = await openOriginal(copy, 2);
 check(stack >= 0x03007000 && stack < 0x03008000, `the original's functions are called on the game's own stack, at 0x0${stack.toString(16).toUpperCase()}`);
@@ -175,6 +207,81 @@ try {
   check(/program\.c:\d+/.test(broken.error ?? ''), `C that doesn't build says where: ${(broken.error ?? '').split('\n')[0]}`);
 } finally {
   original.close();
+}
+
+console.log('Memories of play:');
+// the same program with a game to play: twin/play.c beside it, built the same way, and a start that runs it
+const play = await matchFile({
+  file: join(HERE, 'play.c'), compiler, work: join(work, 'built', 'play'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!play.error, `the part of the program that only play reaches builds with ${compiler.name}${play.error ? `: ${play.error}` : ''}`);
+if (play.error) process.exit(1);
+const played = join(work, 'played.gba');
+writeFileSync(played, withPlay(readFileSync(copy), readFileSync(join(work, 'built', 'play.s'), 'utf8')));
+// 150 frames of someone's play, a bit for each button held: nothing, then A, which makes the stage, then B for a while
+const held = frame => (frame >= 20 && frame < 30 ? 1 : 0) | (frame >= 60 && frame < 90 ? 2 : 0);
+const plays = [{ name: 'made-up-play', buttons: Array.from({ length: 150 }, (_, frame) => held(frame)), sets: [] }];
+const addresses = [...Object.values(FUNCTIONS), PLAYED.Shine];
+const taking = async name => {
+  const folder = join(work, name);
+  const taken = await takeMemories({ open: () => openCaller(played), addresses, plays, folder, key: memoriesKey({ sha1: 'made up', addresses, plays }) });
+  return { folder, taken, memories: openMemories(folder) };
+};
+const kept = await taking('memories');
+const own = kept.memories.of(PLAYED.Shine);
+check(kept.taken.functions === 1 && own.length >= 2 && own.length <= 4, `the play gives Shine ${own.length} memories of its own, and the functions it never ran none`);
+check(own.every(memory => memory.frame >= 20 && memory.image().readUInt32LE(0x40060) === 0x02000400 && [1, 7].includes(memory.arg(0))), 'each from a frame after the stage was made, with the stage in it and what Shine was given');
+
+const second = await openOriginal(played, 2);
+const shining = async (file, options = {}, memories = null) => {
+  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, options: { calls: CALLS, seconds: 1, ...options } });
+  return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
+};
+// play.c as it is, or with one thing replaced, in a folder of its own
+const playFile = (...replaced) => {
+  if (!replaced.length) return join(HERE, 'play.c');
+  const folder = join(work, `changed-${++variants}`);
+  cpSync(HERE, folder, { recursive: true });
+  let source = readFileSync(join(HERE, 'play.c'), 'utf8');
+  for (const [from, to] of replaced) {
+    if (!source.includes(from)) throw new Error(`The program has no "${from}" for the test to change.`);
+    source = source.replace(from, to);
+  }
+  writeFileSync(join(folder, 'play.c'), source);
+  return join(folder, 'play.c');
+};
+try {
+  const cold = await shining(playFile());
+  check(cold.by.Shine?.kind === 'unchecked' && /the original left for 0x0000000[0-9A-F], where a twin can't follow/.test(cold.by.Shine.line), `from the memory of power-on, a function that reads what only play makes isn't checked: ${cold.by.Shine?.line ?? cold.error}`);
+  const warm = await shining(playFile(), {}, kept.memories);
+  check(warm.by.Shine?.kind === 'same' && warm.by.Shine.compared === CALLS, `from its memories of play it leaves the same memory over ${CALLS} calls${warm.by.Shine?.kind === 'same' ? '' : `: ${warm.by.Shine?.line ?? warm.error}`}`);
+  const others = await checkFile({ original: second.original, start: second.start, copy: played, file: program(), addressOf, memories: kept.memories, options: { calls: CALLS, seconds: 1 } });
+  check(Object.keys(FUNCTIONS).every(name => others.functions?.find(f => f.name === name)?.kind === 'same'), 'and the functions play never ran are still the same, from power-on memory and from another function\'s');
+
+  const wrong = playFile(['if (light > FULL)', 'if (light >= FULL)']);
+  const missed = await shining(wrong);
+  check(missed.by.Shine?.kind === 'unchecked', 'a wrong twin of it isn\'t found from the memory of power-on, where nothing of it runs');
+  const caught = await shining(wrong, {}, kept.memories);
+  check(caught.by.Shine?.kind === 'differs' && /from the memory of made-up-play at frame \d+/.test(caught.by.Shine.line) && /at 0x0200044[0-3], in the work memory/.test(caught.by.Shine.line), `and is from a memory of play: ${caught.by.Shine?.line ?? caught.error}`);
+
+  const retaken = await taking('memories-again');
+  const same = name => readFileSync(join(kept.folder, name)).equals(readFileSync(join(retaken.folder, name)));
+  check(same('memories.bin') && same('memories.json'), 'the same recording gives the same memories again');
+  const recaught = await shining(wrong, {}, retaken.memories);
+  check(recaught.by.Shine?.line === caught.by.Shine?.line, 'and the same seed the same calls, so the difference is found at the same one');
+  const elsewhere = await shining(wrong, { seed: 7 }, kept.memories);
+  check(elsewhere.by.Shine?.kind === 'differs', 'and another seed finds it too');
+
+  const began = Date.now();
+  const stuck = await shining(playFile(['lamp->light = light;', 'if (by == 7) for (;;) lamp->lit++;\n  lamp->light = light;']), {}, kept.memories);
+  check(stuck.by.Shine?.kind === 'never' && /still going after 1 second/.test(stuck.by.Shine.line) && Date.now() - began < 60000, `a twin that never comes back from a memory of play is stopped and said: ${stuck.by.Shine?.line ?? stuck.error}`);
+
+  const inside = relative(REPO, kept.folder);
+  const ignored = execFileSync('git', ['check-ignore', inside], { cwd: REPO, encoding: 'utf8' }).trim() === inside;
+  check(!inside.startsWith('..') && inside.startsWith('.dreamports') && ignored && changed() === before, `the memories are in ${inside.split('\\').join('/')}/, which git leaves out, and nothing the repository tracks has changed`);
+} finally {
+  second.original.close();
 }
 
 rmSync(work, { recursive: true, force: true });
