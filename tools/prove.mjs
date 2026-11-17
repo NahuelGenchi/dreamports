@@ -21,12 +21,12 @@
 // those in full too, as naming a recording does.
 
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
 import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, watchesOf, cartridgeOf } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { originalPlay, namesNeverInPlay } from './lib/recording.mjs';
+import { originalPlay, namesNeverInPlay, readRecording, startSavesOf } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
 import { joinChrome, openChrome } from './lib/chrome.mjs';
 import { buildIfC, openDreamport } from './lib/dreamport.mjs';
@@ -59,6 +59,39 @@ const GOAL_STRETCHES = 64;
 // A calm clip stops well short of its rate, which only decides what fast play gets
 const CLIP_LIMIT = 2_000_000, CLIP_TARGET = 1_700_000, CLIP_RATE = 2_000_000;
 const IN_PAGE = readFileSync(new URL('./lib/in-page.js', import.meta.url), 'utf8');
+
+/**
+ * Plays players' reports of one game next to the original (reports.mjs): each a recording in a file of its own, on
+ * this computer, started from the saves it carries, and played as far as the first frame that differs, as --quick
+ * does. Resolves to one of { file, result } or { file, error } for each, in order: `result` is what prove found, with
+ * `matched`, the frames that came out the same before the first that didn't, and `frames`. Nothing of it is kept in
+ * the game's progress. `say` takes what it's doing now.
+ */
+export async function proveReports(game, files, { log = () => {}, say = () => {} } = {}) {
+  const original = readOriginal(game);
+  if (!copyWith(original.sha1)) throw new Error(`The proof uses ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
+  (await referenceOf(original)).ensureOriginal(log);
+  await buildIfC(game);
+  const found = [];
+  let browser = null, lane = null;
+  try {
+    browser = await openChrome({ profile: join(LOCAL, 'chrome', 'reports'), headless: true });
+    lane = await laneFor({ game, quick: true, paced: false, asked: [], askedState: [], before: {} });
+    let page = browser;
+    for (const [at, file] of files.entries()) {
+      if (at) page = await page.another();
+      try {
+        found.push({ file, result: await lane.play(basename(file, '.json'), page, { log, say, file }) });
+      } catch (error) {
+        found.push({ file, error: error.message });
+      }
+    }
+  } finally {
+    await lane?.close();
+    await browser?.close();
+  }
+  return found;
+}
 
 export async function run(args) {
   const stillsAt = args.indexOf('--stills'), stateAt = args.indexOf('--state');
@@ -280,8 +313,9 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
   const server = await serveRepository();
   return {
     close: () => server.close(),
-    async play(name, page, { log, say }) {
-      const [recording] = readRecordings(game, [name]);
+    async play(name, page, { log, say, file = null }) {
+      // a player's report is played from its own file, on this computer (reports.mjs)
+      const [recording] = file ? [{ name, file, ...readRecording(file) }] : readRecordings(game, [name]);
       const own = parts.filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger));
       try {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
@@ -345,14 +379,20 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   mkdirSync(out, { recursive: true });
   // which of the original's frames is each of the Dreamport's: the same, but for the frames only the original has
   const { held, originalOf, originalHeld, sets } = originalPlay(recording, { keysLate });
+  // a player's report starts from the saves it carries (docs/REPORTS.md): the Dreamport from each, by its key, and
+  // the original from the one that is a cartridge's save memory, where the program that plays it can take one
+  const startSaves = startSavesOf(recording);
+  const cartridgeSaves = Object.values(startSaves ?? {}).filter(save => reference.startsFromSave === true && reference.isSaveMemory(save.bytes.length));
+  const startSave = cartridgeSaves.length === 1 ? cartridgeSaves[0].file : undefined;
+  if (startSaves && !startSave) log(`\n${name} starts from a save that isn't its cartridge's save memory, or on a console whose original can't be given one yet: only the Dreamport starts from it, so the two may differ from where the game first reads it.`);
   // a player's session saved from the settings holds no save (kit/gba/session.js): one that began from a save plays
   // differently from the frame the game first read it
-  if (recording.keptSave) log(`\n${name} is a player's session that began from a game with a save, which a recording doesn't hold: the original starts with nothing saved, so it may differ from where the game first reads its save.`);
+  if (recording.keptSave && !startSaves) log(`\n${name} is a player's session that began from a game with a save it doesn't carry: the original starts with nothing saved, so it may differ from where the game first reads its save.`);
   const onlyInOriginal = originalHeld.length - frames;
 
   say('starting the Dreamport…');
   {
-    await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}` });
+    await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}`, saves: startSaves && Object.fromEntries(Object.entries(startSaves).map(([key, save]) => [key, save.bytes])) });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
     await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
     await page.evaluate(IN_PAGE);
@@ -394,7 +434,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
     // with a code map, every instruction that ran and each way every branch went, where the program says them
     const seesPlayed = !quick && !!codeMap && reference.seesInstructions === true;
-    const first = await runOriginal({ copy, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    const first = await runOriginal({ copy, startSave, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -591,7 +631,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const missing = kept.filter(f => !first.pictures.has(originalOf[f] + 1));
     const statesWanted = statesOf.filter(f => f < reached);
     const wantedOriginal = [...missing, ...statesWanted].map(f => originalOf[f] + 1);
-    const shown = !wantedOriginal.length ? null : await runOriginal({ copy, frames: Math.max(...wantedOriginal) + 1, buttons: masks, pictures: missing.map(f => originalOf[f] + 1), sets, states: statesWanted.map(f => originalOf[f] + 1) });
+    const shown = !wantedOriginal.length ? null : await runOriginal({ copy, startSave, frames: Math.max(...wantedOriginal) + 1, buttons: masks, pictures: missing.map(f => originalOf[f] + 1), sets, states: statesWanted.map(f => originalOf[f] + 1) });
     // they reach the page as they are, from this computer's own server, with no copies along the way
     if (kept.length) {
       server.serve('/proof/originals', Buffer.concat(kept.map(f => {
@@ -622,7 +662,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
         mkdirSync(join(LOCAL, 'tmp'), { recursive: true });
         process.env.DP_DRAW_DUMP = dump;
         try {
-          await runOriginal({ copy, frames: at + 1, buttons: masks, sets });
+          await runOriginal({ copy, startSave, frames: at + 1, buttons: masks, sets });
           const theirs = listsIn(readFileSync(dump))[at] ?? [];
           const apart = firstApart(theirs, listsIn(Buffer.from(ours.bytes, 'base64'))[0] ?? []);
           listApart = apart ? { frame: firstPicture, ...apart } : { frame: firstPicture, unknown: 'the two lists written out are the same, though their hashes aren\'t' };

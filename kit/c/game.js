@@ -9,7 +9,7 @@
 
 import { proof } from '../gba/proof.js';
 import { soundContext } from '../gba/ui/host.js';
-import { cartridgeSave } from '../gba/save.js';
+import { cartridgeSave, proofStorage } from '../gba/save.js';
 import { CONSOLES } from '../consoles.js';
 
 /** How loud a game's sound plays: a console's full scale is loud next to other pages, and half of it leaves headroom. */
@@ -22,8 +22,9 @@ export const GAIN = 0.5;
  * the console's kit starts with game.dp_start(), and its code, for a second copy on an audio thread.
  */
 export async function openGame(url, bytes, { save = null, query = globalThis.location?.search ?? '' } = {}) {
-  // the proof tools play a game as a player who has never saved, as JavaScript games do
-  const kept = save ? cartridgeSave(save, proof ? null : undefined) : null;
+  // the proof tools play a game as a player who has never saved, as JavaScript games do, but for a player's report,
+  // which starts from the save it carries
+  const kept = save ? cartridgeSave(save, proof ? proofStorage() : undefined) : null;
   let memory = null;
   const imports = {
     dreamports: {

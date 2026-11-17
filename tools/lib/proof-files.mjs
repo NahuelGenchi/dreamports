@@ -69,7 +69,10 @@ export function readRecordings(game, names = []) {
   }
   return (names.length ? names : all).map(name => {
     const file = join(folder, `${name}.json`);
-    return { name, file, ...readRecording(file) };
+    const recording = readRecording(file);
+    // a save is a player's own, and nothing of one goes in a commit (docs/REPORTS.md)
+    if (recording.saves) throw new Error(`${file} starts from a save, which only a player's report does: it stays in .dreamports/reports/, where npm run dp -- reports plays it.`);
+    return { name, file, ...recording };
   });
 }
 

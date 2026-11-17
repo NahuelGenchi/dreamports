@@ -7,7 +7,8 @@ import { strict as assert } from 'node:assert';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { checkStart, namesNeverInPlay, originalButtons, readRecording, writeRecording } from '../lib/recording.mjs';
+import { checkStart, namesNeverInPlay, originalButtons, readRecording, startSavesOf, writeRecording } from '../lib/recording.mjs';
+import { readRecordings } from '../lib/proof-files.mjs';
 import { fromStartPoint, proofOf } from '../../src/lib/entries.mjs';
 
 const folder = mkdtempSync(join(tmpdir(), 'recording-'));
@@ -142,4 +143,31 @@ test('values the original is given as it plays the recording\'s own frames go in
   const file = join(folder, 'with-values.json');
   writeRecording(file, { about: 'Menus and all.', frames: 20, held: [[0, []]], sets: [set({ frame: 10 })] });
   assert.deepEqual(readRecording(file).sets, [set({ frame: 10 })]);
+});
+
+test('a player\'s report names the saves it began from, each a file beside it', () => {
+  const file = join(folder, 'report-a.json');
+  writeFileSync(join(folder, 'report-a.made-up-save.sav'), Uint8Array.of(1, 2, 3));
+  writeRecording(file, { about: 'A report.', frames: 10, held: [[0, []]], saves: { 'made-up-save': 'report-a.made-up-save.sav' } });
+  const recording = { file, ...readRecording(file) };
+  assert.deepEqual(recording.saves, { 'made-up-save': 'report-a.made-up-save.sav' });
+  assert.deepEqual([...startSavesOf(recording)['made-up-save'].bytes], [1, 2, 3]);
+  assert.equal(startSavesOf({ file, ...readRecording(join(folder, 'report-a.json')), saves: undefined }), null);
+  // a recording with none is written as before
+  writeRecording(join(folder, 'plain.json'), { about: 'Plain.', frames: 10, held: [[0, []]], saves: {} });
+  assert.equal(readRecording(join(folder, 'plain.json')).saves, undefined);
+  const refused = saves => {
+    writeFileSync(join(folder, 'bad.json'), JSON.stringify({ about: 'x', frames: 10, held: [], saves }));
+    assert.throws(() => readRecording(join(folder, 'bad.json')), /save/, JSON.stringify(saves));
+  };
+  refused('a save');
+  refused({ 'made-up-save': '../elsewhere.sav' });
+  refused({ 'made-up-save': '/etc/passwd' });
+  refused({ 'Not A Key': 'report-a.made-up-save.sav' });
+  refused({ 'made-up-save': 'not-there.sav' });
+});
+
+test('no recording in a game\'s folder starts from a save', () => {
+  // every one there is read as prove reads it, which refuses a save: a player's own never goes in a commit
+  for (const game of ['sonic-advance', 'sonic-battle']) assert.ok(readRecordings(game).every(recording => recording.saves === undefined));
 });
