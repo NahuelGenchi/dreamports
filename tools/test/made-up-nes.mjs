@@ -154,3 +154,41 @@ export function madeUpUnrom() {
   const header = Buffer.from([0x4E, 0x45, 0x53, 0x1A, 4, 0, 0x21, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   return Buffer.concat([header, prg]);
 }
+
+/** A third program, for the function check (../nes/twin.mjs, nes-twin.mjs): the UNROM copy above with a few small
+ *  functions more, each written out here with what it does, and the twins of them in nes-twin/game.c. `TWIN` says
+ *  where each is and what its tables hold. */
+export const TWIN = {
+  // adds A to the 16-bit number at $20 and $21, counts the call at $22, and leaves the carry of the low byte's sum
+  add: 0xC400,
+  // the byte at $C500 + 4 * X of a table, to $30: the processor's place in the table is 8 bits, so it wraps round at 256
+  pick: 0xC420,
+  // reads the hardware's $2002 to $31, writes A to $2007, and leaves X one higher
+  send: 0xC440,
+  // the byte at $9000 + Y of the bank that's switched in, to $33
+  look: 0xC460,
+  // in bank 1: the byte at $9000 + X of its own bank, to $32
+  own: 0x8100,
+  // the game keeps the bank it switched in at $10, as the routine at $C090 leaves it
+  bank: 0x10,
+  /** The byte at `at` of the table every bank has at $9000, and of the four pages at $C500. */
+  inBank: (bank, at) => (at * 7 + bank * 31 + 5) & 0xFF,
+  inTable: at => (at * 13 + (at >> 8) * 57 + 3) & 0xFF,
+};
+export function madeUpTwins() {
+  const BANK = 0x4000, rom = Buffer.from(madeUpUnrom());
+  const put = (address, bytes, bank = 3) => Buffer.from(bytes).copy(rom, 16 + bank * BANK + (address & 0x3FFF));
+  // CLC, ADC $20, STA $20, BCC past the next, INC $21, INC $22, RTS
+  put(TWIN.add, [0x18, 0x65, 0x20, 0x85, 0x20, 0x90, 0x02, 0xE6, 0x21, 0xE6, 0x22, 0x60]);
+  // TXA, ASL A, ASL A, TAY, LDA $C500,Y, STA $30, RTS
+  put(TWIN.pick, [0x8A, 0x0A, 0x0A, 0xA8, 0xB9, 0x00, 0xC5, 0x85, 0x30, 0x60]);
+  // PHA, LDA $2002, STA $31, PLA, STA $2007, INX, RTS
+  put(TWIN.send, [0x48, 0xAD, 0x02, 0x20, 0x85, 0x31, 0x68, 0x8D, 0x07, 0x20, 0xE8, 0x60]);
+  // LDA $9000,Y, STA $33, RTS
+  put(TWIN.look, [0xB9, 0x00, 0x90, 0x85, 0x33, 0x60]);
+  // LDA $9000,X, STA $32, RTS
+  put(TWIN.own, [0xBD, 0x00, 0x90, 0x85, 0x32, 0x60], 1);
+  put(0xC500, Array.from({ length: 0x400 }, (_, at) => TWIN.inTable(at)));
+  for (let bank = 0; bank < 4; bank++) put(0x9000, Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at)), bank);
+  return rom;
+}
