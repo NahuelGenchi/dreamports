@@ -72,6 +72,7 @@ void sixth_carries_a_pot(uint8_t object, uint8_t *x) {
 }
 
 /** sub_02_8416. In the first stage's first five screens, and in the eighth place, the count goes down a round at a time. */
+// dp:twin sub_02_8416 zombies_come(&X)
 void zombies_come(uint8_t *x) {
   if (STAGE != 0 && STAGE != 7) { took(ZOMBIES_OTHER_STAGE); return; }
   took(STAGE ? ZOMBIES_EIGHTH_PLACE : ZOMBIES_FIRST_STAGE);
@@ -121,6 +122,7 @@ void zombies_come(uint8_t *x) {
 /** sub_02_8748: in the second set of stages, on Arthur's fifth screen and on his seventh to tenth, a count at $0718
  *  runs down, sooner the harder the game is, and at its end a crow, kind $14, comes at his height, so far across from
  *  him and up or down as the next of the 16 places in the copy's list at $87DA says, facing him. */
+// dp:twin sub_02_8748 -14 tower_crows_come(&X)
 void tower_crows_come(uint8_t *x) {
   enum { CROW = 0x14, TURNED = 0x04 };
   if (RAM[0xCF] != 1) return;   // its first test, and its return, are counted in DANGERS_OTHERS
@@ -488,6 +490,7 @@ void pot(uint8_t object) {
 /** sub_02_84E0: in the first set of stages, from 64 pixels into the eighth screen to 144 into the ninth, three flying
  *  knights come every so many rounds, sooner the harder the game is, each eight rounds after the last, at one of three
  *  heights and places in their wave that the copy's list at $8554 gives. */
+// dp:twin sub_02_84E0 knights_come(&X)
 void knights_come(uint8_t *x) {
   enum { KNIGHT = 3 };
   if (RAM[0xCF]) { took(KNIGHTS_OTHER_SET); return; }
@@ -849,7 +852,8 @@ static void plant_shoots(uint8_t object) {
 // $F6F6: an enemy that a weapon has killed burns away where it is, eight shapes from the copy's list at $F760, two
 // rounds each, and is gone. The kinds 5, 9 and $15, the bosses, burn with the bigger shapes at $F768, and one that's
 // gone takes one off the stage's count of bosses at $C3, if its flag $04 says it was counted: with none left, $C4 has
-// the key come. Kind $1F, which sets $BF, isn't ported yet. dp:stop sub_F6F6
+// the key come (remove_object).
+// dp:twin sub_F6F6 enemy_burns_away(X) if X < 25
 void enemy_burns_away(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object], kind = RAM[OBJECT_KIND + object];
   int boss = kind == 0x05 || kind == 0x09 || kind == 0x15;
@@ -861,21 +865,6 @@ void enemy_burns_away(uint8_t object) {
   }
   if (*count >= 0x10) {
     took(BURNT_AWAY);
-    if (boss) {
-      took(kind == 0x05 ? BOSS_BURNT_AWAY : kind == 0x09 ? BOSS_9_BURNT_AWAY : BOSS_15_BURNT_AWAY);
-      took(OBJECT_FLAG_READ);
-      if (object >= 0x10) took(READ_PAST_PAGE);
-      if (!(RAM[OBJECT_FLAGS + object] & 0x04)) took(BOSS_NOT_COUNTED);
-      else if (--RAM[0xC3]) took(BOSS_OTHERS_LEFT);
-      else {
-        RAM[0xC4] = 0xFF;
-        took(BOSS_WAS_THE_LAST);
-      }
-      RAM[0x0647 + object] = 0;
-      RAM[OBJECT_FLAGS + object] = 0;
-      took(BOSS_REMOVED);
-      return;
-    }
     remove_object(object);
     return;
   }

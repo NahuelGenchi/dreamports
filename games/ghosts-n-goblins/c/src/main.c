@@ -12,6 +12,9 @@
 
 #include "game.h"
 
+// The function check (tools/README.md) reads where the game keeps the bank that's switched in, BANK_NOW, from this line.
+// dp:bank $C7
+
 uint8_t task_step[TASK_LAST + 2];
 static wait (*const TASK_CODE[])(void) = {
   [TASK_TITLE / 2] = title_task, [TASK_GAME / 2] = game_task, [TASK_VIEW / 2] = view_task, [TASK_ARTHUR / 2] = arthur_task,
@@ -55,6 +58,7 @@ void stop_task(uint8_t task) {
   took(TASK_STOPPED);
 }
 
+// dp:twin sub_CAD6 stop_game_tasks()
 void stop_game_tasks(void) {
   took(GAME_TASKS_STOP_BEGINS);
   for (uint8_t task = TASK_VIEW; task != TASK_SPRITES; task += 2) {

@@ -52,6 +52,7 @@ static void object_place(uint8_t object, int timed) {
 }
 
 // sub_F108: the view's place, as the first, a write at a time.
+// dp:twin sub_F108 +6 view_place()
 static void view_place(void) {
   took(VIEW_PLACE_FIRST_READ);
   A_X = RAM[VIEW_X];
@@ -65,6 +66,7 @@ static void view_place(void) {
 }
 
 // sub_F0E6: how far the second place is from the first, left in the first, a write at a time.
+// dp:twin sub_F0E6 +6 second_from_first()
 static void second_from_first(void) {
   uint16_t across = (uint16_t)((B_X_SCREEN << 8 | B_X) - (A_X_SCREEN << 8 | A_X)), down = (uint16_t)((B_Y_SCREEN << 8 | B_Y) - (A_Y_SCREEN << 8 | A_Y));
   took(APART_FIRST);
@@ -265,6 +267,7 @@ void remove_object(uint8_t object) {
 // sub_F137: $48, $27 and $26, a number of 24 bits, times $52 over 256, as the original shifts and adds it: half the
 // number for the top bit of $52, a quarter for the next, and so on, each with the bits below a 256th dropped only once
 // they're added.
+// dp:twin sub_F137 scale()
 static void scale(void) {
   uint32_t value = (uint32_t)RAM[0x48] << 24 | (uint32_t)(RAM[0x27] << 16 | RAM[0x26] << 8), sum = 0;
   uint8_t by = RAM[0x52];
@@ -461,10 +464,12 @@ static void princess(uint8_t object) {
 }
 
 // sub_EEA8: shown every other pair of rounds, by the object's count.
+// dp:twin sub_EEA8 flash(X) if X < 25
 static void flash(uint8_t object) {
   hide_object(object);
   if (RAM[OBJECT_COUNT + object] & 0x02) RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   took(FLASH_AFTER_HIDING);
+  if (object >= 0x10) took(READ_PAST_PAGE);
 }
 
 // $EDA2, kind $34: Satan in the opening scene. He waits 80 rounds, comes out of the dark in flashes, with the stage
@@ -550,6 +555,7 @@ static void satan(uint8_t object) {
 
 // sub_F63A: whether one object is within a box around another: $22 and $24 are how far left and right of it the first
 // can be, and $23 and $25 how far above and below. Across, the two have to be less than half a screen apart in the stage first.
+// dp:twin sub_F63A within(Y, X) -> C if X < 25 && Y < 25
 static int within(uint8_t first, uint8_t object) {
   int16_t apart = (int16_t)((RAM[OBJECT_X_SCREEN + first] << 8 | RAM[OBJECT_X + first]) - (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]));
   RAM[0x47] = (uint8_t)apart;
@@ -648,7 +654,8 @@ static void third_set_leftover(uint8_t object) {
 }
 
 // sub_04_BB8C, kind $11: a thing that's hidden where the stage's list puts it until Arthur touches the place.
-static void hidden_thing(uint8_t object) {
+// dp:twin sub_04_BB8C hidden_thing(X, Y) if X < 25
+static void hidden_thing(uint8_t object, uint8_t y) {
   RAM[OBJECT_SHAPE + object] = 0x49;
   took(HIDDEN_BEGINS);
   hide_object(object);
@@ -658,7 +665,7 @@ static void hidden_thing(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 6;
     took(HIDDEN_IN_VIEW);
-    if (!arthur_touches(object, Y_NOT_FOLLOWED)) took(HIDDEN_NOT_TOUCHED);
+    if (!arthur_touches(object, y)) took(HIDDEN_NOT_TOUCHED);
     else {
       // $BBAD: touched, it comes down as a pot, 100 pixels further on and 16 higher, with what its state says inside.
       // One whose flag $01 is set needs him crouching, and the armour isn't given to an Arthur who has his.
@@ -703,7 +710,8 @@ static void hidden_thing(uint8_t object) {
 // sub_04_9E32, kind $21: an enemy waiting unseen where the stage's list puts it. When Arthur touches the 20 pixels
 // around its place it becomes the enemy its state picks from the copy's list at $9EA8, four bytes each: a kind, a count,
 // and how far across and down from here it starts. The flier (kind 2) starts with its flag $02 set.
-static void waiting_enemy(uint8_t object) {
+// dp:twin sub_04_9E32 waiting_enemy(X, Y) if X < 25
+static void waiting_enemy(uint8_t object, uint8_t y) {
   hide_object(object);
   if (!object_in_view(object)) {
     took(WAITING_OUT_OF_VIEW);
@@ -711,10 +719,12 @@ static void waiting_enemy(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 0x0A;
     took(WAITING_IN_VIEW);
-    if (!arthur_touches(object, Y_NOT_FOLLOWED)) took(WAITING_NOT_TOUCHED);
+    if (!arthur_touches(object, y)) took(WAITING_NOT_TOUCHED);
     else {
-      uint16_t entry = (uint16_t)(0x9EA8 + RAM[OBJECT_STATE + object] * 4);
+      uint16_t entry = (uint16_t)(0x9EA8 + (uint8_t)(RAM[OBJECT_STATE + object] * 4));   // its place in the list, counted in a byte
       took(WAITING_TOUCHED);
+      // its six reads of the list, the last two bytes twice, each a cycle longer past the list's page
+      for (int read = 0; read < 6; read++) if (((entry + (read + 1) / 2) ^ 0x9EA8) & 0xFF00) took(READ_PAST_PAGE);
       RAM[OBJECT_FLAGS + object] = 0x40;
       took(WAITING_STATE);
       RAM[OBJECT_STATE + object] = 0;
@@ -863,6 +873,7 @@ wait objects_task(void) {
       if (kind * 2 >= 0x13) took(OBJECT_KIND_PAST_PAGE);
       if (kind * 2 >= 0x12) took(OBJECT_KIND_PAST_PAGE);
       set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
+      uint8_t y = (uint8_t)(kind * 2);   // the processor's Y register as each kind's routine starts: its place in the list
       switch (kind) {
         case 0x00: zombie(object); break;
         case 0x01: plant(object); break;
@@ -875,7 +886,7 @@ wait objects_task(void) {
         case 0x08: big_man(object); break;
         case 0x0A: bat(object); break;
         case 0x0B: cave_shooter(object); break;
-        case 0x21: waiting_enemy(object); break;
+        case 0x21: waiting_enemy(object, y); break;
         case 0x2A: cave_shot(object); break;
         case 0x15: dragon_head(object); break;
         case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: dragon_piece(object); break;
@@ -886,7 +897,7 @@ wait objects_task(void) {
         case 0x0F: bridge_flame(object); break;
         case 0x13: water_crow(object); break;
         case 0x10: pick_up(object); break;
-        case 0x11: hidden_thing(object); break;
+        case 0x11: hidden_thing(object, y); break;
         case 0x12: pot(object); break;
         case 0x14: crow(object); break;
         case 0x1E: key(object); break;

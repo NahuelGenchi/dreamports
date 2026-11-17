@@ -25,6 +25,7 @@ static uint8_t flag(uint8_t object, uint8_t which) {
 }
 
 /** sub_02_8610. */
+// dp:twin sub_02_8610 forest_enemies_come(&X)
 void forest_enemies_come(uint8_t *x) {
   if (RAM[0xC2] >= 3) { took(FOREST_OTHER_PART); return; }
   if (RAM[0x65] < 9) { took(FOREST_BEFORE); return; }

@@ -1763,13 +1763,6 @@ COST(BOSS_DIES_ENDS, 8)           // $FC33 to $F6F6
 COST(BOSS_BURNS_ON, 54)           // $F701, and back, for a boss, kind 5: its next shape,
 COST(BOSS_9_BURNS_ON, 58)         // or kind 9,
 COST(BOSS_15_BURNS_ON, 61)        // or kind $15
-COST(BOSS_BURNT_AWAY, 14)         // $F708 to sub_F2EB, after BURNT_AWAY's 8: kind 5,
-COST(BOSS_9_BURNT_AWAY, 18)       // or kind 9,
-COST(BOSS_15_BURNT_AWAY, 21)      // or kind $15
-COST(BOSS_NOT_COUNTED, 3)         // $F725 to $F72F: it wasn't one of the stage's count,
-COST(BOSS_OTHERS_LEFT, 10)        // or others are left,
-COST(BOSS_WAS_THE_LAST, 14)       // or none
-COST(BOSS_REMOVED, 20)            // $F72F, and back
 COST(GAME_ROUND_BEGINS_KEY_THERE, 42) // $D284 to $D31D with the key there, which skips the two sounds' counts
 COST(AFTER_BOSS_WAITS, 8)         // $D28D to $D2A6, more than the branch past it
 COST(AFTER_BOSS_PLAYS, 24)        // or to sub_ED51,

@@ -25,6 +25,7 @@ enum { HIT = 0x01, TURNED = 0x02, OUT = 0x04, RISEN = 0x08, RUNS = 0x10, HOPS = 
 /** sub_02_8574: in the stage's fifth part, while Arthur is from $04E0 to $05C0 across, a count runs down, and at its
  *  end the kind 7 not made yet come, each 32 rounds after the last, at the next of the copy's 16 places at $85F0 on the
  *  sixth screen. */
+// dp:twin sub_02_8574 apartments_come(&X)
 void apartments_come(uint8_t *x) {
   if (MADE >= 3) { took(KIND_7_ALL_MADE); return; }
   if (RAM[0xC2] != 4) { took(KIND_7_OTHER_PART); return; }

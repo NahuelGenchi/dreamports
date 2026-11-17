@@ -19,7 +19,6 @@
 static inline uint8_t cart(uint8_t bank, uint16_t address) {
   return address >= 0xC000 ? nes_prg[nes_prg_size - 0x4000 + (address - 0xC000)] : nes_prg[((uint32_t)bank * 0x4000 + (address - 0x8000)) & (nes_prg_size - 1)];
 }
-// dp:bank $C7
 #define BANK_NOW RAM[0xC7]    // the bank switched in at $8000
 #define BANK_HOME RAM[0xC8]   // the bank a routine that switches puts back: the stage's own
 /** A read of the hardware through a pointer, which the original makes when a stage's lists are looked up with a place

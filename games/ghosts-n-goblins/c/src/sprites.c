@@ -12,6 +12,7 @@ enum { SHAPES = 0x81EB, PLACES = 0x9491, COLOURS = 0x9AE7 };
 
 // sub_04_8089: the first object and the fourth change places in every list, before and after the sprites are made, so
 // the fourth's sprites come first.
+// dp:twin sub_04_8089 swap_first_and_fourth()
 static void swap_first_and_fourth(void) {
   static const uint16_t FIELDS[] = { OBJECT_FLAGS, OBJECT_SCREEN_Y, OBJECT_SCREEN_X, OBJECT_SHAPE, OBJECT_COLOURS };
   for (unsigned i = 0; i < sizeof FIELDS / sizeof *FIELDS; i++) {

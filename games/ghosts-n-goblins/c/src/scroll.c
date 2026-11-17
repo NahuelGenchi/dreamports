@@ -117,14 +117,17 @@ uint8_t block_at_stage_place(void) {
 }
 
 // sub_E9AB: where the four tiles of the block at BLOCK_AT are.
+// dp:twin sub_E9AB find_block_tiles()
 static void find_block_tiles(void) {
   took(COLUMN_BLOCK_TILES);
+  RAM[0x27] = 0;   // before the block is read, which matters when the list's pointer leads here
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   BLOCK = peek_counted(ram16(0x54), BLOCK_AT);
   set_ram16(0x26, (uint16_t)(peek16(0x8010) + BLOCK * 4));
 }
 
 // sub_EA73: the PPU's address of the tile at the place, in the first name table or the second.
+// dp:twin sub_EA73 find_tile_address()
 static void find_tile_address(void) {
   uint16_t address = (uint16_t)(((AT_Y & 0xF8) << 2) + (AT_X >> 3));
   took(COLUMN_ADDRESS);
@@ -144,6 +147,7 @@ static void find_tile_address(void) {
 }
 
 // sub_EABD: the colours of the block at BLOCK_AT, two bits of its name table's attribute byte.
+// dp:twin sub_EABD set_block_colours()
 static void set_block_colours(void) {
   static const cost QUARTER[] = { BLOCK_COLOURS_TOP_LEFT, BLOCK_COLOURS_TOP_RIGHT, BLOCK_COLOURS_BOTTOM_LEFT, BLOCK_COLOURS_BOTTOM_RIGHT };
   uint16_t attributes = (uint16_t)(ATTRIBUTES + (SCREEN_AT & 1 ? 0x40 : 0));

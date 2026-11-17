@@ -35,10 +35,12 @@ static uint16_t at(const uint8_t *voice) { return (uint16_t)(voice[V_AT] | voice
 static void move_to(uint8_t *voice, uint16_t address) { voice[V_AT] = (uint8_t)address; voice[V_AT + 1] = (uint8_t)(address >> 8); }
 
 // sub_ED97: all the sound registers to 0, from the last down.
+// dp:twin sub_ED97 sound_registers_off()
 void sound_registers_off(void) {
   took(SOUND_REGISTERS_BEGIN);
   for (int i = 0x0F; i >= 0; i--) {
     took(SOUND_REGISTER_OFF);
+    hardware_read((uint16_t)(0x4000 + i));   // the processor's store through a count reads the place first
     hardware_write((uint16_t)(0x4000 + i), 0);
     took(SOUND_REGISTER_NEXT);
     took(i ? GOES_ROUND : GOES_ON);
@@ -47,6 +49,7 @@ void sound_registers_off(void) {
 }
 
 // sub_ED72: no voice plays.
+// dp:twin sub_ED72 sound_reset()
 void sound_reset(void) {
   for (int i = 0; i < 0x50; i++) RAM[VOICES + i] = 0;
   took(SOUND_MEMORY_CLEARED);

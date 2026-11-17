@@ -150,6 +150,7 @@ static uint8_t last_index;
 
 // sub_D8D8: the score's six digits at the top of the picture, empty until its first that isn't 0. It leaves 12 in the
 // processor's X register.
+// dp:twin sub_D8D8 show_score() -> X if RAM[0xBA] < 2
 static uint8_t show_score(void) {
   uint8_t empty = 0xFF, digit = 0;
   took(SCORE_SHOWN_BEGINS);
@@ -165,6 +166,7 @@ static uint8_t show_score(void) {
 }
 
 // sub_D9F8, with its call: the lives left after this one, as two digits at the top of the picture.
+// dp:twin sub_D9F8 +6 show_lives() if RAM[0xBA] < 2
 static void show_lives(void) {
   uint8_t left = (uint8_t)(RAM[LIVES + PLAYER] - 1);
   RAM[0x22] = 0;
@@ -275,6 +277,7 @@ static void start_top_of_picture(void) {
 }
 
 // sub_CAFD: the stage's music, unless it plays already.
+// dp:twin sub_CAFD stage_music()
 static void stage_music(void) {
   if (!RAM[0x0709]) took(STAGE_MUSIC_KEPT);
   else if (DEMONSTRATION) took(STAGE_MUSIC_DEMONSTRATION);
