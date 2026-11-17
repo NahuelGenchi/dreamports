@@ -16,6 +16,6 @@ Each of the two tools keeps what it proves in `games/<version>/proof/proofs.json
 
 ## When it's done
 
-It's done when the `npm run dp -- ready <version> --task <address>` line `find` gave says each of its functions has its proof, and nothing that matched before differs. Run that in step 11, in place of `ready` with the version alone. A recording isn't needed for a function the game can't reach yet. Where a recording does reach the new twins and a frame changes, its clip goes with the pull request as for any step, and where none does, `share` puts the record of the proof in a clip's place by itself.
+It's done when the `npm run dp -- ready <version> --task <address>` line `find` gave says each of its functions has its proof, and nothing that matched before differs. Run that in step 11, in place of `ready` with the version alone. A recording isn't needed for a function the game can't reach yet, and a new game with no recording at all has nothing to play, which `ready` says. Where a recording does reach the new twins and a frame changes, its clip goes with the pull request as for any step, and where none does, `share` puts the record of the proof in a clip's place by itself.
 
 In the pull request, under Changes, list each function with its proof, as `npm run dp -- proofs <version> <address>` prints them. In step 13's Progress, say how many functions the task proved after the two numbers, as in `Its 8 functions are proven, 7 by the same bytes and 1 by the same memory.`

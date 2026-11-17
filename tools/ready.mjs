@@ -1,7 +1,8 @@
 // npm run dp -- ready <game> [--no-worse] [--task <function or task>]: everything a step has to pass before it goes out, in one go: the port map,
 // every recording, `npm run check` and `npm run build`. For a version made a function at a time (lib/proofs.mjs) it
 // goes by each function's proof too: every proof kept has to hold still, and with --task, a function's address or a
-// task's name, each function of that task has to have its proof (`npm run dp -- proofs <version> --check`). With --no-worse, which `update` gives it for a merge, recordings
+// task's name, each function of that task has to have its proof (`npm run dp -- proofs <version> --check`). Such a
+// version with no recording yet, as a new game has while its first functions are proven, has nothing to play, which is said. With --no-worse, which `update` gives it for a merge, recordings
 // may differ as long as no frame that matched before does (lib/as-before.mjs). It prints what prove found and, of the rest, only what's wrong, with
 // the whole of it kept in .dreamports/ready/, as their full output costs an agent thousands of tokens on every request after it.
 
@@ -12,6 +13,7 @@ import { REPO, LOCAL } from './lib/paths.mjs';
 import { merging } from './lib/merge-main.mjs';
 import { DIFFERS_AS_BEFORE } from './lib/as-before.mjs';
 import { asksForProofs } from './lib/proofs.mjs';
+import { readRecordings } from './lib/proof-files.mjs';
 
 const KEPT_LINES = 30;
 
@@ -41,7 +43,10 @@ export async function run(args) {
   if (asksForProofs(game)) step('proofs', tool('proofs', game, '--check', ...(task ? ['--task', task] : [])));
   // what the recordings found is the point, so it shows as prove says it: in full where there's news, and summed up
   // where a recording came out as when last proven. Frames that differ fail the step
-  const proved = spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });
+  // a game made a function at a time can have functions proven before any of it plays, and then nothing to play yet
+  const nothingToPlay = asksForProofs(game) && !readRecordings(game).length;
+  if (nothingToPlay) console.log('recordings: the game has none yet, so nothing was played. Its functions\' proofs are what this step has.');
+  const proved = nothingToPlay ? { status: 0 } : spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });
   const asBefore = noWorse && proved.status === DIFFERS_AS_BEFORE;
   if (proved.status !== 0 && !asBefore) failed.push('prove');
   step('check', npm('check'));
