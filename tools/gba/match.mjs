@@ -1,0 +1,271 @@
+// What match does for a Game Boy Advance game (../match.mjs): builds one file of C with the console's compiler
+// (agbcc.mjs), turns what comes out into bytes (thumb.mjs), fills in every address a linker would, with each name's
+// address in the original, and compares each function with the original's bytes. Nothing here knows where a game's
+// files are or how the original is read: match gives it the file, the names' addresses and what reads the original, and
+// a test gives it its own (test/match.mjs).
+
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, relative, sep } from 'node:path';
+import { BASES, NAME } from '../portmap.mjs';
+import { assemble } from './thumb.mjs';
+import { compilerPath, COMPILERS } from './agbcc.mjs';
+
+// the word a file can ask about, to tell this build from a Dreamport's: #ifdef MATCHING
+const DEFINE = 'MATCHING';
+// a flag that says how the code is made, which is all a game's proof/original.json may give the compiler: none that
+// names a file
+const FLAG = /^-[mfOW][\w=-]*$/;
+const CARTRIDGE = 0x08000000;
+
+/** A game's compiler as its proof/original.json gives it, { name, flags }, checked, or an error that says what it needs. */
+export function readCompiler(original, where) {
+  const { compiler } = original;
+  if (!compiler) throw new Error(`${where} doesn't say which compiler built the original: it needs "compiler": { "name": "agbcc" or "old_agbcc", "flags": [...] } (tools/README.md, Matching the original's bytes).`);
+  if (!Object.hasOwn(COMPILERS, compiler.name)) throw new Error(`${where} names the compiler "${compiler.name}", and the tools have ${Object.keys(COMPILERS).join(' and ')}.`);
+  if (!Array.isArray(compiler.flags) || !compiler.flags.every(flag => typeof flag === 'string' && FLAG.test(flag))) {
+    throw new Error(`${where} needs the compiler's "flags" as a list of those that say how the code is made, such as "-O2" and "-mthumb-interwork".`);
+  }
+  return { name: compiler.name, flags: compiler.flags };
+}
+
+/** The address the first name in `text` means, as portmap reads names, or null: a number is an address in the copy, and
+ *  a label one in the release the game's labels come from, moved by the game's `shifts` (portmap.mjs). */
+export function addressIn(text, shifts = []) {
+  for (const [, label, digits] of text.matchAll(NAME)) {
+    const address = parseInt(digits, 16) & ~1;
+    if (BASES.has(address)) continue;
+    return label ? address - (shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0) : address;
+  }
+  return null;
+}
+
+// a name that is a label and nothing else
+const LABEL = /^[A-Za-z][A-Za-z0-9]*_0?[238][0-9A-Fa-f]{6}$/;
+
+/** What finds the address of a name a file uses and doesn't define, as its code keeps it, or null. `named` is a Map of
+ *  the names a game gives addresses (its proof/addresses.json), which come first; `twins` a Map of each twin's name in
+ *  the version's other files to the Set of addresses it's given, used when it's one; and a name that is a label says
+ *  its own. A twin is Thumb code, whose address is kept odd, and so is a label where `startsFunction` says a function
+ *  of the cartridge starts. */
+export function addressFinder({ named = new Map(), twins = new Map(), shifts = [], startsFunction = () => false }) {
+  return name => {
+    if (named.has(name)) return named.get(name);
+    if (twins.get(name)?.size === 1) return [...twins.get(name)][0] | 1;
+    const label = LABEL.test(name) ? addressIn(name, shifts) : null;
+    return label === null ? null : label | (label >= CARTRIDGE && startsFunction(label) ? 1 : 0);
+  };
+}
+
+/** The functions a file of C defines, each { name, address, line }: `address` is the function of the original it's the
+ *  twin of, which the comment just above it names, or else its own name when that's a label, or null. */
+export function twinsIn(text, shifts = []) {
+  // the code with every comment and every text in quotes blanked, so nothing in them reads as code, and the comments
+  let code = '';
+  const comments = [];
+  for (let i = 0; i < text.length;) {
+    const two = text.slice(i, i + 2);
+    let end = i + 1;
+    if (two === '//') end = text.indexOf('\n', i) < 0 ? text.length : text.indexOf('\n', i);
+    else if (two === '/*') end = text.indexOf('*/', i + 2) < 0 ? text.length : text.indexOf('*/', i + 2) + 2;
+    else if (text[i] === '"' || text[i] === '\'') {
+      for (end = i + 1; end < text.length && text[end] !== text[i] && text[end] !== '\n'; end++) if (text[end] === '\\') end++;
+      end++;
+    } else {
+      code += text[i++];
+      continue;
+    }
+    if (two === '//' || two === '/*') comments.push({ from: i, to: end, text: text.slice(i, end) });
+    code += text.slice(i, end).replace(/[^\n]/g, ' ');
+    i = end;
+  }
+  const twins = [];
+  // where the statement being read started: after the last ; or } outside every { }, or the last line for the preprocessor
+  let depth = 0, start = 0;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (c === '#' && /^[ \t]*$/.test(code.slice(code.lastIndexOf('\n', i) + 1, i))) {
+      // a line for the preprocessor, with the lines it carries on to
+      while (i < code.length && !(code[i] === '\n' && code[i - 1] !== '\\')) i++;
+      if (!depth) start = i;
+    } else if (c === '}') {
+      depth--;
+      if (!depth) start = i + 1;
+    } else if (c === ';' && !depth) start = i + 1;
+    else if (c === '{' && !depth++) {
+      // a function's body: before it, a name and what it's given in ( )
+      const m = /([A-Za-z_]\w*)\s*\(([^()]|\([^()]*\))*\)\s*$/.exec(code.slice(start, i));
+      if (!m || ['if', 'while', 'for', 'switch'].includes(m[1])) continue;
+      const first = start + code.slice(start, i).search(/\S/);
+      // the comment that ends on the line above where it starts, and the // lines right above that one
+      const above = [];
+      for (let at = first, k = comments.length - 1; k >= 0; k--) {
+        const comment = comments[k];
+        if (comment.to > at || comment.from < start) continue;
+        if (!/^[ \t]*\n?[ \t]*$/.test(text.slice(comment.to, at))) break;
+        above.unshift(comment.text);
+        if (!comment.text.startsWith('//')) break;
+        at = comment.from;
+      }
+      const name = m[1];
+      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length });
+    }
+  }
+  return twins;
+}
+
+// a folder's C, as the folders of names and bytes the preprocessor is given
+function filesIn(folder) {
+  const files = {};
+  for (const entry of readdirSync(folder, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      if (!entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'proof') files[entry.name] = filesIn(join(folder, entry.name));
+    } else if (/\.(c|h|inc)$/.test(entry.name)) files[entry.name] = readFileSync(join(folder, entry.name));
+  }
+  return files;
+}
+
+let clang;
+// The file as the compiler reads it, with every #include and #define done. The console's compiler has no preprocessor
+// of its own, and the one a computer has isn't the same everywhere, so this is the one `npm ci` brings, clang's, told
+// to define nothing of its own.
+async function preprocess(file, root, includes) {
+  if (!clang) {
+    try {
+      clang = await import('@yowasp/clang');
+    } catch {
+      throw new Error('The C preprocessor isn\'t here: run npm ci in the repository\'s folder first.');
+    }
+    await clang.runLLVM(null, {}, { fetchProgress: () => {} });
+  }
+  const inRoot = path => relative(root, path).split(sep).join('/') || '.';
+  let said = '';
+  const stderr = bytes => { if (bytes) said += Buffer.from(bytes).toString('utf8'); };
+  const args = ['clang', '-E', '-P', '-undef', '-nostdinc', '-w', `-D${DEFINE}`, ...includes.flatMap(folder => ['-I', inRoot(folder)]), '-o', 'out.i', inRoot(file)];
+  let made;
+  try {
+    made = await clang.runClang(args, filesIn(root), { stdout: stderr, stderr });
+  } catch (error) {
+    throw new Error(said.trim() || String(error.message ?? error).trim());
+  }
+  if (!made?.['out.i']) throw new Error(said.trim() || 'the preprocessor wrote nothing.');
+  return Buffer.from(made['out.i']);
+}
+
+/**
+ * Builds `file` and compares each function it defines with the original's.
+ *   root, includes: the folder the file's C is in, and the folders it includes from
+ *   compiler: { name, flags }, as readCompiler gives it
+ *   work: the folder for what's built, <work>.i and <work>.s
+ *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
+ *     Thumb function), or null
+ *   sizeOf(address): how long the code map says the function there is, or null when none starts there
+ *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
+ *     reader says of each halfword
+ *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
+ * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
+ * didn't build, with what the compiler said.
+ */
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, original, shifts = [] }) {
+  mkdirSync(dirname(work), { recursive: true });
+  let preprocessed;
+  try {
+    preprocessed = await preprocess(file, root, includes);
+  } catch (error) {
+    return { error: error.message };
+  }
+  writeFileSync(`${work}.i`, preprocessed);
+  // -fhex-asm: numbers in the assembly as the reader writes them
+  const cc = spawnSync(compilerPath(compiler.name), [...compiler.flags, '-fhex-asm', '-o', `${work}.s`, `${work}.i`], { encoding: 'utf8' });
+  if (cc.error) return { error: `${compiler.name} didn't run: ${cc.error.message}` };
+  if (cc.status !== 0) {
+    // the compiler names each function as it goes, and the file it was given, which is the built one: what it says is
+    // wrong is on the lines with a line number
+    const said = (cc.stderr || cc.stdout).split('\n').map(line => line.trim()).filter(Boolean);
+    const wrong = said.filter(line => /:\d+:/.test(line));
+    return { error: (wrong.length ? wrong : said).join('\n').replaceAll(`${work}.i`, basename(file)) };
+  }
+  const assembly = readFileSync(`${work}.s`, 'utf8');
+  let made;
+  try {
+    made = assemble(assembly);
+  } catch (error) {
+    return { error: error.message };
+  }
+  const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split('\n');
+  const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts).map(twin => [twin.name, twin]));
+
+  // the functions the file defines, in the order they sit in its code, each up to the next
+  const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, line: twins.get(name)?.line ?? null, missing: new Set() }))
+    .sort((a, b) => a.at - b.at);
+  functions.forEach((f, i) => {
+    f.until = functions[i + 1]?.at ?? code.length;
+    f.length = made.sizes.get(f.name) ?? f.until - f.at;
+  });
+  const owner = at => functions.find(f => at >= f.at && at < f.until);
+
+  // each place a linker would fill in, with the name's address in the original
+  const unknown = new Set();
+  for (const { section, at, kind, name, addend } of made.relocations) {
+    if (section !== '.text') continue;
+    const inside = owner(at);
+    if (!inside || inside.address === null) continue;
+    const symbol = name && made.symbols.get(name);
+    let target = null;
+    if (symbol?.section === '.text') {
+      // a place in this file's own code is where the original has the function it's in
+      const place = symbol.function ? symbol.at : symbol.at + addend, of = owner(place);
+      if (of && of.address !== null) target = of.address + (place - of.at) + (symbol.function ? addend + (kind === 'word' ? 1 : 0) : 0);
+    } else if (name) {
+      const address = addressOf(name);
+      if (address !== null) target = address + addend;
+    }
+    if (target === null) {
+      unknown.add(name);
+      inside.missing.add(name);
+    } else if (kind === 'word') code.writeUInt32LE(target >>> 0, at);
+    else {
+      // a call: how far it is from the instruction after next, in the two halves of the instruction
+      const offset = (target & ~1) - (inside.address + (at - inside.at) + 4);
+      if (offset < -0x400000 || offset >= 0x400000) inside.missing.add(name);
+      code.writeUInt16LE(0xF000 | ((offset >> 12) & 0x7FF), at);
+      code.writeUInt16LE(0xF800 | ((offset >> 1) & 0x7FF), at + 2);
+    }
+  }
+
+  for (const f of functions) {
+    f.missing = [...f.missing];
+    if (f.address === null) continue;
+    if (f.address < CARTRIDGE) {
+      f.elsewhere = true;
+      continue;
+    }
+    const mapped = sizeOf(f.address);
+    f.mapped = mapped !== null;
+    const theirs = original(f.address, Math.max(f.length, mapped ?? 0));
+    // how long the original's is: as the code map has it, less the zeros that line up the function after it
+    let length = mapped ?? f.length;
+    if (length > f.length && theirs.bytes.subarray(f.length, length).every(byte => byte === 0)) length = f.length;
+    f.bytes = mapped ?? f.length;
+    f.longer = f.length - length;
+    f.differing = 0;
+    f.first = -1;
+    f.halfwords = Math.max(f.length, length) / 2;
+    f.ours = [];
+    f.theirs = [];
+    for (let i = 0; i < f.halfwords; i++) {
+      const mine = i * 2 < f.length ? code.readUInt16LE(f.at + i * 2) : null;
+      const its = i * 2 + 1 < theirs.bytes.length ? theirs.bytes.readUInt16LE(i * 2) : null;
+      f.ours.push({ value: mine, text: mine === null ? '' : (lines[madeBy[f.at + i * 2] - 1] ?? '').trim().replace(/\s+/g, ' ') });
+      f.theirs.push({ value: its, text: theirs.lines?.[i] ?? '' });
+      if (mine !== its) {
+        f.differing++;
+        if (f.first < 0) f.first = i * 2;
+      }
+    }
+    f.same = f.differing === 0 && !f.missing.length;
+  }
+  return { functions, unknown: [...unknown] };
+}

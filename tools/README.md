@@ -8,7 +8,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 
 | Tool | What it does |
 | :--- | :--- |
-| `setup` | Builds the reference emulator the original runs in |
+| `setup` | Builds the reference emulator the original runs in, and the Game Boy Advance's compiler |
 | `rom` | Checks a copy of a game, says which game and which version it is, and remembers where it is |
 | `play` | Opens a game in a browser with your copy, and with `--record` keeps what you play as a recording, after another recording's presses with `--from` |
 | `route` | Finds the presses that take the original from where a recording leaves it to a goal, such as an act's end, and writes them as a recording, with nobody playing ([Finding a route](#finding-a-route)) |
@@ -19,6 +19,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `untouched` | Lists what gameplay proven leaves untouched in a version: functions never played, branches gone one way only, and data never used |
 | `portmap` | Makes the port map: each function of the original the Dreamport's code names, and where, and each path it says it hasn't ported |
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for, on the Game Boy Advance and the NES |
+| `match` | Builds a Game Boy Advance game's C with the compiler the original was built with, and says which functions come out as the original's bytes ([Matching the original's bytes](#matching-the-originals-bytes)) |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the clips of what the step changed for its pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, the tasks free to start, and what the others wait on |
 | `tasks` | Opens a Task issue for each of a game's foundations and parts that has none yet, its foundations first and then in the order a player meets them |
@@ -47,6 +48,8 @@ And you need your own copy of the game, made from your own cartridge: the versio
 ## Getting ready
 
 `npm run dp -- setup` downloads the source code of [mGBA](https://mgba.io) 0.10.5 with git and builds it, along with two small programs of the tools' own: [`gba/original.c`](gba/original.c), which runs the original a frame at a time, and [`gba/read.c`](gba/read.c), which prints its instructions for `read`. They go in `.dreamports/gba/`, and it takes a few minutes the first time. If you already have mGBA 0.10.5's source code, `MGBA_SOURCE=<its folder> npm run dp -- setup` builds that instead of downloading it. `prove` runs the setup by itself if it hasn't been done.
+
+It also downloads [agbcc](https://github.com/pret/agbcc), the Game Boy Advance's own compiler, about 13 MB, with git, at one fixed commit, and builds its two compilers, `agbcc` and `old_agbcc`, in under a minute. `match` builds a game's C with one of them. It needs only git and a C compiler, as it does agbcc's build steps itself, with no make and no shell ([`gba/agbcc.mjs`](gba/agbcc.mjs)). `AGBCC_SOURCE=<its folder>` builds a copy you already have. agbcc is GCC, under the GNU General Public License: it's built and run on your computer, and no part of it is in the repository, in a Dreamport or on dreamports.net. `match` builds the one it needs by itself if `setup` hasn't.
 
 mGBA is the reference: the original runs in it, on your computer only, so there's something to compare against. It's never part of a Dreamport and never runs on dreamports.net. It starts the game with its own stand-in for the console's start-up program, so no BIOS file is needed.
 
@@ -329,6 +332,33 @@ A line such as `04:923F:  20 9C C3  JSR $C39C  ; sub_C39C`, made up for this gui
 
 The [NESdev Wiki](https://www.nesdev.org/wiki/) describes every instruction, register and cartridge. Each sum that wraps round, each byte the function writes and what it leaves in `A`, `X`, `Y` and the carry is part of what it does, so a rewrite keeps them. Name the function in a comment by its label, such as `sub_04_923F`, so the port map counts it.
 
+## Matching the original's bytes
+
+The strongest proof a function has is that it comes out as the original's own bytes. `npm run dp -- match <version>` builds a Game Boy Advance game's C with the compiler the original was built with, compares each function with the original's, and says for each `The same` or `Differs`, with how many of its halfwords differ, whether it's longer or shorter, and the address of the first that differs. It ends with a total, such as `10 of 12 functions the same, 966 of 1,294 bytes.` The version is a game's version in C, such as `sonic-advance/c`. `npm run dp -- match <version> <file>` builds one file, and `npm run dp -- match <version> <function>`, with an address or a name, builds the file with that function's twin and keeps each of the original's instructions beside the twin's in `.dreamports/match/<version>/<address>.txt`, a `!` before each line that differs.
+
+It prints nothing of the original: a name, an address, a length and a count are all it says. The file it keeps does hold the original's instructions, so it stays in `.dreamports/` and never goes in a commit, an issue or a pull request, as with what `read` prints. `match` reaches your copy only through the program `read` uses, [`gba/read.c`](gba/read.c).
+
+**Which function a twin is.** A function says which function of the original it's the twin of the way `portmap` reads it, so the port map and `match` agree: the comment just above it names the address, as in `/** TaskCreate, 0x08001588: a task after every task of its priority. */`, and the first address in that comment is the one. A function whose own name is a label, such as `sub_8001588`, needs no comment. A label is moved by the game's `names.json`, as `portmap` moves it. A function with neither is listed as `No address` and compared with nothing.
+
+**The names a file uses.** A linker would give every call and every value its address, and `match` does that with the original's addresses, so no linker runs. A function defined in another file of the version has the address its comment gives it. A name that is a label says its own, such as `gUnknown_03004C54`. Every other name is in the game's `proof/addresses.json`, which holds names and addresses and nothing of the game's code:
+
+```json
+{
+  "about": "Where the names come from",
+  "addresses": { "gTasks": "030006B0", "_call_via_r0": "08099844" }
+}
+```
+
+An address is written as the code keeps it, in eight capital hexadecimal digits: a Thumb function whose address is kept as a value is odd there, as `080977D9`, and a call doesn't mind which. A function that uses a name with no address can't be the same, and `match` names each one. `--addresses <file>` adds another file of the same shape, for trying a file from anywhere before the game has its names: `npm run dp -- match <version> <any file.c> --addresses <file>`.
+
+**The compiler.** Which compiler built the original, and how it was asked, is the game's, in its `original.json`: `"compiler": { "name": "agbcc", "flags": ["-mthumb-interwork", "-O2", "-fprologue-bugfix"] }`, as Sonic Advance has it. The name is `agbcc` or `old_agbcc`, and the flags only those that say how the code is made, never one that names a file. Finding them is trying: a function that is certainly right comes out the same with the right ones and not with others. The file is first run through the preprocessor `npm ci` brings, with `MATCHING` defined, so a file can say `#ifdef MATCHING` where the console's build and a Dreamport's differ, as where one writes to the console's hardware and the other calls the kit. It includes from its own folder and from the version's `src/`. A file written on the kit doesn't build with the console's compiler, and `match` says how many didn't in one line.
+
+**The assembler.** agbcc writes assembly, and nothing every computer has turns that into bytes: the clang `npm ci` brings has no ARM target, and a computer's own assembler isn't the same on Linux, a Mac and Windows. So the tools have a small one of their own, [`gba/thumb.mjs`](gba/thumb.mjs), for exactly what agbcc writes, every Thumb instruction of the console written the way the assemblers of the time read it. It makes the choices GNU's assembler made, which the original's bytes hold: a low register moved to a low register is an add of zero, and a number added to a register in place takes the 8-bit form. On 17 November 2026 it gave the same bytes as clang 21 for every form of every instruction, 1,214 lines kept in [`test/match/forms.s`](test/match/forms.s), and for the 18,542 bytes of four files agbcc wrote from twins of Sonic Advance, of which `match` then found 10 of 12 functions the same as the cartridge's, as the trial in [#1449](https://github.com/NahuelGenchi/dreamports/issues/1449) had with clang. A line it doesn't know stops it with the line's number, never a guess.
+
+**What it compares.** A function runs as far as the compiler says it does, with the numbers it keeps beside itself. The original's is as long as the code map says, less the zeros that line up the function after it, and where the code map has no function starting, `match` says so and compares the twin's own length. Only functions in the cartridge are compared, not yet those a game copies into the console's memory.
+
+`npm run test:match` tries all of it with a program of the project's own, [`test/match/program.c`](test/match/program.c), against a cartridge it makes up from it, and it runs on every pull request. Building the compiler and `match` have been run only on Linux. The assembler and the rest of `match` are JavaScript, the same everywhere, but nobody has built agbcc with these steps on a Mac or on Windows yet.
+
 ## Counting what a game draws
 
 On the PlayStation 2, where a 3D game is proven by its draw list, `draws` says what a game's lists hold, before any of it is written again:
@@ -400,7 +430,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 | File | What it holds |
 | :--- | :--- |
-| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), `provenBy` for a game compared another way than its console's games are, by its draw lists (`"draw lists"`, as a PlayStation 2 game is unless it says otherwise, [The PlayStation 2](../docs/CONSOLES.md#the-playstation-2)) or by its pictures (`"pictures"`), and `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says |
+| `original.json` | The copy the proof uses: its console, its name, the title and code in its header, and its SHA-1 checksum, `keysAfterVBlank` for a game that reads its buttons just after the V-blank, `screen` for a game on another console that [chooses its own size](../docs/CONSOLES.md#how-a-console-is-known), `provenBy` for a game compared another way than its console's games are, by its draw lists (`"draw lists"`, as a PlayStation 2 game is unless it says otherwise, [The PlayStation 2](../docs/CONSOLES.md#the-playstation-2)) or by its pictures (`"pictures"`), `shows` for what a recording can be named for, as [What a recording shows](#what-a-recording-shows) says, and `compiler` for the compiler that built the original and its flags, which `match` builds the game's C with ([Matching the original's bytes](#matching-the-originals-bytes)) |
 | `recordings/` | Recorded play, one file per recording |
 | `route.json` | Optional: where the original keeps the few values `route` reads as it searches, and the goals the game names, as [Finding a route](#what-a-game-says-of-its-original) says. A part can name one of those goals as what it reaches |
 | `code-map.json` | The code map |
@@ -410,11 +440,12 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `played.json` | What of the original's code was played in each recording's matching frames, and where its instructions and branches are, as sets of places in the code map's functions, written by `prove`; nothing of the code itself |
 | `port-map.json` | The port map: the functions the game's code names, the names that land inside one but not at its start, and the stops, each a path the code says it hasn't ported, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |
+| `addresses.json` | Optional: the names the game's C gives the original's values and functions that it doesn't define, each with its address, for `match`; nothing of the code itself |
 | `parts.json` | The game's parts, each with the recording and frames that prove it once there are some, and what it has to reach when it names that ([What a part reaches](#what-a-part-reaches)), written by the game's lead |
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `route` found and the pictures of where it stopped, what `read` prints, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `route` found and the pictures of where it stopped, what `read` prints, the compiler `match` builds with, what it builds and the instructions it keeps side by side, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
 
 ## For a game on the Game Boy Advance kit
 

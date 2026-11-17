@@ -54,6 +54,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run test:game` | Tries what every new game starts with in a real browser, with a made-up game: its start screen, frames, keyboard, controller, settings, touch screen and way back to the launcher. Every pull request runs this, `npm run check`, `npm run build` and the two below |
 | `npm run test:consoles` | Tries everything the proof tools do on a console that was never made, with a small emulator of it written here |
 | `npm run test:real-console` | Tries them on a real NES emulator, built from its makers' source at a fixed commit, with a small program of the project's own, so no game copy is needed |
+| `npm run test:match` | Tries `match` with the Game Boy Advance's own compiler, built from its keepers' source at a fixed commit, and a small program of the project's own, so no game copy is needed |
 | `npm run test:real-ps2` | Tries a small PlayStation 2 program of the project's own on Play!, built from its makers' source, twice, on Linux or a Mac. Not run on pull requests, as the emulator takes minutes to build |
 | `npm run test:ps2-3d` | Tries how a 3D game is proven, by its draw list, on a small 3D PlayStation 2 program of the project's own, on Linux or a Mac. Not run on pull requests either |
 | `npm run test:ps2-kit` | Proves two small PlayStation 2 programs' Dreamports in C on the console's kit, one by its draw list and one by its pictures, on Linux or a Mac. Not run on pull requests either |
