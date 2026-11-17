@@ -30,6 +30,9 @@ const STAND_IN = `
 // the screen's first pixel, as the game's backdrop is all that a new game draws
 const COLOUR = `(() => { const [r, g, b] = document.getElementById('screen').getContext('2d').getImageData(0, 0, 1, 1).data; return g > b ? 'green' : b > g ? 'blue' : 'neither'; })()`;
 
+// a step failed that the ones after it need: the test ends there and says so, in place of whatever those would throw
+class Stopped extends Error {}
+
 const failures = [];
 const check = (ok, what) => {
   console.log(`  ${ok ? 'ok' : 'FAILED'}: ${what}`);
@@ -113,7 +116,13 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
     const paused = page.once('Fetch.requestPaused');
     await page.evaluate(press);
     const request = await Promise.race([paused, wait(5000).then(() => null)]);
-    if (request) await page.send('Fetch.fulfillRequest', { requestId: request.requestId, responseCode: 200, body: '' });
+    if (request) {
+      // the answer is a page too, and it has loaded before the test goes on: go() would take its load, still on its
+      // way, for that of the page it opens next, and come back before that one is there
+      const loaded = page.once('Page.loadEventFired');
+      await page.send('Fetch.fulfillRequest', { requestId: request.requestId, responseCode: 200, body: '' });
+      await Promise.race([loaded, wait(5000)]);
+    }
     await page.send('Fetch.disable');
     return request?.request.url === home;
   };
@@ -146,7 +155,9 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
   const playing = `return !d.getElementById('stage').hidden && d.getElementById('picker').hidden;`;
   const standIn = `${server.url}/tools/test/launcher-stand-in.html?game=/games/${game}/`;
   await go(page, standIn);
-  check(await said('shown', 1) && await inside(playing), 'opened by Play in the launcher with its copy kept, it starts by itself');
+  const started = await said('shown', 1) && await inside(playing);
+  check(started, 'opened by Play in the launcher with its copy kept, it starts by itself');
+  if (!started) throw new Stopped(`games/${game}/ didn't start by itself inside the launcher's page, and the steps after this one need it running, so the test stopped here.`);
   // a page that makes sound, as a new game on another console does, asks the launcher for the one made as Play was pressed
   if (machine !== 'gba') check(await page.evaluate(`said.sound === 1`), 'and asks the launcher for its sound');
   await inside(`d.querySelector('.settings-open').click()`);
@@ -239,6 +250,9 @@ try {
     writeFileSync(join(temporary, `${game}.gba`), made.rom);
     await tryGame(page, server, game, join(temporary, `${game}.gba`));
   }
+} catch (error) {
+  if (!(error instanceof Stopped)) throw error;
+  console.error(`\n${error.message}`);
 } finally {
   await page?.close();
   await server.close();
