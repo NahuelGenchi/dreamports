@@ -28,6 +28,21 @@
 //                         each value read, its address and bytes; each number; the two values of each comparison;
 //                         each stretch, where in the image, how long, and its bytes
 //                       A call that didn't come back is taken back at once, and changes nothing.
+//   't' top             the stack the calls after it start on: an address, or 0 for the game's own. Answers 0.
+//   'w' count [address] the functions to see start in play, each by its address. Answers 0.
+//   'p' frames [buttons] sets [frame address bytes value]
+//                       starts the console again and plays that many frames from power-on, as the proof tools play a
+//                       recording (original.c): the buttons held at each frame, a bit a button as KEYINPUT has them,
+//                       and values written to the work memory as a frame starts, in the order of their frames. Each
+//                       time the processor reaches a function of 'w', it counts, and at its 1st, 3rd, 9th time and so
+//                       on, by threes, it answers a memory of play: which function, the frame, how many times it
+//                       had started, what r0 to r3 and the stack held, and the image as it was just then. After the
+//                       last frame it answers 0xFFFFFFFF and how many frames it played. The save memory is as the
+//                       plays before left it, so the check plays each recording in a program of its own.
+//
+// A memory of play is what a function was really given: the image it started from, its arguments in the registers
+// and, in the image, on the stack, which is why 't' lets a call start on the stack the game had then. They are the
+// game's own memory, from the contributor's copy, and the check keeps them on this computer only (twin-memories.mjs).
 //
 // What a twin can follow is the image, the cartridge read and the hardware's registers. A call that reads or writes
 // anywhere else, such as the BIOS, the save memory, a copy of the work memory at another address or nothing at all, that
@@ -224,8 +239,12 @@ static void send(void) {
 	replied = 0;
 }
 
-// the stack a call starts on: the game's own, a little under where the game has it now
+// the stack the check asked for, or 0
+static uint32_t askedTop;
+
+// the stack a call starts on: the one asked for, or the game's own, a little under where the game has it now
 static uint32_t stackTop(void* state) {
+	if (askedTop && inImage(askedTop) >= 0 && inImage(askedTop - 0x400) >= 0) return askedTop;
 	core->saveState(core, state);
 	ARMSetPrivilegeMode(cpu, MODE_SYSTEM);
 	uint32_t sp = (cpu->gprs[ARM_SP] & ~7u) - 0x40;
@@ -334,6 +353,111 @@ static void call(void* state) {
 	send();
 }
 
+// the processor's reads and writes come through here, to see what a call does
+static void watchMemory(void) {
+	cpu->memory.load32 = load32;
+	cpu->memory.load16 = load16;
+	cpu->memory.load8 = load8;
+	cpu->memory.store32 = store32;
+	cpu->memory.store16 = store16;
+	cpu->memory.store8 = store8;
+	cpu->memory.loadMultiple = loadMultiple;
+	cpu->memory.storeMultiple = storeMultiple;
+}
+
+// The functions to see start in play: for every two bytes code can run from, which of them starts there, counted
+// from 1, and how many times each has started.
+static struct { uint32_t base, size; uint32_t* starts; } places[] = {
+	{ 0x08000000, 0, NULL },
+	{ 0x03000000, IWRAM_BYTES, NULL },
+	{ 0x02000000, EWRAM_BYTES, NULL },
+};
+#define PLACES_SEEN (sizeof places / sizeof places[0])
+static uint32_t* started;
+static uint32_t* nextTime;
+
+static void watchFunctions(void) {
+	uint32_t count = in32();
+	places[0].size = romSize;
+	for (size_t i = 0; i < PLACES_SEEN; i++) {
+		free(places[i].starts);
+		places[i].starts = calloc(places[i].size / 2 + 1, sizeof(uint32_t));
+		if (!places[i].starts) exit(1);
+	}
+	free(started);
+	free(nextTime);
+	started = calloc(count + 1, sizeof(uint32_t));
+	nextTime = calloc(count + 1, sizeof(uint32_t));
+	if (!started || !nextTime) exit(1);
+	for (uint32_t which = 0; which < count; which++) {
+		uint32_t address = in32() & ~1u;
+		nextTime[which] = 1;
+		for (size_t i = 0; i < PLACES_SEEN; i++) {
+			if (address - places[i].base < places[i].size) places[i].starts[(address - places[i].base) / 2] = which + 1;
+		}
+	}
+	out32(0);
+	send();
+}
+
+static void play(void) {
+	uint32_t frames = in32();
+	uint16_t* buttons = malloc((frames + 1) * sizeof(uint16_t));
+	if (!buttons) exit(1);
+	for (uint32_t i = 0; i < frames; i++) buttons[i] = (uint16_t) in32();
+	uint32_t setCount = in32();
+	uint32_t* sets = malloc((setCount + 1) * 4 * sizeof(uint32_t));
+	if (!sets) exit(1);
+	for (uint32_t i = 0; i < setCount * 4; i++) sets[i] = in32();
+
+	core->reset(core);
+	watchMemory();
+	// no frame is drawn, which only the picture would show: the game runs the same
+	gba->video.frameskip = gba->video.frameskipCounter = 1 << 30;
+	uint32_t nextSet = 0;
+	for (uint32_t which = 0; started && nextTime[which]; which++) {
+		started[which] = 0;
+		nextTime[which] = 1;
+	}
+	for (uint32_t frame = 0; frame < frames; frame++) {
+		core->setKeys(core, buttons[frame]);
+		for (; nextSet < setCount && sets[nextSet * 4] == frame; nextSet++) {
+			// a recording writes to the work memory only
+			uint32_t address = sets[nextSet * 4 + 1], bytes = sets[nextSet * 4 + 2], value = sets[nextSet * 4 + 3];
+			if (address >> 24 != 2 && address >> 24 != 3) continue;
+			if (bytes == 1) core->rawWrite8(core, address, -1, value);
+			else if (bytes == 2) core->rawWrite16(core, address, -1, value);
+			else core->rawWrite32(core, address, -1, value);
+		}
+		int32_t frameCounter = gba->video.frameCounter;
+		// an instruction at a time, as the proof tools play every frame (original.c)
+		while (gba->video.frameCounter == frameCounter) {
+			while (cpu->cycles >= cpu->nextEvent) cpu->irqh.processEvents(cpu);
+			uint32_t pc = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			for (size_t i = 0; started && i < PLACES_SEEN; i++) {
+				if (pc - places[i].base >= places[i].size) continue;
+				uint32_t which = places[i].starts[(pc - places[i].base) / 2];
+				if (which && ++started[which - 1] == nextTime[which - 1]) {
+					nextTime[which - 1] *= 3;
+					out32(which - 1); out32(frame); out32(started[which - 1]);
+					for (int r = 0; r < 4; r++) out32((uint32_t) cpu->gprs[r]);
+					out32((uint32_t) cpu->gprs[ARM_SP]);
+					takeImage(after);
+					out(after, IMAGE);
+					send();
+				}
+				break;
+			}
+			ARMRun(cpu);
+		}
+	}
+	free(buttons);
+	free(sets);
+	out32(0xFFFFFFFFu);
+	out32(frames);
+	send();
+}
+
 int main(int argc, char** argv) {
 	onWindows(&argv);
 	if (argc < 2) {
@@ -355,14 +479,7 @@ int main(int argc, char** argv) {
 	gba = core->board;
 	romSize = (uint32_t) gba->memory.romSize;
 	memory = cpu->memory;
-	cpu->memory.load32 = load32;
-	cpu->memory.load16 = load16;
-	cpu->memory.load8 = load8;
-	cpu->memory.store32 = store32;
-	cpu->memory.store16 = store16;
-	cpu->memory.store8 = store8;
-	cpu->memory.loadMultiple = loadMultiple;
-	cpu->memory.storeMultiple = storeMultiple;
+	watchMemory();
 	void* state = malloc(core->stateSize(core));
 	if (!state) return 1;
 
@@ -392,6 +509,14 @@ int main(int argc, char** argv) {
 			send();
 		} else if (command == 'c') {
 			call(state);
+		} else if (command == 't') {
+			askedTop = in32() & ~3u;
+			out32(0);
+			send();
+		} else if (command == 'w') {
+			watchFunctions();
+		} else if (command == 'p') {
+			play();
 		} else {
 			fprintf(stderr, "call doesn't know '%c'\n", command);
 			return 2;
