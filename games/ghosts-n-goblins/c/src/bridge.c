@@ -30,7 +30,7 @@ void bridge_flame(uint8_t object) {
   took(FLAME_BOX_ACROSS);
   RAM[0x27] = 0x40;
   took(FLAME_BOX_UP_AND_DOWN);
-  if (!arthur_near(object)) {
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) {
     took(FLAME_ARTHUR_AWAY);
     flame_goes_out(object);
     return;
@@ -51,7 +51,7 @@ void bridge_flame(uint8_t object) {
   RAM[0x26] = 4;
   took(FLAME_TOUCH_BOX);
   // $F5E3: the end of the enemies' tests, Arthur's touch only
-  if (!arthur_near(object)) { took(ENEMY_NOT_TOUCHED); return; }
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(ENEMY_NOT_TOUCHED); return; }
   RAM[OBJECT_FLAGS + ARTHUR] |= ARTHUR_HIT;
   took(ENEMY_TOUCHES_ARTHUR);
 }

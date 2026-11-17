@@ -22,12 +22,14 @@ enum { VIEW_X = 0x64, VIEW_X_SCREEN = 0x65, VIEW_Y = 0x67, VIEW_Y_SCREEN = 0x68 
 #define B_X RAM[0x76]
 
 // sub_F321 and sub_F346
+// dp:twin sub_F321 +6 show_object(X) if X < 25
 void show_object(uint8_t object) {
   took(OBJECT_SHOWN_READ_FLAGS);
   if (object >= 0x10) took(READ_PAST_PAGE);   // the flags of the objects from the 17th on are in the next page
   RAM[OBJECT_FLAGS + object] |= OBJECT_FLAG_SHOWN;
   took(OBJECT_SHOWN_STORED);
 }
+// dp:twin sub_F346 +6 hide_object(X) if X < 25
 void hide_object(uint8_t object) {
   took(OBJECT_SHOWN_READ_FLAGS);
   if (object >= 0x10) took(READ_PAST_PAGE);
@@ -78,6 +80,7 @@ static void second_from_first(void) {
 
 // sub_F181: where an object is on the screen, from where it is in the stage and where the view is. A screen down is 240
 // pixels, so an object on another screen than the view's is 16 pixels nearer than the numbers say.
+// dp:twin sub_F181 +6 place_on_screen(X) if X < 25
 void place_on_screen(uint8_t object) {
   took(CALLS);
   object_place(object, 1);
@@ -95,6 +98,7 @@ void place_on_screen(uint8_t object) {
 }
 
 // sub_F0A3: whether an object is in the view's own screen, across and down.
+// dp:twin sub_F0A3 +6 object_in_view(X) -> !C if X < 25
 int object_in_view(uint8_t object) {
   took(CALLS);
   object_place(object, 1);
@@ -110,6 +114,7 @@ int object_in_view(uint8_t object) {
 
 // sub_E3E3 and sub_EA2F. A place
 // whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
+// dp:twin sub_E3E3 +6 on_the_ground(X) -> C if X < 25
 int on_the_ground(uint8_t object) {
   took(GROUND_LOOKED_AT);
   RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
@@ -154,7 +159,7 @@ void key(uint8_t object) {
     RAM[OBJECT_HEADING + object] = 0x08;
     took(KEY_FALLS);
     took(CALLS);
-    move_object(object, 0x08);
+    move_object(object, 0x08, Y_NOT_FOLLOWED);
     place_on_screen(object);
     if (!on_the_ground(object)) { took(KEY_IN_THE_AIR); return; }
     took(BRANCH_TAKEN);
@@ -164,7 +169,7 @@ void key(uint8_t object) {
   }
   RAM[0x26] = RAM[0x27] = 8;
   took(KEY_LOOKS);
-  if (!arthur_near(object)) { took(KEY_NOT_TAKEN); return; }
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(KEY_NOT_TAKEN); return; }
   RAM[0xC9] = 0xFF;
   RAM[OBJECT_FLAGS + object] = 0;
   RAM[0x25] = RAM[0x27] = RAM[0x26] = 0;
@@ -174,6 +179,7 @@ void key(uint8_t object) {
   took(RETURNS);
 }
 
+// dp:twin sub_DA28 +6 take_object() -> Y
 uint8_t take_object(void) {
   enum { FIRST = 1, NEXT_SEARCH = 0xCE, AWAKE = 0x065D };
   uint8_t object = RAM[NEXT_SEARCH];
@@ -190,10 +196,15 @@ uint8_t take_object(void) {
         { 0x05, TAKE_OBJECT_KIND_5 }, { 0x0F, TAKE_OBJECT_KIND_F }, { 0x10, TAKE_OBJECT_KIND_10 }, { 0x11, TAKE_OBJECT_KIND_11 },
       };
       uint8_t kind = RAM[OBJECT_KIND + object];
+      if ((OBJECT_KIND & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
       cost takes = TAKE_OBJECT_OTHER_KIND;
       stays = 0;
       for (unsigned k = 0; k < sizeof STAYING / sizeof *STAYING; k++) if (kind == STAYING[k].kind) { takes = STAYING[k].stays; stays = 1; }
-      if (kind == 0x06) { stays = RAM[AWAKE + object] != 0; takes = stays ? TAKE_OBJECT_KIND_6_AWAKE : TAKE_OBJECT_KIND_6; }
+      if (kind == 0x06) {
+        stays = RAM[AWAKE + object] != 0;
+        takes = stays ? TAKE_OBJECT_KIND_6_AWAKE : TAKE_OBJECT_KIND_6;
+        if ((AWAKE & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
+      }
       took(takes);
       if (!stays) break;
     }
@@ -208,6 +219,7 @@ uint8_t take_object(void) {
   return object;
 }
 
+// dp:twin sub_DA18 free_object() -> Y
 uint8_t free_object(void) {
   uint8_t object = 1;
   took(FREE_OBJECT_BEGINS);
@@ -221,8 +233,30 @@ uint8_t free_object(void) {
   return object;
 }
 
-// For the kinds it doesn't count: the ones it does, at $F70F and $F722, aren't ported yet. dp:stop sub_F70F sub_F722
+// sub_F708, which runs on into sub_F734. Kind $1F says at $BF that it's gone. One of the kinds 5, 9 and $15 whose flag
+// $04 is set is counted off at $C3, and the last of them leaves $FF at $C4.
+// dp:twin sub_F708 remove_object(X) if X < 25
 void remove_object(uint8_t object) {
+  enum { COUNTED = 0x04 };
+  uint8_t kind = RAM[OBJECT_KIND + object];
+  if (kind == 0x1F) {
+    took(REMOVED_KIND_1F);
+    RAM[0xBF] = 0xFF;
+    took(REMOVED_KIND_1F_SAID);
+  } else if (kind == 0x05 || kind == 0x09 || kind == 0x15) {
+    took(kind == 0x05 ? REMOVED_KIND_5 : kind == 0x09 ? REMOVED_KIND_9 : REMOVED_KIND_15);
+    if (object >= 0x10) took(READ_PAST_PAGE);
+    if (!(RAM[OBJECT_FLAGS + object] & COUNTED)) took(BRANCH_TAKEN);
+    else {
+      RAM[0xC3]--;
+      if (RAM[0xC3]) took(REMOVED_COUNTED);
+      else {
+        took(REMOVED_LAST_COUNTED);
+        RAM[0xC4] = 0xFF;
+        took(REMOVED_LAST_SAID);
+      }
+    }
+  } else took(REMOVED_OTHER_KIND);
   RAM[0x0647 + object] = 0;
   RAM[OBJECT_FLAGS + object] = 0;
   took(OBJECT_REMOVED);
@@ -289,22 +323,28 @@ static void add_down(uint8_t object) {
 // for each way, how far down and how far across a speed of 256 goes, in 256ths of a pixel.
 // sub_EFDA, with its call: how far `speed` goes the way an object is heading, left in $77, $73 and $7B down and $78,
 // $74 and $7C across.
-void find_move(uint8_t object, uint8_t speed) {
+// dp:twin sub_EFDA +6 find_move(X, A, Y) if X < 25
+void find_move(uint8_t object, uint8_t speed, uint8_t y) {
+  enum { WAYS = 0xF2A3 };
   took(MOVE_CALLED);
   RAM[0xA0] = speed;
+  RAM[0x9F] = y;
   took(MOVE_TABLE_HIGH);
-  RAM[0x9E] = 0xF2;
+  RAM[0x9E] = WAYS >> 8;
   took(MOVE_TABLE_LOW);
-  RAM[0x9D] = 0xA3;
+  RAM[0x9D] = WAYS & 0xFF;
   took(MOVE_WAY_READ);
   if ((OBJECT_HEADING & 0xFF) + object > 0xFF) took(READ_PAST_PAGE);
-  uint16_t way = (uint16_t)(0xF2A3 + RAM[OBJECT_HEADING + object] * 4);
+  uint8_t way = (uint8_t)(RAM[OBJECT_HEADING + object] * 4);   // a way's four bytes in the table, counted in a byte
   for (int across = 0; across < 2; across++) {
+    uint8_t first = (uint8_t)(way + across * 2), second = (uint8_t)(first + 1);
     RAM[0x48] = 0;
     took(across ? MOVE_THIRD_READ : MOVE_FIRST_READ);
-    RAM[0x26] = cart(7, (uint16_t)(way + across * 2));
+    if ((WAYS & 0xFF) + first > 0xFF) took(READ_PAST_PAGE);
+    RAM[0x26] = cart(7, (uint16_t)(WAYS + first));
     took(MOVE_SECOND_READ);
-    RAM[0x27] = cart(7, (uint16_t)(way + across * 2 + 1));
+    if ((WAYS & 0xFF) + second > 0xFF) took(READ_PAST_PAGE);
+    RAM[0x27] = cart(7, (uint16_t)(WAYS + second));
     if (RAM[0x27] & 0x80) {
       took(MOVE_WAY_BACK);
       RAM[0x48] = 0xFF;
@@ -322,10 +362,12 @@ void find_move(uint8_t object, uint8_t speed) {
     RAM[0x7B + across] = RAM[0x26];
     took(across ? MOVE_FOUND : MOVE_ACROSS_BEGINS);
   }
+  RAM[0x23] = RAM[0x9F];   // which sub_F03E gives back to its caller
 }
 
-void move_object(uint8_t object, uint8_t speed) {
-  find_move(object, speed);
+// dp:twin sub_F03E move_object(X, A, Y) if X < 25
+void move_object(uint8_t object, uint8_t speed, uint8_t y) {
+  find_move(object, speed, y);
   uint32_t x = (uint32_t)(RAM[OBJECT_X_SCREEN + object] << 16 | RAM[OBJECT_X + object] << 8 | RAM[OBJECT_X_PART + object]);
   x += (uint32_t)(A_X_SCREEN << 16 | A_X << 8 | RAM[0x7C]);
   took(MOVE_ACROSS_PART);
@@ -338,6 +380,7 @@ void move_object(uint8_t object, uint8_t speed) {
   add_down(object);
 }
 
+// dp:twin sub_F099 move_down(X) if X < 25
 void move_down(uint8_t object) {
   took(MOVE_DOWN_ONLY);
   RAM[0x7B] = 0;
@@ -347,7 +390,9 @@ void move_down(uint8_t object) {
 
 // sub_EF25: the way from the second place to the first, one of 16, from the copy's table of angles at $F1A3. For
 // places a screen or more apart both distances are halved, at $EF8E, until neither is.
-uint8_t way_to_first(void) {
+// dp:twin sub_EF25 way_to_first(Y) -> A
+uint8_t way_to_first(uint8_t y) {
+  RAM[0xA9] = y;
   int16_t down = (int16_t)((A_Y_SCREEN << 8 | A_Y) - (B_Y_SCREEN << 8 | B_Y)), across = (int16_t)((A_X_SCREEN << 8 | A_X) - (B_X_SCREEN << 8 | B_X));
   // each quarter counts its angle from its own start, and in two of them sub_EFC1 has the two distances change places
   uint16_t first, second;
@@ -391,16 +436,19 @@ uint8_t way_to_first(void) {
   return (uint8_t)((cart(7, (uint16_t)(0xF1A3 + (uint8_t)((a << 4) + b))) + RAM[0x22]) & 0x0F);
 }
 
-uint8_t way_to_arthur(uint8_t from) {
+uint8_t way_to_arthur(uint8_t from, uint8_t y) {
   A_X = RAM[OBJECT_X + ARTHUR];
   A_X_SCREEN = RAM[OBJECT_X_SCREEN + ARTHUR];
   A_Y = RAM[OBJECT_Y + ARTHUR];
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + ARTHUR];
   object_place(from, 0);
-  return way_to_first();
+  return way_to_first(y);
 }
 
+// sub_FA87, with its call. An object on a screen left of the stage's first, $80 or more, has him on its right.
+// dp:twin sub_FA87 +6 arthur_is_right_of(X) -> C if X < 25
 int arthur_is_right_of(uint8_t object) {
+  if (RAM[OBJECT_X_SCREEN + object] & 0x80) { took(ARTHUR_SIDE_OFF_STAGE); return 1; }
   took(ARTHUR_SIDE);
   return (RAM[OBJECT_X_SCREEN + ARTHUR] << 8 | RAM[OBJECT_X + ARTHUR]) >= (RAM[OBJECT_X_SCREEN + object] << 8 | RAM[OBJECT_X + object]);
 }
@@ -450,7 +498,7 @@ static void satan(uint8_t object) {
     }
     RAM[OBJECT_HEADING + object] = 1;
     took(SATAN_CARRIES);
-    move_object(object, 0x18);
+    move_object(object, 0x18, Y_NOT_FOLLOWED);
     RAM[OBJECT_X + PRINCESS] = (uint8_t)(RAM[OBJECT_X + object] - 8);
     RAM[OBJECT_Y + PRINCESS] = (uint8_t)(RAM[OBJECT_Y + object] + 0x10);
     took(SATAN_CARRIED);
@@ -495,9 +543,9 @@ static void satan(uint8_t object) {
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + PRINCESS];
   object_place(object, 0);
   took(SATAN_FLIES);
-  RAM[OBJECT_HEADING + object] = way_to_first();
+  RAM[OBJECT_HEADING + object] = way_to_first(Y_NOT_FOLLOWED);
   took(SATAN_HEADS);
-  move_object(object, 0x18);
+  move_object(object, 0x18, Y_NOT_FOLLOWED);
 }
 
 // sub_F63A: whether one object is within a box around another: $22 and $24 are how far left and right of it the first
@@ -522,7 +570,8 @@ static int within(uint8_t first, uint8_t object) {
 // sub_F68E: whether Arthur touches an object, whose own half width and half height are in $26 and $27. He touches nothing
 // while his flags say so, as in the opening scene before his jump. Standing, he's 8 pixels high either way from a
 // middle 4 pixels above his place; crouching, 4 from his place.
-int arthur_touches(uint8_t object) {
+// dp:twin sub_F68E arthur_touches(X, Y) -> C if X < 25
+int arthur_touches(uint8_t object, uint8_t y) {
   enum { CAN_TOUCH_NOTHING = 0x41, CROUCHING = 0x02 };
   if (RAM[OBJECT_FLAGS + ARTHUR] & CAN_TOUCH_NOTHING) { took(PICK_UP_CANNOT_BE_TOUCHED); return 0; }
   int standing = !(RAM[OBJECT_FLAGS + ARTHUR] & CROUCHING);
@@ -541,6 +590,7 @@ int arthur_touches(uint8_t object) {
   RAM[0x24] = (uint8_t)(RAM[0x26] + 4);
   took(TOUCH_BOX_SIDE);
   RAM[0x22] = (uint8_t)-RAM[0x24];
+  RAM[0xA9] = y;
   if (standing) {
     took(TOUCH_RAISED);
     RAM[OBJECT_SCREEN_Y + ARTHUR] -= 4;
@@ -556,6 +606,7 @@ int arthur_touches(uint8_t object) {
 }
 
 // The copy's lists at $F6EC and $F6F1 give each weapon's own half width and half height.
+// dp:twin sub_F611 weapon_touches(Y, X) -> C if X < 25 && Y < 25
 int weapon_touches(uint8_t weapon, uint8_t enemy) {
   uint8_t which = (uint8_t)(RAM[OBJECT_KIND + weapon] - LANCE);
   RAM[0xA9] = weapon;
@@ -564,6 +615,9 @@ int weapon_touches(uint8_t weapon, uint8_t enemy) {
   RAM[0x25] = (uint8_t)(cart(7, (uint16_t)(0xF6F1 + which)) + RAM[0x27]);
   RAM[0x23] = (uint8_t)-RAM[0x25];
   took(WEAPON_BOX);
+  // an object that isn't a weapon has its sizes read past the lists' page
+  if ((0xF6EC & 0xFF) + which > 0xFF) took(READ_PAST_PAGE);
+  if ((0xF6F1 & 0xFF) + which > 0xFF) took(READ_PAST_PAGE);
   return within(weapon, enemy);
 }
 
@@ -604,7 +658,7 @@ static void hidden_thing(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 6;
     took(HIDDEN_IN_VIEW);
-    if (!arthur_touches(object)) took(HIDDEN_NOT_TOUCHED);
+    if (!arthur_touches(object, Y_NOT_FOLLOWED)) took(HIDDEN_NOT_TOUCHED);
     else {
       // $BBAD: touched, it comes down as a pot, 100 pixels further on and 16 higher, with what its state says inside.
       // One whose flag $01 is set needs him crouching, and the armour isn't given to an Arthur who has his.
@@ -657,7 +711,7 @@ static void waiting_enemy(uint8_t object) {
   } else {
     RAM[0x26] = RAM[0x27] = 0x0A;
     took(WAITING_IN_VIEW);
-    if (!arthur_touches(object)) took(WAITING_NOT_TOUCHED);
+    if (!arthur_touches(object, Y_NOT_FOLLOWED)) took(WAITING_NOT_TOUCHED);
     else {
       uint16_t entry = (uint16_t)(0x9EA8 + RAM[OBJECT_STATE + object] * 4);
       took(WAITING_TOUCHED);
@@ -739,7 +793,7 @@ static void pick_up(uint8_t object) {
     took(PICK_UP_FLASHES);
   }
   RAM[0x26] = RAM[0x27] = 6;
-  int touched = arthur_touches(object);
+  int touched = arthur_touches(object, Y_NOT_FOLLOWED);
   if (!touched) took(PICK_UP_LEFT);
   if (!touched && object >= 0x10) took(READ_PAST_PAGE);
   if (touched && thing < 4) {

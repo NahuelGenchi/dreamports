@@ -135,11 +135,11 @@ static void drop(uint8_t object) {
   took(WINDOW_DROPS);
   move_down(object);
   own = RAM[OBJECT_SCREEN_Y + object];
-  if (own < 0x78) { took(WINDOW_DROPS_HIGH); move_object(object, 0); return; }
+  if (own < 0x78) { took(WINDOW_DROPS_HIGH); move_object(object, 0, Y_NOT_FOLLOWED); return; }
   RAM[0x22] = (uint8_t)((uint8_t)(RAM[OBJECT_SCREEN_Y + ARTHUR] - own) >> 2);
-  if (RAM[0x22] <= 0x1C) { took(WINDOW_DROPS_LOW); move_object(object, (uint8_t)(0x1C - RAM[0x22])); return; }
+  if (RAM[0x22] <= 0x1C) { took(WINDOW_DROPS_LOW); move_object(object, (uint8_t)(0x1C - RAM[0x22]), Y_NOT_FOLLOWED); return; }
   took(WINDOW_DROPS_LOWEST);
-  move_object(object, 0);
+  move_object(object, 0, Y_NOT_FOLLOWED);
 }
 
 // $AB88: eight rounds of a hop, up 4 lines a round as it goes, turning round on the fourth, and then it runs off.
@@ -163,7 +163,7 @@ static void hop(uint8_t object) {
   RAM[0x77] = 0xFF;
   move_down(object);
   took(WINDOW_HOP_MOVES);
-  move_object(object, 0x0F);
+  move_object(object, 0x0F, Y_NOT_FOLLOWED);
 }
 
 void window_thing(uint8_t object) {
@@ -227,12 +227,12 @@ void window_thing(uint8_t object) {
         return;
       }
       took(WINDOW_RUNS);
-      move_object(object, (uint8_t)(0x10 + SPEED_ADDED));
+      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), Y_NOT_FOLLOWED);
       return;
     case HOPS: took(WINDOW_MODE_HOPS); hop(object); return;
     default:
       took(WINDOW_RUNS_OFF);
-      move_object(object, (uint8_t)(0x10 + SPEED_ADDED));
+      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), Y_NOT_FOLLOWED);
       return;
   }
 }
@@ -325,7 +325,7 @@ static void throws_down(uint8_t object) {
   RAM[0x27] = 0x80;
   RAM[0x26] = 0x10;
   took(BIG_LOOKS_BELOW);
-  if (!arthur_near(object)) { took(BRANCH_TAKEN); throwing_shape(object); return; }
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(BRANCH_TAKEN); throwing_shape(object); return; }
   ++*count;
   took(BIG_THROWS_DOWN);
   uint8_t shot = throw_one(object);
@@ -354,7 +354,7 @@ static void walks(uint8_t object) {
     RAM[0x26] = 0x10;
     RAM[0x27] = 0x60;
     took(BIG_LOOKS);
-    if (!arthur_near(object)) took(BRANCH_TAKEN);
+    if (!arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
     else {
       *count = RAM[0x83] & 0x0F;
       took(BIG_STOPS_OVER_HIM);
@@ -362,7 +362,7 @@ static void walks(uint8_t object) {
     }
   }
   took(BIG_STEPS);
-  move_object(object, (uint8_t)(6 + WALK_SPEED_ADDED));
+  move_object(object, (uint8_t)(6 + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
   RAM[OBJECT_SHAPE + object] = 0xD0;
   took(BIG_WALK_SHAPE);
   if (flag(object, FACES_LEFT)) { RAM[OBJECT_SHAPE + object] = 0xE0; took(BIG_WALK_SHAPE_LEFT); }
@@ -453,7 +453,7 @@ static void on_his_floor(uint8_t object) {
   took(BIG_FLOOR_NOT_THROWING);
   if (way_shut(object)) { took(BIG_FLOOR_WAY_SHUT); return; }
   took(BIG_FLOOR_STEPS);
-  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED));
+  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
 }
 
 void big_man(uint8_t object) {

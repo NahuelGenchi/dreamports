@@ -14,18 +14,33 @@
 
 // ---- the cartridge: eight banks of program, one of them switched in at $8000, and the last always at $C000
 
-/** The byte at `address` with `bank` switched in at $8000, or the last bank's from $C000 up. */
+/** The byte at `address` with `bank` switched in at $8000, or the last bank's from $C000 up. The cartridge takes only
+ *  as many bits of a bank's number as it has banks for. */
 static inline uint8_t cart(uint8_t bank, uint16_t address) {
-  return address >= 0xC000 ? nes_prg[nes_prg_size - 0x4000 + (address - 0xC000)] : nes_prg[(uint32_t)bank * 0x4000 + (address - 0x8000)];
+  return address >= 0xC000 ? nes_prg[nes_prg_size - 0x4000 + (address - 0xC000)] : nes_prg[((uint32_t)bank * 0x4000 + (address - 0x8000)) & (nes_prg_size - 1)];
 }
+// dp:bank $C7
 #define BANK_NOW RAM[0xC7]    // the bank switched in at $8000
 #define BANK_HOME RAM[0xC8]   // the bank a routine that switches puts back: the stage's own
-/** The byte at `address` as the processor reads it: work memory, or the cartridge with the bank that's switched in.
- *  Between the two nothing answers on this cartridge, and the proof's emulator reads 0 there, as the original does when
- *  it looks up the stage's map before the stage's first screen. */
+/** A read of the hardware through a pointer, which the original makes when a stage's lists are looked up with a place
+ *  that isn't in them (time.c). */
+uint8_t hardware_read(uint16_t address);
+/** The byte at `address` as the processor reads it: work memory, the hardware's registers up to $401F, or the cartridge
+ *  with the bank that's switched in. Between the last two nothing answers on this cartridge, and the proof's emulator
+ *  reads 0 there, as the original does when it looks up the stage's map before the stage's first screen. */
 static inline uint8_t peek(uint16_t address) {
   if (address < 0x2000) return RAM[address & 0x7FF];
+  if (address < 0x4020) return hardware_read(address);
   return address < 0x8000 ? 0 : cart(BANK_NOW, address);
+}
+/** The byte a pointer and a count lead to, as the processor reads it. When the count takes it into the next page, the
+ *  processor first reads the same place a page away, which the hardware's registers notice. The console reads the page
+ *  below. The proof's emulator reads the page whose lowest bit is the other one, which is the same register of the
+ *  PPU's, as they repeat every 8 bytes, but at the two ends of the hardware's addresses: this follows the emulator. */
+static inline uint8_t peek_counted(uint16_t pointer, uint8_t count) {
+  uint16_t address = (uint16_t)(pointer + count), first = address ^ 0x100;
+  if ((pointer & 0xFF) + count > 0xFF && first >= 0x2000 && first < 0x4020) hardware_read(first);
+  return peek(address);
 }
 /** A 16-bit number at `address`, low byte first. */
 static inline uint16_t peek16(uint16_t address) { return (uint16_t)(peek(address) | peek((uint16_t)(address + 1)) << 8); }
@@ -77,6 +92,7 @@ void frame_ends(void);
 enum { TASK_TITLE = 0x02, TASK_GAME = 0x04, TASK_VIEW = 0x06, TASK_ARTHUR = 0x08, TASK_OBJECTS = 0x0A, TASK_SPRITES = 0x0C, TASK_TILES = 0x0E, TASK_LAST = 0x10 };
 #define TASK_NOW RAM[0x00]             // the task that's running, or 0 between rounds
 #define TASK_STATE(task) RAM[0x02 + (task)]
+#define TASK_STACK(task) RAM[0x03 + (task)]   // where the task's own stack is, in the stack's page, while it isn't running
 enum { TASK_READY = 0x80, TASK_ASLEEP = 0xC0, TASK_FREE = 0x00 };
 #define TASK_SLEEP(task) (0x12 + (task))  // how many V-blanks more a sleeping task sleeps, 16 bits
 #define FRAMES_SINCE_ROUND RAM[0x4E]   // counted by V-blank, and cleared as a round starts
@@ -175,8 +191,12 @@ enum { NO_OBJECT = 0x11 };
 uint8_t take_object(void);
 /** sub_F708: an object is gone. */
 void remove_object(uint8_t object);
+/** The processor's Y register, for a routine that keeps it for its caller, from a caller whose code doesn't follow it
+ *  yet. sub_EFDA and sub_F03E keep it in $9F and hand it back through $23, and sub_EF25 and sub_F68E keep it in $A9, so
+ *  each of their twins is given it, as `y`, and writes it there. */
+enum { Y_NOT_FOLLOWED = 0 };
 /** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
-int arthur_touches(uint8_t object);
+int arthur_touches(uint8_t object, uint8_t y);
 /** sub_F611: whether one of Arthur's weapons touches an enemy, whose half width and half height are in $26 and $27. */
 int weapon_touches(uint8_t weapon, uint8_t enemy);
 enum { FIRST_WEAPON = 0x11, WEAPONS = 3, LANCE = 0x23, DAGGER = 0x24, TORCH = 0x25, AXE = 0x26, CROSS = 0x27 };  // the weapons' objects and kinds
@@ -198,15 +218,15 @@ void pot(uint8_t object);
 /** sub_02_8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
 void zombies_come(uint8_t *x);
 /** sub_F03E: moves an object by `speed` the way it's heading, one of 16 ways. */
-void move_object(uint8_t object, uint8_t speed);
+void move_object(uint8_t object, uint8_t speed, uint8_t y);
 /** sub_EFDA: how far `speed` goes the way an object is heading, left in $77, $73, $7B, $78, $74 and $7C. */
-void find_move(uint8_t object, uint8_t speed);
+void find_move(uint8_t object, uint8_t speed, uint8_t y);
 /** sub_04_B84D, kind $0E: a platform that moves from side to side, and from $B85A kind $0D, the eyeball raft (platform.c). */
 void platform(uint8_t object);
 /** sub_F099: moves an object down by what's in $77 and $73, screens and pixels. */
 void move_down(uint8_t object);
 /** sub_EF25, from an object to Arthur: the way to head, one of 16. */
-uint8_t way_to_arthur(uint8_t from);
+uint8_t way_to_arthur(uint8_t from, uint8_t y);
 /** sub_FA87: whether Arthur is at an object's place across or right of it. */
 int arthur_is_right_of(uint8_t object);
 /** sub_04_9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
@@ -228,7 +248,7 @@ void knight(uint8_t object);
 /** sub_02_88F6: every sixth of the enemies that come by themselves carries a pot (enemies.c). */
 void sixth_carries_a_pot(uint8_t object, uint8_t *x);
 /** sub_F687: whether Arthur is within the box in $26 and $27 around an object that's shown (flier.c). */
-int arthur_near(uint8_t object);
+int arthur_near(uint8_t object, uint8_t y);
 /** sub_02_8610 and sub_04_A66A, kind 4: the enemy of the first stage's forest (forest.c). */
 void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
@@ -269,7 +289,7 @@ void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */
 void enemy_burns_away(uint8_t object);
 /** sub_EF25: the way from the place in $75, $79, $76 and $7A to the one in $73, $77, $74 and $78, one of 16. */
-uint8_t way_to_first(void);
+uint8_t way_to_first(uint8_t y);
 void crow(uint8_t object);
 void plant_shot(uint8_t object);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */

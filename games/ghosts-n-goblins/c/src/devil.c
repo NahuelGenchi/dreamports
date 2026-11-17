@@ -78,7 +78,7 @@ static void carry(uint8_t object) {
   }
   RAM[0x26] = 0x60;
   RAM[0x27] = 0x10;
-  if (!arthur_near(object)) { took(DEVIL_HOLDS_ON); return; }
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(DEVIL_HOLDS_ON); return; }
   CARRIED(object) = 0;
   RAM[OBJECT_FLAGS + carried] |= 0x02;
   RAM[OBJECT_HEADING + carried] = 0x04;
@@ -166,7 +166,7 @@ void devil(uint8_t object) {
     ++*count;
     if (*count < 0x18) {
       took(DEVIL_DIVES);
-      move_object(object, 0x14);
+      move_object(object, 0x14, Y_NOT_FOLLOWED);
       shape(object);
       return;
     }
@@ -185,14 +185,14 @@ void devil(uint8_t object) {
     ++*count;
     if (*count < 0x10) {
       took(DEVIL_HOVERS);
-      move_object(object, 0x08);
+      move_object(object, 0x08, Y_NOT_FOLLOWED);
       took(JUMPS);
       shape(object);
       return;
     }
     *count = 0;
     took(DEVIL_AIMS);
-    RAM[OBJECT_HEADING + object] = way_to_arthur(object);
+    RAM[OBJECT_HEADING + object] = way_to_arthur(object, Y_NOT_FOLLOWED);
     *flags |= DIVES;
     took(DEVIL_AIMED);
     if (object >= 0x10) took(READ_PAST_PAGE);
@@ -211,7 +211,7 @@ void devil(uint8_t object) {
     return;
   }
   took(*state < 2 ? DEVIL_FLIES : *state == 2 ? DEVIL_FLIES_THIRD_TIME : DEVIL_FLIES_LATER);
-  move_object(object, (uint8_t)((*state == 2 ? 0x18 : 0x10) + SPEED_ADDED));
+  move_object(object, (uint8_t)((*state == 2 ? 0x18 : 0x10) + SPEED_ADDED), Y_NOT_FOLLOWED);
   took(JUMPS);
   shape(object);
 }

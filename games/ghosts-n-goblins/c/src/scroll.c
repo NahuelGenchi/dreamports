@@ -31,7 +31,7 @@ static uint8_t block_at_place(void) {
   if (RAM[0x22]) {
     took(STAGE_BLOCK_ROWS_DOWN);
     do {
-      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2)));
+      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + (uint8_t)(RAM[0xCF] * 2))));
       took(STAGE_BLOCK_ROW_DOWN);
     } while (--RAM[0x22]);
   }
@@ -43,18 +43,19 @@ static uint8_t block_at_place(void) {
 static void screen_blocks(uint8_t screen) {
   SCREEN_AT = screen;
   if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
-  RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
+  RAM[0x72] = peek_counted(ram16(STAGE_SCREENS), SCREEN_AT);
   set_ram16(0x54, (uint16_t)(peek16(0x800E) + RAM[0x72] * 240));   // a screen's 240 blocks
   set_ram16(0x47, (uint16_t)(RAM[0x72] << 4));
   BLOCK_AT = (uint8_t)((AT_X >> 4) + (AT_Y & 0xF0));
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
-  BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
+  BLOCK = peek_counted(ram16(0x54), BLOCK_AT);
 }
 
 // $EA55, with sub_EA66 and sub_E945: the block at the place in $77, $73, $78 and $74, read with the stage's own bank
 // switched in. Enemies and weapons ask for it in the middle of their turns, so a frame can end inside it, and it's
 // counted a write at a time: the screen's place among its 240-block lists is worked out in steps, in $54 and $55 and
 // in $47 and $48.
+// dp:twin sub_EA55 block_at_stage_place() -> A
 uint8_t block_at_stage_place(void) {
   took(BLOCK_BANK_READ);
   RAM[0xD4] = BANK_NOW;
@@ -67,8 +68,10 @@ uint8_t block_at_stage_place(void) {
   else {
     // a stage more than one screen high lists its screens a row at a time, each row as long as the copy's list at $EB30 says
     took(BLOCK_ROWS_BEGIN);
+    uint8_t set = (uint8_t)(RAM[0xCF] * 2);
     for (;;) {
-      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2)));
+      if ((0xEB30 & 0xFF) + set > 0xFF) took(READ_PAST_PAGE);
+      before = (uint8_t)(before + cart(7, (uint16_t)(0xEB30 + set)));
       RAM[0x22]--;
       if (!RAM[0x22]) break;
       took(BLOCK_ROW_ADDED);
@@ -78,7 +81,7 @@ uint8_t block_at_stage_place(void) {
   SCREEN_AT = (uint8_t)(before + AT_X_SCREEN);
   took(BLOCK_SCREEN_KEPT);
   if ((RAM[STAGE_SCREENS] + SCREEN_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
-  RAM[0x72] = peek((uint16_t)(ram16(STAGE_SCREENS) + SCREEN_AT));
+  RAM[0x72] = peek_counted(ram16(STAGE_SCREENS), SCREEN_AT);
   took(BLOCK_SCREEN_READ);
   RAM[0x55] = (uint8_t)(RAM[0x72] + peek(0x800F));
   took(BLOCK_LIST_HIGH);
@@ -106,7 +109,7 @@ uint8_t block_at_stage_place(void) {
   BLOCK_AT = (uint8_t)(BLOCK_AT + (AT_Y & 0xF0));
   took(BLOCK_ROW);
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
-  BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
+  BLOCK = peek_counted(ram16(0x54), BLOCK_AT);
   took(BLOCK_READ);
   switch_bank(RAM[0xD4]);
   took(BLOCK_BANK_BACK);
@@ -117,7 +120,7 @@ uint8_t block_at_stage_place(void) {
 static void find_block_tiles(void) {
   took(COLUMN_BLOCK_TILES);
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
-  BLOCK = peek((uint16_t)(ram16(0x54) + BLOCK_AT));
+  BLOCK = peek_counted(ram16(0x54), BLOCK_AT);
   set_ram16(0x26, (uint16_t)(peek16(0x8010) + BLOCK * 4));
 }
 

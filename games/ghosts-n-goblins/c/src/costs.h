@@ -370,7 +370,16 @@ COST(WAITING_DOWN, 19)            // to sub_F099 for a place lower,
 COST(WAITING_UP, 23)              // or higher
 COST(PICK_UP_ARMOUR_TAKEN, 101)   // $BA3F to sub_F708's end, and back: the armour, in the opening scene
 COST(PICK_UP_ARMOUR_SOUND, 7)     // and $BA83 to sub_ED51 outside it, more than the branch past it
-COST(OBJECT_REMOVED, 42)          // sub_F708, and back, for a kind it doesn't count
+COST(REMOVED_OTHER_KIND, 22)      // sub_F708 to $F72F, for a kind it doesn't count,
+COST(REMOVED_KIND_1F, 13)         // or for kind $1F to its store of $BF,
+COST(REMOVED_KIND_1F_SAID, 3)     // and its jump,
+COST(REMOVED_KIND_5, 36)          // or for each kind it counts, to the branch after sub_F2EB,
+COST(REMOVED_KIND_9, 40)
+COST(REMOVED_KIND_15, 43)
+COST(REMOVED_COUNTED, 10)         // then one counted off, more of them left,
+COST(REMOVED_LAST_COUNTED, 11)    // or the last, to its store of $C4,
+COST(REMOVED_LAST_SAID, 3)
+COST(OBJECT_REMOVED, 20)          // and $F72F through sub_F734, and back
 COST(TOUCH_SET_UP, 11)            // sub_F68E to the first store of his half height, a write at a time,
 COST(TOUCH_HEIGHT, 20)            // to its second, for an Arthur who stands,
 COST(TOUCH_CROUCHING, 13)         // or one who crouches, to the store of his own,
@@ -452,7 +461,8 @@ COST(MOVE_DOWN_SCREEN, 12)        // to the store of the screens in $77,
 COST(MOVE_DOWN_ADDED, 7)          // and to $F075
 COST(MOVE_DOWN_ONLY, 2)           // sub_F099 to the store of no 256ths,
 COST(MOVE_DOWN_ONLY_JUMPS, 6)     // and to $F05A
-COST(ARTHUR_SIDE, 36)             // sub_FA87 with its call: which side of an object Arthur is
+COST(ARTHUR_SIDE, 36)             // sub_FA87 with its call: which side of an object Arthur is,
+COST(ARTHUR_SIDE_OFF_STAGE, 21)   // or of one on a screen left of the stage's first
 COST(MOVE_SAME_SCREEN, 12)        // $F075 to $F091, on the same screen down
 COST(MOVE_NEXT_SCREEN_PUTS, 13)   // or past its 240 lines, to the store of the pixels,
 COST(MOVE_NEXT_SCREEN_PUT, 5)     // to the store of the screen,
@@ -707,7 +717,12 @@ COST(SCORE_SAME_AS_BEST, 5)       // and all seven the same, to $D9A6
 COST(SCORE_BEST_KEPT, 144)        // $D983 to $D998: the best score is this one
 COST(SCORE_BEST_MARKED_ALREADY, 3)
 COST(SCORE_BEST_MARKED, 20)       // $D998 to $D9A6
-COST(SCORE_LIFE_LOOKED_AT, 35)    // $D9A6 to $D97B: not yet the score that gives a life
+COST(SCORE_LIFE_LOOKED_AT, 35)    // $D9A6 to $D97B: not yet the score that gives a life,
+COST(SCORE_LIFE_GIVEN, 41)        // or to the life added, at $D9C2,
+COST(SCORE_LIFE_SOUND, 2)         // $D9C5, to its sound's call,
+COST(SCORE_NEXT_LIFE_FIRST, 29)   // and $D9CA to $D97B: the next life's score after the first,
+COST(SCORE_NEXT_LIFE, 34)         // after a later one,
+COST(SCORE_NEXT_LIFE_CARRIES, 47) // or after one whose ten thousands pass nine
 COST(SCORE_ENDS, 12)              // $D97E, and back
 COST(ARTHUR_TURN_YIELDS, 43)      // $DB93 and $E4E5, to the jump that yields
 COST(ARTHUR_FALL_CHECKS, 66)      // $E28E to $E29B
@@ -851,7 +866,8 @@ COST(SCORE_SHOWN_BEGINS, 10)      // sub_D8D8
 COST(SCORE_DIGIT_EMPTY, 31)       // each of the six digits: a 0,
 COST(SCORE_DIGIT, 33)             // or not
 COST(TOP_WORDS_PLACED, 41)        // $D18A to $D1A9
-COST(TOP_LIVES, 44)               // sub_D9F8 with its call, with fewer than ten lives left
+COST(TOP_LIVES, 44)               // sub_D9F8 with its call, with fewer than ten lives left,
+COST(TOP_LIVES_TEN, 14)           // and each ten of them
 COST(TOP_TIME, 52)                // sub_D82B with its call
 COST(STAGE_START_NO_BANNER, 8)    // $D1B0 to $D1DD, for the first two sets of stages,
 COST(STAGE_START_TILES, 50)       // or $D1B0 to sub_EECF, with its call, for the third and fourth: their own tiles,

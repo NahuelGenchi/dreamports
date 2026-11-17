@@ -30,17 +30,25 @@ void write_ppu_control(uint8_t value) {
 
 // sub_C2BC: starts a task from its first instruction, unless it's running already. The original writes its first
 // return address on the task's own stack, whose top the table at $C3BC gives.
+// dp:twin sub_C2BC start_task(A) if A >= 2 && A <= 14 && !(A & 1)
 void start_task(uint8_t task) {
   RAM[0x28] = task;
   if (TASK_STATE(task) & 0x80) { took(TASK_ALREADY_RUNNING); return; }
   TASK_STATE(task) |= TASK_READY;
   RAM[0x24] = (uint8_t)(cart(7, (uint16_t)(0xC3BC + task)) - 2);
   RAM[0x25] = 0x01;
+  // what the original's switch to the task pulls off its stack: the flags, and where its code starts, from $C3CC
+  uint16_t stack = ram16(0x24);
+  RAM[stack] = 0x04;
+  RAM[(uint16_t)(stack + 1) & 0x7FF] = cart(7, (uint16_t)(0xC3CC + task));
+  RAM[(uint16_t)(stack + 2) & 0x7FF] = cart(7, (uint16_t)(0xC3CD + task));
+  TASK_STACK(task) = (uint8_t)(RAM[0x24] - 2);
   task_step[task] = 0;
   took(TASK_STARTED);
 }
 
 // sub_C303: stops a task, wherever it is.
+// dp:twin sub_C303 stop_task(A) if A >= 2 && A <= 14 && !(A & 1)
 void stop_task(uint8_t task) {
   RAM[0x28] = task;
   TASK_STATE(task) = TASK_FREE;

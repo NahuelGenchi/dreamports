@@ -47,7 +47,7 @@ void platform(uint8_t object) {
   if (moves) {
     took(PLATFORM_MOVES);
     took(CALLS);
-    move_object(object, list((uint16_t)(SPEEDS + state)));
+    move_object(object, list((uint16_t)(SPEEDS + state)), Y_NOT_FOLLOWED);
     if (object_in_view(object)) took(PLATFORM_IN_VIEW);
     else {
       took(PLATFORM_OUT_OF_VIEW);
@@ -86,7 +86,7 @@ void platform(uint8_t object) {
     RAM[OBJECT_Y_SCREEN + ARTHUR] = (uint8_t)(RAM[OBJECT_Y_SCREEN + object] - 1);
   }
   took(PLATFORM_CARRIES);
-  find_move(object, list((uint16_t)(SPEEDS + state)));
+  find_move(object, list((uint16_t)(SPEEDS + state)), Y_NOT_FOLLOWED);
   uint32_t his_place = (uint32_t)(RAM[OBJECT_X_SCREEN + ARTHUR] << 16 | RAM[OBJECT_X + ARTHUR] << 8 | RAM[OBJECT_X_PART + ARTHUR]);
   his_place += (uint32_t)(RAM[0x78] << 16 | RAM[0x74] << 8 | RAM[0x7C]);
   took(PLATFORM_CARRIES_PART);
@@ -110,7 +110,7 @@ enum { SPEEDS_BY_STATE = 0xB800, FALLS = 0x02, DOWN = 0x08 };
 static int thing_moves(uint8_t object, int moves) {
   if (moves) {
     took(THING_MOVES);
-    move_object(object, list((uint16_t)(SPEEDS_BY_STATE + RAM[OBJECT_STATE + object])));
+    move_object(object, list((uint16_t)(SPEEDS_BY_STATE + RAM[OBJECT_STATE + object])), Y_NOT_FOLLOWED);
   }
   took(OBJECT_SHOWN_READ);
   if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(THING_NOT_SHOWN); return 0; }
@@ -144,7 +144,7 @@ static void thing_holds(uint8_t object) {
   if (carries) {
     // sub_04_B80D
     took(THING_CARRY_BEGINS);
-    find_move(object, list((uint16_t)(SPEEDS_BY_STATE + state)));
+    find_move(object, list((uint16_t)(SPEEDS_BY_STATE + state)), Y_NOT_FOLLOWED);
     uint32_t his = (uint32_t)(RAM[OBJECT_Y_SCREEN + ARTHUR] << 16 | RAM[OBJECT_Y + ARTHUR] << 8 | RAM[OBJECT_Y_PART + ARTHUR]);
     his += (uint32_t)(RAM[0x77] << 16 | RAM[0x73] << 8 | RAM[0x7B]);
     RAM[OBJECT_Y_PART + ARTHUR] = (uint8_t)his;
@@ -247,7 +247,7 @@ void falling_thing(uint8_t object) {
   RAM[0x26] = 0x28;
   RAM[0x27] = 0x10;
   took(FALLING_THING_LOOKS);
-  if (!arthur_near(object)) { took(FALLING_THING_WAITS); return; }
+  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(FALLING_THING_WAITS); return; }
   took(FALLING_THING_SEES_HIM);
   RAM[OBJECT_FLAGS + object] |= FALLS;
   took(OBJECT_FLAG_CHANGED);
@@ -298,7 +298,7 @@ void lift(uint8_t object) {
   }
   if (moves) {
     took(LIFT_MOVES);
-    move_object(object, cart(4, (uint16_t)(SPEEDS_BY_STATE + RAM[OBJECT_STATE + object])));
+    move_object(object, cart(4, (uint16_t)(SPEEDS_BY_STATE + RAM[OBJECT_STATE + object])), Y_NOT_FOLLOWED);
   }
   place_on_screen(object);
   took(OBJECT_SHOWN_READ);
