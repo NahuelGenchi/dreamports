@@ -50,7 +50,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join, relative, sep } from 'node:path';
+import { basename, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
 import { readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
@@ -184,16 +184,17 @@ function buildProcessor(log) {
 
 /**
  * Builds the check for the C in `sources` (a folder) against the copy `rom` (its bytes), in the folder `work`, and
- * gives { program, contracts }: the program and each contract with `file`, `line` and its place among them, `index`.
- * `functions`, a code map's, says where the original's functions start, when there's one.
+ * gives { program, contracts, notes }: the program, each contract with `file`, `line` and its place among them,
+ * `index`, and what to say of them. `functions`, a code map's, says where the original's functions start, when there's one.
  */
-export function buildCheck({ rom, sources, work, functions = null, log = console.log }) {
+export function buildCheck({ rom, sources: folder, work, functions = null, log = console.log }) {
+  const sources = resolve(folder);
   const program = nesProgram(rom);
   if (!program) throw new Error("That copy isn't an NES game's.");
   if (!MAPPERS.has(program.mapper)) throw new Error(`The function check can't lay out the program of an NES cartridge of mapper ${program.mapper} yet: it knows the ones that switch nothing and UNROM (docs/CONSOLES.md).`);
   const files = readdirSync(sources).filter(name => name.endsWith('.c')).sort().map(name => join(sources, name));
   if (!files.length) throw new Error(`${inRepo(sources)} has no C.`);
-  const contracts = [], errors = [];
+  const contracts = [], errors = [], notes = [];
   let bank = null;
   const units = files.map(file => {
     const found = contractsIn(readFileSync(file, 'utf8'), program.banks);
@@ -207,7 +208,8 @@ export function buildCheck({ rom, sources, work, functions = null, log = console
   for (const contract of contracts) {
     if (seen.has(contract.offset)) errors.push(`${inRepo(contract.file)}:${contract.line}: ${contract.name} has a contract already, at ${inRepo(seen.get(contract.offset).file)}:${seen.get(contract.offset).line}.`);
     seen.set(contract.offset, contract);
-    if (functions && !functions.some(f => f.address === contract.offset)) errors.push(`${inRepo(contract.file)}:${contract.line}: the code map has no function that starts at ${contract.name}, so there's nothing there to call.`);
+    // checked all the same, as the processor can be started anywhere, and said, as a twin is a whole function of the original
+    if (functions && !functions.some(f => f.address === contract.offset)) notes.push(`${inRepo(contract.file)}:${contract.line}: the code map has no function that starts at ${contract.name}, so this twin is a piece of another function, or the code map lacks one.`);
   }
   if (errors.length) throw new Error(errors.join('\n'));
   if (!contracts.length) throw new Error(`${inRepo(sources)} has no contract yet: a line such as "// dp:twin ${nesName((program.banks - 1) * 0x4000, program.banks)} name_of_its_twin(X)" beside a twin says what it's given and gives back (tools/README.md).`);
@@ -226,7 +228,7 @@ export function buildCheck({ rom, sources, work, functions = null, log = console
   const out = join(work, process.platform === 'win32' ? 'check.exe' : 'check');
   const folders = [HERE, core, sources, ...cKit('nes').folders];
   compile('The check', [...FLAGS, ...folders.flatMap(folder => ['-I', folder]), '-o', out, ...built, join(made, 'dp-contracts.c'), ...['check.c', 'original.c', 'kit.c'].map(name => join(HERE, name)), object], work);
-  return { program: out, contracts, bank };
+  return { program: out, contracts, bank, notes };
 }
 
 // one twin's calls, as the check's program counts them
@@ -322,7 +324,7 @@ export async function twin(game, options = {}) {
   const { functions = [], calls = CALLS, seed = 1, limit = LIMIT, memories = false, from = null, without = [], log = console.log } = options;
   const version = versionOf(game), original = readOriginal(game);
   if (original.console !== 'nes') throw new Error(`${game} isn't an NES game.`);
-  const sources = from ?? join(gameFolder(version.language === 'c' ? game : `${version.game}/c`), 'src');
+  const sources = from ? resolve(from) : join(gameFolder(version.language === 'c' ? game : `${version.game}/c`), 'src');
   if (!existsSync(sources)) throw new Error(`${inRepo(sources)} isn't there: the function check is for a game's version in C.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`The function check runs ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
@@ -336,6 +338,7 @@ export async function twin(game, options = {}) {
   }
   const built = buildCheck({ rom: readFileSync(copy.path), sources, work, functions: readCodeMap(game)?.functions ?? null, log });
   const has = existsSync(kept);
+  for (const note of built.notes) log(note);
   log(`${count(built.contracts.length)} twin${built.contracts.length === 1 ? ' has a contract' : 's have a contract'} in ${inRepo(sources)}. ${has ? `Each gets ${count(calls)} calls from a memory of play as it was and ${count(calls)} from one changed` : `Each gets ${count(calls)} calls from random memories: --memories takes real ones from the game's recordings`}.`);
   const { results, same } = checkTwins({ built, copy: copy.path, memories: has ? kept : null, calls, seed, limit, without, only: functions, log });
   log(`${count(same)} of ${count(results.length)} twins the same as the original on every call.${without.length ? ` Left out of what was compared: ${without.map(byte => `$${hex4(byte)}`).join(', ')}.` : ''}`);
