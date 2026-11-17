@@ -376,6 +376,47 @@ It says of each function `The same memory`, or what kept it from that. For one t
 
 `npm run test:twin` tries all of it with a program of the project's own, [`test/twin/program.c`](test/twin/program.c), which the console's compiler builds into a made-up cartridge that mGBA runs as the original, and it runs on every pull request: every twin the same, a `>` turned to `>=` found only once what the function reads is changed, a byte written to a background tile and to a sprite's tile, a function reached only through a pointer, a twin that never comes back, and a twin that calls something nothing built defines. It has been run only on Linux. The check itself is JavaScript and one small program built as `read`'s is, but nobody has run it on a Mac or on Windows yet.
 
+## The function check on the NES
+
+The NES has no compiler that gives a game's bytes back, as its games were written by hand in the processor's own language. So a twin's proof there is the function check alone ([the standard](../docs/STANDARD.md)): one function of the original and its twin run from the same memory and the same registers, thousands of times, and must leave the same. `node tools/nes/twin.mjs <version>` runs it on every twin of an NES game's version in C that has a contract, such as `ghosts-n-goblins/c`, and `node tools/nes/twin.mjs <version> <function>` on those named, by the original's function, such as `sub_F321`, or by the twin's own name. It says for each `the same on all 10,000 calls` or `differs`, with what differs and the first call that showed it, and ends with a total.
+
+**The two sides.** The original's function runs in [FCEUmm](https://github.com/libretro/libretro-fceumm)'s own processor, the one the proof's emulator runs every game on: its `x6502.c`, built by itself as its makers wrote it, from the source the tools fetch for the reference emulator at the commit [`consoles.mjs`](consoles.mjs) names. FCEUmm is GPL-2.0, so nothing of it is in the repository: the tools copy five of its files into `.dreamports/twin/` on your computer and build them there, beside two small headers of their own that stand in for the rest of the emulator ([`nes/twin/core/`](nes/twin/core/)). The twin's side is the game's C, built for your computer as it is, on a stand-in for the kit that draws and plays nothing ([`nes/twin/kit.c`](nes/twin/kit.c)). Both get the same 2 KB of work memory, and [`nes/twin/check.c`](nes/twin/check.c) compares what each leaves:
+
+- Every byte of the work memory. In the stack's page, what the original pushed and left behind isn't the game's memory, so a byte there counts only if the original stored to it or the twin changed it.
+- What the contract says the twin gives back.
+- Each store to the picture's and the sound's registers, and each read of them, in order. A read gets the same made-up value on both sides.
+- The bank the original leaves at `$8000`, when the game says where it keeps that.
+- The time, when the twin counts it: what it gives `nes_spend` against the original's cycles, from its first instruction to the end of its `RTS`.
+
+**The contract.** A function of the original takes and gives values in the processor's three registers, `A`, `X` and `Y`, and in its flags, `N`, `V`, `Z` and `C`, and nothing in C says which. So each twin has one line beside it, in a comment, which the check reads:
+
+```c
+// dp:twin sub_F321 show_object(X)
+// dp:twin sub_F68E arthur_touches(X) -> C if X < 25
+// dp:twin sub_02_8416 zombies_come(&X)
+// dp:twin sub_F5F9 +6 weapon_that_touches(X) -> C ? Y : 0
+```
+
+After `dp:twin` comes the original's function, named as the game's code names it for `portmap`, and then the call of the twin, in C, with the registers and flags it's given written as themselves. A register given with `&` is one the twin changes, and it's compared with the original's afterwards. After `->` comes what the twin's result has to equal, in C, of the original's registers and flags once it has returned: `-> C` for a result that is the carry, `-> !Z`, `-> C ? Y : 0`. After `if` comes what the game gives it, in C, of the registers and the work memory: the check calls it with nothing else, as a twin needn't do what the original does with an object that isn't there. A number before the call, such as `+6`, is how many cycles the twin counts beyond the function's own: 6 for one that counts the `JSR` that calls it.
+
+It's one line because the twin's own declaration already says the rest, and it's C because the compiler then reads it against that declaration: a name the game doesn't have, or one argument too many, stops the build with the line's number. The check tries every word of it. A register the contract doesn't name gets any value, so a function that takes one the contract leaves out differs, and so does a result looked for in the wrong flag. Each contract is built after its own file's code, in the same unit, so it can call a twin no other file sees.
+
+A game that keeps the number of the bank switched in at `$8000` in its work memory says where, once: `// dp:bank $C7`. The original then starts with that bank, or with its own when the function is in a switched one, and has to leave the one the twin's memory says.
+
+**Time and the hardware.** The game's C is built with `DP_TWIN_CHECK` defined. What it spends and writes reaches the check through the kit, `nes_spend`, `nes_write` and `nes_read`. A game that keeps its own time, to run its interrupt partway through a function as Ghosts'n Goblins Dreamport does, passes them straight on under `DP_TWIN_CHECK`.
+
+**The memories.** With none, each call starts from random bytes. `--memories` plays the game's recordings in the original, or those named after it, and keeps its work memory every so many frames, about 2,000 in all, in `.dreamports/twin/<game>/memories.bin`. They come from your copy, so they stay on your computer. With memories, each twin gets `--calls` calls, 5,000 unless you say, from a memory as it was, and as many "changed": the original runs once to say which bytes it reads, a few of those get other values, some of them at the edges where a sum wraps round, and it runs again. Without memories every call is a changed one. `--seed` draws other calls.
+
+**When a twin goes wrong.** One that falls over is counted and the check goes on. One that doesn't return within `--limit` milliseconds, 200 unless you say, is stopped, and after three the check of that twin ends. A call in which the original reads where nothing answers on the cartridge is left out and counted, as it isn't one the game makes.
+
+**Finding out more.** `--without 23,9F` leaves those bytes of the work memory out of what's compared, to see what else differs: it changes what's printed, never what a twin has to do. `--from <folder>` reads the game's C from another folder than its own `src/`, to try contracts before they're in the game.
+
+**What it can't check yet.** The registers a call starts with are drawn, not taken from play, so `if` has to say what the game gives. The stack always starts in the same place. It lays out the program of a cartridge that switches nothing and of UNROM, and no other yet. A function that waits for the picture, or for an interrupt, can't be checked across the wait. On Windows nothing stops one call that never returns, so the whole check of that twin is stopped instead, and that hasn't been tried.
+
+`npm run test:nes-twin` tries all of it with a program of the project's own and its twins ([`test/nes-twin/game.c`](test/nes-twin/game.c)), on every pull request: every twin the same, then one line changed at a time, a wrong number, a wrong flag in a contract, a register a contract leaves out, a place in a table that doesn't wrap round at 256, a wrong time, a twin that falls over and one that never returns.
+
+On 17 November 2026 it ran on Ghosts'n Goblins (USA), with 2,032 memories from the game's 39 recordings and a contract for each of the 22 twins the trial in [#1451](https://github.com/NahuelGenchi/dreamports/issues/1451) tried, written in a copy of the game's C outside the repository: 5,000 calls each from a memory as it was and 5,000 changed. Every contract's registers and flags held. 12 twins left the same memory, result and hardware as the original on every call from a real memory, where the trial, with 1,720 memories from four recordings, had 15: this check also counts a call in which the original reads the picture's registers through a pointer, which the trial left out, and the wider memories reached one more difference. 7 were the same in everything, the changed memories and the time too.
+
 ## Counting what a game draws
 
 On the PlayStation 2, where a 3D game is proven by its draw list, `draws` says what a game's lists hold, before any of it is written again:
@@ -462,7 +503,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 
 ## What stays on your computer
 
-Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `route` found and the pictures of where it stopped, what `read` prints, the compiler `match` builds with, what it builds and the instructions it keeps side by side, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
+Everything else the tools keep is in `.dreamports/`, in the repository's folder, which the ignore rules keep out of commits: where your copies are, the reference emulator, every result with its pictures and clips, what `route` found and the pictures of where it stopped, what `read` prints, the NES's processor and the memories the function check takes from play, the compiler `match` builds with, what it builds and the instructions it keeps side by side, what you played for `capture`, and the browser profiles the tools use. Deleting it is safe, as `setup` and `rom` make it again. Only what you send leaves it, such as a clip in a pull request. A coding agent is different: whatever it reads, such as what `read` prints, goes to the company that runs its model, unless that model runs on your computer too.
 
 ## For a game on the Game Boy Advance kit
 
