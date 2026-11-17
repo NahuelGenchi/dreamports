@@ -81,7 +81,7 @@ So the tools patch Play!'s libretro front as they build it, with [`tools/libretr
 
 A few things the tools do rest on mGBA, and stay with it for now.
 
-Code ported counts only the port map's names on another console, as a libretro core doesn't say which of the original's functions ran. So its number rises as the Dreamport's code names functions from its code map, and a recording doesn't add to it.
+Code ported counts only the port map's names on every console, the Game Boy Advance too since [#1452](https://github.com/NahuelGenchi/dreamports/issues/1452). So its number rises as the Dreamport's code names functions from its code map, and a recording doesn't add to it. A libretro core doesn't say which of the original's functions ran, so on another console `prove` can't list those that ran in matching play and still have no twin.
 
 The tools find the functions themselves in Game Boy Advance, NES and PlayStation 2 code. On any other console the code map comes from a list, with `codemap --from`, a decompilation's symbols or a disassembler's list of functions. `read` knows the Game Boy Advance's instructions, through mGBA's decoder, and the NES's, through a table of the tools' own ([`tools/nes/6502.mjs`](../tools/nes/6502.mjs)), with each address's bank taken from what the function finder knows ([Reading the original's instructions](../tools/README.md#on-the-nes)). On another console a disassembler on the person's own computer does that job. What it prints stays there, by the same rules as `read`. `prove --state` compares what the console holds through the kit's video, so on another console it says that it can't, and the picture and sound are still compared.
 

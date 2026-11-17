@@ -51,7 +51,7 @@ export function progressMap(game, files, title) {
   const proof = proofOf(game, files);
   if (!proof?.ported || !files.map) return null;
   const functions = files.map.functions.map(([address, size]) => ({ address, at: parseInt(address, 16), size }));
-  const counted = portedFunctions(files.portMap, files.progress);
+  const counted = portedFunctions(files.portMap);
   const code = measure(functions, counted);
   // the same count as the two numbers, so this never fires unless the two drift apart
   if (code.percent !== proof.ported.percent) throw new Error(`${game}'s progress map makes code ported ${code.percent}%, but its numbers say ${proof.ported.percent}%.`);

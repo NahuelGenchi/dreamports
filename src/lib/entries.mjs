@@ -43,16 +43,15 @@ export function measure(functions, proven) {
 export const stoppedFunctions = portMap => new Set((portMap?.stops ?? []).map(([address]) => address).filter(Boolean));
 
 /**
- * The functions that count toward code ported, by their addresses in the code map: those the port map names and those
- * that ran in recorded play where every frame matched, but any with a stop in it, as it isn't all written yet. The two
- * numbers and the progress map (progress-map.mjs) both count these, so they can't disagree.
+ * The functions that count toward code ported, by their addresses in the code map: those the port map names, each a
+ * twin the Dreamport's code wrote, but any with a stop in it, as it isn't all written yet. A function the original only
+ * ran in matching play has no twin, so it doesn't count: that's what gameplay proven measures. Until #1452 it did, and
+ * Sonic Advance Dreamport in C showed 84.98% with 31.4% of its original's code written. The two numbers and the
+ * progress map (progress-map.mjs) both count these, so they can't disagree.
  */
-export const portedFunctions = (portMap, progress) => {
+export const portedFunctions = portMap => {
   const stopped = stoppedFunctions(portMap);
-  return new Set([
-    ...(portMap?.functions ?? []).map(([address]) => address),
-    ...Object.values(progress?.recordings ?? {}).flatMap(r => r.functions ?? []),
-  ].filter(address => !stopped.has(address)));
+  return new Set((portMap?.functions ?? []).map(([address]) => address).filter(address => !stopped.has(address)));
 };
 
 /**
@@ -62,10 +61,11 @@ export const portedFunctions = (portMap, progress) => {
  * - copy: the copy the proof is measured on;
  * - percent, codeMap, proven: the code that ran in recorded play where every frame matched, as prove measured it
  *   (`percent` null until there's a code map and a proven recording);
- * - ported: code ported, the functions the Dreamport's code names in its port map and those that ran in matching
- *   play, but those with a stop in them, over the code map, or null without a code map; with it, `stops`, the paths
- *   the code says it hasn't ported, `stopped`, the functions they're in, and `unnamed`, the functions of the code map
- *   no code names yet;
+ * - ported: code ported, the functions the Dreamport's code names in its port map, but those with a stop in them,
+ *   over the code map, or null without a code map; with it, `named`, the functions the port map names, `played`, those
+ *   that ran in matching play with no code naming them, which don't count, `stops`, the paths the code says it
+ *   hasn't ported, `stopped`, the functions they're in, and `unnamed`, the functions of the code map no code names
+ *   yet;
  * - gameplay: gameplay proven, or null without parts.json: where prove saw the original's instructions run
  *   (progress.json's `played`), the instructions and branch ways played in matching frames over all the code map's
  *   functions have, as `units`; or else the parts played from start to end with every frame matching, over every part
@@ -136,12 +136,12 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
     missing(named, 'port-map.json');
     const stopped = stoppedFunctions(portMap);
     missing(stopped, 'port-map.json');
-    const ported = measure(functions, portedFunctions(portMap, progress));
+    const ported = measure(functions, portedFunctions(portMap));
     result.ported = {
       percent: ported.percent,
       functions: ported.proven.functions,
       named: named.size,
-      // ran in matching play, but the code doesn't name them
+      // ran in matching play, but the code doesn't name them, so they have no twin and don't count
       played: [...played].filter(address => !named.has(address) && known.has(address)).length,
       unmatched: portMap?.unmatched?.length ?? 0,
       stops: portMap?.stops?.length ?? 0,

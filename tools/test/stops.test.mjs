@@ -1,6 +1,6 @@
 // Stops (docs/STANDARD.md#stops): a path of the original a Dreamport's code says it hasn't ported, written as dp:stop
 // and the address. The port map lists them (tools/portmap.mjs), and a function with one in it doesn't count towards
-// code ported, however it's named or played (src/lib/entries.mjs).
+// code ported, though it's named. Neither does one no code names, though it ran in matching play (src/lib/entries.mjs).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -29,10 +29,14 @@ const progress = functions => {
 };
 const files = (portMap, played = ['08002000']) => ({ original, map, progress: progress(played), portMap: { original: 'abc', ...portMap }, recordings: { walk: { held: [], frames: 10 } } });
 
-test('a function with a stop in it doesn\'t count towards code ported, named or played', () => {
+test('only a function the code names counts towards code ported, and not one with a stop in it', () => {
   const whole = proofOf('made-up', files({ functions: [['08001000', 'src/a.c:1']], unmatched: [], stops: [] }));
-  assert.equal(whole.ported.percent, 50);
+  assert.equal(whole.ported.percent, 25, 'the function that only ran in matching play has no twin');
+  assert.deepEqual([whole.ported.functions, whole.ported.named, whole.ported.played], [1, 1, 1], 'and it still shows as played with no name');
   assert.deepEqual([whole.ported.stops, whole.ported.stopped, whole.ported.unnamed], [0, 0, 3]);
+  // once the code names it too, it counts
+  const both = proofOf('made-up', files({ functions: [['08001000', 'src/a.c:1'], ['08002000', 'src/b.c:1']], unmatched: [], stops: [] }));
+  assert.deepEqual([both.ported.percent, both.ported.functions, both.ported.played, both.ported.unnamed], [50, 2, 0, 2]);
 
   // two stops in the named function, one in the played one
   const stops = [['08001000', 'src/a.c:9', '0x08001020'], ['08001000', 'src/a.c:12', '0x08001040'], ['08002000', 'src/b.c:3', '0x08002000']];
@@ -44,14 +48,15 @@ test('a function with a stop in it doesn\'t count towards code ported, named or 
 
 test('a stop in no function of the code map is still a stop, and one in a function the map lacks fails', () => {
   const nowhere = proofOf('made-up', files({ functions: [], unmatched: [], stops: [[null, 'src/a.c:4', '0x08009000']] }));
-  assert.deepEqual([nowhere.ported.stops, nowhere.ported.stopped, nowhere.ported.percent], [1, 0, 25]);
+  assert.deepEqual([nowhere.ported.stops, nowhere.ported.stopped, nowhere.ported.percent], [1, 0, 0]);
   assert.throws(() => proofOf('made-up', files({ functions: [], unmatched: [], stops: [['08007000', 'src/a.c:4', '0x08007000']] })), /port-map\.json counts 1 function the code map doesn't have/);
 });
 
 test('a port map from before stops counts as one with none', () => {
   const portMap = { functions: [['08001000', 'src/a.c:1']], unmatched: [] };
   assert.deepEqual([...stoppedFunctions(portMap)], []);
-  assert.deepEqual([...portedFunctions(portMap, progress(['08002000']))].sort(), ['08001000', '08002000']);
+  assert.deepEqual([...portedFunctions(portMap)], ['08001000']);
+  assert.equal(proofOf('made-up', files(portMap)).ported.percent, 25);
 });
 
 test('a Dreamport is done only with both numbers whole, no stop, every function named and every save the same', () => {
