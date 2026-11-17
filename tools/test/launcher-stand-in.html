@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>A stand-in for the launcher</title>
+<!-- npm run test:game opens a game's page inside this one, as Play in the dreamports.net launcher does, and reads
+     what the page told it: what the launcher leaves on its window is in kit/gba/ui/host.js. -->
+<style>html, body { margin: 0; height: 100%; } iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }</style>
+<body>
+<script>
+  const said = window.said = { shown: 0, left: 0, sound: 0 };
+  let opening = true;
+  window.dreamportsHost = {
+    get opening() { return opening; },
+    // none to lend, so the page makes its own
+    takeSound() { said.sound++; return null; },
+    shown() { said.shown++; opening = false; },
+    leave() { said.left++; },
+  };
+  const frame = document.createElement('iframe');
+  frame.src = new URLSearchParams(location.search).get('game');
+  document.body.append(frame);
+</script>
+</body>
+</html>

@@ -11,13 +11,11 @@ export interface Art {
   svg: string;
 }
 
-/** One pose: the whole mark; the dolphin alone, for small sizes, with no star or drops, a larger eye and none of the
- *  lines too thin to show; and where a launching game lands in the whole mark, as hundredths of its box: the middle's
- *  x and y, and half the width. Leap's place is the style sheet's own (.t-mark in global.css). */
+/** One pose: the whole mark; and the dolphin alone, for small sizes, with no star or drops, a larger eye and none of
+ *  the lines too thin to show. */
 export interface Pose {
   whole: Art;
   alone: Art;
-  land: [number, number, number];
 }
 
 export const POSES = ['leap', 'jump', 'sleep'] as const;

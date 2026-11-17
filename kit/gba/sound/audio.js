@@ -1,7 +1,8 @@
 // The page's side of the sound: starts the AudioWorklet with a copy of the ROM and forwards the game's calls to
 // it. The worklet is the kit's (worklet.js), or the game's own when it adds sounds of its own, such as an extra's
 // (processor.js), which it is sent what they need (keep). Browsers keep audio paused until the page has been
-// interacted with; choosing the ROM counts, and any later key press or tap resumes it too. A multiplayer game on
+// interacted with; choosing the ROM counts, as does Play in the launcher that opened the page, whose AudioContext the
+// game takes (ui/host.js), and any later key press or tap resumes it too. A multiplayer game on
 // one page has one engine per GBA, each GBA's game calling its own (`forGba`).
 //
 // While a proof tool plays the game (proof.js), the worklet's processor runs on the page instead, with no
@@ -9,6 +10,7 @@
 // console's own mix rate (onPage).
 
 import { proof } from '../proof.js';
+import { soundContext } from '../ui/host.js';
 import { createM4A } from './m4a.js';
 import { createApu } from './apu.js';
 
@@ -142,11 +144,11 @@ export function createSound({ worklet = new URL('./worklet.js', import.meta.url)
         return started;
       }
       if (!globalThis.AudioWorkletNode) { waiting.length = 0; return; }
-      const c = new AudioContext({ latencyHint: 'interactive' });
+      const { context: c, Node } = soundContext();
       ctx = c;
       await c.audioWorklet.addModule(worklet);
       if (ctx !== c) return;   // another ROM was chosen meanwhile
-      node = new AudioWorkletNode(c, 'gba-sound', { numberOfInputs: 0, outputChannelCount: [2] });
+      node = new Node(c, 'gba-sound', { numberOfInputs: 0, outputChannelCount: [2] });
       node.connect(c.destination);
       node.port.postMessage({ type: 'rom', rom: romBuffer, layout, count });
       for (const message of kept.values()) node.port.postMessage(message);

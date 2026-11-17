@@ -1,7 +1,8 @@
 // The game page's start: a row for each ROM the game reads, the one it runs on and any its optional extras take
 // from, with the switches for those extras under it. A ROM is chosen on its row or dropped on it, or dropped
 // anywhere on the page, where it goes to the row of the game its header names. Each is read as soon as it is
-// chosen, and kept in this browser if the player wants, so Play starts the game straight away.
+// chosen, and kept in this browser if the player wants, so Play starts the game straight away. Opened by Play in the
+// launcher (host.js), with every ROM it needs kept, the game starts by itself and this screen never shows.
 // It is drawn like the dreamports.net launcher the game is opened from, light or dark as the launcher is. While the
 // game runs, its rows are lent to the settings' Your ROMs (sheet.js), where they work the same.
 
@@ -9,6 +10,7 @@ import { bindController } from './setup-controller.js';
 import { acceptRoms } from './rom-types.js';
 import { darkDevice, pickedTheme, isDark } from './theme.js';
 import { leave, setHome } from './leave.js';
+import { opening as openedByPlay, shown } from './host.js';
 
 const GBA_BYTES = 32 * 1024 * 1024;   // the largest Game Boy Advance cartridge
 
@@ -308,6 +310,12 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
     $('.setup').dataset.restored = 'true';
     if (!play.disabled) play.focus({ preventScroll: true });
   });
+  // Play was pressed in the launcher already: with nothing to ask for, the game starts, once the page that set this
+  // screen up has seen what was kept. Either way the launcher is told when there's something to show.
+  restored.catch(() => {}).then(drawn).then(() => {
+    if (openedByPlay() && !play.disabled) onPlay();
+    return drawn();
+  }).then(shown);
 
   return {
     add, restored,

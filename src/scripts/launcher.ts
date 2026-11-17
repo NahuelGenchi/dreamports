@@ -6,10 +6,10 @@
 
 import { showTitle } from '../lib/title';
 import { hrefOf } from './controls';
-import { goTo, stepTo } from '../../kit/gba/ui/steps.js';
+import { addsSteps, goTo, stepTo } from '../../kit/gba/ui/steps.js';
 import { playHref, playLabel } from '../lib/languages.mjs';
 import type { ColourName, PoseName } from '../lib/mark';
-import { LOGO_KEYS, fetchOpeningMark, logoKept, showLogo } from './mark';
+import { LOGO_KEYS, logoKept, showLogo } from './mark';
 
 type Input = 'keys' | 'pad' | 'touch';
 type Motion = 'auto' | 'full' | 'calm';
@@ -109,15 +109,15 @@ function start(launcher: HTMLElement) {
   const plateNumbers = $('#np-numbers', launcher);
   const plateHelp = $('#np-help', launcher);
   const cursor = $('#cursor', launcher);
-  const target = $('#target', launcher);
   const sysHead = $('#sys-head', launcher);
   const sysName = $('#sys-name', sysHead);
   const btnSystems = $<HTMLButtonElement>('#btn-systems', launcher);
   const btnSearch = $<HTMLButtonElement>('#btn-search', launcher);
   const searchBox = $('#search', launcher);
   const searchInput = $<HTMLInputElement>('#search-input', searchBox);
-  const blackout = $('#blackout');
-  const boBack = $<HTMLButtonElement>('#bo-back');
+  const gameBox = $('#game');
+  const gameCover = $('#game-cover', gameBox);
+  const gameBack = $<HTMLButtonElement>('#bo-back', gameCover);
   const live = $('#live');
   const settingsCard = $<HTMLDialogElement>('#card-settings');
   const aboutCard = $<HTMLDialogElement>('#card-about');
@@ -2016,176 +2016,189 @@ function start(launcher: HTMLElement) {
 
   // ---------- The launch ----------
 
-  let irisAnim: Animation | null = null;
-  function irisCenter() {
-    const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
-    const b = launcher.getBoundingClientRect();
-    return { x: mouth.left + mouth.width / 2 - b.left, y: mouth.top + mouth.height / 2 - b.top };
-  }
-  function iris(closing: boolean, c: { x: number; y: number }) {
-    const rad = Math.hypot(Math.max(c.x, W - c.x), Math.max(c.y, H - c.y)) + 4;
-    const a = closing ? rad : 0;
-    const b = closing ? 0 : rad;
-    const old = irisAnim;
-    irisAnim = launcher.animate(
-      [
-        { clipPath: `circle(${a.toFixed(1)}px at ${c.x.toFixed(1)}px ${c.y.toFixed(1)}px)` },
-        { clipPath: `circle(${b.toFixed(1)}px at ${c.x.toFixed(1)}px ${c.y.toFixed(1)}px)` },
-      ],
-      { duration: closing ? 430 : 560, easing: closing ? 'cubic-bezier(.55,.06,.85,.3)' : 'cubic-bezier(.16,.8,.3,1)', fill: 'forwards' },
-    );
-    if (old) old.cancel();
-    return irisAnim.finished;
+  // Play fades the screen to black at once and opens the game's page inside this one, behind the black, which lifts
+  // once the game says it has drawn (#1443). The page stays this one, so the press on Play counts for the game's
+  // sound, as a press on a page left behind doesn't in every browser. The game's page finds `dreamportsHost` on this
+  // window (kit/gba/ui/host.js).
+  const FADE = 180;
+  type Host = { readonly opening: boolean; takeSound(): { context: AudioContext; Node: typeof AudioWorkletNode } | null; shown(): void; leave(): void };
+  const hostWindow = window as Window & { dreamportsHost?: Host };
+  type Game = {
+    frame: HTMLIFrameElement;
+    // the address and what's kept with it before the game took them, and what had the focus
+    before: { address: string; state: unknown; title: string; focus: HTMLElement | null };
+    stepped: boolean;
+    sound: AudioContext | null;
+    lent: boolean;
+    shown: boolean;
+    // the black coming up over the menu, which the game waits for before it shows
+    black: Promise<unknown>;
+    paused: HTMLVideoElement[];
+    watch: MutationObserver | null;
+  };
+  let game: Game | null = null;
+  let slowTimer = 0;
+  const fade = (el: HTMLElement, from: number, to: number) =>
+    el.animate([{ opacity: from }, { opacity: to }], { duration: FADE, easing: 'ease-in-out', fill: 'forwards' }).finished.catch(() => {});
+  // the browser's own bars take the colour the game's page names in its head, while it shows, or else the colour of
+  // that page, as a browser gives a page that names none
+  function followBar(frame: HTMLIFrameElement) {
+    const page = frame.contentDocument;
+    const meta = page?.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    const copy = () => {
+      const colour = meta?.content || (page?.body ? getComputedStyle(page.body).backgroundColor : '');
+      if (colour && colour !== 'rgba(0, 0, 0, 0)') for (const mine of $$('meta[name="theme-color"]')) mine.setAttribute('content', colour);
+    };
+    copy();
+    if (!meta) return null;
+    const watch = new MutationObserver(copy);
+    watch.observe(meta, { attributes: true, attributeFilter: ['content'] });
+    return watch;
   }
 
-  // the selected game rises, drops into the curl of the mark's dolphin, and the screen closes into it
-  let launchRun = 0;
-  let leaving = false;
-  // what drops into it: the game in the row, or the picture on the game's page
-  let flyer: HTMLElement | null = null;
-  async function launch(dlg: HTMLDialogElement, link: string) {
+  /** Opens the game at `href`, one of the site's own pages; `step` is false when the address is already the game's. */
+  function openGame(href: string, title: string, step = true) {
     if (state.launching) return;
-    // a preview of the site opens the game on that preview
-    const to = new URL(link, location.href);
-    const href = to.hostname === 'dreamports.net' ? location.origin + to.pathname : link;
-    const slotEl = slots[sel()];
-    if (!slotEl || slotEl.dataset.game !== dlg.dataset.game) {
-      goTo(href);
-      return;
-    }
     state.launching = true;
-    fetchOpeningMark();
-    // going back to the menu part way through stops the launch
-    const run = ++launchRun;
-    const still = () => run === launchRun;
-    const title = slotEl.dataset.title ?? '';
-    showTitle($('#bo-name', blackout), title);
+    const focus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const before = { address: location.href, state: history.state as unknown, title: document.title, focus };
+    if (step) stepTo({ play: href, title }, href);
+    // made as Play is pressed, so it plays; the game takes it when it starts
+    let sound: AudioContext | null = null;
+    try {
+      sound = new AudioContext({ latencyHint: 'interactive' });
+      void sound.resume().catch(() => {});
+    } catch {}
+    const frame = document.createElement('iframe');
+    frame.className = 'game-frame';
+    frame.title = title;
+    frame.allow = 'autoplay; fullscreen; gamepad';
+    frame.src = href;
+    const now: Game = { frame, before, stepped: step, sound, lent: false, shown: false, black: Promise.resolve(), paused: [], watch: null };
+    game = now;
+    hostWindow.dreamportsHost = {
+      get opening() {
+        return game === now && !now.shown;
+      },
+      takeSound() {
+        if (game !== now || now.lent || !sound || sound.state === 'closed') return null;
+        now.lent = true;
+        return { context: sound, Node: AudioWorkletNode };
+      },
+      shown() {
+        if (game === now) void showGame(now);
+      },
+      leave() {
+        if (game === now) void closeGame();
+      },
+    };
+    showTitle($('#bo-name', gameCover), title);
     announce('Opening ' + title);
-    launcher.classList.add('is-launching');
     launcher.inert = true;
-    const view = state.view?.dataset.card === 'inspect' ? state.view : null;
-    const lift = view ? $('.show-wrap', view) : $('.lift', slotEl);
-    for (const a of lift.getAnimations()) a.cancel();
-    flyer = lift;
-    const box = lift.getBoundingClientRect();
-    const size = box.width || S;
-    if (calm()) {
-      sound.play('iris');
-      await launcher.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 280, fill: 'forwards' }).finished.catch(() => {});
-      if (still()) showBlackout(href);
-      return;
-    }
-    sound.play('launch');
-    const up = `translateY(${(-size * 0.1).toFixed(1)}px) scale(1.06)`;
-    target.classList.add('is-up');
-    await lift
-      .animate([{ transform: 'none' }, { transform: up }], { duration: 320, easing: 'cubic-bezier(.3,0,.2,1)', fill: 'forwards' })
-      .finished.catch(() => {});
-    // the mark has finished rising by now, so the space its dolphin curls around can be measured
-    await wait(150);
-    if (!still()) return;
-    const mouth = $('.t-mark-mouth', target).getBoundingClientRect();
-    const dx = mouth.left + mouth.width / 2 - (box.left + box.width / 2);
-    const dy = mouth.top + mouth.height / 2 - (box.top + box.height / 2);
-    const k = (mouth.width / size) * 0.95;
-    const dropEnd = `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${(k * 0.05).toFixed(4)})`;
-    await lift.animate(
-      [
-        { transform: up, opacity: 1 },
-        { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) scale(${k.toFixed(4)})`, opacity: 1, offset: 0.68 },
-        { transform: dropEnd, opacity: 0 },
-      ],
-      { duration: 680, easing: 'cubic-bezier(.5,0,.3,1)', fill: 'forwards' },
-    ).finished.catch(() => {});
-    if (!still()) return;
-    sound.play('insert');
-    target.classList.add('is-flash');
-    await wait(110);
-    if (!still()) return;
-    sound.play('iris');
-    await iris(true, irisCenter()).catch(() => {});
-    if (still()) showBlackout(href);
-  }
-
-  let blackTimer = 0;
-  function showBlackout(href: string) {
-    sleepRow();
-    blackout.hidden = false;
-    boBack.hidden = true;
-    leaving = true;
-    goTo(href);
+    gameBack.hidden = true;
+    gameCover.hidden = false;
+    for (const a of gameCover.getAnimations()) a.cancel();
+    gameBox.hidden = false;
+    gameBox.prepend(frame);
+    now.black = fade(gameBox, 0, 1).then(() => {
+      if (game !== now) return;
+      // under the black nothing of the menu draws or plays
+      sleepRow();
+      now.paused = $$<HTMLVideoElement>('video', launcher).filter((v) => !v.paused);
+      for (const v of now.paused) v.pause();
+      launcher.classList.add('is-under');
+    });
+    frame.addEventListener('load', () => {
+      if (game !== now) return;
+      now.watch?.disconnect();
+      now.watch = now.shown ? followBar(frame) : null;
+      const page = frame.contentDocument?.title;
+      if (page) document.title = page;
+    });
     // if the game takes long to open, offer a way back
-    clearTimeout(blackTimer);
-    blackTimer = window.setTimeout(() => {
-      boBack.hidden = false;
-      boBack.focus({ preventScroll: true });
+    clearTimeout(slowTimer);
+    slowTimer = window.setTimeout(() => {
+      if (game !== now || now.shown) return;
+      gameBack.hidden = false;
+      gameBack.focus({ preventScroll: true });
     }, 6000);
   }
 
-  let returning = false;
-  async function back() {
-    if (!state.launching || returning) return;
-    returning = true;
-    launchRun++;
-    // if the game's page is still on its way, stop it
-    if (leaving) {
-      leaving = false;
-      window.stop();
-    }
-    clearTimeout(blackTimer);
-    blackout.hidden = true;
-    boBack.hidden = true;
-    const slotEl = slots[sel()];
-    const lift = flyer ?? $('.lift', slotEl);
-    // the game comes back up from wherever the launch left it
-    const left = getComputedStyle(lift);
-    const from = { transform: left.transform, opacity: left.opacity };
-    const faded = getComputedStyle(launcher).opacity;
-    target.classList.remove('is-flash');
-    launcher.classList.remove('is-launching');
-    launcher.inert = false;
-    for (const a of lift.getAnimations()) a.cancel();
-    for (const a of launcher.getAnimations()) if (a !== irisAnim) a.cancel();
-    sound.play('return');
-    if (calm()) {
-      target.classList.remove('is-up');
-      irisAnim?.cancel();
-      irisAnim = null;
-      await launcher.animate([{ opacity: faded }, { opacity: 1 }], { duration: 280 }).finished.catch(() => {});
-    } else {
-      // the screen opens again only if it had closed
-      const closed = !!irisAnim;
-      const rise = lift.animate([from, { transform: 'none', opacity: 1 }], {
-        duration: 700,
-        delay: closed ? 120 : 0,
-        easing: 'cubic-bezier(.2,.9,.3,1.12)',
-        fill: 'backwards',
-      });
-      if (closed) {
-        await iris(false, irisCenter()).catch(() => {});
-        irisAnim?.cancel();
-        irisAnim = null;
-      }
-      target.classList.remove('is-up');
-      await rise.finished.catch(() => {});
-    }
-    state.launching = false;
-    returning = false;
-    flyer = null;
-    (state.view ? focusStart(state.view) : slotEl)?.focus({ preventScroll: true });
-    wakeRow();
+  // the game has drawn: the black lifts off it
+  async function showGame(now: Game) {
+    if (now.shown) return;
+    now.shown = true;
+    clearTimeout(slowTimer);
+    now.frame.contentWindow?.focus();
+    await now.black;
+    if (game !== now || closing) return;
+    now.watch = followBar(now.frame);
+    await fade(gameCover, 1, 0);
+    if (game !== now || closing) return;
+    gameCover.hidden = true;
+    gameBack.hidden = true;
+    now.frame.contentWindow?.focus();
   }
-  boBack.addEventListener('click', () => back());
-  // a page the browser keeps comes back as it left, so the black screen goes as it leaves, not a moment after it's back
-  window.addEventListener('pagehide', (e) => {
-    if (e.persisted && state.launching) blackout.hidden = true;
-  });
-  // coming back from the game with the browser's back button finds the menu as it was left
-  window.addEventListener('pageshow', (e) => {
-    if (!e.persisted || !state.launching) return;
-    leaving = false;
-    back();
-  });
+
+  /** Back to the menu as it was left, through black; `step` is false when the browser has gone back already. */
+  let closing = false;
+  async function closeGame(step = true) {
+    const now = game;
+    if (!now || closing) return;
+    closing = true;
+    clearTimeout(slowTimer);
+    if (now.shown) {
+      gameCover.hidden = false;
+      gameBack.hidden = true;
+      await fade(gameCover, 0, 1);
+    }
+    now.watch?.disconnect();
+    now.frame.remove();
+    if (now.sound && now.sound.state !== 'closed') void now.sound.close().catch(() => {});
+    delete hostWindow.dreamportsHost;
+    game = null;
+    if (step) await stepBack(now);
+    document.title = now.before.title;
+    applyTheme();
+    launcher.classList.remove('is-under');
+    for (const v of now.paused) void v.play().catch(() => {});
+    launcher.inert = false;
+    state.launching = false;
+    now.before.focus?.focus({ preventScroll: true });
+    wakeRow();
+    await fade(gameBox, 1, 0);
+    closing = false;
+    // unless another game opened meanwhile
+    if (game) return;
+    gameBox.hidden = true;
+    for (const a of [...gameBox.getAnimations(), ...gameCover.getAnimations()]) a.cancel();
+  }
+  // the address the game took goes: a step back where it was a step, and the address put back where the step doesn't
+  // lead there, as when the game's page added steps of its own
+  async function stepBack(now: Game) {
+    if (now.stepped && addsSteps) {
+      const gone = new Promise<void>((resolve) => {
+        window.addEventListener('popstate', () => resolve(), { once: true });
+        setTimeout(resolve, 600);
+      });
+      history.back();
+      await gone;
+    }
+    if (location.href !== now.before.address) history.replaceState(now.before.state, '', now.before.address);
+  }
+
+  function launch(dlg: HTMLDialogElement, link: string) {
+    // a preview of the site opens the game on that preview
+    const to = new URL(link, location.href);
+    const href = to.hostname === 'dreamports.net' ? location.origin + to.pathname : to.href;
+    // another site's page can't open inside this one
+    if (new URL(href).origin !== location.origin) {
+      goTo(href);
+      return;
+    }
+    openGame(href, slots.find((slot) => slot.dataset.game === dlg.dataset.game)?.dataset.title ?? '');
+  }
+  gameBack.addEventListener('click', () => void closeGame());
 
   // ---------- Sounds, made in the browser and off until switched on ----------
 
@@ -2295,20 +2308,6 @@ function start(launcher: HTMLElement) {
         case 'off':
           [783.99, 523.25].forEach((f, i) => this.tone({ f, t: i * 0.06, d: 0.13, g: 0.07 }));
           break;
-        case 'launch':
-          this.noise({ d: 0.5, g: 0.05, f1: 300, f2: 2600 });
-          this.tone({ f: 392, f2: 784, d: 0.34, g: 0.05 });
-          break;
-        case 'insert':
-          this.tone({ f: 190, f2: 58, type: 'sine', d: 0.18, g: 0.24 });
-          this.noise({ d: 0.07, g: 0.05, f1: 2200, f2: 900, q: 0.8 });
-          break;
-        case 'iris':
-          this.tone({ f: 523.25, f2: 110, type: 'sine', d: 0.44, g: 0.07 });
-          break;
-        case 'return':
-          [392, 523.25, 659.25, 1046.5].forEach((f, i) => this.tone({ f, t: i * 0.055, d: 0.18, g: 0.06 }));
-          break;
       }
     },
   };
@@ -2350,7 +2349,7 @@ function start(launcher: HTMLElement) {
     if (state.launching) {
       if (e.key === 'Escape' && !e.repeat) {
         e.preventDefault();
-        back();
+        void closeGame();
       }
       return;
     }
@@ -2502,8 +2501,9 @@ function start(launcher: HTMLElement) {
     if (!edges.length && !step) return;
     root.classList.add('keyed');
     setInput('pad');
+    // a game that shows has the controller to itself; one still opening can be called off
     if (state.launching) {
-      if (edges.includes(1)) back();
+      if (edges.includes(1) && !game?.shown) void closeGame();
       return;
     }
     // the right stick pressed in, like the sound's key, works wherever its icon shows
@@ -2807,6 +2807,17 @@ function start(launcher: HTMLElement) {
     }
   }
   window.addEventListener('popstate', () => {
+    // the browser's back button from a game closes it, and forward opens it again
+    if (closing) return;
+    if (game) {
+      void closeGame(false);
+      return;
+    }
+    const step = history.state as { play?: string; title?: string } | null;
+    if (step?.play && !state.launching) {
+      openGame(step.play, step.title ?? '', false);
+      return;
+    }
     if (popping) {
       popping = false;
       clearTimeout(popGuard);

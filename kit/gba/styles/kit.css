@@ -41,8 +41,9 @@ button { font: inherit; }
 .link { padding: 0; border: 0; background: none; color: #9cc3ff; text-decoration: underline; cursor: pointer; }
 .link[hidden] { display: none; }
 
-/* the page starts on the launcher's Opening screen, with the mark (.opening-door), the font and the look all there on its first frame,
-   so what the launcher was showing goes on showing, in the same place. The start screen fades in over it (rom-setup.js).
+/* the page starts on the Opening screen, with the mark (.opening-door), the font and the look all there on its first frame.
+   The start screen fades in over it (rom-setup.js). Opened by Play in the launcher, the page loads behind the launcher's black
+   instead (ui/host.js), and none of this is seen.
    The head of the page reads the launcher's look and motion into the root's data-theme and data-motion. */
 .opening {
   position: fixed; inset: 0; display: grid; place-items: center;

@@ -139,6 +139,33 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
   await start();
   check(await leadsHome(`sessionStorage.clear(); document.querySelector('.setup-back').click()`), `the way back leads to the game's page in the launcher`);
 
+  // opened by Play in the launcher, inside the launcher's own page (kit/gba/ui/host.js), with the copy kept from the
+  // start above: the game starts by itself, and its ways out hand back to the launcher
+  const inside = code => page.evaluate(`(() => { const d = document.querySelector('iframe').contentDocument; ${code} })()`);
+  const said = (what, times) => until(page, `said.${what} === ${times}`, `the launcher to hear ${what}`, 10000).then(() => true, () => false);
+  const playing = `return !d.getElementById('stage').hidden && d.getElementById('picker').hidden;`;
+  const standIn = `${server.url}/tools/test/launcher-stand-in.html?game=/games/${game}/`;
+  await go(page, standIn);
+  check(await said('shown', 1) && await inside(playing), 'opened by Play in the launcher with its copy kept, it starts by itself');
+  // a page that makes sound, as a new game on another console does, asks the launcher for the one made as Play was pressed
+  if (machine !== 'gba') check(await page.evaluate(`said.sound === 1`), 'and asks the launcher for its sound');
+  await inside(`d.querySelector('.settings-open').click()`);
+  await wait(800);
+  await inside(`d.querySelector('[data-quit]').click()`);
+  await wait(800);
+  await inside(`d.querySelector('[data-leave]').click()`);
+  check(await said('left', 1) && await inside(`return d.location.pathname === '/games/${game}/';`), 'Quit hands back to the launcher, and the page stays');
+  await inside(`d.location.reload()`);
+  await until(page, `document.querySelector('iframe').contentDocument?.querySelector('.setup')?.dataset.restored === 'true'`, 'the page to load again', 10000);
+  await wait(500);
+  check(!(await inside(playing)) && await page.evaluate(`said.shown === 2`), 'loaded again inside the launcher, it waits for Play');
+  await go(page, `${server.url}/favicon.svg`);
+  await page.evaluate(`(async () => { for (const { name } of await indexedDB.databases()) await new Promise(done => { const q = indexedDB.deleteDatabase(name); q.onsuccess = q.onerror = q.onblocked = done; }); })()`);
+  await go(page, standIn);
+  check(await said('shown', 1) && !(await inside(playing)), 'with no copy kept, it shows the start screen there');
+  await inside(`d.querySelector('.setup-back').click()`);
+  check(await said('left', 1), 'whose way back hands back to the launcher');
+
   // a phone, with no controller: the controller drawn around the game presses its buttons
   await page.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   await page.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
