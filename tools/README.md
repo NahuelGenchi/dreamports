@@ -21,9 +21,10 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `read` | Prints one of the original's functions, its instructions, from your copy, for code its decompilation has no C for, on the Game Boy Advance and the NES |
 | `match` | Builds a Game Boy Advance game's C with the compiler the original was built with, and says which functions come out as the original's bytes ([Matching the original's bytes](#matching-the-originals-bytes)) |
 | `twin` | Calls a function of the original and its twin from the same memory, thousands of times, and says whether both leave the same memory, on the Game Boy Advance ([Checking a twin against the original's memory](#checking-a-twin-against-the-originals-memory)) and on the NES ([The function check on the NES](#the-function-check-on-the-nes)) |
+| `proofs` | Lists where each function of a version stands, its twin and its proof, for a version made a function at a time ([A function's proof](#a-functions-proof-and-a-game-made-a-function-at-a-time)) |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the clips of what the step changed for its pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, the tasks free to start, and what the others wait on |
-| `tasks` | Opens a Task issue for each of a game's foundations and parts that has none yet, its foundations first and then in the order a player meets them |
+| `tasks` | Opens a Task issue for each of a game's foundations and parts that has none yet, its foundations first and then in the order a player meets them, or for each group of functions in a version made a function at a time |
 | `notes` | Shows what people found while making a game or its console's kit, so nobody has to find it again |
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the table of Dreamports in `docs/STATUS.md`, with each one's numbers and lead, from their [entries](../games/README.md#the-entry), and each one's progress map. A workflow runs it on `main`, so a pull request doesn't need it |
@@ -427,6 +428,39 @@ A game that keeps the number of the bank switched in at `$8000` in its work memo
 
 On 17 November 2026 it ran on Ghosts'n Goblins (USA), with 2,032 memories from the game's 39 recordings and a contract for each of the 22 twins the trial in [#1451](https://github.com/NahuelGenchi/dreamports/issues/1451) tried, written in a copy of the game's C outside the repository: 5,000 calls each from a memory as it was and 5,000 changed. Every contract's registers and flags held. 12 twins left the same memory, result and hardware as the original on every call from a real memory, where the trial, with 1,720 memories from four recordings, had 15: this check also counts a call in which the original reads the picture's registers through a pointer, which the trial left out, and the wider memories reached one more difference. 7 were the same in everything, the changed memories and the time too.
 
+## A function's proof, and a game made a function at a time
+
+`match` and `twin` say whether a function is proven, and a version that keeps its proofs holds what they found in `games/<version>/proof/proofs.json`, a function to a line ([`lib/proofs.mjs`](lib/proofs.mjs)):
+
+```json
+{
+  "original": "the copy's SHA-1",
+  "from": "who writes it",
+  "functions": [
+    ["080001C4", "bytes", "1f0c2ab94e77d310", "9a3e0c5512f8b6aa"],
+    ["0800024C", "memory", "77b2910c4dd0e2f1", "c41d7e02ab9935c8", 2000]
+  ]
+}
+```
+
+A line is a function of the code map, the kind of proof, `bytes` for the same bytes and `memory` for the same memory, a mark of the twin as it was written then, a mark of the original's function as the copy had it, and for `memory` how many calls were compared. A mark is the start of a SHA-1, so the file holds nothing of the game. **Only `match` and `twin` write a line**, each for what it found the same, and a function either finds differs loses its line of that kind. The same bytes are the stronger proof, so `twin` leaves such a line as it is. Neither keeps anything found with `--addresses`, with another folder's C or with bytes left out, and `twin` keeps nothing from fewer than 1,000 calls.
+
+**A proof goes stale by itself.** The twin's mark is of its own code and of the game's own headers its file includes, without their comments and with every run of spaces as one. So a comment can change freely, and once the code of a twin changes, or a header of its file, or the contract beside an NES twin, its line no longer counts and the tool has to prove it again. The same goes for the original's side when a code map gives the function other bytes. `npm run dp -- proofs --check`, which `npm run check` runs for every version that keeps its proofs, fails on a line that doesn't hold, and on one written by hand: on a computer with no copy of the game it looks at the twin's side, and with one at the original's too.
+
+**A path left out is never proven.** A twin with a [stop](../docs/STANDARD.md#stops) in it isn't kept, even when it comes out the same, and a line from before the stop was written stops counting. The same memory is a proof only of the paths the calls took, so `twin` also asks the program that runs the original which of the function's own instructions each call ran and which way each branch went. A function is `The same memory` and proven only when every instruction of the original's ran in the calls compared and each of its branches went both ways, but for a way the game's `unreachable.json` rules out. One whose calls left some out is said to be the same as far as they went, with the first few it missed, such as `0x0800020E always taken`: more calls, another `--seed`, or on the NES memories from play, reach them. On the Game Boy Advance a switch's cases are found from each word of the function that holds an address inside it, as its table does.
+
+**A version that keeps its proofs is made a function at a time**, and one that doesn't is made a part at a time, as every game was before [#1454](https://github.com/NahuelGenchi/dreamports/issues/1454): nothing here touches it, and `match` and `twin` say what they find and keep nothing. `npm run dp -- proofs <version> --start` writes the file with no line in it, for a version in C on the Game Boy Advance or the NES. That is its lead's to decide for a game that has tasks already, and `/dreamport` does it for a whole new game. From then on:
+
+- `npm run dp -- proofs <version>` says how many functions have each proof and lists the version's tasks, and with a function's address or a task's name, each of its functions with its twin and where it stands.
+- `npm run dp -- tasks <version>` opens its tasks from its code map: each a group of functions that sit together, at most 12 and two kilobytes of code, never over more than a kilobyte of the cartridge's data, and on the NES in one bank. A task is named for its first and last function, `Task: Functions 080001C4 to 0800024C in C`, and lists every function with the name the code map gives it, its twin, and whether it's proven and how. Twenty are open at once, the first in the map's order, and the next open as those close. `--update` writes the open ones again from where their functions stand.
+- `npm run dp -- find <game> --take` goes by each function's proof: a task whose functions are all proven in the folder isn't handed out, and it says what the task is made of and when it's done.
+- `npm run dp -- ready <version> --task <a function's address or the task's name>` passes only when every proof kept holds and each function of the task has one, beside what it asks of every step.
+- A Dreamport isn't [done](../docs/STANDARD.md#done) while a function has no proof, which `prove` says with what else is left.
+
+Its parts stay as names for people and as what its recordings are for, and get no tasks. A function the game makes in its work memory is in no task, as neither proof reaches one yet.
+
+`npm run test:function-tasks` tries all of it through the tools as they're typed, with the function check's own program as a game in `games/` for as long as it takes and a stand-in for GitHub, and it runs on every pull request.
+
 ## The same-memory build
 
 A Dreamport made [the stricter way](../docs/STANDARD.md) keeps every value where the console keeps it, so a function and its twin leave the same memory behind, and an address kept in memory means the same in both. The build does three things for that on the Game Boy Advance, each only for a game whose C asks for it by what it uses. A game that uses none of them builds to the same bytes as before.
@@ -514,7 +548,7 @@ Every copy starts the same way: it tells the agent to do nothing unless the pers
 
 ## A game's proof folder
 
-What the tools keep in the repository is in the game's `proof/` folder, and it's all JSON. The ignore rules keep anything else out of it. A version in another language keeps only its `progress.json` and `port-map.json` in its own, such as `games/sonic-battle/c/proof/`.
+What the tools keep in the repository is in the game's `proof/` folder, and it's all JSON. The ignore rules keep anything else out of it. A version in another language keeps only its `progress.json`, `port-map.json` and, when it's made a function at a time, `proofs.json` in its own, such as `games/sonic-battle/c/proof/`.
 
 | File | What it holds |
 | :--- | :--- |
@@ -526,6 +560,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `unreachable.json` | Optional: the stretches of the cartridge nothing can reach, each with why, which don't count towards gameplay proven, read by a person before it goes in |
 | `saves.json` | Optional: the bytes of the save memory that aren't the game's save, each stretch with why the original never reads them, which `prove` doesn't compare, read by a person before it goes in |
 | `played.json` | What of the original's code was played in each recording's matching frames, and where its instructions and branches are, as sets of places in the code map's functions, written by `prove`; nothing of the code itself |
+| `proofs.json` | Only in a version made a function at a time: each function's proof, by the same bytes or the same memory, with a mark of the twin and of the original's function it's a proof of, written by `match` and `twin` alone ([A function's proof](#a-functions-proof-and-a-game-made-a-function-at-a-time)) |
 | `port-map.json` | The port map: the functions the game's code names, the names that land inside one but not at its start, and the stops, each a path the code says it hasn't ported, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |
 | `addresses.json` | Optional: the names the game's C gives the original's values and functions that it doesn't define, each with its address, for `match`; nothing of the code itself |
