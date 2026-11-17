@@ -43,13 +43,10 @@ function compile(what, source, target, args, tools, also) {
   writeFileSync(sourceOf(target), textOf(source, also));
 }
 
-function buildHere(machine, log, tools) {
-  const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE]);
-  const file = coreFile(core);
-  if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
-  if (existsSync(file)) return;
-  log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
+/** A console's emulator's source, from its makers at the commit tools/consoles.mjs names, fetched if it isn't here:
+ *  the folder it's in. What builds the emulator starts from it, and so does a tool that needs one file of it, as the
+ *  NES's function check needs its processor (../nes/twin.mjs). */
+export function fetchSource({ core, name }) {
   const source = join(WINDOWS ? WINDOWS_BUILD : FOLDER, `${core.built}-source`), what = `Getting ${name}'s emulator`;
   if (!existsSync(join(source, '.git'))) {
     mkdirSync(source, { recursive: true });
@@ -60,6 +57,17 @@ function buildHere(machine, log, tools) {
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
   if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', join(REPO, core.patch)], source);
+  return source;
+}
+
+function buildHere(machine, log, tools) {
+  const { core, name } = machine;
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE]);
+  const file = coreFile(core);
+  if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
+  if (existsSync(file)) return;
+  log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
+  const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);

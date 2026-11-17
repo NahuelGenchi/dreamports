@@ -15,6 +15,7 @@ const TOOLS = {
   portmap: 'Makes the port map: each function of the original the Dreamport\'s code names, and where',
   read: 'Prints one of the original\'s functions, its ARM or Thumb instructions, from your copy, for code its decompilation lacks',
   match: 'Builds a Game Boy Advance game\'s C with the compiler the original was built with, and says which functions come out as the original\'s bytes',
+  twin: 'Calls a function of the original and its twin from the same memory, thousands of times, and says whether both leave the same memory',
   share: 'Publishes a preview on GitHub Pages from your fork, with the clips of what the step changed for its pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what, its free tasks and what the others wait on',
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first',
