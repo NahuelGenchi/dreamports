@@ -27,7 +27,12 @@ export const C_BASE = fileURLToPath(new URL('../../kit/c/', import.meta.url));
 // the consoles with a kit in C of their own, on top of the base: its folder and its sources. One with `header` also has
 // console.h, and runs on a computer with the base's program for one (native.c), as a console with no kit of its own does
 const OWN = {
-  gba: { folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c'] },
+  gba: {
+    folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c'],
+    // what the console's compiler takes for granted, which C written for it leans on: a char with no sign, and code
+    // that reads a value through a pointer of another type or through address 0
+    twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks'],
+  },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gif.c', 'ee.c', 'vu.c'], header: true },
 };
@@ -77,15 +82,16 @@ void game_sound(float *left, float *right, int count);
 }
 
 /** A console's kit in C: the folders a game's C includes it from, the kit's sources a game is built with besides its
- *  own (`native` also has its program for this computer, and leaves out what only WebAssembly needs), and `own`, whether
- *  the console has a kit of its own. */
+ *  own (`native` also has its program for this computer, and leaves out what only WebAssembly needs), `own`, whether
+ *  the console has a kit of its own, and `twinFlags`, what the compiler is also asked for C written as the console's
+ *  own compiler reads it, a game's twins: by the build, for a game that includes "twins.h", and by the function check. */
 export function cKit(id) {
   if (!CONSOLES[id]) throw new Error(`There's no console called ${id} in kit/consoles.js, so there's no kit in C for it.`);
   const own = OWN[id];
   const base = name => join(C_BASE, name);
   if (own && !own.header) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')] };
+    return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
   }
   // console.h, written where the tools keep what they make, once it says something new
   const made = join(LOCAL, 'c', id);
@@ -96,14 +102,20 @@ export function cKit(id) {
   }
   if (own) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')] };
+    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), base('console.c')];
-  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), base('console.c'), base('native.c')] };
+  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), base('console.c'), base('native.c')], twinFlags: [] };
 }
 
-// what both builds ask of the C: C11, warnings that catch a slip, and the same arithmetic everywhere
-const FLAGS = ['-std=c11', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter', '-fwrapv'];
+/** How every build of a game's C works it out, the function check's too (../gba/twin.mjs): made fast the same way, and
+ *  with the same arithmetic everywhere. */
+export const SAME_FLAGS = ['-O2', '-fwrapv'];
+/** What every build to WebAssembly asks for: no library but the kit's, and the instructions every browser the site
+ *  supports has. */
+export const WASM_FLAGS = ['--target=wasm32', '-ffreestanding', '-nostdlib', '-mbulk-memory', '-msign-ext', '-mnontrapping-fptoint'];
+// what a game's builds ask of its C besides: C11, and warnings that catch a slip
+const FLAGS = ['-std=c11', ...SAME_FLAGS, '-Wall', '-Wextra', '-Wno-unused-parameter'];
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
 // every .c and .h file in the folders the sources are in and in the kit's, in folders as they are in the repository,
@@ -167,18 +179,20 @@ export function buildFingerprint(files, args, compiler) {
 const building = new Map();
 
 /** Builds `sources` (paths of .c files) to the WebAssembly module `out`, with the kit's `folders` to include it from,
- *  as cKit gives them. A module inside the repository that was built from the same files, asked the same way of the
+ *  as cKit gives them, `flags`, anything more the compiler is asked, and `addressOf(name)`, where the console keeps a
+ *  value the C names and doesn't define, or null. A module inside the repository that was built from the same files, asked the same way of the
  *  same compiler, is left as it is, with nothing printed. */
 export function buildWasm(sources, out, kit) {
   if (!building.has(out)) building.set(out, build(sources, out, kit).finally(() => building.delete(out)));
   return building.get(out);
 }
 
-async function build(sources, out, { folders }) {
+async function build(sources, out, { folders, flags = [], addressOf = null }) {
   // the compiler runs in a folder of its own, with the repository's C at the same paths
   const files = filesFor(sources, folders), name = basename(out);
-  const args = ['clang', '--target=wasm32', ...FLAGS, '-ffreestanding', '-nostdlib', '-mbulk-memory', '-msign-ext', '-mnontrapping-fptoint',
-    ...folders.flatMap(folder => ['-I', inRepo(folder)]), '-Wl,--no-entry', '-Wl,-z,stack-size=1048576', '-Wl,--strip-all', '-o', name,
+  const args = ['clang', ...WASM_FLAGS, ...FLAGS, ...flags,
+    // with addresses to place, the linker leaves what says where each one goes, and a name nothing defines for them
+    ...folders.flatMap(folder => ['-I', inRepo(folder)]), '-Wl,--no-entry', '-Wl,-z,stack-size=1048576', ...(addressOf ? ['-Wl,--emit-relocs', '-Wl,--allow-undefined'] : ['-Wl,--strip-all']), '-o', name,
     ...sources.map(inRepo)];
   // only what's built inside the repository is remembered: anywhere else, such as a test's own folder, it's built each time
   const key = relative(REPO, out).split(sep).join('/'), compiler = compilerVersion();
@@ -204,11 +218,25 @@ async function build(sources, out, { folders }) {
   }
   if (said.trim()) console.log(said.trim());
   if (!made?.[name]) throw new Error('The C didn\'t build to WebAssembly, and the compiler didn\'t say why.');
-  const waits = waitsInside(made[name]);
-  const module = waits ? await withWaits(made[name]) : made[name];
+  const linked = addressOf ? await atAddresses(made[name], addressOf) : made[name];
+  const waits = waitsInside(linked);
+  const module = waits ? await withWaits(linked) : linked;
   writeFileSync(out, module);
   if (from) remember(key, { from, module: sha1(module), ...(waits ? { pass: BINARYEN_VERSION } : {}) });
   return out;
+}
+
+// A module whose C names values it doesn't define, each put where the console keeps it, as the function check puts
+// them (wasm-addresses.mjs): so a twin names a value of the console's memory as plain C does, with `extern`, in the
+// game's build too. A name with no address stops the build, as a linker would.
+async function atAddresses(module, addressOf) {
+  const { placeAddresses } = await import('./wasm-addresses.mjs');
+  const placed = placeAddresses({ module, addressOf });
+  const called = WebAssembly.Module.imports(new WebAssembly.Module(placed.module)).filter(each => each.module === 'env').map(each => each.name);
+  if (placed.missing.length || called.length) {
+    throw new Error(`The C didn't build to WebAssembly: nothing defines ${[...placed.missing, ...called].join(', ')}${placed.missing.length ? ', and the game\'s proof/addresses.json gives no address for a value of that name' : ''}.`);
+  }
+  return Buffer.from(placed.module);
 }
 
 // whether a module's C waits from inside a function: the kit's pause.c is in it, with the four calls it makes to the pass
@@ -270,7 +298,9 @@ export function ownSources(folder) {
 export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) {
   const kit = cKit(consoleOfFolder(folder)), own = ownSources(folder);
   const twins = await twinsFolder(folder);
-  return buildWasm([...own, ...kit.sources], out, twins ? { ...kit, folders: [...kit.folders, twins] } : kit);
+  // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
+  // with what that compiler takes for granted, and each value it names where the console keeps it
+  return buildWasm([...own, ...kit.sources], out, twins ? { ...kit, folders: [...kit.folders, twins.folder], flags: kit.twinFlags, addressOf: name => twins.named.get(name) ?? null } : kit);
 }
 
 // a file of the game's own that includes twins.h
@@ -325,25 +355,25 @@ void *kit_twin(uint32_t address);
 `;
 }
 
-// The folder with a game's twins.h, written if what it would say is new, or null for a game that doesn't include it.
-async function twinsFolder(folder) {
+/** A game's twins.h, written if what it would say is new, as { folder, named }, the folder it's in and the names the
+ *  game gives addresses, or null for a game that doesn't include it: `folder` is the game's, or its version's. */
+export async function twinsFolder(folder) {
   const src = join(folder, 'src');
+  if (!existsSync(src)) return null;
   const own = readdirSync(src).filter(name => /\.[ch]$/.test(name)).map(name => join(src, name));
   if (!own.some(file => ASKS_FOR_TWINS.test(readFileSync(file, 'utf8')))) return null;
-  // what reads a function's comment is match's, and the labels' shifts and the names' addresses are the game's proof's
-  const [{ twinsIn }, { readShifts }, { readAddresses }, { sharedProofFolder }] = await Promise.all([import('../gba/match.mjs'), import('../portmap.mjs'), import('../match.mjs'), import('./paths.mjs')]);
+  // the twins and the names' addresses are read as match and the function check read them (twins.mjs)
+  const { versionTwins } = await import('./twins.mjs');
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
-  const shifts = readShifts(game);
-  const twins = own.filter(file => file.endsWith('.c')).flatMap(file => twinsIn(readFileSync(file, 'utf8'), shifts));
-  const names = join(sharedProofFolder(game), 'addresses.json');
-  const text = twinsHeader(twins, existsSync(names) ? readAddresses(names) : new Map());
+  const { twinsOf, named } = versionTwins(game);
+  const text = twinsHeader(own.filter(file => file.endsWith('.c')).flatMap(file => twinsOf.get(file) ?? []), named);
   const made = join(LOCAL, 'c', 'twins', ...game.split('/'));
   const header = join(made, 'twins.h');
   if (!existsSync(header) || readFileSync(header, 'utf8') !== text) {
     mkdirSync(made, { recursive: true });
     writeFileSync(header, text);
   }
-  return made;
+  return { folder: made, named };
 }
 
 /** The folders under kit/ a game's build reads on `console`, as the repository has them, such as kit/c/ and kit/gba/c/. */

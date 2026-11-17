@@ -8,7 +8,7 @@ code map learns which functions ran in play, and gameplay proven which instructi
 
 The processor only calls the function it was given, when it was given one, between reading an instruction and running
 it: nothing of the console changes, so every frame's picture and sound are the same with it or without, which
-tools/test/nes-ran.mjs checks. Nothing of FCEUmm is in the repository but the lines of its own this change sits between.
+tools/test/real-console.mjs checks. Nothing of FCEUmm is in the repository but the lines of its own this change sits between.
 
 diff --git a/src/drivers/libretro/libretro.c b/src/drivers/libretro/libretro.c
 index 55cf607..9dd860a 100644
