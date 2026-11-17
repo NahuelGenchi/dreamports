@@ -4,12 +4,11 @@
 // Leap never flashes first. Leap itself is what every page already draws, so nothing here holds a copy of it: a mark's
 // own drawing is put aside before another pose goes over it, and put back for Leap.
 import { COLOURS, POSES, type ColourName, type PoseName } from '../lib/mark';
-import { ICON_LINKS, OPENING_MARKS, iconsOf } from '../lib/mark-links';
+import { ICON_LINKS, iconsOf } from '../lib/mark-links';
 
 export const LOGO_KEYS = { pose: 'logo-pose', colour: 'logo-colour' } as const;
 
 const root = document.documentElement;
-const LAND = ['--land-x', '--land-y', '--land-r'];
 // each mark as the page drew it
 const drawn = new WeakMap<SVGSVGElement, { viewBox: string; svg: string }>();
 
@@ -61,9 +60,6 @@ export async function showLogo(pose: PoseName, colour: ColourName) {
     svg.setAttribute('viewBox', one.viewBox);
     svg.innerHTML = art ? one.svg.replaceAll('ID-', `${svg.dataset.id}-`) : one.svg;
     svg.dataset.pose = pose;
-    // the mark a launching game drops into says where it lands; Leap's place is the style sheet's own
-    const target = svg.closest<HTMLElement>('.t-mark');
-    if (target) LAND.forEach((name, i) => (art ? target.style.setProperty(name, `${art.land[i]}%`) : target.style.removeProperty(name)));
   }
 }
 
@@ -71,12 +67,4 @@ export async function showLogo(pose: PoseName, colour: ColourName) {
 export function showLogoKept() {
   const { pose, colour } = logoKept();
   if (pose !== 'leap' || colour !== 'deep') void showLogo(pose, colour);
-}
-
-/** Fetches the pictures of the pick that a game's page shows on its Opening screen (#1185), as a game launches, so
- *  that page has its logo on its first frame. The site's own logo is in that page's style sheet already. */
-export function fetchOpeningMark() {
-  const { pose, colour } = logoKept();
-  const icons = iconsOf(pose, colour);
-  if (icons) for (const file of Object.values(OPENING_MARKS)) new Image().src = icons + file;
 }

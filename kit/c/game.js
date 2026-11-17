@@ -8,6 +8,7 @@
 // has `step()`, `draw(pixels)` and `size` (tools/libretro/new-game/main.js.template).
 
 import { proof } from '../gba/proof.js';
+import { soundContext } from '../gba/ui/host.js';
 import { cartridgeSave } from '../gba/save.js';
 import { CONSOLES } from '../consoles.js';
 
@@ -59,17 +60,12 @@ export function createAudio({ module, processor, sampleRate = 0, first }) {
   const waiting = [];
   const post = (message, transfer = []) => (node ? node.port.postMessage(message, transfer) : waiting.push([message, transfer]));
   const resume = () => { if (ctx?.state === 'suspended' && !held) ctx.resume().catch(() => {}); };
-  const context = () => {
-    if (sampleRate) {
-      try { return new AudioContext({ latencyHint: 'interactive', sampleRate }); } catch { /* a rate this browser won't play: its own, and the worklet keeps up */ }
-    }
-    return new AudioContext({ latencyHint: 'interactive' });
-  };
   async function open() {
-    const c = context();
+    // at another rate than asked, the browser's own or the launcher's, the worklet keeps up
+    const { context: c, Node } = soundContext(sampleRate);
     ctx = c;
     await c.audioWorklet.addModule(module);
-    node = new AudioWorkletNode(c, processor, { numberOfInputs: 0, outputChannelCount: [2] });
+    node = new Node(c, processor, { numberOfInputs: 0, outputChannelCount: [2] });
     node.connect(c.destination);
     node.port.onmessage = ({ data }) => { if (data.type === 'error') console.warn('No sound:', data.message); };
     node.port.postMessage(first(muted ? 0 : GAIN));

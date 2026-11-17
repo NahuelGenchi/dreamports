@@ -149,7 +149,6 @@ export const POSE_ART: Record<Exclude<PoseName, 'leap'>, Pose> = {
         `<defs>${JUMP_SHADES}</defs><path fill="url(#ID-b)" d="${JUMP_BODY}"/><path fill="url(#ID-w)" ` +
         `d="${JUMP_BELLY}"/><path class="mk-eye" d="M449.9 129.8a17 17 0 1 0 34 0a17 17 0 1 0-34 0Z"/>`,
     },
-    land: [54.7, 64.3, 11.1],
   },
   sleep: {
     whole: {
@@ -209,6 +208,5 @@ export const POSE_ART: Record<Exclude<PoseName, 'leap'>, Pose> = {
         `172C282.4 174.3 285.3 176.1 288.3 176.6C291.2 177.2 294.6 176.6 297.7 175.4C300.8 174.1 305.5 170.1 307.1 ` +
         `169.1"/>`,
     },
-    land: [86.0, 27.5, 8.9],
   },
 };

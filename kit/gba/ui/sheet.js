@@ -15,6 +15,7 @@ import { padsHeld, rightStick, toward, REPEAT_AFTER, REPEAT_EVERY } from './pad-
 import { isDark } from './theme.js';
 import { keyHtml } from './keys.js';
 import { leave } from './leave.js';
+import { hosted } from './host.js';
 
 const still = matchMedia('(prefers-reduced-motion: reduce)');
 const RISE = 'cubic-bezier(.2, .9, .25, 1)', GROW = 'cubic-bezier(.65, 0, .2, 1)';
@@ -221,10 +222,12 @@ export function createSheet(stage, wrap, { onOpen = () => {}, onClose = () => {}
   }
   /**
    * Leaves the game: the launcher's page colour comes up over everything, with the game still waiting behind it, and
-   * only then the page goes, so the launcher opens from that same colour.
+   * only then the page goes, so the launcher opens from that same colour. The launcher that opened the game inside its
+   * own page fades to black itself (host.js).
    */
   function quit() {
     if (!isOpen || cover) return;
+    if (hosted) { leave(); return; }
     cover = document.createElement('div');
     cover.className = 'sheet-cover';
     wrap.append(cover);
