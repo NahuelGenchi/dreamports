@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { twinsIn } from '../gba/match.mjs';
 import { parseCodeMap } from '../lib/proof-files.mjs';
-import { countsOf, formatProofs, groupNamed, groupsOf, markOf, marksIn, parseProofs, stateOf, stateText, withProofs } from '../lib/proofs.mjs';
+import { beyondProof, countsOf, formatProofs, groupNamed, groupsOf, markOf, marksIn, parseProofs, stateOf, stateText, withProofs } from '../lib/proofs.mjs';
 import { functionTaskText, functionTasks } from '../tasks.mjs';
 import { whatToTake } from '../lib/take.mjs';
 import { whatCanStart } from '../../src/lib/pieces.mjs';
@@ -160,6 +160,14 @@ test('a version\'s tasks are the code map\'s functions in groups that sit togeth
   assert.equal(groups[0].name, 'Functions 08000200 to 0800064C');
   assert.equal(groups[3].name, 'Function 08010000', 'a function bigger than a group is one by itself');
   assert.equal(groups.flatMap(group => group.functions).length, 33, 'every function of the cartridge is in one, and none made in the work memory');
+  // a cartridge's start, its header's jump and the code right after its header, is the kit's to do: in no task
+  const started = { ...parseCodeMap({ original: 'abc', functions: [['08000000', 4], ['080000C0', 28], ['08000100', 12], ['08000120', 40]] }), console: 'gba' };
+  assert.deepEqual(groupsOf(started).map(group => group.name), ['Functions 08000100 to 08000120']);
+  assert.deepEqual(started.functions.map(f => beyondProof(started, f)), ['start', 'start', null, null]);
+  assert.match(stateText(stateOf('made-up/c', { codeMap: started, proofs: null, marks: new Map(), stopped: new Set(), mark: null })[1]), /the cartridge's start, which is the kit's to do/);
+  // only where the cartridge does start with its header's jump, and only on that console
+  assert.equal(beyondProof({ ...started, functions: started.functions.slice(1) }, started.functions[1]), null);
+  assert.equal(beyondProof({ ...started, console: 'nes' }, started.functions[0]), null);
   assert.equal(groupNamed(groups, 'Task: functions 08000200 to 0800064c in C'), groups[0]);
   assert.equal(groupNamed(groups, '0x08000266'), groups[0], 'any address inside one of its functions');
   assert.equal(groupNamed(groups, '08010BE0'), groups[4]);

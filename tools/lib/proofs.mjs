@@ -48,6 +48,23 @@ const MARK = /^[0-9a-f]{16}$/;
 // of the cartridge that isn't a function, which is the game's data
 const MOST_FUNCTIONS = 12, MOST_BYTES = 2048, WIDEST_GAP = 0x400;
 
+// where a Game Boy Advance cartridge starts, and where its code does, after its header
+const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
+
+/**
+ * Why neither proof reaches a function of a code map yet, or null for one a proof can be given of: 'memory' for one
+ * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
+ * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
+ * they run once, before any function is called, and never come back, so no call of them can be compared, and they
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. Such a function is in no task, and
+ * still counts as not proven.
+ */
+export function beyondProof(codeMap, f) {
+  if (f.bytes) return 'memory';
+  const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
+  return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
+}
+
 /** A mark of some text or bytes: the first 16 digits of its SHA-1. */
 export const markOf = what => createHash('sha1').update(what).digest('hex').slice(0, 16);
 
@@ -170,8 +187,8 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
  * Where each function of a version stands, in the code map's order: [{ key, address, size, twin, kind, why, calls }].
  * `twin` is { name, file, line } or null, `kind` 'bytes' or 'memory' for one whose proof holds, and `why` what keeps
  * the others from one: 'no twin', 'stop', its twin has a path marked as left out, 'unproven', 'twin changed' or
- * 'original changed', its proof is of other code than is there now. `inMemory` is true for a function the game makes
- * in its work memory, which no proof reaches yet. With `mark`, what originalMarks gives, the original's side is
+ * 'original changed', its proof is of other code than is there now. `beyond` says why no proof reaches a function
+ * yet, as beyondProof gives it, for one that none does. With `mark`, what originalMarks gives, the original's side is
  * looked at too, and without it only the twin's, as on a computer with no copy of the game.
  */
 export function stateOf(version, { codeMap = readCodeMap(version), proofs = readProofs(version), marks = twinMarks(version, codeMap), stopped = stoppedFunctions(portMap(version)), mark = originalMarks(version, codeMap) } = {}) {
@@ -180,7 +197,7 @@ export function stateOf(version, { codeMap = readCodeMap(version), proofs = read
     const twin = marks.get(f.key) ?? null, line = kept.get(f.key);
     const why = !twin ? 'no twin' : stopped.has(f.key) ? 'stop' : !line ? 'unproven' : line.twin !== twin.mark ? 'twin changed' : mark && line.original !== mark(f) ? 'original changed' : null;
     return {
-      key: f.key, address: f.address, size: f.size, ...(f.bytes ? { inMemory: true } : {}),
+      key: f.key, address: f.address, size: f.size, ...(beyondProof(codeMap, f) ? { beyond: beyondProof(codeMap, f) } : {}),
       twin: twin && { name: twin.name, file: twin.file, line: twin.line },
       kind: why ? null : line.kind, why, ...(why || !line.calls ? {} : { calls: line.calls }),
     };
@@ -198,7 +215,8 @@ export function countsOf(states) {
 export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls` : ''}`;
   return {
-    'no twin': state.inMemory ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet' : 'no twin yet',
+    'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',
@@ -268,7 +286,7 @@ export function keptText(version, result, kind) {
 }
 
 /**
- * A version's tasks: the code map's functions in the cartridge, in groups that sit together,
+ * A version's tasks: the code map's functions that a proof can be given of (beyondProof), in groups that sit together,
  * [{ name, first, functions }], each `functions` those of the map. A group ends after 12 functions or two
  * kilobytes of code, and where more than a kilobyte of the cartridge that isn't a function comes before the next,
  * or, on the NES, another bank. Its name is its first and last function: "Functions 080001C4 to 0800024C".
@@ -277,7 +295,7 @@ export function groupsOf(codeMap) {
   const groups = [];
   let group = null, bytes = 0;
   const bank = f => (codeMap.console === 'nes' ? Math.floor(f.address / 0x4000) : 0);
-  for (const f of codeMap.functions.filter(f => !f.bytes)) {
+  for (const f of codeMap.functions.filter(f => !beyondProof(codeMap, f))) {
     const last = group?.at(-1);
     if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last)) {
       group = [];

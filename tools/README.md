@@ -457,7 +457,7 @@ A line is a function of the code map, the kind of proof, `bytes` for the same by
 - `npm run dp -- ready <version> --task <a function's address or the task's name>` passes only when every proof kept holds and each function of the task has one, beside what it asks of every step.
 - A Dreamport isn't [done](../docs/STANDARD.md#done) while a function has no proof, which `prove` says with what else is left.
 
-Its parts stay as names for people and as what its recordings are for, and get no tasks. A function the game makes in its work memory is in no task, as neither proof reaches one yet.
+Its parts stay as names for people and as what its recordings are for, and get no tasks. Two kinds of function are in no task, as neither proof reaches one yet, and each still counts as not proven: a function the game makes in its work memory, and a Game Boy Advance cartridge's start, which is the jump at its first address, part of its header, and the code right after the header that it goes to. Those run once, before any function is called, and never come back, so no call of them can be compared, and in a Dreamport that work is the kit's.
 
 `npm run test:function-tasks` tries all of it through the tools as they're typed, with the function check's own program as a game in `games/` for as long as it takes and a stand-in for GitHub, and it runs on every pull request.
 
