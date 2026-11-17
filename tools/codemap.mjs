@@ -12,6 +12,8 @@
 // them that's a copy of the cartridge's code goes in the map's copies, where it runs, and its functions are the
 // cartridge's, split where the copy shows one starts; the rest are functions of their own, each known by its address
 // and its first 8 bytes (lib/proof-files.mjs). --memory does only that, and leaves the rest of the map as it is.
+// In an NES game, --fill plays the recordings in the original too, and adds the functions play sends the processor to
+// that following the code didn't find, as a jump through a table the tools couldn't read leads to (libretro/ran.h).
 
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -46,6 +48,7 @@ const FINDERS = {
     file: 'tools/nes/functions.mjs',
     inCode: copy => offset => offset >= 0 && offset < nesFunctions.nesProgram(copy).prg.length,
     address: address => address,
+    play: true,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
   },
   // a PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
@@ -101,6 +104,21 @@ export async function run(args) {
         from = from.replace(/, and the code (its|the game's) recordings run.*$/, '') + `, and the code the game's recordings run in the work RAM, found by playing them in the original`;
       }
     }
+    if (finder?.play) {
+      const sent = await sentInPlay(game, original, copy.path);
+      const starts = sent && startsFromPlay(nesFunctions.nesProgram(theCopy).prg, functions, sent);
+      if (starts?.length) {
+        // each starts a function, cut from the one it's in if it's in one, and its code is followed from there
+        const cut = splitAt(functions, starts.map(address => ({ address, size: 1 })));
+        functions = gbaFunctions.fillFunctions(cut, finder.findFunctions(theCopy, cut));
+        const PLAYED = ', and the functions its recordings reach that following the code doesn\'t, found by playing them in the original';
+        if (!from.includes(PLAYED)) from += PLAYED;
+        const hexes = starts.slice(0, 12).map(address => `0x${hex(address)}`).join(', ');
+        console.log(`Found by playing: ${starts.length} function${starts.length === 1 ? '' : 's'} the recordings reach that following the code didn't, at ${hexes}${starts.length > 12 ? ` and ${starts.length - 12} more` : ''}.`);
+      } else if (sent) {
+        console.log('Found by playing: nothing the code map didn\'t have.');
+      }
+    }
   } else {
     functions = finder.findFunctions(theCopy);
     from = `Found in the copy by ${FOUND}`;
@@ -111,6 +129,61 @@ export async function run(args) {
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.length} stretch${copies.length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
   return 0;
+}
+
+/** Where play sent the processor in every recording of a game whose emulator says so (libretro/ran.h): each place
+ *  once, as { address, way }, `way` being 'called', 'jumped' through a pointer or 'returned' to. Null when the
+ *  emulator doesn't say, or the game has no recordings one console plays. */
+async function sentInPlay(game, original, copyPath) {
+  const reference = await referenceOf(original);
+  const recordings = readRecordings(game).filter(r => r.players === undefined);
+  if (reference.seesEntries !== true || !recordings.length) return null;
+  reference.ensureOriginal(console.log);
+  const keysLate = original.keysAfterVBlank === true;
+  const found = new Map();
+  let next = 0, done = 0;
+  const worker = async () => {
+    for (let i = next++; i < recordings.length; i = next++) {
+      const { originalHeld, sets } = originalPlay(recordings[i], { keysLate });
+      const buttons = originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
+      if (keysLate) buttons.unshift(0);
+      const { entries } = await reference.runOriginal({ copy: copyPath, frames: buttons.length + 1, buttons, sets, entries: true });
+      for (const { address, way } of entries) if (!found.has(`${address} ${way}`)) found.set(`${address} ${way}`, { address, way });
+      process.stdout.write(`\rLooking for functions only play reaches: ${++done} of ${recordings.length} recordings…`);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, atOnce({ wanted: recordings.length })) }, worker));
+  process.stdout.write('\n');
+  return [...found.values()];
+}
+
+/**
+ * The places play sent an NES game's processor to that start a function the code map doesn't have, sorted: `prg` is
+ * the program's bytes, `functions` the map's, and `sent` each { address, way }. A place a JSR called starts a
+ * function wherever it is. One a JMP ($xxxx) jumped to, or an RTS returned to that isn't just after a JSR, as the
+ * address a routine pushed is, starts one only outside every function of the map: inside one it's that function's
+ * own code, as the case of a switch is, or where a call that reads the list after it comes back.
+ */
+export function startsFromPlay(prg, functions, sent) {
+  const sorted = [...functions].sort((a, b) => a.address - b.address);
+  const holder = address => {
+    let low = 0, high = sorted.length - 1;
+    while (low <= high) {
+      const middle = (low + high) >> 1, f = sorted[middle];
+      if (address < f.address) high = middle - 1;
+      else if (address >= f.address + f.size) low = middle + 1;
+      else return f;
+    }
+    return null;
+  };
+  const afterCall = address => address >= 3 && prg[address - 3] === 0x20;
+  const starts = new Set();
+  for (const { address, way } of sent) {
+    const f = holder(address);
+    if (f?.address === address || (way === 'returned' && afterCall(address))) continue;
+    if (way === 'called' || !f) starts.add(address);
+  }
+  return [...starts].sort((a, b) => a - b);
 }
 
 /** The functions in a list: `nm -S` lines, or a CSV with a header naming its address column, and its size or end

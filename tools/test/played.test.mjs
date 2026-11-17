@@ -3,7 +3,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CELL, NOT_TAKEN, RAN, TAKEN, contentCells, contentIn, finderOf, instructionsOf, layoutOf, playedIn } from '../lib/played.mjs';
+import { CELL, NOT_TAKEN, RAN, TAKEN, contentCells, contentIn, finderOf, instructionsOf, layoutOf, nesInstructionsOf, playedIn } from '../lib/played.mjs';
+import { findFunctions } from '../nes/functions.mjs';
+import { madeUpNes } from './made-up-nes.mjs';
 import { gameplayText, playedPercent, proofOf } from '../../src/lib/entries.mjs';
 
 const thumb = (...ops) => Uint8Array.from(ops.flatMap(op => [op & 0xFF, op >> 8]));
@@ -154,4 +156,26 @@ test('the functions that started in a recording\'s matching frames are those who
   ran(layout.first[1] + 1);      // the second's second, not its first
   assert.deepEqual(startedIn(set, codeMap), ['08000000']);
   assert.deepEqual(startedIn(new Uint8Array(layout.bytes), codeMap), []);
+});
+
+// On the NES a place is one byte, an address a place in the program, and the instructions are those the function finder
+// walks (nes/functions.mjs). A made-up program stands in for a game's (made-up-nes.mjs).
+test('an NES function has a place for each byte, and what ran is found by where it is in the program', () => {
+  const map = { console: 'nes', functions: [{ key: '00000010', address: 0x10, size: 5 }, { key: '00000020', address: 0x20, size: 3 }], copies: [] };
+  const layout = layoutOf(map), finder = finderOf(map, () => null, new Map());
+  assert.deepEqual([layout.unit, layout.places, [...layout.first]], [1, 8, [0, 5, 8]]);
+  // an instruction at an odd place, a branch taken at the next function's last byte, and one outside both
+  const records = Uint32Array.from([0x13, 0xE8, RAN, 0, 3, 0x22, 0xD0, TAKEN, 2, 2, 0x30, 0xEA, RAN, 0, 3]);
+  const set = playedIn(records, [1, 1, 1, 1], layout, finder), has = n => (set[n >> 3] >> (n & 7) & 1) === 1;
+  assert.deepEqual([has(3 * 3 + RAN), has(7 * 3 + TAKEN), has(7 * 3 + NOT_TAKEN), has(2 * 3 + RAN)], [true, true, false, false]);
+});
+
+test('an NES function\'s instructions are those following its code reaches, with its branches', () => {
+  const { rom, at } = madeUpNes({ calls: true });
+  const functions = findFunctions(rom).map(f => ({ ...f, key: String(f.address) }));
+  const of = nesInstructionsOf({ console: 'nes', functions }, rom);
+  // helper: INY, DEY, RTS, a byte each
+  assert.deepEqual([...of(functions.find(f => f.address === at.helper)).instructions], [0, 1, 2]);
+  const reset = of(functions.find(f => f.address === at.reset));
+  assert.ok(reset.branches.has(at.skips) && reset.instructions.has(at.skips) && !reset.instructions.has(at.skips + 1));
 });

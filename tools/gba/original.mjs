@@ -13,6 +13,12 @@ export const WIDTH = 240, HEIGHT = 160;
 /** The program that plays the original says every instruction that ran and each way every branch went (lib/played.mjs). */
 export const seesInstructions = true;
 
+/** It says what each branch went by, and its branches are ones the tools can work out the way of (untouched.mjs). */
+export const saysWhy = true;
+
+/** A search of the original can count what hasn't been played, and spread over how long it has played (lib/explore.h). */
+export const searchesWhatRan = true;
+
 /** It also gives the cartridge's save memory each time it changes (lib/saves.mjs). */
 export const seesSaves = true;
 

@@ -2,7 +2,9 @@
 // the NES, built as it's built on a contributor's computer, at the commit tools/consoles.mjs fixes. It runs a small program
 // written here (made-up-nes.mjs), with a Dreamport of that program in a folder of its own that it removes after, so no
 // game's copy is needed. What any-console.mjs can't show, as its emulator was written for it, is shown here: a real console's
-// power-on, timing, picture and sound, the settings that keep them the same for everyone, and `play`.
+// power-on, timing, picture and sound, the settings that keep them the same for everyone, and `play`. And what ran: the
+// emulator tells the tools of every instruction, with their change to it (../libretro/fceumm.patch), so the code map says
+// which functions ran in matching play and which no recording reached, and finds one only play leads to.
 
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,7 +13,10 @@ import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { connect, findChrome, until } from '../lib/chrome.mjs';
 import { CHR_AT, PALETTE, PALETTE_AT, RAM, START, TIMER, madeUpNes } from './made-up-nes.mjs';
-import { readCodeMap } from '../lib/proof-files.mjs';
+import { hex, readCodeMap } from '../lib/proof-files.mjs';
+import { consoleOf } from '../consoles.mjs';
+import { readProof } from '../readme.mjs';
+import { libretroReference } from '../libretro/reference.mjs';
 
 const GAME = 'test-real-nes';
 const WORK = join(LOCAL, 'test-real-console');
@@ -297,6 +302,64 @@ async function main() {
   dp('rom', european);
   run = dp('prove', GAME, 'later', '--quick');
   check(run.status !== 0 && /frames a second/.test(run.out), `a European copy, which runs at another speed, is told apart: ${run.out.trim().split('\n').find(line => line.includes('frames a second'))?.trim()}`);
+
+  console.log('What ran of the program, with four small functions more');
+  const calls = madeUpNes({ calls: true }), withCalls = join(WORK, 'calls.nes'), { at } = calls;
+  writeFileSync(withCalls, calls.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, sha1: calls.sha1 }, null, 2)}\n`);
+  for (const file of ['progress.json', 'played.json']) rmSync(join(proofFolder(GAME), file), { force: true });
+  dp('rom', withCalls);
+  run = dp('codemap', GAME);
+  const starts = () => (readCodeMap(GAME)?.functions ?? []).map(f => f.address);
+  const has = (list, ...names) => names.every(name => list.includes(at[name]));
+  check(run.status === 0 && has(starts(), 'reset', 'nmi', 'helper', 'never') && !starts().includes(at.hidden) && !starts().includes(at.deeper),
+    `following the code finds the function it calls and the one it never does, and not the one a pointer it works out leads to: ${lastLine(run)}`);
+
+  // the same pictures and sound, sample for sample, whether the emulator tells of its instructions or not
+  const reference = libretroReference(consoleOf('nes'));
+  const pressed = Array.from({ length: 200 }, (_, frame) => (frame > 60 ? reference.KEY.A | reference.KEY.RIGHT : frame > 30 ? reference.KEY.START : 0));
+  const watched = readCodeMap(GAME).functions.map(({ address, size }, index) => ({ address, size, index }));
+  const untold = await reference.runOriginal({ copy: withCalls, frames: pressed.length, buttons: pressed, sound: true });
+  const told = await reference.runOriginal({ copy: withCalls, frames: pressed.length, buttons: pressed, sound: true, functions: watched, played: true, entries: true, registers: true });
+  const sameFrames = pressed.filter((_, frame) => untold.hashes[frame] === told.hashes[frame] && Buffer.from(untold.sound.read(frame)).equals(Buffer.from(told.sound.read(frame)))).length;
+  untold.sound.close();
+  told.sound.close();
+  check(sameFrames === pressed.length && new Set(untold.hashes).size > 20, `the emulator plays the same while it tells of every instruction: ${sameFrames} of ${pressed.length} frames, picture and sound`);
+  const ways = Object.fromEntries(told.entries.map(({ address, way }) => [address, way]));
+  check(ways[at.helper] === 'called' && ways[at.hidden] === 'jumped' && ways[at.deeper] === 'called' && !(at.never in ways),
+    `and says where play sent the processor: a call, a jump through a pointer, and a call from there`);
+
+  run = dp('prove', GAME, 'buttons');
+  const proven = () => JSON.parse(readFileSync(PROGRESS, 'utf8'));
+  const ran = () => proven().recordings.buttons.functions.map(key => parseInt(key, 16));
+  check(run.status === 0 && has(ran(), 'reset', 'nmi', 'helper') && !ran().includes(at.never), `prove says which functions ran in matching play, and the one no recording reaches isn't one: ${ran().map(hex).join(', ')}`);
+  if (run.status) console.log(run.out);
+  check(/ran outside every function of the code map: [\d,]+ in the cartridge/.test(run.out), 'and that instructions ran outside every function of the code map');
+
+  // two parts, one of them played through, for what the game's card would show as gameplay proven
+  writeFileSync(join(proofFolder(GAME), 'parts.json'), `${JSON.stringify({ about: 'The program\'s parts.', parts: [{ name: 'All it does', recording: 'buttons', frames: [0, 239] }, { name: 'Something it doesn\'t have' }] }, null, 2)}\n`);
+  run = dp('codemap', GAME, '--fill');
+  check(run.status === 0 && run.out.includes(`Found by playing: 2 functions`) && run.out.includes(`0x${hex(at.hidden)}`) && run.out.includes(`0x${hex(at.deeper)}`) && has(starts(), 'reset', 'nmi', 'helper', 'never', 'hidden', 'deeper'),
+    `codemap --fill plays the recordings and adds the function only a pointer leads to, and the one it calls: ${run.out.trim().split('\n').find(line => line.startsWith('Found by playing'))}`);
+  if (run.status) console.log(run.out);
+  run = dp('prove', GAME, 'buttons');
+  check(run.status === 0 && has(ran(), 'reset', 'nmi', 'helper', 'hidden', 'deeper') && !ran().includes(at.never) && !run.out.includes('ran outside every function'),
+    `and then it ran in matching play too, with nothing outside the code map: ${ran().map(hex).join(', ')}`);
+  if (run.status) console.log(run.out);
+  const { units } = JSON.parse(readFileSync(join(proofFolder(GAME), 'played.json'), 'utf8'));
+  check(units?.played > 0 && units.played < units.total, `played.json counts its instructions and branch ways: ${units?.played} of ${units?.total}`);
+  // the cartridge's data isn't followed on the NES, so what ran doesn't become the game's gameplay proven
+  const shown = readProof(GAME)?.gameplay, gameplayLine = run.out.split('\n').find(line => line.includes('Gameplay proven'));
+  check(proven().played === undefined && proven().content === undefined && shown && shown.units === undefined && shown.proven === 1 && shown.total === 2 && shown.percent === 50 && / parts\./.test(gameplayLine ?? '') && !/instructions/.test(gameplayLine ?? ''),
+    `and gameplay proven stays the parts' share, as nothing follows the NES's data yet: ${gameplayLine?.trim()}`);
+  run = dp('untouched', GAME, '--all');
+  const neverRan = run.out.split('Functions played in part')[0];
+  check(run.status === 0 && neverRan.includes(hex(at.never)) && !neverRan.includes(hex(at.helper)) && run.out.includes(`${hex(at.skips)} not taken`),
+    `untouched lists the function that never ran, and the branch past its call as only ever taken: ${neverRan.trim().split('\n')[0]}`);
+  if (run.status) console.log(run.out);
+  const registers = JSON.parse(readFileSync(join(resultFolder(GAME, 'buttons'), 'registers.json'), 'utf8'));
+  check(registers[hex(at.helper)]?.[0]?.x === 0 && registers[hex(at.helper)][0].s === 0xFD && registers[hex(at.deeper)]?.[0]?.s === 0xFD,
+    `what the processor held as each function started is kept beside the recording's results: ${JSON.stringify(registers[hex(at.helper)]?.[0])}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

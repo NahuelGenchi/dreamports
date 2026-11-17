@@ -21,12 +21,20 @@
 // numbered through the code map's functions in order, and takes three numbers: in a recording's, that it ran, that its
 // branch was taken, and that it wasn't; in "code", that it's an instruction, and that it's a conditional branch. They say
 // where the original's instructions are and nothing of what they are, as the code map does.
+//
+// On the NES a place is one byte, as its instructions are one to three bytes long, and an address is where the
+// instruction is in the cartridge's program, as in its code map (libretro/ran.h, nes/functions.mjs). Where its
+// instructions are comes from the function finder, which knows the tables its code jumps with from its code. Its
+// data isn't followed yet, so an NES game's file has no "cells" and no "content", and its gameplay proven stays its
+// parts' share: prove keeps this file's total out of its progress.json until the data is followed (prove.mjs).
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
+import { INSTRUCTIONS } from '../nes/6502.mjs';
+import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
 export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
@@ -44,13 +52,24 @@ const unpack = (text, bytes) => {
   return set;
 };
 
-/** Where each of the code map's functions has its places: { first, places, bytes }, `first[i]` the place of function
- *  i's first two bytes, and `bytes` how long a set of all of them is. */
+// a code map knows its console (lib/proof-files.mjs), and one made by hand, with none, is a Game Boy Advance's
+const isNes = codeMap => codeMap.console === 'nes';
+
+/** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven. */
+export const followsContent = codeMap => !isNes(codeMap);
+
+/** How many cells of data a code map's cartridge has, or none on a console whose data isn't followed. */
+export const cellsOf = (codeMap, cartridge) => (followsContent(codeMap) ? Math.ceil(cartridge(CARTRIDGE, 0x02000000).length / CELL) : 0);
+
+/** Where each of the code map's functions has its places: { first, places, bytes, unit }, `first[i]` the place of
+ *  function i's first two bytes, `bytes` how long a set of all of them is, and `unit` how many bytes a place is: two,
+ *  or one on the NES. */
 export function layoutOf(codeMap) {
+  const unit = isNes(codeMap) ? 1 : 2;
   const first = new Uint32Array(codeMap.functions.length + 1);
-  codeMap.functions.forEach((f, i) => { first[i + 1] = first[i] + Math.ceil(f.size / 2); });
+  codeMap.functions.forEach((f, i) => { first[i + 1] = first[i] + Math.ceil(f.size / unit); });
   const places = first[codeMap.functions.length];
-  return { first, places, bytes: Math.ceil(places * 3 / 8) };
+  return { first, places, bytes: Math.ceil(places * 3 / 8), unit };
 }
 
 // Thumb instructions the console's processor doesn't have, a return, and a write to pc: where a function's code ends
@@ -111,6 +130,32 @@ export function instructionsOf(bytes, seeds = []) {
 }
 
 /**
+ * Where an NES game's instructions are, for its code map: `of(f)` gives { instructions, branches } as instructionsOf
+ * does, the offsets in the function `f` that hold an instruction and, of those, the conditional branches. It's what
+ * the function finder walked from every function of the map, through the tables the code jumps with, so the
+ * addresses of a table and the list after a call aren't taken for code. `copy` is the whole copy.
+ */
+export function nesInstructionsOf(codeMap, copy) {
+  const walked = new Map(), { prg } = nesProgram(copy);
+  findNesFunctions(copy, codeMap.functions.map(({ address, size }) => ({ address, size })), new Set(), { walked });
+  const at = [...walked.keys()].sort((a, b) => a - b);
+  return f => {
+    const instructions = new Set(), branches = new Set();
+    let low = 0, high = at.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (at[middle] < f.address) low = middle + 1;
+      else high = middle;
+    }
+    for (let i = low; i < at.length && at[i] < f.address + f.size; i++) {
+      instructions.add(at[i] - f.address);
+      if (INSTRUCTIONS[prg[at[i]]].mode === 'rel') branches.add(at[i] - f.address);
+    }
+    return { instructions, branches };
+  };
+}
+
+/**
  * Finds the function an instruction that ran is in, for a code map: `find(address, code, thumb)` gives
  * [the function's place in the code map, the offset in it] or null. An address in the work RAM is a copy of the
  * cartridge's code, when the cartridge has those bytes there (`cartridge(address, count)` reads them), or else in a
@@ -130,6 +175,8 @@ export function finderOf(codeMap, cartridge, made) {
     }
     return null;
   };
+  // an NES address is a place in the program, and its code runs from nowhere else that counts
+  if (isNes(codeMap)) return address => inCartridge(address);
   const same = (bytes, at, code, thumb) => bytes && at + (thumb ? 2 : 4) <= bytes.length
     && (bytes[at] | bytes[at + 1] << 8) === (code & 0xFFFF) && (thumb || (bytes[at + 2] | bytes[at + 3] << 8) === code >>> 16);
   return (address, code, thumb) => {
@@ -158,8 +205,9 @@ export function playedIn(records, matched, layout, find) {
   for (let i = 0; i + 5 <= records.length; i += 5) {
     const from = records[i + 3], to = Math.min(records[i + 4], matched.length - 1);
     if (from > to || before[to + 1] === before[from]) continue;
-    const found = find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
-    if (found) put(set, (layout.first[found[0]] + (found[1] >> 1)) * 3 + records[i + 2]);
+    // a Game Boy Advance address has its lowest bit set for Thumb code
+    const found = layout.unit === 1 ? find(records[i]) : find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
+    if (found) put(set, (layout.first[found[0]] + Math.floor(found[1] / layout.unit)) * 3 + records[i + 2]);
   }
   return set;
 }
@@ -264,7 +312,7 @@ export function untouchedOf(game, codeMap, cartridge = null) {
     let total = 0, done = 0;
     const ways = [];
     for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
-      const at = f.address + (place - layout.first[index]) * 2;
+      const at = f.address + (place - layout.first[index]) * layout.unit;
       const went = [has(ran, place * 3 + RAN), has(ran, place * 3 + TAKEN), has(ran, place * 3 + NOT_TAKEN)];
       if (has(code, place * 3 + INSTRUCTION)) total++;
       if (has(code, place * 3 + BRANCH)) {
@@ -277,7 +325,7 @@ export function untouchedOf(game, codeMap, cartridge = null) {
     }
     if (done < total) functions.push({ key: f.key, address: f.address, size: f.size, total, played: done, never: done === 0, ways });
   });
-  if (!cartridge) return { functions, content: [] };
+  if (!cartridge || !followsContent(codeMap)) return { functions, content: [] };
   // the cartridge's data never used, cell by cell, joined into stretches
   const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), read = new Uint8Array(holds.length), content = [];
   for (const text of Object.values(same ? played.content ?? {} : {})) {
@@ -340,7 +388,7 @@ export function ranIn(game, codeMap, address) {
   const layout = layoutOf(codeMap), played = readPlayed(game);
   const index = codeMap.functions.findIndex(f => address >= f.address && address < f.address + f.size);
   if (index < 0 || played.places !== layout.places) return [];
-  const place = layout.first[index] + ((address - codeMap.functions[index].address) >> 1);
+  const place = layout.first[index] + Math.floor((address - codeMap.functions[index].address) / layout.unit);
   return Object.entries(played.recordings ?? {}).map(([name, text]) => {
     const set = unpack(text, layout.bytes);
     return has(set, place * 3 + RAN) ? { name, taken: has(set, place * 3 + TAKEN), notTaken: has(set, place * 3 + NOT_TAKEN) } : null;
@@ -373,7 +421,7 @@ export function ranBy(game, codeMap, addresses) {
       if (starts[middle].f.address <= address) { found = middle; low = middle + 1; } else high = middle - 1;
     }
     const at = found < 0 ? null : starts[found];
-    return at && address < at.f.address + at.f.size ? layout.first[at.index] + ((address - at.f.address) >> 1) : -1;
+    return at && address < at.f.address + at.f.size ? layout.first[at.index] + Math.floor((address - at.f.address) / layout.unit) : -1;
   });
   for (const [name, text] of Object.entries(played.recordings ?? {})) {
     const set = unpack(text, layout.bytes);
@@ -394,7 +442,8 @@ export function readPlayed(game) {
  * bytes of the functions the game made in memory in those runs (place in the code map → bytes), and `cartridge` reads
  * the copy. Where each function's instructions and branches are comes from its bytes, followed from its start and from
  * what ran; a function made in memory that didn't run now keeps what the file knew of it. `used` holds the cartridge's
- * data those recordings used (name → set of cells). Returns { percent, total, played, content: { total, read, percent } }.
+ * data those recordings used (name → set of cells). Returns { percent, total, played, content: { total, read, percent } },
+ * `content` being null on a console whose data the tools don't follow, where `cartridge.copy()` gives the whole copy.
  */
 export function writePlayed(game, { original, codeMap, cartridge, sets, used, made, all }) {
   const layout = layoutOf(codeMap), before = readPlayed(game), unreachable = readUnreachable(game);
@@ -412,15 +461,16 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   const known = unpack(sameMap ? before.code : null, layout.bytes), code = new Uint8Array(layout.bytes);
   let total = 0, played = 0;
+  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : null;
   codeMap.functions.forEach((f, index) => {
     const first = layout.first[index], places = layout.first[index + 1] - first;
     const bytes = f.bytes ? made.get(index) : cartridge(f.address, f.size);
     if (bytes) {
       const seeds = [];
-      for (let place = 0; place < places; place++) if (has(ran, (first + place) * 3 + RAN)) seeds.push(place * 2);
-      const { instructions, branches } = instructionsOf(bytes, seeds);
-      for (const at of instructions) put(code, (first + (at >> 1)) * 3 + INSTRUCTION);
-      for (const at of branches) put(code, (first + (at >> 1)) * 3 + BRANCH);
+      for (let place = 0; place < places; place++) if (has(ran, (first + place) * 3 + RAN)) seeds.push(place * unit);
+      const { instructions, branches } = nesCode ? nesCode(f) : instructionsOf(bytes, seeds);
+      for (const at of instructions) put(code, (first + Math.floor(at / unit)) * 3 + INSTRUCTION);
+      for (const at of branches) put(code, (first + Math.floor(at / unit)) * 3 + BRANCH);
     } else {
       for (let place = 0; place < places; place++) {
         for (const what of [INSTRUCTION, BRANCH]) if (has(known, (first + place) * 3 + what)) put(code, (first + place) * 3 + what);
@@ -432,15 +482,23 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
       if (went[RAN]) put(code, place * 3 + INSTRUCTION);
       if (went[TAKEN] || went[NOT_TAKEN]) put(code, place * 3 + BRANCH);
       // what the game's list says nothing can reach doesn't count while it stays unplayed
-      const out = !f.bytes && within(unreachable.code, f.address + (place - first) * 2);
+      const out = !f.bytes && within(unreachable.code, f.address + (place - first) * unit);
       if (has(code, place * 3 + INSTRUCTION) && (went[RAN] || !out)) total++;
       // a branch's two ways count, but one the game's list says can't happen, while nothing has gone that way
-      const ruledOut = f.bytes ? undefined : unreachable.ways.get(f.address + (place - first) * 2);
+      const ruledOut = f.bytes ? undefined : unreachable.ways.get(f.address + (place - first) * unit);
       if (has(code, place * 3 + BRANCH)) total += out ? went.slice(1).filter(Boolean).length : [TAKEN, NOT_TAKEN].filter(way => went[way] || way !== ruledOut).length;
       played += went.filter(Boolean).length;
     }
   });
   const percent = playedPercent(played, total);
+  const start = `{\n  "original": ${JSON.stringify(original)},\n  "percent": ${percent},\n  "units": ${JSON.stringify({ total, played })},\n  "places": ${layout.places},\n`
+    + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }`;
+  // a version whose proof has nothing yet has no folder for it
+  mkdirSync(proofFolder(game), { recursive: true });
+  if (!followsContent(codeMap)) {
+    writeFileSync(join(proofFolder(game), 'played.json'), `${start}\n}\n`);
+    return { percent, total, played, content: null };
+  }
   // the cartridge's data: the cells that count, and those some recording used in its matching frames
   const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), cellBytes = holds.length;
   const content = {};
@@ -461,11 +519,8 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
     if (has(read, cell)) cellsRead++;
   }
   const ofContent = { total: cellsTotal, read: cellsRead, percent: playedPercent(cellsRead, cellsTotal) };
-  const text = `{\n  "original": ${JSON.stringify(original)},\n  "percent": ${percent},\n  "units": ${JSON.stringify({ total, played })},\n  "places": ${layout.places},\n`
-    + `  "code": ${JSON.stringify(pack(code))},\n  "recordings": {\n${Object.entries(recordings).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  },\n`
+  const text = `${start},\n`
     + `  "cells": ${JSON.stringify(ofContent)},\n  "content": {\n${Object.entries(content).map(([name, set]) => `    ${JSON.stringify(name)}: ${JSON.stringify(set)}`).join(',\n')}\n  }\n}\n`;
-  // a version whose proof has nothing yet has no folder for it
-  mkdirSync(proofFolder(game), { recursive: true });
   writeFileSync(join(proofFolder(game), 'played.json'), text);
   return { percent, total, played, content: ofContent };
 }
