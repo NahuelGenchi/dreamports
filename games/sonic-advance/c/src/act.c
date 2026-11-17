@@ -81,6 +81,9 @@ static void copy_rom(uint32_t src, uint32_t dest, uint32_t size) {
 }
 // the act being started follows the one before it (GoToNextLevel), which its title card shows
 static int comingOn;
+static int backgroundWaits;   // a demo's act hasn't its background yet
+static int demoFirstFrame;    // a demo's act, on the first frame its tasks run
+static void load_background(void);
 static void load_stage(int level) {
   Stage *s = &act.stage;
   const Level *row = level_row(level);
@@ -104,12 +107,31 @@ static void load_stage(int level) {
   copy_rom(s->front.tiles, 0, s->front.tilesSize);
   for (int i = 0; i < 256; i++) e.bgPalette[i] = (uint16_t)rom_u16(s->front.palette + i * 2);
   e.flags |= FLAGS_UPDATE_BG_PALETTES;
-  // the background's tiles at the second character block, and its map (DrawBackground, copy_backgrounds)
-  copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
+  // a demo's act, made by the title screen's task with no task after it, gets its background on the first frame its
+  // own tasks run: until then its map and tiles are what the screens before left (notes/title-demo.md)
+  if (demo_playing()) backgroundWaits = 1;
+  else load_background();
   if (level == LEVEL_THE_MOON) {
     moon_load_stage();
     return;
   }
+  // InitCamera's registers: BG1 the front layer, BG2 the back one, BG3 the background, all 16 colours
+  e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
+  e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
+  e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
+  // and their maps cleared to entry 0 (gBgSprites_Unknown2[1] and [2], whole 32-row maps), so the column and rows the
+  // layers never fill hold nothing of the screen before; done here at once, as the act writes its maps straight to VRAM
+  memset(gba_vram + 0xF000, 0, 0x1000);
+  e.bgCnt[3] = row->bgCnt;
+}
+
+// the background's tiles at the second character block, and its map (DrawBackground, copy_backgrounds)
+static void load_background(void) {
+  Stage *s = &act.stage;
+  const Level *row = s->row;
+  backgroundWaits = 0;
+  copy_rom(s->background.tiles, 0x8000, s->background.tilesSize);
+  if (s->level == LEVEL_THE_MOON) return;
   // The map goes into the screen BG3CNT names, a row of 32 tiles after another. A screen 512 px wide is two 32-tile
   // blocks side by side, as X Zone's 37 × 23 map needs; Secret Base act 2 takes the first 32 × 32 of its map, and Ice
   // Mountain the first 32 × 64 (sStageBgDimensions)
@@ -126,14 +148,6 @@ static void load_stage(int level) {
       gba_vram[at] = (uint8_t)entry; gba_vram[at + 1] = (uint8_t)(entry >> 8);
     }
   }
-  // InitCamera's registers: BG1 the front layer, BG2 the back one, BG3 the background, all 16 colours
-  e.dispCnt = 0x304E;           // OBJ on, window 0 on, BG1, BG2 and BG3 on, 1D OAM
-  e.bgCnt[1] = 0x1E01;          // 256 × 256, priority 1, map 30 (0xF000), character base 0
-  e.bgCnt[2] = 0x1F02;          // 256 × 256, priority 2, map 31 (0xF800), character base 0
-  // and their maps cleared to entry 0 (gBgSprites_Unknown2[1] and [2], whole 32-row maps), so the column and rows the
-  // layers never fill hold nothing of the screen before; done here at once, as the act writes its maps straight to VRAM
-  memset(gba_vram + 0xF000, 0, 0x1000);
-  e.bgCnt[3] = row->bgCnt;
 }
 
 // the stage's palette animations (palette_loader.c, palettes.js): each loads colours into the background palette
@@ -380,6 +394,7 @@ static void card_update(int pressed) {
   if (act.cardDone) return;
   if (!titlecard_run(pressed)) {
     act.clockStopped = 0;
+    if (demo_playing()) act.player.ignoreInput = 0;   // whatever Start in a demo had set
     if (chaohunt_active()) chaohunt_card_end();
   }
 }
@@ -399,7 +414,8 @@ static void draw_frame(void) {
   const Level *row = act.stage.row;
   if (restoreColour) { restoreColour = 0; e.bgPalette[0] = holdColour; e.flags |= FLAGS_UPDATE_BG_PALETTES; }
   // the first picture the screen shows keeps the layers where the act started, before the camera's first move
-  int hold = act.frames <= 2 && !act.afterLevel;
+  // (a demo's act, whose tasks first run a frame later, has only its first)
+  int hold = act.frames <= (demo_playing() && !act.restarted ? 1 : 2) && !act.afterLevel;
   int camX = hold ? act.startCamX : (int)act.cam.x;
   int camY = hold ? act.startCamY : (int)act.cam.y;
   // the first frame after the act before draws the stage's layers from its corner, where its making left them; the
@@ -409,7 +425,8 @@ static void draw_frame(void) {
   if (act.afterLevel && act.frames == 1) camX = camY = 0;
   // the course select's act whose stage init draws its layers from its corner shows them there on its first picture
   // after its load, and its background where it starts: the camera's task, first run then, only sets itself going
-  int fromCorner = act.byCourseSelect && row->layersOnFirstLoad && act.frames == 2;
+  // and so does a demo's, on the first frame its tasks run
+  int fromCorner = row->layersOnFirstLoad && ((act.byCourseSelect && act.frames == 2) || (demoFirstFrame && act.frames == 1));
   if (fromCorner) camX = camY = 0;
   // the act has no blend, and its first frames keep the course select's display, as the original does
   // (Ice Mountain's background update sets its blend in the camera's task, which the title card's end clears)
@@ -855,6 +872,50 @@ static void go_to_sega_logo(void) {
   else sega_logo_after_write();
 }
 
+static void act_frame(void);
+static void start_music(void);
+void act_demo_start(int level, uint32_t seed) {
+  act_active = 1;
+  // as a new game's act, the HUD's zero-ring flash starts at 1
+  actHudFlash = 1;
+  act_start(level, -1, 0);
+  if (!act.stage.row->sharedRandom) act.seed = seed;
+  // no task runs after the title screen's on the frame it makes the act (notes/title-demo.md): the screen is the
+  // card's, all dark, as the stage's making leaves the display, and the music starts at once, with no fade in
+  e.dispCnt = 0x3E40;
+  e.winRegs[0] = e.winRegs[1] = 0x00F0;
+  e.winRegs[2] = e.winRegs[3] = 0x00A0;
+  e.bldCnt = 0x3FFF; e.bldAlpha = 0x0010; e.bldY = 16;
+  // Secret Base's spotlights, made after the card, leave their own blend, which spares the backdrop
+  if (spotlights_active()) e.bldCnt = 0x3FDF;
+  e.winRegs[4] = 0x3F3F; e.winRegs[5] = 0x001F;
+  // Secret Base's making has drawn its layers' maps from its corner; a background's map and tiles wait for the act's
+  // first frame (load_stage)
+  e.bgScroll[6] = e.bgScroll[7] = 0;
+  if (act.stage.row->layersOnFirstLoad) {
+    fill_layer(0xF000, LAYER_FRONT, 0, 0);
+    fill_layer(0xF800, LAYER_BACK, 0, 0);
+  }
+  start_music();
+  // then the frame it takes to load, which skips its V-blank, and its tasks first run on the one after
+  act.stallLoad = 1;
+  demoFirstFrame = 1;
+}
+
+uint32_t act_demo_leave(void) {
+  uint32_t seed = act_random_state();
+  destroy_tasks(0, 0xFFFF);
+  act_tasks_destroy_all();
+  player_free(&act.player);
+  if (act.hasPartner) player_free(&act.partner);
+  act.task = NULL;
+  stop_all_songs();
+  clear_queues();
+  clear_bg_sprites();
+  act_active = 0;
+  return seed;
+}
+
 void act_go_to_next_level(void) {
   go_to_next_level();
 }
@@ -946,6 +1007,7 @@ static void put_start_point(void) {
 
 static void act_frame(void) {
   const Level *row = act.stage.row;
+  if (backgroundWaits) load_background();
   put_start_point();
   // a round's room events from the others come in first (Task_MultiplayerEventMgr_Receive, priority 1)
   if (chaohunt_active()) chaohunt_receive();
@@ -962,8 +1024,8 @@ static void act_frame(void) {
   }
   if (act.frames == 0) {
     // the first frame takes the screen from the course select or the act before, whose sprites go with it, those drawn
-    // earlier this frame too
-    clear_oam();
+    // earlier this frame too, but a demo's signs, as no task of the screen before runs on this frame
+    if (!demo_playing()) clear_oam();
   }
   if (act.cardDone && !act.hud.active && act.started && chaohunt_active()) act.hud.active = 1;
   if (act.cardDone && !act.hud.active && act.started) {
@@ -974,8 +1036,11 @@ static void act_frame(void) {
   }
   // the camera's task first runs on the frame after the one that makes the act, where it only sets itself going
   // (Task_CallUpdateCamera), and counts the animated tiles from the frame after that, in UpdateCamera
-  int camRuns = act.cam.started && act.frames > 1;
-  if (act.frames > 0) objects_run_before_camera();
+  // (in a demo's act, whose camera first runs with every other task, that is a frame sooner)
+  int camRuns = act.cam.started && act.frames > (demo_playing() && !act.restarted && !act.afterLevel ? 0 : 1);
+  // every task of a demo's act first runs on the same frame, the objects' too
+  int all = demoFirstFrame;
+  if (act.frames > 0 || all) objects_run_before_camera();
   // the camera's task (0x0F00) doesn't run on the frame the course select makes the act, which runs only the tasks after
   // the course select's own
   int made = act.byCourseSelect && act.frames == 0;
@@ -988,7 +1053,7 @@ static void act_frame(void) {
   if (bgRuns || (row->runsFromFirstFrame && act.frames > 0)) { if (row->tilesShownLate) late_tiles_step(); else animate_stage_tiles(); }
   // the objects' tasks first run on the frame after the one that makes the act, which is where the rings' spin starts;
   // those from the HUD's priority on run after it, below
-  int objectsRun = act.frames > 0 || row->runsFromFirstFrame;
+  int objectsRun = act.frames > 0 || row->runsFromFirstFrame || all;
   if (row->beforeObjects) row->beforeObjects();
   if (objectsRun) objects_run_before_hud();
   // a special spring sent the character out of the act: nothing after it runs this frame. The camera's task had already
@@ -1084,7 +1149,7 @@ static void act_frame(void) {
   if (act.hasPartner) { partner_task(!act.cardDone); partnerShown = act.partner; }
   if (row->palettesAfterSonic)
     for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
-  if (act.frames > 0 || row->runsFromFirstFrame) objects_run_late();
+  if (act.frames > 0 || row->runsFromFirstFrame || all) objects_run_late();
   // what the music manager reads of Sonic (0x4000)
   const Player *sonic = &act.player;
   music_call(MUSIC_PLAYER, (sonic->invincible > 0) | (sonic->speedUp > 0) << 1 | !sonic->dead << 2);
@@ -1093,7 +1158,7 @@ static void act_frame(void) {
   // in the single-player game Start opens the pause menu from when the title card ends until a life is lost or the
   // results start. Its task comes last among the act's, so it runs this frame only after the water's, which has its
   // priority; otherwise from the next frame
-  if (act.cardDone && !act.noPause && !chaohunt_active() && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
+  if (act.cardDone && !act.noPause && !chaohunt_active() && !demo_playing() && (e.pressed & KEY_START)) pause_menu_create(leave_for_lobby, !water_runs());
   act.player.wasInverted = act.player.inverted;
   act.partner.wasInverted = act.partner.inverted;
   // a round's shared random numbers and item turn move on whether the clock runs or not (Task_GameStage)
@@ -1124,7 +1189,7 @@ static void act_frame(void) {
   }
   act.tick++;
   // the water's task (0xFFFE), after the clock's
-  if (act.frames > 0) water_task();
+  if (act.frames > 0 || all) water_task();
   // and a round's room events going out (0xFFFE)
   if (chaohunt_active()) chaohunt_send();
   act.frames++;
@@ -1133,6 +1198,8 @@ static void act_frame(void) {
   draw_frame();
   // the first frame after the act before still has the layers where the stage's making left them, at 0
   if (act.afterLevel && act.frames == 1) for (int i = 2; i < 8; i++) e.bgScroll[i] = 0;
+  // a demo's fade to white, which its manager's task (1) sets before every other of the act's
+  demo_display();
   // the card's fade first: a stage's own tasks, such as Secret Base's spotlights, run after the card's and have the
   // last word on the display
   if (cardShows) titlecard_display();
@@ -1143,6 +1210,7 @@ static void act_frame(void) {
   results_display();
   time_attack_result_display();
   gameover_display();
+  demoFirstFrame = 0;
 }
 
 // the act's music, as the course select leaves it: the stage music manager (Task_StageMusicManager, priority 0x4000)
@@ -1152,15 +1220,20 @@ static void start_music(void) {
   if (!act.musicStarts) return;
   act.musicStarts = 0;
   // Time Attack's start at full volume too
-  music_call(act.afterLevel || time_attack() ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
+  music_call(act.afterLevel || time_attack() || demo_playing() ? MUSIC_STAGE : MUSIC_STAGE_IN, act.stage.music);
 }
 
 static void act_loaded(void) {
+
   // the load runs past the frame's V-blank, which keeps the screen, but the frame it took still ends with
   // ClearOamBufferDma's swap of the two H-blank tables, as the original's does (Secret Base's spotlights show which)
   if (!(e.flags & FLAGS_KEEP_HBLANK_BUFFER)) e.primary ^= HBLANK_BUFFER;
   // the palette animations first run on the frame after the load, as the original makes them
+  int made = !act.palStarted;
   start_palette_animations();
+  // which a demo's act, whose every task first runs on this frame, steps at once; those the act's making made
+  // already have their own tasks' run, after this one's
+  if (demoFirstFrame && made) for (int i = 0; i < act.palCount; i++) palette_animation_step(&act.pal[i]);
   act_frame();
 }
 
@@ -1195,6 +1268,8 @@ void act_task(Task *t) {
     // the frame the act takes to load: it skips its V-blank, so the screen and the palette keep the frame before
     int frames = act.stallLoad;
     act.stallLoad = 0;
+    // a demo's act gets its background as it loads, at scroll 0, 0
+    if (backgroundWaits) load_background();
     start_music();
     engine_stall(frames, act_loaded);
     return;
@@ -1382,6 +1457,9 @@ void act_start(int level, int cardSkip, int preFrames) {
   // every task of the screen or the act before is gone, and with them their sprites' tiles: the card takes the
   // heap's first
   vram_reset();
+  // a demo's manager is made before the card (CreateDemoManager), and its signs take the heap's first; its task
+  // stays as the act starts over
+  if (demo_playing()) { if (restarting) demo_signs_keep(); else demo_manager_create(); }
   titlecard_start(level, ctx.character, comingOn);
   // the players come after the card's task (CreateGameStage): Sonic's sprite has its fixed place, and the CPU partner,
   // which the character select's code brings along with Sonic in the single-player game, takes his two from the heap. The

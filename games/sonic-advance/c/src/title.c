@@ -5,7 +5,7 @@
 // five items where "PRESS START" was, the chosen one lit. Up and Down move through them, wrapping round, with the key
 // repeat, and A on Game Start, VS, Time Attack or Options fades the screen to black and stops the music, and on Tiny
 // Chao Garden to white. Game Start opens the character select, or the course select once the character has progress in
-// the save, and Tiny Chao Garden its program (garden.c); the title screen's demos aren't in C yet.
+// the save, and Tiny Chao Garden its program (garden.c). Left alone for 900 frames, the title screen starts a demo (demo.c).
 //
 // The logo, "PRESS START" and the menu's items are in the save's language, Japanese or English; the copyright line is
 // the international release's in both.
@@ -153,7 +153,7 @@ static void wait_for_start(Task *t) {
   if (title.unkE2 > DEMO_WAIT) t->main = to_demo;
 }
 
-// Task_SwitchToDemoInit: the act comes next, by itself (engine/demo.js), which isn't in C yet
+// Task_SwitchToDemoInit: the act comes next, by itself (demo.c)
 static void to_demo(Task *t) {
   destroy_task(t);
   front_start_demo();

@@ -65,7 +65,7 @@ static CardGfx card_gfx(int id) {
 }
 
 /** LoadStageIntroGraphics and the card's tables: the pieces' tiles in video memory, their colours, and their texts. */
-// the card's tiles, 400 to 531 of the sprites' graphics, kept from the heap while it shows
+// the card's tiles, 400 to 531 of the sprites' graphics where the heap is empty, kept from the heap while it shows
 enum { CARD_HEAP_TILES = 132 };
 static uint32_t cardHeap;
 
@@ -93,19 +93,21 @@ void titlecard_start(int level, int character, int after) {
   memcpy(actTiles, &gba_rom[actGfx.tiles], 8 * CARD_TILE);
   memcpy(actTiles + 8 * CARD_TILE, &gba_rom[actGfx.tiles + 8 * CARD_TILE + (level & 1) * 4 * CARD_TILE], 4 * CARD_TILE);
 
+  // the card's tiles start where the heap gave them: tile 400, or after a demo's signs (demo.c)
+  int first = (int)((cardHeap - OBJ_VRAM) / CARD_TILE);
   // the pieces' graphics: [tiles, tile base, entry, text offset, text count]
-  card.p[PIECE_ZIGZAG].tileBase = 400;
+  card.p[PIECE_ZIGZAG].tileBase = first + 0;
   card.p[PIECE_NAME].tileBase = 64;
-  card.p[PIECE_ACT].tileBase = 432;
-  card.p[PIECE_BAR].tileBase = 444;
-  card.p[PIECE_ZONE_JP].tileBase = 460;
-  card.p[PIECE_ZONE].tileBase = 476;
-  card_copy(zigzag.tiles, OBJ_VRAM + 400 * CARD_TILE, 32 * CARD_TILE);
+  card.p[PIECE_ACT].tileBase = first + 32;
+  card.p[PIECE_BAR].tileBase = first + 44;
+  card.p[PIECE_ZONE_JP].tileBase = first + 60;
+  card.p[PIECE_ZONE].tileBase = first + 76;
+  card_copy(zigzag.tiles, OBJ_VRAM + (uint32_t)(first + 0) * CARD_TILE, 32 * CARD_TILE);
   card_copy(names.tiles + (uint32_t)character * 64 * CARD_TILE, OBJ_VRAM + 64 * CARD_TILE, 64 * CARD_TILE);
-  card_copy_ram(actTiles, OBJ_VRAM + 432 * CARD_TILE, sizeof actTiles);
-  card_copy(bar.tiles, OBJ_VRAM + 444 * CARD_TILE, 16 * CARD_TILE);
-  card_copy_ram(jpTiles, OBJ_VRAM + 460 * CARD_TILE, sizeof jpTiles);
-  card_copy(zone.tiles, OBJ_VRAM + 476 * CARD_TILE, 56 * CARD_TILE);
+  card_copy_ram(actTiles, OBJ_VRAM + (uint32_t)(first + 32) * CARD_TILE, sizeof actTiles);
+  card_copy(bar.tiles, OBJ_VRAM + (uint32_t)(first + 44) * CARD_TILE, 16 * CARD_TILE);
+  card_copy_ram(jpTiles, OBJ_VRAM + (uint32_t)(first + 60) * CARD_TILE, sizeof jpTiles);
+  card_copy(zone.tiles, OBJ_VRAM + (uint32_t)(first + 76) * CARD_TILE, 56 * CARD_TILE);
 
   // the colours: the zigzag and the name use palette 15, the rest palette 6 (the HUD font's)
   for (int i = 0; i < 16; i++) e.objPalette[15 * 16 + i] = (uint16_t)rom_u16(names.palette + i * 2);
@@ -293,6 +295,9 @@ int titlecard_run(int pressed) {
   card.display = card.fading || card.bldY;
   return 1;
 }
+
+/** The card's brightness decrease this frame, 0 while it holds. */
+int titlecard_bld_y(void) { return card.bldY; }
 
 /** The card's fade, set over the act's display once the frame is drawn: window 0 over the whole screen and the
  * brightness decrease on every layer. */

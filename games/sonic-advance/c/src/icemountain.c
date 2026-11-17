@@ -240,6 +240,7 @@ void water_task(void) {
   water.late = water.early = 0;
   for (unsigned i = 0; i < sizeof LATE_WAVES / sizeof *LATE_WAVES; i++)
     if (LATE_WAVES[i].level == act.stage.level && time >= LATE_WAVES[i].first && time <= LATE_WAVES[i].last) water.late = 1;
+  if (demo_waves_late()) water.late = 1;
   for (unsigned i = 0; i < sizeof EARLY_COLOURS / sizeof *EARLY_COLOURS; i++)
     if (EARLY_COLOURS[i].level == act.stage.level && time >= EARLY_COLOURS[i].first && time <= EARLY_COLOURS[i].last) water.early = 1;
   int afterScreen = 0;

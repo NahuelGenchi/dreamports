@@ -411,8 +411,11 @@ void table_sprite(Sprite *s, uint32_t at);
 enum { GAME_MODE_SINGLE_PLAYER = 0, GAME_MODE_TIME_ATTACK = 1, GAME_MODE_RACE = 2, GAME_MODE_CHAO_HUNT = 4 };
 /** The act runs for a record (GAME_MODE_TIME_ATTACK): normal difficulty, no 1-UPs or special springs, no lives. */
 static inline int time_attack(void) { return ctx.gameMode == GAME_MODE_TIME_ATTACK; }
-/** The save's difficulty is easy for the act, as Time Attack always plays it on normal. */
-static inline int difficulty_easy(void) { return !time_attack() && save.bytes[0x18] != 0; }
+int demo_playing(void);
+uint16_t demo_read(uint16_t keys);
+void engine_stray_oam(int index, uint16_t a0, uint16_t a1, uint16_t a2);
+/** The save's difficulty is easy for the act, as Time Attack and a demo always play it on normal. */
+static inline int difficulty_easy(void) { return !time_attack() && !demo_playing() && save.bytes[0x18] != 0; }
 void vs_sprite(Sprite *s, uint16_t anim, uint32_t dest, int x, int y, uint16_t oamFlags, int variant, uint32_t frameFlags);
 void vs_background(Background *bg, uint16_t tilemapId, uint32_t layoutVram, uint16_t w, uint16_t h);
 void vs_clear_map(int bg, uint8_t lastRow);
