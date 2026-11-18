@@ -6,7 +6,8 @@
 //
 //   { set: image }                        puts the image, the console's five memories one after another (call.c), in
 //                                         the module's memory. Answers { done: true }.
-//   { call: name, args, changes }         changes those values, each [address, bytes, value], calls the function and
+//   { call: name, args, changes }         changes those values, each [address, bytes, value], where the image's are,
+//                                         calls the function and
 //                                         answers { gave, image }, what it gave back and the image it left, or
 //                                         { stopped: why } when it stopped: on its own, because it called something
 //                                         that nothing built is the twin of ('unbuilt', with which as `unbuilt`), or
@@ -53,7 +54,10 @@ parentPort.on('message', message => {
     parentPort.postMessage({ done: true });
     return;
   }
-  for (const [address, bytes, value] of message.changes) {
+  for (const [where, bytes, value] of message.changes) {
+    // a value of the palette, the video memory or the sprites' list goes where the kit keeps that memory
+    const region = REGIONS.findIndex(r => where >= r.address && where < r.address + r.bytes);
+    const address = region < 0 ? where : regions[region].address + where - REGIONS[region].address;
     if (bytes === 1) view.setUint8(address, value);
     else if (bytes === 2) view.setUint16(address, value, true);
     else view.setUint32(address, value, true);

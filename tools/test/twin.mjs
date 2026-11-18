@@ -25,7 +25,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { cartridge, compiler, FUNCTIONS, NAMED, PLAYED, VIA, withPlay } from './twin/cartridge.mjs';
+import { cartridge, compiler, FUNCTIONS, NAMED, PLAYED, VIA, VIDEO, withPlay, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -53,8 +53,14 @@ if (first.error) process.exit(1);
 const assembly = readFileSync(join(work, 'built', 'program.s'), 'utf8');
 check(Object.keys(FUNCTIONS).every((name, i, names) => i === names.length - 1 || first.functions.find(f => f.name === name).length <= FUNCTIONS[names[i + 1]] - FUNCTIONS[name]), 'each function fits where the cartridge has it');
 check(/strb/.test(assembly) && /_call_via_r/.test(assembly), 'it writes single bytes and calls through a pointer');
+// and a function that reads video memory, from a file of its own
+const looks = await matchFile({
+  file: join(HERE, 'video.c'), compiler, work: join(work, 'built', 'video'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!looks.error, `the function that reads video memory builds with ${compiler.name}${looks.error ? `: ${looks.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, cartridge(assembly));
+writeFileSync(copy, withVideo(cartridge(assembly), readFileSync(join(work, 'built', 'video.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -77,7 +83,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map(first.functions.map(f => [FUNCTIONS[f.name], f.length]));
+const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -119,6 +125,10 @@ try {
   const sprite = await checking(program(['VIDEO8(SPRITE_TILES + at, colour);', 'gba_vram[SPRITE_TILES - TILES + at] = colour;']));
   check(sprite.by.Paint?.kind === 'differs' && /at 0x060100[0-9A-F]{2}, in the video memory/.test(sprite.by.Paint.line), `and one that writes a sprite's tile differs, as the console drops it: ${sprite.by.Paint?.line}`);
   check(sameBut(plain, ['Paint']) && sameBut(sprite, ['Paint']), 'and every other twin is still the same');
+
+  console.log('A byte read from video memory:');
+  const looked = await checking(join(HERE, 'video.c'));
+  check(looked.by.Look?.kind === 'same' && looked.by.Look.compared === CALLS, `a twin that reads it where the kit keeps it is the same over every call, with the byte changed for some of them${looked.by.Look?.kind === 'same' ? '' : `: ${looked.by.Look?.line ?? looked.error}`}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));
