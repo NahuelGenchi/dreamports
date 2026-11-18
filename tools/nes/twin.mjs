@@ -65,6 +65,7 @@ import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
 import { functionKey, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
 import { nesInstructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
+import { versionLibraries } from '../lib/libraries.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { originalPlay } from '../lib/recording.mjs';
@@ -98,9 +99,12 @@ const cString = text => JSON.stringify(text).replace(/\?/g, '\\?');
 /**
  * The contracts in a file of a game's C, `text`, for a program of `banks` banks: { contracts, bank, errors }. Each
  * contract is { name, offset, line, text, call, back, given, allowance, byAddress }, `bank` the byte of work memory a
- * `dp:bank` line names, or null, and `errors` what couldn't be read, each with its line.
+ * `dp:bank` line names, or null, and `errors` what couldn't be read, each with its line. In a file of a shared
+ * library (../lib/libraries.mjs) a contract names the library's own function, and `placed`, a Map of its functions'
+ * names to their offsets in the version's program, says where it is: a function the version gives no offset to isn't
+ * in its copy, and its contract is left out.
  */
-export function contractsIn(text, banks) {
+export function contractsIn(text, banks, placed = null) {
   const contracts = [], errors = [];
   let bank = null;
   text.split('\n').forEach((whole, i) => {
@@ -113,7 +117,8 @@ export function contractsIn(text, banks) {
     }
     const found = whole.match(/\bdp:twin\s+(\S+)\s*(.*)$/);
     if (!found) return;
-    const [label] = nesNames(found[1], banks);
+    if (placed && !placed.has(found[1])) return;
+    const [label] = placed ? [[found[1], placed.get(found[1])]] : nesNames(found[1], banks);
     if (!label || label[0] !== found[1]) return errors.push({ line, error: `"${found[1]}" isn't a function as the game's code names one, such as sub_F321 or sub_04_923F` });
     let rest = found[2].replace(/\*\/\s*$/, '').trim(), allowance = 0, given = null, back = null;
     const extra = rest.match(/^([+-]\d+)\s+/);
@@ -196,21 +201,24 @@ function buildProcessor(log) {
 }
 
 /**
- * Builds the check for the C in `sources` (a folder) against the copy `rom` (its bytes), in the folder `work`, and
+ * Builds the check for the C in `sources` (a folder), with the files of the shared libraries the version takes,
+ * `libraries`, each { file, given } as contractsIn takes `placed`, against the copy `rom` (its bytes), in the folder `work`, and
  * gives { program, contracts, notes }: the program, each contract with `file`, `line` and its place among them,
  * `index`, and what to say of them. `functions`, a code map's, says where the original's functions start, when there's one.
  */
-export function buildCheck({ rom, sources: folder, work, functions = null, log = console.log }) {
+export function buildCheck({ rom, sources: folder, work, functions = null, libraries = [], log = console.log }) {
   const sources = resolve(folder);
   const program = nesProgram(rom);
   if (!program) throw new Error("That copy isn't an NES game's.");
   if (!MAPPERS.has(program.mapper)) throw new Error(`The function check can't lay out the program of an NES cartridge of mapper ${program.mapper} yet: it knows the ones that switch nothing and UNROM (docs/CONSOLES.md).`);
   const files = readdirSync(sources).filter(name => name.endsWith('.c')).sort().map(name => join(sources, name));
   if (!files.length) throw new Error(`${inRepo(sources)} has no C.`);
+  const given = new Map(libraries.map(({ file, given: at }) => [file, at]));
+  files.push(...given.keys());
   const contracts = [], errors = [], notes = [];
   let bank = null;
   const units = files.map(file => {
-    const found = contractsIn(readFileSync(file, 'utf8'), program.banks);
+    const found = contractsIn(readFileSync(file, 'utf8'), program.banks, given.get(file) ?? null);
     for (const { line, error } of found.errors) errors.push(`${inRepo(file)}:${line}: ${error}.`);
     if (found.bank !== null) bank = found.bank;
     const own = found.contracts.map(contract => ({ ...contract, file, index: contracts.length + found.contracts.indexOf(contract) }));
@@ -231,9 +239,10 @@ export function buildCheck({ rom, sources: folder, work, functions = null, log =
   const made = join(work, 'made');
   rmSync(made, { recursive: true, force: true });
   mkdirSync(made, { recursive: true });
-  const built = units.map(({ file, own }) => {
+  const built = units.map(({ file, own }, i) => {
     if (!own.length) return file;
-    const unit = join(made, basename(file));
+    // a library's file, named apart from the game's, as two can share a name
+    const unit = join(made, given.has(file) ? `lib${i}-${basename(file)}` : basename(file));
     writeFileSync(unit, unitFor(file, own));
     return unit;
   });
@@ -349,7 +358,9 @@ export async function twin(game, options = {}) {
     const taken = await takeMemories({ game, original, copy: copy.path, names: Array.isArray(memories) ? memories : [], file: kept, log });
     log(`${count(taken)} memories kept in ${inRepo(kept)}. They come from your copy of the game: never put them in a commit, an issue or a pull request.`);
   }
-  const built = buildCheck({ rom: readFileSync(copy.path), sources, work, functions: readCodeMap(game)?.functions ?? null, log });
+  // the shared libraries the version takes, whose twins are checked as its own, unless another folder is tried
+  const libraries = from ? [] : versionLibraries(version.language === 'c' ? game : `${version.game}/c`, 'nes').flatMap(library => library.files.map(file => ({ file, given: library.functions })));
+  const built = buildCheck({ rom: readFileSync(copy.path), sources, work, functions: readCodeMap(game)?.functions ?? null, libraries, log });
   const has = existsSync(kept);
   for (const note of built.notes) log(note);
   log(`${count(built.contracts.length)} twin${built.contracts.length === 1 ? ' has a contract' : 's have a contract'} in ${inRepo(sources)}. ${has ? `Each gets ${count(calls)} calls from a memory of play as it was and ${count(calls)} from one changed` : `Each gets ${count(calls)} calls from random memories: --memories takes real ones from the game's recordings`}.`);

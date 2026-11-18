@@ -18,6 +18,7 @@ import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONSOLES } from '../../kit/consoles.js';
 import { LOCAL, REPO } from './paths.mjs';
+import { librariesFile, versionLibraries } from './libraries.mjs';
 import { BINARYEN_VERSION, binaryen } from './binaryen.mjs';
 
 /** The base every console's kit in C shares: kit.h, the copy, the save memory, the start point's words, memory and
@@ -299,14 +300,24 @@ export function ownSources(folder) {
   return own;
 }
 
+/** The shared libraries the version of a game whose folder is `folder` takes, as versionLibraries gives them
+ *  (libraries.mjs), on the console `id`: none for a folder outside games/ or a version that takes none. */
+function librariesOfFolder(folder, id) {
+  const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
+  if (!game || game.startsWith('..') || isAbsolute(game) || !existsSync(librariesFile(game))) return [];
+  return versionLibraries(game, id);
+}
+
 /** A game's own C, every .c file in its folder's src/, such as games/<game>/c/src/, built with its console's kit to
- *  src/game.wasm there, or to `out`. */
+ *  src/game.wasm there, or to `out`, with the files of the shared libraries it takes, from their folders in the kit. */
 export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) {
   const kit = cKit(consoleOfFolder(folder)), own = ownSources(folder);
+  const libraries = librariesOfFolder(folder, kit.id);
+  const sources = [...own, ...libraries.flatMap(library => library.files), ...kit.sources], folders = [...kit.folders, ...libraries.map(library => library.library.folder)];
   const twins = await twinsFolder(folder);
   // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
   // with what that compiler takes for granted, and each value it names where the console keeps it
-  return buildWasm([...own, ...kit.sources], out, twins ? { ...kit, folders: [...kit.folders, twins.folder], flags: [...kit.twinFlags, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : kit);
+  return buildWasm(sources, out, twins ? { ...kit, folders: [...folders, twins.folder], flags: [...kit.twinFlags, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : { ...kit, folders });
 }
 
 // a file of the game's own that includes twins.h
@@ -374,9 +385,9 @@ export async function twinsFolder(folder) {
   // the twins and the names' addresses are read as match and the function check read them (twins.mjs)
   const { versionTwins } = await import('./twins.mjs');
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
-  const { twinsOf, named, twins, shifts } = versionTwins(game);
+  const { twinsOf, named, twins, shifts, libraries } = versionTwins(game);
   const { addressFinder } = await import('../gba/match.mjs');
-  const text = twinsHeader(own.filter(file => file.endsWith('.c')).flatMap(file => twinsOf.get(file) ?? []), named);
+  const text = twinsHeader([...own.filter(file => file.endsWith('.c')), ...libraries.flatMap(library => library.files)].flatMap(file => twinsOf.get(file) ?? []), named);
   const made = join(LOCAL, 'c', 'twins', ...game.split('/'));
   const header = join(made, 'twins.h');
   if (!existsSync(header) || readFileSync(header, 'utf8') !== text) {
