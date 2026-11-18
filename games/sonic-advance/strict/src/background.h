@@ -2,14 +2,34 @@
 #ifndef BACKGROUND_H
 #define BACKGROUND_H
 #include "console.h"
+#include "sprite.h"
 
-/** Tiles to copy to video memory. */
-struct GraphicsData {
-  /* 0x00 */ const void *src;
-  /* 0x04 */ void *dest;
-  /* 0x08 */ u16 size;
-  /* 0x0A */ u16 anim;
+// background.flags
+#define BACKGROUND_DISABLE_TILESET_UPDATE 0x08
+#define BACKGROUND_DISABLE_PALETTE_UPDATE 0x10
+#define BACKGROUND_FLAG_IS_LEVEL_MAP 0x40
+
+/** One of the game's tile maps, as gTilemapsRef holds them: its tiles, colours and map. */
+struct MapHeader {
+  /* 0x00 */ u16 xTiles;
+  /* 0x02 */ u16 yTiles;
+  /* 0x04 */ u16 animTileSize;
+  /* 0x06 */ u8 animFrameCount;
+  /* 0x07 */ u8 animDelay;
+  /* 0x08 */ const u8 *tiles;
+  /* 0x0C */ u32 tilesSize;
+  /* 0x10 */ const u16 *palette;
+  /* 0x14 */ u16 palOffset;
+  /* 0x16 */ u16 palLength;
+  /* 0x18 */ const u16 *map;
+  /* 0x1C */ const u16 *metatileMap;
+  /* 0x20 */ u16 mapWidth;
+  /* 0x22 */ u16 mapHeight;
 };
+
+/** The backgrounds to copy to video memory in the next V-blank, and where the list is. */
+extern struct Background *gBackgroundsCopyQueue[16];
+
 
 /** A background: which of the game's tile maps it shows, where in video memory, and how much of it. */
 struct Background {

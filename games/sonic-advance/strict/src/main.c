@@ -8,7 +8,12 @@
 
 #ifndef MATCHING
 #include "console.h"
+#include "background.h"
 #include "core.h"
+#include "language.h"
+#include "multi_sio.h"
+#include "stage.h"
+#include "ui.h"
 #include "logos.h"
 #include "malloc.h"
 #include "save.h"
