@@ -7,7 +7,10 @@
 // changes the code or recordings of a game main has and links no clip of that game, since #1030: text with no clip
 // passes only when the step changes neither, or adds a game's first entry, which nobody can play yet (#1032), or, since
 // #1060, changes a game's code and no frame, and links the record of its proof in a clip's place: the record share
-// published of a whole proof of the very files that would merge, whose progress.json is main's own (lib/same-proof.mjs).
+// published of a whole proof of the very files that would merge, whose progress.json is main's own (lib/same-proof.mjs),
+// or, since #1474, only proves functions of a game made a function at a time that has no recording yet, and names each
+// with its proof: every function it adds or changes a twin whose line in proofs.json is of the code that would merge,
+// and nothing else of the game's code changed but declarations (lib/proven-step.mjs).
 // It needs only Node and git: nothing is installed, and nothing but the clips' and records' own addresses is fetched.
 
 import { createHash } from 'node:crypto';
@@ -15,6 +18,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { changedSince, clipLinks, clipProblems, clipsToShow, gamesToShow, reportOf, SHOW_IT } from './lib/clips.mjs';
 import { changesOf, recordLinks, recordProblems, stateAt, versionIn } from './lib/same-proof.mjs';
+import { recordingsAt, showsProofs, standProblems, stepProofs } from './lib/proven-step.mjs';
 import { REPO } from './lib/paths.mjs';
 
 const MOST = { mp4: 2_200_000, json: 64_000 };
@@ -22,7 +26,9 @@ const MOST = { mp4: 2_200_000, json: 64_000 };
 /** Every problem with the clips a text links, as sentences, with `fetched(url, most)` for their bytes or null, and in
  * `games` the games whose code or recordings the pull request changes, which main has already. `stepOf(game)` says
  * what it changes of one, for a game it links no clip of: { recordings, versions: [{ version, state }] }, each version
- * whose code it changes with what would merge of it (stateAt in lib/same-proof.mjs), or null when nothing can say. */
+ * whose code it changes with what would merge of it (stateAt in lib/same-proof.mjs), and `proofs()` for what its
+ * functions' proofs cover of the step and how many recordings the game has, { step, recordings } (lib/proven-step.mjs),
+ * or null when nothing can say. */
 export async function checkClips(text, { fetched = download, read = path => readRecording(path), games = [], stepOf = () => null } = {}) {
   const links = [...new Set(clipLinks(text))];
   const videos = links.filter(link => link.endsWith('.mp4'));
@@ -33,18 +39,23 @@ export async function checkClips(text, { fetched = download, read = path => read
     // with no clip, the record of its proof stands in, for every version whose code it changes, when it changes no frame
     const step = stepOf(game);
     const cant = [];
-    if (!step || step.recordings || !step.versions.length || !records.length) cant.push('');
+    if (!step || step.recordings || !step.versions.length) cant.push('');
     else {
-      for (const { version, state } of step.versions) {
+      for (const { version, state, proofs } of step.versions) {
         const link = records.find(each => versionIn(each) === version);
         const json = link ? await fetched(link, MOST.json) : null;
         let record = null;
         try {
           record = json && JSON.parse(json.toString('utf8'));
         } catch { /* not a record */ }
-        if (!link) cant.push(` It links no record of ${version}'s proof.`);
-        else if (!record) cant.push(` ${link} can't be read as a record share made.`);
-        else cant.push(...recordProblems(record, version, state).map(problem => ` ${problem}`));
+        const own = !link ? [`It links no record of ${version}'s proof.`] : !record ? [`${link} can't be read as a record share made.`] : recordProblems(record, version, state);
+        if (!own.length) continue;
+        // with no record either, a step that only proves functions shows their proofs, in a game made a function at a
+        // time that has no recording yet (lib/proven-step.mjs): held to what would merge, and to the text's own lines
+        const way = proofs?.() ?? null;
+        const stand = way?.step.keeps || showsProofs(text) ? standProblems(version, way?.step ?? { keeps: false }, way?.recordings ?? { main: 0, now: 0 }, text) : null;
+        if (stand && !stand.length) continue;
+        cant.push(...(way?.step.keeps && !way.recordings.main && !way.recordings.now ? stand : [...own, ...(stand ?? [])]).map(problem => ` ${problem}`));
       }
     }
     if (cant.length) problems.push(`It changes ${game}'s code or recordings and links no clip of it: ${SHOW_IT}, and paste .dreamports/share/clips.md under Clips.${cant.join('')}`);
@@ -114,7 +125,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   // what would merge of a version, held against main as it is: the workflow's checkout is that merge
   const stepOf = game => {
     const { versions, recordings } = changesOf(changed, game);
-    return { recordings, versions: versions.map(version => ({ version, state: stateAt(version, 'HEAD', from) })) };
+    return {
+      recordings,
+      versions: versions.map(version => ({
+        version,
+        state: stateAt(version, 'HEAD', from),
+        // read only when no record stands, from the files here, which are what would merge
+        proofs: () => ({ step: stepProofs(version, from), recordings: { main: recordingsAt(version, from), now: recordingsAt(version, 'HEAD') } }),
+      })),
+    };
   };
   if (games === null) {
     console.log(`git can't tell what the pull request changes since ${process.env.CHANGED_FROM}, so its clips can't be checked.`);
@@ -127,6 +146,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   } else {
     const count = clipLinks(text).filter(l => l.endsWith('.mp4')).length;
     const stoodIn = games.length && !count;
-    console.log(count ? `All ${count} clip${count > 1 ? 's' : ''} keep the rules.` : stoodIn ? 'The pull request changes no frame, and the record of its proof stands in for a clip.' : 'The pull request links no clip.');
+    console.log(count ? `All ${count} clip${count > 1 ? 's' : ''} keep the rules.`
+      : stoodIn && showsProofs(text) && !recordLinks(text).length ? 'The pull request only proves functions of a game with no recording yet, and their proofs stand in for a clip.'
+        : stoodIn ? 'The pull request changes no frame, and the record of its proof stands in for a clip.' : 'The pull request links no clip.');
   }
 }

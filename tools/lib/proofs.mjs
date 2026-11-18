@@ -15,10 +15,10 @@
 // twin comes out as the original's bytes and "memory" when `npm run dp -- twin` found it leaves the same memory, a
 // mark of the twin as it was written then, a mark of the original's function as the copy had it, and for "memory"
 // how many calls were compared. Only those two tools write a line, and only for a twin with no stop in it. A mark is
-// the start of a SHA-1: the twin's of its own code and of the game's own headers its file includes, without their
-// comments, and the original's of its bytes. So a proof goes stale by itself: once the twin's code or a header of
-// its file changes, or the code map gives the function other bytes, its line no longer counts, and the tool has to
-// prove it again.
+// the start of a SHA-1: the twin's of its own code, of what its file holds outside every function, and of the game's
+// own headers the file includes, without their comments, and the original's of its bytes. So a proof goes stale by
+// itself: once the twin's code changes, or a line of its file outside the functions, or a header of its file, or the
+// code map gives the function other bytes, its line no longer counts, and the tool has to prove it again.
 //
 // The file is also how a version says it's made this way, a function at a time: with it, the version's tasks are
 // groups of functions from its code map (groupsOf), `find` and `ready` go by each function's proof, and a Dreamport
@@ -26,13 +26,13 @@
 // without the file is made a part at a time, as before, and nothing here touches it.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { proofFolder } from './paths.mjs';
 import { cartridgeOf, hex, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
-import { codeOf } from '../gba/match.mjs';
+import { codeOf, piecesIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
@@ -121,15 +121,18 @@ export function startProofs(version) {
 
 // the game's own headers a file of C includes, and those they include, each once, in the order they're met: a name in
 // quotes that is beside the file or in one of the version's `folders`. The kit's and the build's aren't the game's
-function headersOf(file, folders, found = new Map()) {
-  for (const [, name] of readFileSync(file, 'utf8').matchAll(/^[ \t]*#[ \t]*include[ \t]*"([^"\n]+)"/gm)) {
-    const header = [dirname(file), ...folders].map(folder => join(folder, name)).find(path => existsSync(path));
+// (`read(path)` gives a file's text, or null when it isn't there: the computer's own files unless something else is given)
+export function headersOf(file, folders, read = onDisk, found = new Map()) {
+  for (const [, name] of (read(file) ?? '').matchAll(/^[ \t]*#[ \t]*include[ \t]*"([^"\n]+)"/gm)) {
+    const header = [dirname(file), ...folders].map(folder => join(folder, name)).find(path => read(path) !== null);
     if (!header || found.has(header)) continue;
-    found.set(header, codeOf(readFileSync(header, 'utf8')));
-    headersOf(header, folders, found);
+    found.set(header, codeOf(read(header)));
+    headersOf(header, folders, read, found);
   }
   return found;
 }
+
+const onDisk = path => (existsSync(path) && statSync(path).isFile() ? readFileSync(path, 'utf8') : null);
 
 /**
  * Every twin a version in C has, as it's written now: a Map of each function's key in the code map to
@@ -143,27 +146,30 @@ export function twinMarks(version, codeMap = readCodeMap(version)) {
   return marksIn(codeMap, versionTwins(version));
 }
 
-/** The same, of a version's `folder`, its `files` of C and what each defines, `twinsOf`, as versionTwins gives them. */
-export function marksIn(codeMap, { folder, files, twinsOf }) {
+/** The same, of a version's `folder`, its `files` of C and what each defines, `twinsOf`, as versionTwins gives them,
+ *  with `read(path)` for a file's text, or null, when the files aren't the computer's own. */
+export function marksIn(codeMap, { folder, files, twinsOf, read = onDisk }) {
   const marks = new Map();
-  const folders = [join(folder, 'src'), folder].filter(path => existsSync(path));
+  const folders = [join(folder, 'src'), folder].filter(path => read !== onDisk || existsSync(path));
   const keyAt = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.key]));
   const inFolder = file => relative(folder, file).split(sep).join('/');
-  const withHeaders = new Map();
-  const headers = file => {
-    if (!withHeaders.has(file)) withHeaders.set(file, [...headersOf(file, folders).values()].join('\n'));
-    return withHeaders.get(file);
+  // what a twin is built with beside its own code: what its file holds outside every function, and the game's own
+  // headers the file includes
+  const around = new Map();
+  const built = file => {
+    if (!around.has(file)) around.set(file, [piecesIn(read(file) ?? '').rest.map(piece => piece.text).join('\n'), ...headersOf(file, folders, read).values()].join('\n'));
+    return around.get(file);
   };
   const keep = (address, twin, file, more = '') => {
     const key = keyAt.get(address);
     if (key === undefined || marks.has(key) || !twin.code) return;
-    marks.set(key, { name: twin.name, file: inFolder(file), line: twin.line, mark: markOf(`${more}${twin.code}\n${headers(file)}`) });
+    marks.set(key, { name: twin.name, file: inFolder(file), line: twin.line, mark: markOf(`${more}${twin.code}\n${built(file)}`) });
   };
   if (codeMap.console === 'nes') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     for (const file of files) {
       const defined = new Map(twinsOf.get(file).map(twin => [twin.name, twin]));
-      for (const contract of contractsIn(readFileSync(file, 'utf8'), banks).contracts) {
+      for (const contract of contractsIn(read(file) ?? '', banks).contracts) {
         const twin = defined.get(/^[A-Za-z_]\w*/.exec(contract.call)?.[0]);
         if (twin) keep(contract.offset, twin, file, `${contract.text}\n`);
       }
