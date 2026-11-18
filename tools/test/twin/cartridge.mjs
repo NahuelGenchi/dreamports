@@ -19,6 +19,9 @@ export const STEPS = [1, 2, 5, 9];
 export const BIOS = { Div: 0x08000510 };
 // and the function that calls it, in a file of its own (bios.c)
 export const DIVIDES = { Share: 0x08000540 };
+// a function that reads a register of the hardware and writes it changed, and one that waits for a DMA the V-blank
+// starts, in a file of their own (register.c)
+export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, and the value play keeps the stage in
 export const PLAYED = { Shine: 0x08000400, Play: 0x08000440 };
@@ -66,6 +69,13 @@ function place(rom, assembly, where) {
     }
   }
   for (const f of all) text.copy(rom, where[f.name] - CARTRIDGE, f.at, f.until);
+}
+
+// The same cartridge with the function of twin/register.c, which changes a register of the hardware.
+export function withRegister(rom, assembly) {
+  const shifted = Buffer.from(rom);
+  place(shifted, assembly, REGISTER);
+  return shifted;
 }
 
 // The same cartridge with the function of twin/bios.c, which divides through the BIOS.

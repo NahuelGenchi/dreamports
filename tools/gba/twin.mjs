@@ -65,7 +65,8 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
 // what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
-const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size'];
+// and where the module's own values are, which the kit's and the version's hardware are among (twin-worker.mjs)
+const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end'];
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -626,7 +627,7 @@ export async function compareCalls({ original, twins, start, functions, options,
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map() });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map() });
   let since = 0, lost = 0;
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
@@ -743,6 +744,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     if (theirs.ended !== 0) {
       // the original didn't come back, or left what a twin can follow: nothing to compare, and it's taken back
       if (theirs.ended === 1) f.aside.never++;
+      else if (theirs.ended === 3) f.aside.clocked++;
       else {
         f.aside.left++;
         f.leftFor ??= theirs.leftFor;
@@ -853,6 +855,7 @@ export function outcome(f, { calls, seconds }) {
     unbuilt: `the twin calls ${f.unbuilt}, which nothing built is the twin of`,
     left: `the original left for ${at(f.leftFor ?? 0)}, where a twin can't follow`,
     never: 'the original itself didn\'t come back',
+    clocked: 'a DMA the console\'s clock started wrote memory in the middle of the original\'s call, which a twin has no clock for',
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
   }).filter(([key]) => f.aside[key]).sort(([a], [b]) => f.aside[b] - f.aside[a]).map(([key, text]) => `${text} (${count(f.aside[key])} calls)`).join(', and ');
   if (!f.compared) return { kind: 'unchecked', line: `no call could be compared: ${why}.` };
