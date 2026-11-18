@@ -22,6 +22,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `match` | Builds a Game Boy Advance game's C with the compiler the original was built with, and says which functions come out as the original's bytes ([Matching the original's bytes](#matching-the-originals-bytes)) |
 | `twin` | Calls a function of the original and its twin from the same memory, thousands of times, and says whether both leave the same memory, on the Game Boy Advance ([Checking a twin against the original's memory](#checking-a-twin-against-the-originals-memory)) and on the NES ([The function check on the NES](#the-function-check-on-the-nes)) |
 | `proofs` | Lists where each function of a version stands, its twin and its proof, for a version made a function at a time ([A function's proof](#a-functions-proof-and-a-game-made-a-function-at-a-time)) |
+| `libraries` | Says how much of each console's shared code, the libraries its games share, is proven, and with a version where each function it takes from them stands ([Shared libraries](#shared-libraries)) |
 | `share` | Publishes a preview of a game on GitHub Pages from your own fork, with the clips of what the step changed for its pull request |
 | `find` | Shows where a game stands: its lead, its two numbers, its team build, who has claimed which task, the tasks free to start, and what the others wait on |
 | `tasks` | Opens a Task issue for each of a game's foundations and parts that has none yet, its foundations first and then in the order a player meets them, or for each group of functions in a version made a function at a time |
@@ -475,6 +476,42 @@ Its parts stay as names for people and as what its recordings are for, and get n
 
 `npm run test:function-tasks` tries all of it through the tools as they're typed, with the function check's own program as a game in `games/` for as long as it takes and a stand-in for GitHub, and it runs on every pull request. `npm run test:function-homes` does the same for a big game's tasks: a made-up game of 1,720 functions and 400 groups, with `tasks` opening them twenty at a time to the last, the claims workflow's own script putting each under its stretch's issue, and a stand-in for GitHub that keeps GitHub's limits (`tools/test/stand-in/github.mjs`), so it fails if any issue would hold more than 100. It needs no compiler and nobody's copy, and runs on every pull request too.
 
+## Shared libraries
+
+Many games of a console have code none of them wrote: the console maker's libraries, such as the Game Boy Advance's sound engine, sound drivers and other middleware, and the helpers its compiler adds. Each such function needs a twin and a proof in every Dreamport that has it, so it's written once, in the kit, and each version takes it from there and proves it on its own copy ([#1508](https://github.com/NahuelGenchi/dreamports/issues/1508)).
+
+**Where a library lives.** A library of one console's games is a folder of its kit, `kit/<console>/c/lib/<name>/`, such as `kit/gba/c/lib/m4a/`, and C that several consoles' games share, as the C library of every console with a MIPS processor, is in `kit/c/lib/<name>/`. Its id is `<console>/<name>`, or `c/<name>`. Beside its C, its `NOTICE.md` names each source its twins were written from, by repository and commit, and its `library.json` says what it is, the consoles whose games have it (only in `kit/c/lib/`), the compiler and flags that built it on each console where `match` can build it, its variants, when games have more than one version of it, each as the files it's made of, and each of its twins with the size in bytes of the original's function and its file:
+
+```json
+{
+  "about": "Nintendo's sound engine, MusicPlayer2000",
+  "compilers": { "gba": { "name": "old_agbcc", "flags": ["-mthumb-interwork", "-O2"] } },
+  "variants": { "a": ["engine.c", "mixer-a.c"], "b": ["engine.c", "mixer-b.c"] },
+  "functions": [["SoundMain", 1172, "engine.c"], ["SoundMix", 820, "mixer-a.c"]]
+}
+```
+
+A twin in a library names no address and nothing of any game. It's named as the library's own function, a version of it that differs is a file of its own, never a game's name in an `#if`, and a stop in it is the words `dp:stop` alone, which holds back the function it's in, in every game that has it. Every function its files define is listed, and the files' names are their own among everything a game of its console is built with. `npm run dp -- libraries --check`, part of `npm run check`, holds every library and every version that takes one to these rules, and asks each library for its notice.
+
+**How a version takes one.** Its `proof/libraries.json` names each library it takes, with the variant, and where its copy has each of the library's functions and each value their C names, as the code map's keys, eight capital hexadecimal digits:
+
+```json
+{
+  "about": "Where the copy has each library's functions",
+  "libraries": { "gba/m4a": { "variant": "a", "at": { "SoundMain": "080976BC", "gMPlayTable": "0809B000" } } }
+}
+```
+
+Every tool then takes the library's twins as the version's own, at those addresses: the build links its C, the port map counts each of them and names it by its place in the kit, as `kit/gba/c/lib/m4a/engine.c:12`, `match` builds its files with the library's own compiler from its folder alone, and `twin` checks them as any twin, on the Game Boy Advance and on the NES, where a contract in a library names the library's own function. A function the version gives no address to isn't in its copy, and isn't checked. `libraries --check` asks that each function a version takes starts where its code map has one of the library's size.
+
+**A proof never carries over.** A version's `proofs.json` gets a line for a library's function only when `match` or `twin` proves it on that version's own copy, at its own addresses, as for any twin. Its mark is of the library's C, so it's the same in every game, and a change to the library makes its proofs stale in every version that takes it at once, which `npm run dp -- proofs --check` says. What carries over is the C: a proof by the same bytes is a build and a compare on the next game, seconds, and one by the same memory is `twin` run again there.
+
+**The number.** `npm run dp -- libraries` says, for each console with a library, how much of its known shared code is proven: every twin its libraries list, by the size of the original's function, and proven once it has a proof that holds in a version that takes it. As `proofs --check` does without the game's copy, it goes by the twin's mark alone. The number can fall as a library is added, as it's a share of what's known. With a version, it lists the libraries the version takes and where each of their functions stands.
+
+A step that only proves functions shows those proofs in a clip's place in a game with no recording yet ([Clips](../docs/STANDARD.md#clips)), and the twins of a library aren't counted that way yet: a version that takes a library shows a clip.
+
+`npm run test:libraries` tries all of it with a made-up library in `kit/gba/c/lib/` and two made-up games in `games/`, each for as long as it takes, the library's two functions at addresses of each game's own and its values elsewhere: both port maps count it, the game's build links its C, `match` proves it on one copy and `twin` on the other, a change to it makes both stale, a stop in it holds both back, and `libraries --check` refuses a library that names an address or a function it doesn't list and a version that puts a function where its code map has another. It runs on every pull request.
+
 ## The same-memory build
 
 A Dreamport made [the stricter way](../docs/STANDARD.md) keeps every value where the console keeps it, so a function and its twin leave the same memory behind, and an address kept in memory means the same in both. The build does three things for that on the Game Boy Advance, each only for a game whose C asks for it by what it uses. A game that uses none of them builds to the same bytes as before.
@@ -584,6 +621,7 @@ What the tools keep in the repository is in the game's `proof/` folder, and it's
 | `unreachable.json` | Optional: the stretches of the cartridge nothing can reach, each with why, which don't count towards gameplay proven, read by a person before it goes in |
 | `saves.json` | Optional: the bytes of the save memory that aren't the game's save, each stretch with why the original never reads them, which `prove` doesn't compare, read by a person before it goes in |
 | `played.json` | What of the original's code was played in each recording's matching frames, and where its instructions and branches are, as sets of places in the code map's functions, written by `prove`; nothing of the code itself |
+| `libraries.json` | Only in a version that takes a shared library from the kit: which, its variant, and where its copy has each of the library's functions and values ([Shared libraries](#shared-libraries)) |
 | `proofs.json` | Only in a version made a function at a time: each function's proof, by the same bytes or the same memory, with a mark of the twin and of the original's function it's a proof of, written by `match` and `twin` alone ([A function's proof](#a-functions-proof-and-a-game-made-a-function-at-a-time)) |
 | `port-map.json` | The port map: the functions the game's code names, the names that land inside one but not at its start, and the stops, each a path the code says it hasn't ported, written by `portmap` |
 | `names.json` | Optional: how far the release the game's labels come from is from the copy's, stretch by stretch, for `portmap` and `read` |
