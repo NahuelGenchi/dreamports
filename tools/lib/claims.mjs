@@ -4,7 +4,7 @@
 // build, a branch of their fork that gathers the team's finished pieces.
 
 import { UPSTREAM, api } from './github.mjs';
-import { inReview, languageOfIssue } from '../../src/lib/pieces.mjs';
+import { inReview, languageOfIssue, piecesUnderNow } from '../../src/lib/pieces.mjs';
 
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -62,7 +62,8 @@ export function readClaims(repository = UPSTREAM) {
     gameIssueOf,
     /**
      * A game's pieces, open and closed: the repository's issues under its game's issue, in its order, then those under
-     * each of its versions' issues there, which hold its tasks in another language (#905), or [] without one.
+     * each issue there that holds tasks, a version's and under it a stretch of its code's (src/lib/pieces.mjs), or []
+     * without one.
      */
     piecesOf: (game, entry) => {
       const home = gameIssueOf(game, entry);
@@ -76,9 +77,7 @@ export function readClaims(repository = UPSTREAM) {
             if (batch.length < 100) return found;
           }
         };
-        const direct = under(home);
-        const versions = direct.filter(languageOfIssue);
-        pieces.set(home.number, [...direct.filter(i => !languageOfIssue(i)), ...versions.flatMap(under)]);
+        pieces.set(home.number, piecesUnderNow(home, under));
       }
       return pieces.get(home.number);
     },

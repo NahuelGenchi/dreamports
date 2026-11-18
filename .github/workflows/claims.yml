@@ -5,7 +5,9 @@ name: Claims
 # game's issue, which lists every piece of the game. A game's issue is the New Dreamport issue its entry names, or for
 # a game with no entry yet, the open one that claims it. A Task issue goes under its game's issue as a sub-issue, or a
 # task in another language than the game's main one under its version's issue there, which the bot opens when the game
-# has none, as one issue holds at most 100 (#905), and claims its task for its author when they tick the box. On any open issue of a game, a comment starting with /claim
+# has none, as one issue holds at most 100 (#905), and a task of functions of a version made a function at a time under
+# the issue of its stretch of the game's code, under its version's issue (#1473), and claims its task for its author
+# when they tick the box. On any open issue of a game, a comment starting with /claim
 # takes it while nobody has it, and /release gives it back. Each answer is a comment, and the daily run releases every
 # claim whose holder has done nothing on the game's issues or pull requests for 14 days, or 7 for a foundation, which
 # other pieces wait on. It lists a game's free pieces, and says what a piece waits on, by src/lib/pieces.mjs itself,
@@ -162,14 +164,10 @@ jobs:
             })());
             return homes.get(game);
           }
-          // a game's pieces: the issues of this repository under its game's issue, open and closed, and those under each of
-          // its versions' issues there, which hold its tasks in another language (#905)
+          // a game's pieces: the issues of this repository under its game's issue, open and closed, and those under each
+          // issue there that holds tasks, a version's (#905) and under it a stretch of its code's (#1473), by pieces.mjs
           const under = async number => (await list(`/issues/${number}/sub_issues`)).filter(i => i.repository_url?.toLowerCase() === root.toLowerCase());
-          const piecesOf = async home => {
-            const direct = await under(home.number);
-            const versions = direct.filter(i => rules.languageOfIssue(i));
-            return [...direct.filter(i => !rules.languageOfIssue(i)), ...(await Promise.all(versions.map(v => under(v.number)))).flat()];
-          };
+          const piecesOf = home => rules.piecesUnder(home, issue => under(issue.number));
           // the issue under a game's issue that holds its tasks in a language, opened and put there when it has none
           const versionHomes = new Map();
           function versionHomeOf(game, home, language) {
@@ -190,6 +188,40 @@ jobs:
               return issue;
             })());
             return versionHomes.get(key);
+          }
+          // whether a game's version in a language is made a function at a time: it keeps its proofs on the default
+          // branch (tools/lib/proofs.mjs), and only then do its tasks of functions go under its code's stretches
+          const keeping = new Map();
+          function keepsProofs(game, language) {
+            // only a version in another language than JavaScript is made that way, and has an issue of its own to go under
+            if (language === 'js') return false;
+            const folder = LANGUAGES[language].folder;
+            const file = `/contents/games/${game}/${folder ? `${folder}/` : ''}proof/proofs.json`;
+            if (!keeping.has(file)) keeping.set(file, api(file).then(Boolean));
+            return keeping.get(file);
+          }
+          // the issue under a version's issue that holds the tasks of the functions starting in a stretch of the game's
+          // code: the first for that stretch with room under it, or a new one, opened and put there, when there's none
+          // or each is full, as one issue holds at most 100, closed ones too
+          async function stretchHomeOf(game, versionHome, language, address) {
+            const stretch = rules.stretchOf(address);
+            const its = i => {
+              const found = rules.stretchOfIssue(i);
+              return found?.language === language && found.from === stretch.from && folderIn(i) === game;
+            };
+            const there = (await under(versionHome.number)).filter(its);
+            for (const issue of there) if ((await under(issue.number)).length < rules.MOST_UNDER) return issue;
+            // one a run opened and couldn't put there is used before another is opened
+            const loose = (await list(`/issues?state=open&labels=${encodeURIComponent(game)}`)).find(i => !i.pull_request && !i.parent_issue_url && its(i));
+            const issue = loose ?? await api('/issues', 'POST', {
+              title: rules.stretchIssueTitle(await titleOf(game), language, stretch, there.length + 1),
+              body: rules.stretchIssueText(game, language, stretch),
+              labels: [game],
+              ...(versionHome.milestone ? { milestone: versionHome.milestone.number } : {}),
+            });
+            await api(`/issues/${versionHome.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
+            done.push(`#${issue.number}: under #${versionHome.number}, for the tasks of a stretch of its code`);
+            return issue;
           }
           // the game an issue is for: its form's folder, a game's label, or the game's issue it's under
           async function gameOf(issue) {
@@ -403,7 +435,8 @@ jobs:
           }
 
           // a task goes under its game's issue, or one in another language than the game's main one under its version's
-          // issue there, unless it's under an issue already
+          // issue there, or a task of functions of a version made a function at a time under its stretch's issue, itself
+          // under its version's issue, whichever language is the game's main one, unless it's under an issue already
           async function attach(issue, game) {
             if (issue.parent_issue_url) return;
             const home = await gameIssueOf(game);
@@ -411,7 +444,9 @@ jobs:
             const language = rules.pieceOf(issue).language;
             let target = home;
             try {
-              if (language !== await mainOf(game)) target = await versionHomeOf(game, home, language);
+              const functions = rules.functionsOfTask(issue);
+              if (functions && await keepsProofs(game, language)) target = await stretchHomeOf(game, await versionHomeOf(game, home, language), language, functions.first);
+              else if (language !== await mainOf(game)) target = await versionHomeOf(game, home, language);
               await api(`/issues/${target.number}/sub_issues`, 'POST', { sub_issue_id: issue.id });
               issue.parent_issue_url = target.url;
               changed = true;
@@ -463,8 +498,8 @@ jobs:
                 await answer(issue, about, `@${user}, this issue is closed, so there's nothing to ${verb}.`);
                 continue;
               }
-              if (rules.languageOfIssue(issue)) {
-                await answer(issue, about, `@${user}, this issue holds a version's tasks, each under it, and isn't a task itself, so it can't be claimed: \`/claim\` on one of them takes it.`);
+              if (rules.holdsTasks(issue)) {
+                await answer(issue, about, `@${user}, this issue holds ${rules.stretchOfIssue(issue) ? 'the tasks of a stretch of a game\'s code' : 'a version\'s tasks'}, each under it, and isn't a task itself, so it can't be claimed: \`/claim\` on one of them takes it.`);
                 continue;
               }
               const game = await gameOf(issue);

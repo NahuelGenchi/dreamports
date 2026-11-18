@@ -36,6 +36,26 @@ A task is one piece of a game: a character, a level, a mode, an achievement, an 
 
 A game made a function at a time has its code map's functions for tasks, not its parts: `npm run dp -- tasks <version>` opens a task for each group of functions that sit together and have something to prove, twenty at once in the code map's order, each listing every function with its twin and its proof, and such a task is free as soon as it's open and nobody's, as it waits on no part ([the tools](../tools/README.md#a-functions-proof-and-a-game-made-a-function-at-a-time)). A game is made that way from the day its version's `proof/proofs.json` is started, which its lead decides for a game that has tasks already, and `/dreamport` does for a whole new game on a console whose functions the tools prove.
 
+### Where a big game's tasks go
+
+A game made a function at a time has hundreds of tasks, and one issue can't list them: GitHub holds at most 100 issues under one, closed ones too, each under one issue only, and eight levels deep at most. That is what its documentation says, and what GitHub itself answered when it was tried in [#1473](https://github.com/NahuelGenchi/dreamports/issues/1473). So those tasks go under issues that hold tasks and aren't tasks:
+
+```text
+Dreamport: Sonic Advance                                          the game's issue
+└─ Sonic Advance Dreamport in C                                   its version's issue
+   ├─ Sonic Advance Dreamport in C, code 08000000 to 0800FFFF     a stretch of its code
+   │  ├─ Task: Functions 080001C4 to 0800024C in C
+   │  └─ Task: Functions 08000250 to 080002F8 in C
+   └─ Sonic Advance Dreamport in C, code 08010000 to 0801FFFF
+      └─ Task: Functions 08010004 to 080100B0 in C
+```
+
+A **stretch** is 64 KB of the game's addresses, the same for every game: the first eight digits of its title's two addresses say where it starts and ends, and a task belongs to the stretch its first function is in, which its own title says. Stretches go by address, not by a count of tasks or by a file of the code map, because an address never changes. When `codemap --fill` finds more functions, groups end elsewhere and their names change, but no task changes stretch: an open task is still the task of the group its first function is in, `tasks --update` gives it its new name, and a new group gets a new task in the stretch its addresses say.
+
+The bot opens a stretch's issue the first time a task of it arrives, under the version's issue, which it opens too when the game has none, whatever the game's main language is, so the game's issue gets one issue more however big the game. A stretch's issue takes 100 tasks, and a stretch with more, as closed ones count and a group can need a task again, gets a second issue, whose title ends in *, 2*. Neither kind of issue can be claimed, as each is nobody's. A version's issue takes 100 stretches' issues, which is 6.5 MB of code with none full, more than any cartridge the tools know has.
+
+`find`, `find --take`, `tasks`, the bot and the Make pages all read a game's tasks one way: the issues under its game's issue, and under every issue there that holds tasks, however deep (`piecesUnder` in `src/lib/pieces.mjs`). Only a version that keeps its proofs gets this: every other task stays where it always went, under its game's issue or its version's.
+
 Once every part of a version is played through, its tasks come from what's still untouched of the original ([Done](STANDARD.md#done)), and the same command opens them: one for what's left of each part, the functions its recording ran with instructions or branch ways never played; one for the code most parts share, by where it is in the original; and one for each stretch of code that never ran. Each lists its functions, with the branches gone one way only, and says how to reach them. They're taken and handed out as any task is, after the parts, and one too big for a single pull request closes with what's left opened again by the same command.
 
 ### What a task needs
@@ -99,7 +119,7 @@ When part of the game is ready, the lead sends the team build to this repository
 
 ## How the bot works
 
-The bot is a workflow, [`claims.yml`](../.github/workflows/claims.yml). It answers new New Dreamport and Task issues and every comment that starts with `/claim` or `/release`, and once a day, at 05:23 UTC, it answers anything a run missed and releases the quiet claims. It reads a game's `proof/parts.json` from `main`, to list only what's free, and it counts only closed issues as finished, as it doesn't look in team builds. It puts each new Task issue under its game's issue: the New Dreamport issue the game's entry names, or for a game with no entry yet, its open New Dreamport issue. A task that's already under another issue stays there, and an issue someone moves under a game's issue by hand is one of its pieces too, which `/claim` takes. It only reads the issues' text and the repository's files, through GitHub's API, and never runs anything from them. Its answers end with a hidden note of what they answer and what they did, so nothing is answered twice, and the daily run only releases claims the bot itself made.
+The bot is a workflow, [`claims.yml`](../.github/workflows/claims.yml). It answers new New Dreamport and Task issues and every comment that starts with `/claim` or `/release`, and once a day, at 05:23 UTC, it answers anything a run missed and releases the quiet claims. It reads a game's `proof/parts.json` from `main`, to list only what's free, and it counts only closed issues as finished, as it doesn't look in team builds. It puts each new Task issue under its game's issue: the New Dreamport issue the game's entry names, or for a game with no entry yet, its open New Dreamport issue. A task of functions of a version that keeps `proof/proofs.json` on `main` goes under its stretch's issue instead ([Where a big game's tasks go](#where-a-big-games-tasks-go)). A task that's already under another issue stays there, and an issue someone moves under a game's issue by hand is one of its pieces too, which `/claim` takes. It only reads the issues' text and the repository's files, through GitHub's API, and never runs anything from them. Its answers end with a hidden note of what they answer and what they did, so nothing is answered twice, and the daily run only releases claims the bot itself made.
 
 A game's label is named after its folder, and its description says so, such as *Sonic Battle Dreamport, in games/sonic-battle/*, so a game can't take the name of another label, such as `bug`. A game's issues go in the milestone its issues already use, which for Sonic Advance Dreamport is M4, or else one named after the game, which the bot makes. [Project tracking](TRACKING.md#metadata-only-automation) leaves them to it.
 

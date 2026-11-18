@@ -317,12 +317,14 @@ export function groupsOf(codeMap) {
 const groupName = functions => (functions.length === 1 ? `Function ${functions[0].key}` : `Functions ${functions[0].key} to ${functions.at(-1).key}`);
 
 /** The group someone means by `named`: a task's name or title, as "Functions 080001C4 to 0800024C in C", or the
- *  address of any function in it, as 0x080001C8. null when none goes by it. */
+ *  address of any function in it, as 0x080001C8. A task's name that no group goes by any more, as the code map found
+ *  more functions since it was opened and its group ends elsewhere now, means the group its first function is in.
+ *  null when none goes by it. */
 export function groupNamed(groups, named) {
   const said = String(named).trim().replace(/^Task:\s*/i, '').replace(/\s+in\s+\w+$/i, '').toLowerCase();
   const byName = groups.find(group => group.name.toLowerCase() === said);
   if (byName) return byName;
-  const digits = /^(?:0x|\$)?([0-9a-f]{4,8})$/i.exec(String(named).trim())?.[1];
+  const digits = /^(?:0x|\$)?([0-9a-f]{4,8})$/i.exec(String(named).trim())?.[1] ?? /^functions? ([0-9a-f]{8})(?: to [0-9a-f]{8})?$/.exec(said)?.[1];
   if (!digits) return null;
   const address = parseInt(digits, 16);
   return groups.find(group => group.functions.some(f => address >= f.address && address < f.address + f.size)) ?? null;

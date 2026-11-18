@@ -172,6 +172,11 @@ test('a version\'s tasks are the code map\'s functions in groups that sit togeth
   assert.equal(groupNamed(groups, '0x08000266'), groups[0], 'any address inside one of its functions');
   assert.equal(groupNamed(groups, '08010BE0'), groups[4]);
   assert.equal(groupNamed(groups, 'the title screen'), null);
+  // a task named before the code map found more functions is the group its first function is in now (#1473)
+  assert.equal(groupNamed(groups, 'Task: Functions 08000200 to 08000640 in C'), groups[0]);
+  assert.equal(groupNamed(groups, 'Functions 08000210 to 08000640'), groups[0]);
+  assert.equal(groupNamed(groups, 'Function 08010BE0'), groups[4]);
+  assert.equal(groupNamed(groups, 'Functions 07000000 to 07000100'), null);
   // on the NES a group stays in one bank
   const nes = groupsOf({ ...parseCodeMap({ original: 'abc', functions: [['00003FC0', 30], ['00003FF0', 16], ['00004000', 30]] }), console: 'nes' });
   assert.deepEqual(nes.map(group => group.functions.length), [2, 1]);
@@ -186,6 +191,10 @@ test('tasks opens a task for each group with something to prove and none open, s
   const pieces = [{ title: title(groups[0]), state: 'open' }, { title: title(groups[2]).toUpperCase(), state: 'closed' }];
   const found = functionTasks(groups, allProven, pieces);
   assert.deepEqual([found.open.map(group => group.first), found.wanted.map(group => group.first), found.waiting], [['08000200'], ['08000B60', '08010000', '08010BB8'], 0]);
+  // an open task named for where its group ended before the code map found more functions is still its group's, and
+  // one in another language isn't
+  const moved = [{ title: 'Task: Functions 08000200 to 08000640 in C', state: 'open' }, { title: `Task: ${groups[1].name}`, state: 'open' }];
+  assert.deepEqual(functionTasks(groups, none, moved).open.map(group => group.first), ['08000200']);
   // no more open at once than asked, the first in the map's order, and the rest wait
   const few = functionTasks(groups, none, pieces, 'c', 3);
   assert.deepEqual([few.wanted.map(group => group.first), few.waiting], [['080006B0', '08000B60'], 2]);

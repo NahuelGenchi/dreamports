@@ -6,6 +6,12 @@
 // original, so no piece waits on the same part in another language (#965). A need whose
 // task has an open pull request that isn't a draft is in review, and a piece can start on top of it (#714), so nobody
 // waits for a review or a merge. The site's Make pages, find, tasks and the claims workflow all read this, so none keeps a copy.
+//
+// GitHub holds 100 issues under one, closed ones too, and eight levels of them (#1473 has how that was checked). So a
+// game's tasks aren't all right under its game's issue: an issue can hold tasks without being one, and the tasks of a
+// game are the issues under its game's issue and under every such issue there, however deep (piecesUnder). Two kinds
+// hold tasks: a version's issue, for a language, and under it an issue for a stretch of the game's code, which holds
+// the tasks of functions of a version made a function at a time (tools/lib/proofs.mjs).
 
 import { LANGUAGES, OTHER_LANGUAGES, playOrder } from './languages.mjs';
 
@@ -47,9 +53,83 @@ export const languageIssueText = (game, language) => [
 
 /** The language of a version's issue, as 'c', or null for any other issue. */
 export function languageOfIssue(issue) {
-  if (!fieldOf(issue?.body, 'Game folder') || fieldOf(issue?.body, 'Done when')) return null;
+  if (!fieldOf(issue?.body, 'Game folder') || fieldOf(issue?.body, 'Done when') || fieldOf(issue?.body, 'Code')) return null;
   const named = fieldOf(issue.body, 'Language')?.split('\n')[0].trim().toLowerCase();
   return OTHER_LANGUAGES.find(language => LANGUAGES[language].name.toLowerCase() === named) ?? null;
+}
+
+/** How many issues GitHub holds under one, open and closed (#1473). */
+export const MOST_UNDER = 100;
+
+/** How much of a game's code one stretch covers: 64 KB of its addresses, whatever the game and its console. */
+export const STRETCH_BYTES = 0x10000;
+
+const address8 = address => address.toString(16).toUpperCase().padStart(8, '0');
+const languageNamed = name => OTHER_LANGUAGES.find(language => LANGUAGES[language].name.toLowerCase() === String(name ?? '').split('\n')[0].trim().toLowerCase()) ?? null;
+
+/**
+ * The functions a task of functions is for, from its title, as tools/lib/proofs.mjs names a group of them:
+ * "Task: Functions 080001C4 to 0800024C in C" is { first: 0x080001C4, last: 0x0800024C }, and "Task: Function
+ * 080001C4 in C" has both the same. null for any other task.
+ */
+export function functionsOfTask(piece) {
+  const found = /^Functions? ([0-9A-F]{8})(?: to ([0-9A-F]{8}))?$/i.exec(pieceOf(piece).name);
+  return found ? { first: parseInt(found[1], 16), last: parseInt(found[2] ?? found[1], 16) } : null;
+}
+
+/**
+ * The stretch of a game's code an address is in: { from, to }, both inside it. Stretches are the same 64 KB of
+ * addresses for every game, so one never moves as a game's code map finds more functions, and a task of functions
+ * belongs to the stretch its first function is in, which its title says.
+ */
+export function stretchOf(address) {
+  const from = Math.floor(address / STRETCH_BYTES) * STRETCH_BYTES;
+  return { from, to: from + STRETCH_BYTES - 1 };
+}
+
+/** A stretch as people read it: "code 08000000 to 0800FFFF". */
+export const stretchName = stretch => `code ${address8(stretch.from)} to ${address8(stretch.to)}`;
+
+/**
+ * The title of the issue that holds a stretch's tasks, from the game's: "Sonic Advance Dreamport in C, code 08000000
+ * to 0800FFFF". One issue holds 100 at most, closed ones too, so a stretch with more gets a second, which says so:
+ * "…, code 08000000 to 0800FFFF, 2".
+ */
+export const stretchIssueTitle = (title, language, stretch, nth = 1) => `${languageIssueTitle(title, language)}, ${stretchName(stretch)}${nth > 1 ? `, ${nth}` : ''}`;
+
+/** The text of a stretch's issue, which names its game, its language and its code, so the tools and the bot know it. */
+export const stretchIssueText = (game, language, stretch) => [
+  '### Game folder', '', game, '',
+  '### Language', '', LANGUAGES[language].name, '',
+  '### Code', '', `${address8(stretch.from)} to ${address8(stretch.to)}`, '',
+  `This issue holds the tasks of the functions of the original that start at these addresses, in the game's version in ${LANGUAGES[language].name}, which is made a function at a time, each under it, as one issue holds at most ${MOST_UNDER}. Its tasks are claimed on their own issues, and this one is nobody's (docs/TEAMS.md).`,
+].join('\n');
+
+/** The stretch a stretch's issue is for, and its language: { language, from, to }, or null for any other issue. */
+export function stretchOfIssue(issue) {
+  if (!fieldOf(issue?.body, 'Game folder') || fieldOf(issue?.body, 'Done when')) return null;
+  const language = languageNamed(fieldOf(issue.body, 'Language'));
+  const found = /^([0-9A-F]{8}) to ([0-9A-F]{8})$/i.exec(fieldOf(issue.body, 'Code')?.split('\n')[0].trim() ?? '');
+  return language && found ? { language, from: parseInt(found[1], 16), to: parseInt(found[2], 16) } : null;
+}
+
+/** Whether an issue holds tasks without being one: a version's issue, or the issue of a stretch of its code. */
+export const holdsTasks = issue => Boolean(languageOfIssue(issue) || stretchOfIssue(issue));
+
+/**
+ * A game's pieces, open and closed, from its game's issue `home`: the issues right under it, in its order, then those
+ * under each issue there that holds tasks, and so on down. `under(issue)` gives the issues under one, as GitHub lists
+ * them, and can take its time: this waits for it. piecesUnderNow is the same for one that answers at once.
+ */
+export async function piecesUnder(home, under) {
+  const direct = await under(home);
+  return [...direct.filter(issue => !holdsTasks(issue)), ...(await Promise.all(direct.filter(holdsTasks).map(holder => piecesUnder(holder, under)))).flat()];
+}
+
+/** piecesUnder, for an `under` that answers at once, as the tools' is, through the GitHub CLI. */
+export function piecesUnderNow(home, under) {
+  const direct = under(home);
+  return [...direct.filter(issue => !holdsTasks(issue)), ...direct.filter(holdsTasks).flatMap(holder => piecesUnderNow(holder, under))];
 }
 
 /** The title of the task for a part, or a foundation, in `language`: "Task: Title screen", or "Task: Title screen in C". */
