@@ -21,6 +21,8 @@ export const DIVIDES = { Share: 0x08000540 };
 // which the cartridge starts, and the value play keeps the stage in
 export const PLAYED = { Shine: 0x08000400, Play: 0x08000440 };
 NAMED.set('gStage', 0x03000060);
+// a function that gives back what its caller keeps, and that caller, in a file of their own (gives.c)
+export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -73,4 +75,11 @@ export function withPlay(rom, assembly) {
   played.writeUInt32LE(0xE12FFF10, 0xC4);         // bx r0
   played.writeUInt32LE(PLAYED.Play | 1, 0xC8);
   return played;
+}
+
+// The same cartridge with the functions of twin/gives.c: one that gives back a value, and its caller, which uses it.
+export function withGives(rom, assembly) {
+  const given = Buffer.from(rom);
+  place(given, assembly, GIVES);
+  return given;
 }

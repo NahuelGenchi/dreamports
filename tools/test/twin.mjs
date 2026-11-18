@@ -24,9 +24,9 @@ import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, openCaller, openOriginal } from '../gba/twin.mjs';
+import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, NAMED, PLAYED, VIA, withDivision, withPlay } from './twin/cartridge.mjs';
+import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, VIA, withDivision, withGives, withPlay } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -60,8 +60,14 @@ const divides = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!divides.error && /bl\tDiv|bl Div/.test(readFileSync(join(work, 'built', 'bios.s'), 'utf8')), `the function that divides builds with ${compiler.name} and calls the cartridge's stub for the BIOS's division${divides.error ? `: ${divides.error}` : ''}`);
+// and a function that gives back what its caller keeps, from a file of its own
+const gives = await matchFile({
+  file: join(HERE, 'gives.c'), compiler, work: join(work, 'built', 'gives'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!gives.error, `the function that gives back a value and its caller build with ${compiler.name}${gives.error ? `: ${gives.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')));
+writeFileSync(copy, withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -84,7 +90,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length])]);
+const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -135,6 +141,22 @@ try {
   writeFileSync(join(shared, 'bios.c'), readFileSync(join(HERE, 'bios.c'), 'utf8').replace('gFrame = Div(total, gSteps[kind & 3]);', 'gFrame = Div(total, gSteps[kind & 3]) + 1;'));
   const halved = await checking(join(shared, 'bios.c'));
   check(halved.by.Share?.kind === 'differs' && /at 0x0300002[0-3], in the work memory/.test(halved.by.Share.line), `and a wrong twin of it is found: ${halved.by.Share?.line ?? halved.error}`);
+
+  console.log('A twin that gives back nothing:');
+  // which of the cartridge's functions give back what a caller uses, read from the callers' instructions
+  const givesBack = givesBackUsed(readFileSync(copy), [...lengths].map(([address, size]) => ({ address, size })));
+  check(givesBack(GIVES.Count) !== null && givesBack(FUNCTIONS.Step) === null && givesBack(GIVES.Keep) === null, 'the callers\' instructions say Count gives back what its caller uses, and nothing is said of a function nothing uses the value of');
+  const counted = await checking(join(HERE, 'gives.c'), {}, { givesBack });
+  check(counted.by.Count?.kind === 'same' && counted.by.Keep?.kind === 'same', `a twin that gives back what the original does is the same${counted.by.Count?.kind === 'same' ? '' : `: ${counted.by.Count?.line ?? counted.error}`}`);
+  const silent = join(work, `changed-${++variants}`);
+  cpSync(HERE, silent, { recursive: true });
+  writeFileSync(join(silent, 'gives.c'), readFileSync(join(HERE, 'gives.c'), 'utf8')
+    .replace('u32 Count(void) {\n  return ++gFrame;', 'void Count(void) {\n  ++gFrame;')
+    .replace('gBall.hits = Count();', 'Count();\n  gBall.hits = gFrame;'));
+  const unchecked = await checking(join(silent, 'gives.c'));
+  check(unchecked.by.Count?.kind === 'same', 'a twin that gives back nothing leaves the same memory, which alone would pass it, as it passed 0x08011DBC of the pilot');
+  const caught = await checking(join(silent, 'gives.c'), {}, { givesBack });
+  check(caught.by.Count?.kind === 'differs' && /gives back nothing/.test(caught.by.Count.line) && new RegExp(`0x0${(GIVES.Keep).toString(16).toUpperCase().slice(0, 5)}`).test(caught.by.Count.line), `and it differs once the check reads what its caller does with r0: ${caught.by.Count?.line ?? caught.error}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));

@@ -844,6 +844,7 @@ export function outcome(f, { calls, seconds }) {
     const memory = f.result.memory ? `at ${at(f.result.memory.address)}, in ${f.result.memory.name}, the twin left ${byte(f.result.memory.ours)} and the original ${byte(f.result.memory.theirs)}` : null;
     return { kind: 'differs', line: `${callText(f.name, f.result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
+  if (f.result?.kind === 'gives') return { kind: 'differs', line: `the twin gives back nothing, while the original gives back what its callers use: the call at ${at(f.result.call)} reads r0 after it.` };
   if (f.result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, f.result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (f.result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, f.result)}: the original came back and the twin stopped (${f.result.why}).${hardware}` };
   if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls` };
@@ -858,6 +859,80 @@ export function outcome(f, { calls, seconds }) {
   return { kind: 'few', line: `only ${count(f.compared)} of ${count(calls)} calls could be compared, all the same: ${why}.` };
 }
 
+// What one Thumb instruction does with r0: reads it, writes it without reading it, ends what can be followed
+// (a branch, a call, a return or a swi), or neither. A call to a function its caller reads r0 after, before anything
+// writes it, gives back a value: so the console's compiler wrote, which never reads r0 after a function that gives
+// back nothing.
+function withR0(op) {
+  const reg = (n, r) => r === 0 ? n : null;
+  const touch = (reads, writes) => (reads.includes(0) ? 'reads' : writes.includes(0) ? 'writes' : null);
+  if (op >> 11 === 3) return touch([op >> 3 & 7, ...(op & 0x400 ? [] : [op >> 6 & 7])], [op & 7]);   // add, sub
+  if (op >> 13 === 0) return touch([op >> 3 & 7], [op & 7]);                                          // shifts
+  if (op >> 13 === 1) {                                                                                 // mov, cmp, add, sub #
+    const kind = op >> 11 & 3, rd = op >> 8 & 7;
+    return kind === 0 ? touch([], [rd]) : kind === 1 ? touch([rd], []) : touch([rd], [rd]);
+  }
+  if (op >> 10 === 0x10) {                                                                              // the ALU's
+    const kind = op >> 6 & 15, rd = op & 7, rs = op >> 3 & 7;
+    return touch([rs, ...(kind === 9 || kind === 15 ? [] : [rd])], [8, 10, 11].includes(kind) ? [] : [rd]);
+  }
+  if (op >> 10 === 0x11) {                                                                              // high registers, bx
+    const kind = op >> 8 & 3, rd = (op & 7) | (op >> 4 & 8), rs = op >> 3 & 15;
+    if (kind === 3) return rs === 0 ? 'reads' : 'ends';
+    return kind === 0 ? touch([rd, rs], [rd]) : kind === 1 ? touch([rd, rs], []) : touch([rs], [rd]);
+  }
+  if (op >> 11 === 9) return touch([], [op >> 8 & 7]);                                                 // ldr from the pool
+  if (op >> 12 === 5) {                                                                                 // ldr, str by register
+    const loads = op & 0x200 ? (op & 0xC00) !== 0 : (op & 0x800) !== 0;
+    return touch([op >> 6 & 7, op >> 3 & 7, ...(loads ? [] : [op & 7])], loads ? [op & 7] : []);
+  }
+  if (op >> 13 === 3 || op >> 12 === 8) {                                                              // ldr, str by a number
+    const loads = (op & 0x800) !== 0;
+    return touch([op >> 3 & 7, ...(loads ? [] : [op & 7])], loads ? [op & 7] : []);
+  }
+  if (op >> 12 === 9) return (op & 0x800) ? touch([], [op >> 8 & 7]) : touch([op >> 8 & 7], []);    // ldr, str on the stack
+  if (op >> 12 === 10) return touch([], [op >> 8 & 7]);                                                // add pc or sp
+  if ((op & 0xFF00) === 0xB000) return null;                                                           // the stack moved
+  if ((op & 0xF600) === 0xB400) {                                                                       // push, pop
+    if (op & 0x800) return op & 1 ? 'writes' : op & 0x100 ? 'ends' : null;
+    return op & 1 ? 'reads' : null;
+  }
+  if (op >> 12 === 12) return (op & 0x800) ? touch([op >> 8 & 7], op & 1 ? [0] : []) : touch([op >> 8 & 7, ...(op & 1 ? [0] : [])], []);
+  return 'ends';
+}
+
+/**
+ * Whether the original's functions give back what their callers use: `bytes` are the cartridge's and `functions`
+ * the code map's Thumb functions, as { address, size }. Answers a function of a function's address: the address of a
+ * call to it whose caller reads r0 after it, or null.
+ */
+export function givesBackUsed(bytes, functions) {
+  const u16 = address => bytes[address - CARTRIDGE] | bytes[address - CARTRIDGE + 1] << 8;
+  const inside = address => address >= CARTRIDGE && address + 2 <= CARTRIDGE + bytes.length;
+  let used = null;
+  return target => {
+    if (!used) {
+      used = new Map();
+      for (const { address, size } of functions) {
+        const end = address + size;
+        for (let pc = address; pc + 4 <= end && inside(pc + 2); pc += 2) {
+          const hi = u16(pc), lo = u16(pc + 2);
+          if ((hi & 0xF800) !== 0xF000 || (lo & 0xF800) !== 0xF800) continue;
+          const offset = ((hi & 0x7FF) << 21 >> 9) | (lo & 0x7FF) << 1;
+          const callee = (pc + 4 + offset) >>> 0;
+          if (used.has(callee)) continue;
+          for (let at = pc + 4, n = 0; n < 16 && at + 2 <= end && inside(at); at += 2, n++) {
+            const did = withR0(u16(at));
+            if (did === 'reads') used.set(callee, pc);
+            if (did) break;
+          }
+        }
+      }
+    }
+    return used.get(target & ~1) ?? null;
+  };
+}
+
 /**
  * Checks the twins of one file.
  *   original, start: what calls the original and the memory to start from, as openOriginal gives them
@@ -868,11 +943,13 @@ export function outcome(f, { calls, seconds }) {
  *   addressOf(name): where the console keeps a value, or the original a function, or null
  *   isArm(address): whether the original's function there is ARM code
  *   memories: memories of play for the calls to start from, as openMemories gives them, or none
+ *   givesBack(address): the address of a call to the original's function there whose caller uses what it gives back,
+ *     as givesBackUsed answers, or null: a twin that gives back nothing differs from such a function
  *   options: as DEFAULTS
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, ruledOut = new Map(), options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, ruledOut = new Map(), givesBack = () => null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
@@ -886,6 +963,11 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
     } finally {
       runner.stop();
     }
+  }
+  // a twin that gives back nothing, of a function whose callers use what it gives back, differs whatever the memory
+  for (const f of functions) {
+    const call = f.returns ? null : givesBack(f.address & ~1);
+    if (call !== null) f.result = { kind: 'gives', call };
   }
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
   let rom = null;
@@ -988,13 +1070,14 @@ export async function twin(game, options = {}) {
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs)
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const givesBack = givesBackUsed(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE && !isArm(f.address)).map(f => ({ address: f.address, size: f.size })));
   const { ways: ruledOut } = readUnreachable(game);
   const proven = [], differing = [];
   try {
     for (const file of chosen) {
       const result = await checkFile({
         original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories,
-        sizeOf: address => sizes.get(address) ?? null, ruledOut,
+        sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack,
       });
       const where = inRepo(file);
       if (result.error) {
