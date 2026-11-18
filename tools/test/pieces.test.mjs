@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { freeOrder, inReview, languageIssueText, languageIssueTitle, languageOfIssue, needsProblems, pieceOf, planOf, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
+import { freeOrder, functionsOfTask, holdsTasks, inReview, languageIssueText, languageIssueTitle, languageOfIssue, needsProblems, pieceOf, piecesUnder, piecesUnderNow, planOf, stretchIssueText, stretchIssueTitle, stretchName, stretchOf, stretchOfIssue, taskTitle, whatCanStart } from '../../src/lib/pieces.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
 import { mainLanguage } from '../../src/lib/languages.mjs';
 
@@ -198,4 +198,38 @@ test('a version\'s issue holds its tasks in another language, and is known by it
   assert.equal(languageOfIssue({ body: '### Game folder\n\nsonic-battle\n\n### Where it starts\n\nHere.' }), null, 'a game\'s issue');
   assert.equal(languageOfIssue({ body: '### Game folder\n\nsonic-battle\n\n### Language\n\nRust' }), null, 'a language there is no version in');
   assert.equal(languageOfIssue({ body: null }), null);
+});
+
+test('a task of functions belongs to the stretch of the game\'s code its first function is in, which has an issue of its own (#1473)', () => {
+  assert.deepEqual(functionsOfTask({ title: 'Task: Functions 080001C4 to 0800024C in C' }), { first: 0x080001C4, last: 0x0800024C });
+  assert.deepEqual(functionsOfTask({ title: 'task: function 0801FFF0 in C' }), { first: 0x0801FFF0, last: 0x0801FFF0 });
+  assert.equal(functionsOfTask({ title: 'Task: Title screen in C' }), null);
+  assert.equal(functionsOfTask({ title: 'Task: Functions of the menu in C' }), null);
+  // the same 64 KB of addresses for every game, so a stretch never moves as a code map grows
+  assert.deepEqual(stretchOf(0x080001C4), { from: 0x08000000, to: 0x0800FFFF });
+  assert.deepEqual(stretchOf(0x0801FFFF), { from: 0x08010000, to: 0x0801FFFF });
+  assert.deepEqual(stretchOf(0x3FC0), { from: 0, to: 0xFFFF }, 'a place in an NES program');
+  assert.equal(stretchName(stretchOf(0x0803A000)), 'code 08030000 to 0803FFFF');
+  assert.equal(stretchIssueTitle('Sonic Advance Dreamport', 'c', stretchOf(0x0803A000)), 'Sonic Advance Dreamport in C, code 08030000 to 0803FFFF');
+  assert.equal(stretchIssueTitle('Sonic Advance Dreamport in C', 'c', stretchOf(0x0803A000), 2), 'Sonic Advance Dreamport in C, code 08030000 to 0803FFFF, 2');
+  const issue = { body: stretchIssueText('sonic-advance', 'c', stretchOf(0x0803A000)) };
+  assert.deepEqual(stretchOfIssue(issue), { language: 'c', from: 0x08030000, to: 0x0803FFFF });
+  assert.equal(languageOfIssue(issue), null, 'it isn\'t taken for the version\'s issue');
+  assert.equal(stretchOfIssue({ body: languageIssueText('sonic-advance', 'c') }), null);
+  assert.equal(stretchOfIssue({ body: '### Game folder\n\nsonic-advance\n\n### Language\n\nC\n\n### Code\n\n08030000 to 0803FFFF\n\n### Done when\n\nIt matches.' }), null, 'a task');
+  assert.equal(stretchOfIssue({ body: null }), null);
+  assert.deepEqual([issue, { body: languageIssueText('sonic-advance', 'c') }, { body: '### Game folder\n\nsonic-advance\n\n### Done when\n\nIt matches.' }].map(holdsTasks), [true, true, false]);
+});
+
+test('a game\'s pieces are the issues under its game\'s issue and under every issue there that holds tasks, however deep', async () => {
+  const task = number => ({ number, title: `Task: ${number}`, body: '### Game folder\n\none\n\n### Done when\n\nIt matches.' });
+  const inC = { number: 10, body: languageIssueText('one', 'c') }, stretch = { number: 20, body: stretchIssueText('one', 'c', stretchOf(0x08000000)) }, next = { number: 21, body: stretchIssueText('one', 'c', stretchOf(0x08010000)) };
+  const tree = new Map([[1, [task(2), inC, task(3)]], [10, [task(11), stretch, next, task(12)]], [20, [task(22), task(23)]], [21, [task(24)]]]);
+  const asked = [];
+  const under = issue => { asked.push(issue.number); return tree.get(issue.number) ?? []; };
+  // those right under an issue first, in its order, then those under each issue it holds, as before for a version's issue
+  assert.deepEqual(piecesUnderNow({ number: 1 }, under).map(piece => piece.number), [2, 3, 11, 12, 22, 23, 24]);
+  assert.deepEqual(asked, [1, 10, 20, 21], 'a task is never asked what\'s under it');
+  assert.deepEqual((await piecesUnder({ number: 1 }, async issue => under(issue))).map(piece => piece.number), [2, 3, 11, 12, 22, 23, 24]);
+  assert.deepEqual(piecesUnderNow({ number: 5 }, under), []);
 });

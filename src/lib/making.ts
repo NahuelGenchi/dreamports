@@ -1,6 +1,6 @@
 // What each Dreamport's page in the Make row reads from GitHub as the site is built (#143, docs/MAKE.md): its
 // steps, the pull requests merged in its milestone or with its label, newest first, and how many of its pieces are
-// free to take, the open sub-issues of its game's issue that nobody has claimed and that wait on nothing, or only on
+// free to take, the open issues under its game's issue, however deep, that nobody has claimed and that wait on nothing, or only on
 // pull requests in review (src/lib/pieces.mjs). GitHub answers anyone 60 times an
 // hour, and 5,000 with a read-only token in GITHUB_TOKEN, which Cloudflare can keep for the site's builds. When GitHub
 // doesn't answer, the build takes what dreamports.net last read, from /make/github.json. With neither, a build on
@@ -8,7 +8,7 @@
 // steps or pieces.
 import { SOURCE_URL, getGames } from './site';
 import { beingMade, mainLanguageOf, partsFile } from './dreamports';
-import { inReview, languageOfIssue, whatCanStart } from './pieces.mjs';
+import { inReview, piecesUnder, whatCanStart } from './pieces.mjs';
 
 export interface Step {
   number: number;
@@ -88,15 +88,11 @@ async function fromGitHub(games: { game: string; title: string; issue: number }[
       const merged = item.pull_request?.merged_at;
       if (merged) steps.set(item.number, { number: item.number, title: stepTitle(item.title), merged, url: item.html_url });
     }
-    // the pieces under the game's issue, and those under its versions' issues there, which hold its tasks in another
-    // language (#905)
-    const under = async (number: number) =>
+    // the pieces under the game's issue, and those under each issue there that holds tasks: a version's, for its tasks
+    // in another language (#905), and under it a stretch of its code's, for its tasks of functions (#1473)
+    const under = async ({ number }: { number: number }) =>
       (await list<Item>(`/issues/${number}/sub_issues`)).filter((piece) => piece.repository_url?.toLowerCase() === API.toLowerCase());
-    const direct = await under(issue);
-    const pieces = [
-      ...direct.filter((piece) => !languageOfIssue(piece)),
-      ...(await Promise.all(direct.filter((piece) => languageOfIssue(piece)).map((version) => under(version.number)))).flat(),
-    ];
+    const pieces: Item[] = await piecesUnder({ number: issue }, under);
     data[game] = {
       steps: [...steps.values()].sort((a, b) => b.merged.localeCompare(a.merged)),
       free: whatCanStart(pieces, partsFile(game), new Set(), { main: mainLanguageOf(game), reviewing }).free.length,

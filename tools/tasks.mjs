@@ -25,26 +25,29 @@
 // lists every function with its name where the code map has one, its twin where the code has one, and whether it's
 // proven and by which proof. A group whose functions are all proven needs no task, and one whose task is open is
 // left. So many are open at once and no more, the first in the map's order, and running it again opens the next as
-// those close. --update writes the open ones again from where their functions stand now. Its parts stay as names for
-// people and as what its recordings are for, and get no tasks.
+// those close. --update writes the open ones again from where their functions stand now, with its title when its group
+// ends elsewhere since the code map found more functions. Its parts stay as names for people and as what its
+// recordings are for, and get no tasks. A game has hundreds of such tasks and GitHub holds 100 issues under one, so
+// the claims workflow puts each under the issue of the stretch of the game's code its first function is in, which is
+// under the version's issue (src/lib/pieces.mjs, #1473), and no run of this fills an issue.
 
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { readCodeMap, readPartsFile, readProgress, hex } from './lib/proof-files.mjs';
 import { leftoverPieces, readPlayed, untouchedOf } from './lib/played.mjs';
 import { LOCAL } from './lib/paths.mjs';
-import { nameKey, pieceOf, planOf, taskTitle } from '../src/lib/pieces.mjs';
+import { nameKey, pieceOf, planOf, stretchName, stretchOf, taskTitle } from '../src/lib/pieces.mjs';
 import { LANGUAGES, playOrder, versionName, versionOf } from '../src/lib/languages.mjs';
 import { UPSTREAM, api } from './lib/github.mjs';
 import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
-import { asksForProofs, groupsOf, stateOf, stateText } from './lib/proofs.mjs';
+import { asksForProofs, groupNamed, groupsOf, stateOf, stateText } from './lib/proofs.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
 const WAIT_MS = 90_000, EVERY_MS = 5_000;
-// how many tasks of functions a version has open at once: enough for many people, and GitHub holds 100 under one issue
+// how many tasks of functions a version has open at once: enough for many people, and few enough to look through
 export const OPEN_AT_ONCE = 20;
 
 export async function run(args) {
@@ -127,8 +130,9 @@ async function openTasks(version, repo, yes, update = false) {
  * `waiting` how many more come after them. A closed task whose group isn't proven any more gets a new one.
  */
 export function functionTasks(groups, states, pieces, language = 'c', most = OPEN_AT_ONCE) {
-  const titles = new Set(pieces.filter(piece => piece.state === 'open').map(piece => piece.title.trim().toLowerCase()));
-  const has = group => titles.has(taskTitle(group.name, language).toLowerCase());
+  // the group each open task is for: the one of its name, or the one its first function is in now (groupNamed)
+  const taken = new Set(pieces.filter(piece => piece.state === 'open' && pieceOf(piece).language === language).map(piece => groupNamed(groups, pieceOf(piece).name)));
+  const has = group => taken.has(group);
   const unproven = groups.filter(group => group.functions.some(f => !states.get(f.key)?.kind));
   const open = groups.filter(has), missing = unproven.filter(group => !has(group));
   const wanted = missing.slice(0, Math.max(0, most - open.length));
@@ -170,14 +174,17 @@ async function openFunctionTasks(version, repo, yes, update) {
   const dreamport = dreamports().find(d => d.game === game), entry = dreamport?.entry;
   const home = claims.gameIssueOf(game, entry);
   if (!home) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repo} yet, and its tasks go under that issue.`);
-  const main = dreamport?.language ?? 'js';
-  const where = language === main ? `#${home.number}` : `its issue for ${LANGUAGES[language].name}, under #${home.number}`;
+  // each under the issue of its stretch of the game's code, which is under the version's issue (#1473)
+  const where = `the issues of its code's stretches, in its issue for ${LANGUAGES[language].name}, under #${home.number}`;
   const states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
   const pieces = claims.piecesOf(game, entry);
-  const { open, wanted, waiting } = functionTasks(groupsOf(codeMap), states, pieces, language);
+  const groups = groupsOf(codeMap);
+  const { open, wanted, waiting } = functionTasks(groups, states, pieces, language);
   if (update) {
-    const changed = open.map(group => ({ group, issue: taskTitled(pieces, taskTitle(group.name, language), game) })).filter(({ issue }) => issue)
-      .map(({ group, issue }) => ({ group, issue, body: keepTaking(functionTaskText(version, group, states), issue.body ?? '') })).filter(({ issue, body }) => body !== (issue.body ?? '').replace(/\r\n/g, '\n'));
+    // each open task with the group it's for now, which its title names again when the group ends elsewhere
+    const changed = pieces.filter(piece => piece.state === 'open' && pieceOf(piece).language === language).map(issue => ({ issue, group: groupNamed(groups, pieceOf(issue).name) })).filter(({ group }) => group)
+      .map(({ group, issue }) => ({ group, issue, title: taskTitle(group.name, language), body: keepTaking(functionTaskText(version, group, states), issue.body ?? '') }))
+      .filter(({ issue, title, body }) => body !== (issue.body ?? '').replace(/\r\n/g, '\n') || title !== issue.title);
     if (!changed.length) {
       console.log(`Every open task of ${version}'s functions says where they stand now already.`);
       return 0;
@@ -187,8 +194,8 @@ async function openFunctionTasks(version, repo, yes, update) {
       console.log('\nNothing was changed: --yes changes them, once you have said yes.');
       return 0;
     }
-    for (const { group, issue, body } of changed) {
-      api(`repos/${repo}/issues/${issue.number}`, { method: 'PATCH', body: { body } });
+    for (const { group, issue, title, body } of changed) {
+      api(`repos/${repo}/issues/${issue.number}`, { method: 'PATCH', body: { title, body } });
       console.log(`#${issue.number} ${group.name}: written again`);
     }
     return 0;
@@ -200,7 +207,7 @@ async function openFunctionTasks(version, repo, yes, update) {
   }
   const left = group => group.functions.filter(f => !states.get(f.key)?.kind).length;
   if (!yes) {
-    console.log(`${version} is made a function at a time, so its tasks are groups of functions from its code map. A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${left(group)} of ${group.functions.length} to prove`).join('\n')}`);
+    console.log(`${version} is made a function at a time, so its tasks are groups of functions from its code map. A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${left(group)} of ${group.functions.length} to prove, in ${stretchName(stretchOf(group.functions[0].address))}`).join('\n')}`);
     console.log(`\nNothing was opened: --yes opens them, once you have said yes.${later}`);
     return 0;
   }
