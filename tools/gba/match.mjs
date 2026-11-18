@@ -255,24 +255,10 @@ export async function preprocess(file, root, includes) {
 }
 
 /**
- * Builds `file` and compares each function it defines with the original's.
- *   root, includes: the folder the file's C is in, and the folders it includes from
- *   compiler: { name, flags }, as readCompiler gives it
- *   work: the folder for what's built, <work>.i and <work>.s
- *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
- *     Thumb function), or null
- *   sizeOf(address): how long the code map says the function there is, or null when none starts there
- *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
- *     gives them, or null
- *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
- *     reader says of each halfword
- *   shifts: how far the labels' release is from the copy (portmap.mjs)
- *   given: for a file of a shared library, where the copy has each of its twins, as twinsIn takes it
- * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
- * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
- * didn't build, with what the compiler said.
+ * Builds `file` with the console's compiler, as match does, in `work` (<work>.i and <work>.s), and assembles what it
+ * wrote: { made, assembly }, `made` as the tools' assembler gives it (thumb.mjs), or { error }, what went wrong.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+export async function compileFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work }) {
   mkdirSync(dirname(work), { recursive: true });
   let preprocessed;
   try {
@@ -292,12 +278,35 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
     return { error: (wrong.length ? wrong : said).join('\n').replaceAll(`${work}.i`, basename(file)) };
   }
   const assembly = readFileSync(`${work}.s`, 'utf8');
-  let made;
   try {
-    made = assemble(assembly);
+    return { made: assemble(assembly), assembly };
   } catch (error) {
     return { error: error.message };
   }
+}
+
+/**
+ * Builds `file` and compares each function it defines with the original's.
+ *   root, includes: the folder the file's C is in, and the folders it includes from
+ *   compiler: { name, flags }, as readCompiler gives it
+ *   work: the folder for what's built, <work>.i and <work>.s
+ *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
+ *     Thumb function), or null
+ *   sizeOf(address): how long the code map says the function there is, or null when none starts there
+ *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
+ *     gives them, or null
+ *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
+ *     reader says of each halfword
+ *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ *   given: for a file of a shared library, where the copy has each of its twins, as twinsIn takes it
+ * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
+ * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
+ * didn't build, with what the compiler said.
+ */
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+  const built = await compileFile({ file, root, includes, compiler, work });
+  if (built.error) return built;
+  const { made, assembly } = built;
   const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split('\n');
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
 
