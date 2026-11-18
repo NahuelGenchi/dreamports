@@ -41,7 +41,7 @@ import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
-import { versionOf } from '../../src/lib/languages.mjs';
+import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { resolve } from '../read.mjs';
 import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
 import { looksLikeArm } from './functions.mjs';
@@ -951,7 +951,7 @@ export async function twin(game, options = {}) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
-  if (language !== 'c') throw new Error(`twin builds C: name a game's version in C, such as ${base}/c.`);
+  if (writtenIn(language) !== 'c') throw new Error(`twin builds C: name a game's version in C, such as ${base}/c.`);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${base}/proof/ has no code map yet: npm run dp -- codemap ${base} makes one.`);
   const copy = copyWith(original.sha1);

@@ -19,9 +19,9 @@
 //   --task    with --check, also fails unless every function of that task has its proof, which is how `ready`
 //             says a task is done.
 
-import { hex, proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, PROOFS, readProofs, startProofs, stateOf, stateText } from './lib/proofs.mjs';
-import { versionOf } from '../src/lib/languages.mjs';
+import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 
 const USAGE = 'Usage: npm run dp -- proofs [<version>] [<function or task>] [--start] [--check] [--task <function or task>]';
 const count = n => n.toLocaleString('en');
@@ -43,9 +43,9 @@ export async function run(args) {
   const [version, named] = rest;
   if (rest.length > 2 || ((start || task || named) && !version)) throw new Error(USAGE);
   if (start) return begin(version);
-  if (check) return checkAll(version ? [version] : proofVersions().filter(asksForProofs), task);
+  if (check) return checkAll(version ? [version] : keptVersions().filter(asksForProofs), task);
   if (!version) {
-    const keeping = proofVersions().filter(asksForProofs);
+    const keeping = keptVersions().filter(asksForProofs);
     if (!keeping.length) console.log('No version keeps its proofs yet: each is made a part at a time. npm run dp -- proofs <version> --start starts one\'s.');
     for (const each of keeping) console.log(`${each}: ${summary(countsOf(stateOf(each)))}`);
     return 0;
@@ -96,7 +96,7 @@ function show(version, group, states) {
 
 function begin(version) {
   const { game, language } = versionOf(version), original = readOriginal(version);
-  if (language !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
+  if (writtenIn(language) !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
   if (!['gba', 'nes'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance and the NES, and on no other console yet (docs/CONSOLES.md).');
   if (!readCodeMap(version)) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
   console.log(startProofs(version)

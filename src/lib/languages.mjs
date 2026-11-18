@@ -6,12 +6,29 @@
 // its own numbers, in its own proof/ (progress.json and port-map.json). The tools name a version by its folder, as in
 // `npm run dp -- prove sonic-battle/c`, and a task for it ends with the language's name, as in "Task: Title screen in
 // C" (pieces.mjs). games/README.md explains it for people.
+//
+// A trial is a second version in a language a game already has one in, kept beside it while it's tried, as Sonic
+// Advance's made the stricter way is (#1455), in games/sonic-advance/strict/. It shares everything a version shares,
+// and only the tools know it, by its name, such as `npm run dp -- match sonic-advance/strict`. It isn't in LANGUAGES, so
+// no list of a game's versions has it: the site, the cards, the tasks, the claims and the numbers are as if it weren't
+// there, and its folder isn't copied to the site (src/integrations/games.mjs).
 
 /** Each language by its key: its name as people read it, and the folder its version is in ('' for the game's own). */
 export const LANGUAGES = {
   js: { name: 'JavaScript', folder: '' },
   c: { name: 'C', folder: 'c' },
 };
+
+/** The trials by their keys: each one's name as people read it, its folder, and the language it's written in. */
+export const TRIALS = {
+  strict: { name: 'C, the stricter way', folder: 'strict', written: 'c' },
+};
+
+/** A language's or a trial's name and folder, by its key. */
+export const languageOf = key => LANGUAGES[key] ?? TRIALS[key];
+
+/** What a version's code is written in, as 'c': its language, or for a trial the language it's a second version in. */
+export const writtenIn = key => TRIALS[key]?.written ?? key;
 
 /**
  * The language a Dreamport is played and made in wherever it has a version in it: C. A game's card plays its C version
@@ -36,7 +53,7 @@ export const mainLanguage = languages => (languages.includes('js') ? 'js' : OTHE
 /** A version as the tools name it, such as 'sonic-battle/c', as { game, language }; a game alone is its JavaScript one. */
 export function versionOf(name) {
   const [game, folder, ...rest] = String(name).split('/');
-  const language = folder === undefined ? 'js' : OTHER_LANGUAGES.find(key => LANGUAGES[key].folder === folder);
+  const language = folder === undefined ? 'js' : OTHER_LANGUAGES.find(key => LANGUAGES[key].folder === folder) ?? Object.keys(TRIALS).find(key => TRIALS[key].folder === folder);
   if (!game || rest.length || !language) {
     throw new Error(`"${name}" isn't a game or a version of one: a game is named by its folder in games/, and its version in another language by the folder in it, such as sonic-battle/c.`);
   }
@@ -44,7 +61,7 @@ export function versionOf(name) {
 }
 
 /** The name the tools give a game's version in `language`: 'sonic-battle' for JavaScript, 'sonic-battle/c' for C. */
-export const versionName = (game, language) => (LANGUAGES[language].folder ? `${game}/${LANGUAGES[language].folder}` : game);
+export const versionName = (game, language) => (languageOf(language).folder ? `${game}/${languageOf(language).folder}` : game);
 
 /** A version's name as people read it: 'Sonic Battle Dreamport' for JavaScript, 'Sonic Battle Dreamport in C'. */
 export const versionTitle = (title, language) => (language === 'js' ? title : `${title} in ${LANGUAGES[language].name}`);

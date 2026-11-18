@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { gameFolder, REPO, sharedProofFolder } from './paths.mjs';
+import { gameFolder, proofFolder, REPO, sharedProofFolder } from './paths.mjs';
 import { codeFiles, readShifts } from '../portmap.mjs';
 import { twinsIn } from '../gba/match.mjs';
 
@@ -38,9 +38,10 @@ export function readAddresses(file) {
 export function versionTwins(game, more = null) {
   const folder = gameFolder(game), shifts = readShifts(game);
   const named = new Map();
-  const own = join(sharedProofFolder(game), 'addresses.json');
+  // the game's names, which every version shares, then the version's own, in its own proof/, then `more`
+  const kept = [...new Set([sharedProofFolder(game), proofFolder(game)])].map(each => join(each, 'addresses.json')).filter(file => existsSync(file));
   if (more && !existsSync(more)) throw new Error(`${more} isn't a file.`);
-  for (const file of [...(existsSync(own) ? [own] : []), ...(more ? [more] : [])]) {
+  for (const file of [...kept, ...(more ? [more] : [])]) {
     for (const [name, address] of readAddresses(file)) named.set(name, address);
   }
   const files = codeFiles(folder, 'c').filter(file => file.endsWith('.c'));
