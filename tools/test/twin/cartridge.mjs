@@ -13,6 +13,9 @@ export const NAMED = new Map([['gBall', 0x03000100], ['gFrame', 0x03000020], ['g
 // what the compiler calls to call through a pointer: one instruction each, which the test puts in the cartridge itself
 export const VIA = { _call_via_r0: 0x08000500, _call_via_r1: 0x08000504, _call_via_r2: 0x08000508, _call_via_r3: 0x0800050C };
 export const STEPS = [1, 2, 5, 9];
+// a function that reads a register of the hardware and writes it changed, and one that waits for a DMA the V-blank
+// starts, in a file of their own (register.c)
+export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, and the value play keeps the stage in
 export const PLAYED = { Shine: 0x08000400, Play: 0x08000440 };
@@ -48,6 +51,13 @@ function place(rom, assembly, where) {
     }
   }
   for (const f of all) text.copy(rom, where[f.name] - CARTRIDGE, f.at, f.until);
+}
+
+// The same cartridge with the function of twin/register.c, which changes a register of the hardware.
+export function withRegister(rom, assembly) {
+  const shifted = Buffer.from(rom);
+  place(shifted, assembly, REGISTER);
+  return shifted;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of

@@ -42,6 +42,18 @@ if (exports.kit_copy && exports.kit_copy_size) {
 }
 // where the module's own stack starts, to put it back after a twin stopped partway
 const stack = exports.__stack_pointer?.value;
+// The module's own values, as they were before any call: what the kit keeps, such as its registers, and what the
+// version's hardware keeps, such as a DMA channel's state. The original's hardware is as it was before each call, so
+// these are put back before each call too, all but the memories of the image, which the check gives.
+const own = exports.__data_end ? { from: exports.__global_base?.value ?? 0, to: exports.__data_end.value } : null;
+const before = own && memory.slice(own.from, own.to);
+const inOwn = regions.filter(({ address, bytes }) => own && address >= own.from && address + bytes <= own.to);
+function putBack() {
+  if (!own) return;
+  const images = inOwn.map(({ address, bytes }) => memory.slice(address, address + bytes));
+  memory.set(before, own.from);
+  inOwn.forEach(({ address }, i) => memory.set(images[i], address));
+}
 
 function give(image) {
   for (const { at, address, bytes } of regions) memory.set(image.subarray(at, at + bytes), address);
@@ -53,6 +65,7 @@ parentPort.on('message', message => {
     parentPort.postMessage({ done: true });
     return;
   }
+  putBack();
   for (const [address, bytes, value] of message.changes) {
     if (bytes === 1) view.setUint8(address, value);
     else if (bytes === 2) view.setUint16(address, value, true);

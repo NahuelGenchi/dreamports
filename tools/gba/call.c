@@ -19,7 +19,8 @@
 //                       changes those values, then calls the function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
 //                       lets it run up to `limit` instructions. Answers:
-//                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow
+//                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow,
+//                           3 it came back, but a DMA the console's clock started wrote to the image on the way
 //                         what it gave back, in r0, and how many instructions it ran
 //                         the first address of the hardware's registers it used, or 0
 //                         the address it left for, when it ended with 2
@@ -51,6 +52,10 @@
 // reads or writes a halfword or a word at an address none starts at, which the console moves and C doesn't, or
 // that runs code from outside the cartridge and the work memory, or whose stack goes 8 KB deep, ends with 2. The stack
 // a call uses isn't the twin's, so what the call leaves there is put back as it was and isn't among the stretches.
+//
+// A twin has no clock. A DMA the console starts at a V-blank, an H-blank or the sound's time can run in the middle
+// of a call, as a long one reaches the next V-blank, and what it writes to the image no twin can, so such a call ends
+// with 3. One that writes only the hardware's registers, as a game's H-blank DMA does, leaves the call as it is.
 #include <mgba/core/core.h>
 #include <mgba/core/log.h>
 #include <mgba/core/serialize.h>
@@ -84,7 +89,7 @@
 // how far down a call's stack may go, more than any game's has room for
 #define STACK_ROOM 0x2000
 
-enum { CAME_BACK = 0, DID_NOT = 1, LEFT = 2 };
+enum { CAME_BACK = 0, DID_NOT = 1, LEFT = 2, CLOCKED = 3 };
 
 static void quiet(struct mLogger* logger, int category, enum mLogLevel level, const char* format, va_list args) {
 	(void) logger; (void) category; (void) level; (void) format; (void) args;
@@ -102,6 +107,8 @@ static uint8_t undo[IMAGE], before[IMAGE], after[IMAGE];
 static int watching;
 static uint32_t hardware, leftFor, stackLow, stackHigh;
 static int left;
+// whether a DMA the console's clock started wrote to the image
+static int clocked;
 static uint8_t wasRead[IMAGE];
 static uint32_t reads[NOTED][2], numbers[NOTED], pairs[NOTED][2];
 static size_t readCount, numberCount, pairCount;
@@ -155,6 +162,7 @@ static void pair(uint32_t one, uint32_t other) {
 static void touched(uint32_t address, int bytes, int write) {
 	if (!watching) return;
 	long at = inImage(address);
+	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;
 	if (at >= 0 && inImage(address + bytes - 1) >= 0) {
 		// a value the function read from memory, and not from its own stack, is one the check can change
 		if (!write && !(address >= stackLow && address < stackHigh) && !wasRead[at] && readCount < NOTED) {
@@ -301,7 +309,7 @@ static void call(void* state) {
 	cpu->gprs[ARM_PC] = address & ~1u;
 	if (thumb) ThumbWritePC(cpu); else ARMWritePC(cpu);
 
-	hardware = 0; left = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
+	hardware = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
 	stackLow = top; stackHigh = top + 4 * onStack;
 	watching = 1;
 	uint32_t steps = 0;
@@ -337,6 +345,7 @@ static void call(void* state) {
 		else if (sp < top - STACK_ROOM && !left) { left = 1; leftFor = sp; }
 	}
 	if (left) ended = LEFT;
+	else if (ended == CAME_BACK && clocked) ended = CLOCKED;
 	watching = 0;
 	uint32_t gave = cpu->gprs[0];
 	for (size_t i = 0; i < readCount; i++) wasRead[inImage(reads[i][0])] = 0;
