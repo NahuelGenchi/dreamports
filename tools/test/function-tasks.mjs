@@ -22,6 +22,7 @@ import { addressFinder, matchFile } from '../gba/match.mjs';
 import { ensureCaller } from '../gba/twin.mjs';
 import { firstFiles } from '../lib/new-game.mjs';
 import { formatCodeMap, hex } from '../lib/proof-files.mjs';
+import { proofLines, recordingsAt, standProblems, stepProofs } from '../lib/proven-step.mjs';
 import { cartridge, compiler, FUNCTIONS, NAMED, VIA } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
@@ -165,7 +166,7 @@ try {
   check(run.status === 0, 'not when a twin\'s comment changes');
   write(['if (y > FLOOR)', 'if (y >= FLOOR)']);
   run = dp('proofs', VERSION, '--check');
-  check(run.status === 1 && /08000200, Fall in src\/program\.c, is kept as proven and its twin, or a header of its file, changed since/.test(run.out) && !/Scale/.test(run.out), `when a twin's code changes, its own proof and no other's: ${run.out.trim().split('\n')[0]}`);
+  check(run.status === 1 && /08000200, Fall in src\/program\.c, is kept as proven and its twin, or a header or another line of its file, changed since/.test(run.out) && !/Scale/.test(run.out), `when a twin's code changes, its own proof and no other's: ${run.out.trim().split('\n')[0]}`);
   run = dp('proofs', VERSION, '08000200');
   check(/Fall, src\/program\.c:\d+: not proven: its twin changed since its proof/.test(run.out) && /7 proven/.test(run.out), 'and it counts as not proven meanwhile');
   writeFileSync(proofs, asMatchLeft.replace(/\["08000200", "bytes", "[0-9a-f]{16}"/, '["08000200", "bytes", "0123456789abcdef"'));
@@ -219,6 +220,33 @@ try {
   write();
   run = dp('match', VERSION);
   check(run.status === 0 && kept().length === 8, 'with the path written, match keeps the function again');
+  // a step that only proves functions, in a game with no recording, shows its proofs in a clip's place
+  // (lib/proven-step.mjs): held to the files as they are, against a main that doesn't have them
+  const shown = () => stepProofs(VERSION, 'HEAD');
+  let step = shown();
+  check(step.keeps && !step.problems.length && step.functions.length === 8 && step.functions.every(f => f.kind === 'bytes') && !standProblems(VERSION, step, { main: recordingsAt(VERSION, 'HEAD'), now: 0 }, proofLines('Test Function Tasks in C', step.functions)).length,
+    `its eight proven twins stand in for a clip, each named with its proof${step.problems.length ? `: ${step.problems[0]}` : ''}`);
+  check(/- `Fall`, 0x08000200: the same bytes/.test(proofLines('Test Function Tasks in C', step.functions)), 'and the pull request\'s line names each function, its address and its kind of proof');
+  write(['#include "program.h"', '#include "program.h"\n#define FLOOR 150']);
+  step = shown();
+  check(dp('proofs', VERSION, '--check').status === 1 && step.problems.length === 8 && step.problems.every(problem => /is of other code/.test(problem)), 'a line of the file outside its functions changed after the proofs makes each stale, and they stand in no more');
+  write(['if (y > FLOOR)', 'if (y >= FLOOR)']);
+  step = shown();
+  check(step.problems.length === 1 && /^Fall, in src\/program\.c, has a line in proofs\.json that is of other code: it changed after its proof/.test(step.problems[0]) && step.functions.length === 7, 'and neither does a twin changed after its proof');
+  write(['gBall.y = y;', 'gBall.y = y; // dp:stop 0x08000210']);
+  step = shown();
+  check(step.problems.length === 1 && /^Fall, in src\/program\.c, has a stop in it/.test(step.problems[0]), 'nor a twin with a stop');
+  write();
+  const glue = join(gameFolder(VERSION), 'src', 'main.c');
+  writeFileSync(glue, '#include "program.h"\nvoid game_step(void) { Fall(); }\n');
+  step = shown();
+  check(step.problems.some(problem => /^game_step, in src\/main\.c, isn't a twin, so no proof is of it/.test(problem)), 'nor a step that also writes code that is no twin, such as the game\'s main.c');
+  rmSync(glue);
+  writeFileSync(proofs, readFileSync(proofs, 'utf8').replace(/\["08000300","bytes","[0-9a-f]{16}"/, '["08000300","bytes","0123456789abcdef"'));
+  step = shown();
+  check(step.problems.length === 1 && /^Step, in src\/program\.c, has a line in proofs\.json that is of other code/.test(step.problems[0]), 'nor a line written by hand');
+  run = dp('match', VERSION);
+  check(run.status === 0 && kept().length === 8 && !shown().problems.length, 'and proven again by match, they stand in again');
   run = dp('tasks', VERSION, '--repo', REPOSITORY, '--update', '--yes');
   check(run.status === 0 && /- `08000200`, \d+ bytes: `Fall` in `src\/program\.c`, proven by the same bytes/.test(issues().issues.find(issue => issue.number === HOME + 1).body), 'tasks --update writes the open task again from where its functions stand');
   run = dp('find', NAME, '--take', '--repo', REPOSITORY);

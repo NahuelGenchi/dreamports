@@ -92,9 +92,22 @@ export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
  *  it is a proof of (../lib/proofs.mjs). */
-export function twinsIn(text, shifts = []) {
+export const twinsIn = (text, shifts = []) => piecesIn(text, shifts).functions;
+
+/** A file of C in pieces: the `functions` it defines, as twinsIn gives them, and the `rest`, everything it holds
+ *  outside them, in order, each { text, pre }: a line for the preprocessor, with `pre`, or a declaration up to its ;,
+ *  without its comments and with each run of spaces as one. It's what every function of the file is built with
+ *  beside its own code, so a proof is of it too (../lib/proofs.mjs), and a step that changes it changes more than
+ *  the functions it names (../lib/proven-step.mjs). */
+export function piecesIn(text, shifts = []) {
   const { code, kept, comments } = lex(text);
-  const twins = [];
+  const twins = [], rest = [];
+  // where what's outside every function, and not yet kept, starts
+  let from = 0;
+  const piece = (a, b, pre = false) => {
+    const found = kept.slice(a, b).replace(/\s+/g, ' ').trim();
+    if (found) rest.push({ text: found, pre });
+  };
   // the function whose body is being read, and where its first word is
   let open = null;
   // where the statement being read started: after the last ; or } outside every { }, or the last line for the preprocessor
@@ -103,17 +116,29 @@ export function twinsIn(text, shifts = []) {
     const c = code[i];
     if (c === '#' && /^[ \t]*$/.test(code.slice(code.lastIndexOf('\n', i) + 1, i))) {
       // a line for the preprocessor, with the lines it carries on to
+      const line = i;
       while (i < code.length && !(code[i] === '\n' && code[i - 1] !== '\\')) i++;
-      if (!depth) start = i;
+      if (!depth) {
+        piece(from, line);
+        piece(line, i, true);
+        from = i;
+        start = i;
+      }
     } else if (c === '}') {
       depth--;
       if (!depth) {
-        if (open) open.twin.code = kept.slice(open.from, i + 1).replace(/\s+/g, ' ');
+        if (open) {
+          open.twin.code = kept.slice(open.from, i + 1).replace(/\s+/g, ' ');
+          from = i + 1;
+        }
         open = null;
         start = i + 1;
       }
-    } else if (c === ';' && !depth) start = i + 1;
-    else if (c === '{' && !depth++) {
+    } else if (c === ';' && !depth) {
+      piece(from, i + 1);
+      from = i + 1;
+      start = i + 1;
+    } else if (c === '{' && !depth++) {
       // a function's body: before it, a name and what it's given in ( )
       const m = /([A-Za-z_]\w*)\s*\(([^()]|\([^()]*\))*\)\s*$/.exec(code.slice(start, i));
       if (!m || ['if', 'while', 'for', 'switch'].includes(m[1])) continue;
@@ -131,9 +156,12 @@ export function twinsIn(text, shifts = []) {
       const name = m[1];
       twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
+      piece(from, first);
+      from = first;
     }
   }
-  return twins;
+  if (!open) piece(from, code.length);
+  return { functions: twins, rest };
 }
 
 // a folder's C, as the folders of names and bytes the preprocessor is given
