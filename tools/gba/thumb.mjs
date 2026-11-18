@@ -50,14 +50,16 @@ export function assemble(text) {
     if (!m) return null;
     return (m[1] === '-' ? -1 : 1) * Number(m[2]);
   };
-  // a name with a number added or taken away, or a number alone: { name, addend }
+  // a name with a number added or taken away, or a number alone: { name, addend }. agbcc writes a name less a
+  // number as the name plus a negative one, as in gFoo+-0x8, which GNU's assembler reads as gFoo - 8
   const expression = text => {
     text = text.trim();
     const plain = number(text);
     if (plain !== null) return { name: null, addend: plain };
-    const m = /^([A-Za-z_.$][\w.$]*)\s*(?:([-+])\s*(0x[0-9a-f]+|\d+))?$/i.exec(text);
+    const m = /^([A-Za-z_.$][\w.$]*)\s*(?:([-+])\s*([-+]?)\s*(0x[0-9a-f]+|\d+))?$/i.exec(text);
     if (!m) fail(`"${text}" isn't a name, a number or a name and a number.`);
-    return { name: m[1], addend: m[2] ? (m[2] === '-' ? -1 : 1) * Number(m[3]) : 0 };
+    const sign = (m[2] === '-' ? -1 : 1) * (m[3] === '-' ? -1 : 1);
+    return { name: m[1], addend: m[2] ? sign * Number(m[4]) : 0 };
   };
   const register = text => REGISTERS[text.trim().toLowerCase()];
   const low = r => r !== undefined && r < 8;

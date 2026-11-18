@@ -156,3 +156,8 @@ test('a stretch of the cartridge a library was built in has its own compiler', (
   assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, flags: ['-o', 'x'] }] } }, where), /for 08096AA0 to 0809B376/);
   assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, name: 'gcc' }] } }, where), /names the compiler "gcc" for/);
 });
+
+test('a name less a number, as agbcc writes it, is the name with the number taken away', () => {
+  const { relocations } = assemble('\t.code\t16\n\t.word\tgFoo+-0x8\n\t.word\tgFoo-0x8\n\t.word\tgFoo+0x8\n\t.word\tgFoo- -0x8\n');
+  assert.deepEqual(relocations.map(r => [r.name, r.addend]), [['gFoo', -8], ['gFoo', -8], ['gFoo', 8], ['gFoo', 8]]);
+});
