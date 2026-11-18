@@ -53,6 +53,12 @@
 // that runs code from outside the cartridge and the work memory, or whose stack goes 8 KB deep, ends with 2. The stack
 // a call uses isn't the twin's, so what the call leaves there is put back as it was and isn't among the stretches.
 //
+// A game goes to the BIOS on purpose with a swi, as to divide, and a twin does that work itself (kit/gba/c). The
+// emulator works most of them out at once and then, as the console takes time over them, runs a few instructions of
+// its own BIOS before it comes back. A call follows it there: from the swi's own entry, at 0x00000008, until it is
+// back, the BIOS's code runs, it reads its own memory, and the stack it keeps in its own mode is the original's own,
+// put back as the call's is. Reaching the BIOS any other way still ends the call with 2.
+//
 // A twin has no clock. A DMA the console starts at a V-blank, an H-blank or the sound's time can run in the middle
 // of a call, as a long one reaches the next V-blank, and what it writes to the image no twin can, so such a call ends
 // with 3. One that writes only the hardware's registers, as a game's H-blank DMA does, leaves the call as it is.
@@ -83,6 +89,8 @@
 #define IMAGE 0x60800
 #define IO_BYTES 0x400
 #define CARTRIDGE 0x08000000u
+// the BIOS, at the start of the console's addresses
+#define BIOS_BYTES 0x4000u
 // where a call comes back to: no code is there, and the call ends as it gets there
 #define RETURN_TO 0x09FFFFF0u
 #define NOTED 4096
@@ -106,6 +114,10 @@ static uint8_t undo[IMAGE], before[IMAGE], after[IMAGE];
 // what a call did
 static int watching;
 static uint32_t hardware, leftFor, stackLow, stackHigh;
+// whether a swi has the call in the BIOS, and the stack of the BIOS's own mode, from where it starts down to the
+// lowest the swi took it
+static int inBios;
+static uint32_t biosTop, biosLow;
 static int left;
 // whether a DMA the console's clock started wrote to the image
 static int clocked;
@@ -161,6 +173,14 @@ static void pair(uint32_t one, uint32_t other) {
 // every read and write the processor, the BIOS and DMA make comes through here
 static void touched(uint32_t address, int bytes, int write) {
 	if (!watching) return;
+	// a swi took the call into the BIOS, which reads its own code and keeps a stack of its own
+	if (inBios) {
+		if (!write && address + bytes <= BIOS_BYTES) return;
+		if (address < biosTop && address >= biosTop - STACK_ROOM) {
+			if (address < biosLow) biosLow = address;
+			return;
+		}
+	}
 	long at = inImage(address);
 	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;
 	if (at >= 0 && inImage(address + bytes - 1) >= 0) {
@@ -303,6 +323,8 @@ static void call(void* state) {
 	cpu->cpsr.t = thumb;
 	cpu->executionMode = thumb ? MODE_THUMB : MODE_ARM;
 	for (int i = 0; i < 4; i++) cpu->gprs[i] = r[i];
+	biosTop = biosLow = (uint32_t) cpu->bankedRegisters[BANK_SUPERVISOR][0] & ~3u;
+	inBios = 0;
 	cpu->gprs[ARM_SP] = top;
 	for (uint32_t i = 0; i < onStack; i++) core->rawWrite32(core, top + 4 * i, -1, words[i]);
 	cpu->gprs[ARM_LR] = RETURN_TO | 1;
@@ -318,8 +340,10 @@ static void call(void* state) {
 		int inThumb = cpu->executionMode == MODE_THUMB;
 		uint32_t pc = cpu->gprs[ARM_PC] - (inThumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
 		if (pc == RETURN_TO) { ended = CAME_BACK; break; }
-		// code runs from the cartridge, or from the work memory, where games copy some
-		if (!((pc >= CARTRIDGE && pc - CARTRIDGE < romSize) || pc >> 24 == 2 || pc >> 24 == 3)) {
+		// code runs from the cartridge, or from the work memory, where games copy some, or from the BIOS after a swi
+		if (pc == 0x00000008u && cpu->privilegeMode == MODE_SUPERVISOR) inBios = 1;
+		else if (pc >= BIOS_BYTES) inBios = 0;
+		if (!((pc >= CARTRIDGE && pc - CARTRIDGE < romSize) || pc >> 24 == 2 || pc >> 24 == 3 || inBios)) {
 			if (!left) { left = 1; leftFor = pc; }
 		}
 		if (left) { ended = LEFT; break; }
@@ -354,6 +378,11 @@ static void call(void* state) {
 	core->loadState(core, state);
 	// the stack is the original's own business
 	for (uint32_t a = stackLow & ~3u; a < stackHigh; a++) {
+		long at = inImage(a);
+		if (at >= 0) after[at] = before[at];
+	}
+	// and so is the BIOS's
+	for (uint32_t a = biosLow & ~3u; a < biosTop; a++) {
 		long at = inImage(a);
 		if (at >= 0) after[at] = before[at];
 	}
