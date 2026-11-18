@@ -276,11 +276,13 @@ export function buildNative(sources, out, { folders }) {
 }
 
 /** The console of the game whose folder, or whose version's, such as games/<game>/c/, is `folder`, from the game's
- *  proof/original.json. */
+ *  proof/original.json. A version's own proof/original.json, as a trial has (src/lib/languages.mjs), names no console:
+ *  the game's does. */
 export function consoleOfFolder(folder) {
   for (const place of [folder, dirname(folder)]) {
     const file = join(place, 'proof', 'original.json');
-    if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8')).console;
+    const console = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).console : undefined;
+    if (console !== undefined) return console;
   }
   throw new Error(`${relative(REPO, folder)} has no proof/original.json, nor has the game it's a version of, so its console, and its kit in C, aren't known.`);
 }

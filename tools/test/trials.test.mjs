@@ -51,3 +51,18 @@ test('a game\'s own code leaves out its trials\' folders, as it does its other v
     rmSync(folder, { recursive: true, force: true });
   }
 });
+
+test('a trial is built on its game\'s console, though its own original.json names none', async () => {
+  const { consoleOfFolder } = await import('../lib/c.mjs');
+  const folder = mkdtempSync(join(tmpdir(), 'dp-trial-console-'));
+  try {
+    mkdirSync(join(folder, 'proof'), { recursive: true });
+    mkdirSync(join(folder, 'strict', 'proof'), { recursive: true });
+    writeFileSync(join(folder, 'proof', 'original.json'), JSON.stringify({ console: 'gba' }));
+    writeFileSync(join(folder, 'strict', 'proof', 'original.json'), JSON.stringify({ workMemory: [{ address: '03000000', bytes: 32256 }] }));
+    assert.equal(consoleOfFolder(join(folder, 'strict')), 'gba');
+    assert.equal(consoleOfFolder(folder), 'gba');
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+});
