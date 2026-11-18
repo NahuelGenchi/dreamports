@@ -40,6 +40,29 @@ export function addressIn(text, shifts = []) {
   return null;
 }
 
+/** The last function of a run a twin's comment names, as in `0x08001AA4 to 0x0800258E`, or null: a twin of one
+ *  routine the code map holds as several functions, each running on into the next, is a twin of each of them, from the
+ *  first address to the second, and its bytes are compared with all of theirs together. */
+export function throughIn(text, shifts = []) {
+  const found = [...text.matchAll(NAME)];
+  for (let i = 0; i + 1 < found.length; i++) {
+    const [first, second] = [found[i], found[i + 1]];
+    if (!/^\s+to\s+$/.test(text.slice(first.index + first[0].length, second.index))) continue;
+    const from = addressIn(first[0], shifts), to = addressIn(second[0], shifts);
+    return from !== null && to !== null && to > from ? to : null;
+  }
+  return null;
+}
+
+/** The functions of a code map from `from` through the one at `through`, each { address, size, key }, when each starts
+ *  where the one before ends, as one routine's do; or null when they don't, or no function starts at either end. */
+export function runIn(functions, from, through) {
+  const run = functions.filter(f => !f.bytes && f.address >= from && f.address <= through).sort((a, b) => a.address - b.address);
+  if (!run.length || run[0].address !== from || run.at(-1).address !== through) return null;
+  for (let i = 1; i < run.length; i++) if (run[i].address !== run[i - 1].address + run[i - 1].size) return null;
+  return run;
+}
+
 // a name that is a label and nothing else
 const LABEL = /^[A-Za-z][A-Za-z0-9]*_0?[238][0-9A-Fa-f]{6}$/;
 
@@ -153,8 +176,8 @@ export function piecesIn(text, shifts = []) {
         if (!comment.text.startsWith('//')) break;
         at = comment.from;
       }
-      const name = m[1];
-      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      const name = m[1], through = throughIn(above.join('\n'), shifts);
+      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), ...(through === null ? {} : { through }), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
@@ -210,6 +233,8 @@ export async function preprocess(file, root, includes) {
  *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
  *     Thumb function), or null
  *   sizeOf(address): how long the code map says the function there is, or null when none starts there
+ *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
+ *     gives them, or null
  *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
  *     reader says of each halfword
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
@@ -217,7 +242,7 @@ export async function preprocess(file, root, includes) {
  * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
  * didn't build, with what the compiler said.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, original, shifts = [] }) {
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [] }) {
   mkdirSync(dirname(work), { recursive: true });
   let preprocessed;
   try {
@@ -248,7 +273,7 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
-    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, line: twins.get(name)?.line ?? null, missing: new Set() }))
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set() }))
     .sort((a, b) => a.at - b.at);
   functions.forEach((f, i) => {
     f.until = functions[i + 1]?.at ?? code.length;
@@ -292,7 +317,9 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
       f.elsewhere = true;
       continue;
     }
-    const mapped = sizeOf(f.address);
+    // a twin of a run is compared with all of the run's functions together, as long as they are
+    f.run = f.through === null ? null : runOf(f.address, f.through);
+    const mapped = f.run ? f.run.reduce((sum, each) => sum + each.size, 0) : f.through === null ? sizeOf(f.address) : null;
     f.mapped = mapped !== null;
     const theirs = original(f.address, Math.max(f.length, mapped ?? 0));
     // how long the original's is: as the code map has it, less the zeros that line up the function after it

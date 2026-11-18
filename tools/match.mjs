@@ -37,7 +37,7 @@ import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
-import { addressFinder, matchFile, readCompiler } from './gba/match.mjs';
+import { addressFinder, matchFile, readCompiler, runIn } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from './lib/proofs.mjs';
 import { resolve } from './read.mjs';
@@ -132,6 +132,7 @@ export async function run(args) {
       includes: [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
       work: join(LOCAL, 'match', game, inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
       sizeOf: address => sizes.get(address) ?? null,
+      runOf: (address, through) => runIn(codeMap.functions, address, through),
     });
     const where = inside ? inRepo(file) : file;
     if (result.error) {
@@ -154,19 +155,28 @@ export async function run(args) {
         console.log(`  Not compared  ${at} ${f.name}: match compares what's in the cartridge, and this is in the console's memory`);
         continue;
       }
+      if (f.through !== null && !f.run) {
+        console.log(`  Not compared  ${at} ${f.name}: its comment names a run to 0x${hex(f.through)}, and the code map's functions from ${at} to 0x${hex(f.through)} aren't one run, each starting where the one before ends`);
+        continue;
+      }
       all++;
       bytes += f.bytes;
       const unmapped = f.mapped ? '' : ', where the code map has no function starting';
-      if (inside && f.mapped) (f.same ? proven : differing).push({ key: hex(f.address) });
+      // a twin of a run proves, or fails, each function of it
+      if (inside && f.mapped) for (const address of f.run ? f.run.map(each => each.address) : [f.address]) (f.same ? proven : differing).push({ key: hex(address) });
+      const run = f.run ? `, the ${count(f.run.length)} functions to 0x${hex(f.through)} together` : '';
       if (f.same) {
         same++;
         sameBytes += f.bytes;
-        console.log(`  The same  ${at} ${f.name}, ${count(f.bytes)} bytes${unmapped}`);
+        // a twin longer than its function, whose bytes after it are the same as the functions after it, is one routine the
+        // code map holds as several: only the first is proven until its comment names the run
+        const more = !f.run && f.mapped && f.longer > 0 ? `, and its ${count(f.longer)} bytes after are the same as the code map's next functions: name them in its comment, as in 0x${hex(f.address)} to <the last one's address>, to prove them too` : '';
+        console.log(`  The same  ${at} ${f.name}, ${count(f.bytes)} bytes${run}${unmapped}${more}`);
       } else {
         const length = f.longer > 0 ? `${f.longer} bytes longer` : f.longer < 0 ? `${-f.longer} bytes shorter` : 'the same length';
         const first = f.first < 0 ? '' : `, first at 0x${hex(f.address + f.first)}`;
         const missing = f.missing.length ? `, with no address for ${f.missing.join(', ')}` : '';
-        console.log(`  Differs   ${at} ${f.name}: ${count(f.differing)} of ${count(f.halfwords)} halfwords, ${length}${first}${missing}${unmapped}`);
+        console.log(`  Differs   ${at} ${f.name}${run}: ${count(f.differing)} of ${count(f.halfwords)} halfwords, ${length}${first}${missing}${unmapped}`);
       }
       for (const name of f.missing) unknown.add(name);
       if (only !== null) kept = listing(game, f, original.name);
