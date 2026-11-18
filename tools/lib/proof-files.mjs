@@ -15,7 +15,7 @@ import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
 import { nesProgram } from '../nes/functions.mjs';
-import { LANGUAGES, OTHER_LANGUAGES, versionName, versionOf } from '../../src/lib/languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
 export function proofGames() {
@@ -45,16 +45,36 @@ export const mainVersion = game => versionsOf(game)[0];
 /** Every game with proof files and each of its versions. */
 export const proofVersions = () => proofGames().flatMap(versionsOf);
 
-/** The copy of the original a game's proof uses. */
+/** A game's trials, by the tools' names for them, such as 'sonic-advance/strict': second versions kept beside its own
+ *  while they're tried, which no list of its versions has (src/lib/languages.mjs). */
+export const trialsOf = game => Object.keys(TRIALS).filter(trial => existsSync(join(gameFolder(game), TRIALS[trial].folder, 'index.html')))
+  .map(trial => versionName(game, trial));
+
+/** Every version whose proofs are kept, and so checked: each game's versions, and its trials. */
+export const keptVersions = () => proofGames().flatMap(game => [...versionsOf(game), ...trialsOf(game)]);
+
+// what a version asks of the proof for itself alone, in its own proof/original.json: only the work memory to compare
+// (lib/memory.mjs), which a version made in the console's memory asks and the game's other versions don't
+const OWN = ['workMemory'];
+function ownOriginal(version) {
+  const file = join(proofFolder(version), 'original.json');
+  if (versionOf(version).language === 'js' || !existsSync(file)) return {};
+  const own = JSON.parse(readFileSync(file, 'utf8'));
+  const other = Object.keys(own).find(key => !OWN.includes(key));
+  if (other) throw new Error(`games/${version}/proof/original.json says "${other}", which is the game's to say, in games/${versionOf(version).game}/proof/original.json: a version's own says only ${OWN.map(key => `"${key}"`).join(', ')}.`);
+  return own;
+}
+
+/** The copy of the original a game's proof uses, with what the version asks for itself alone. */
 export function readOriginal(game) {
   const { game: base, language } = versionOf(game);
   const file = join(sharedProofFolder(game), 'original.json');
   if (!existsSync(join(REPO, 'games', base))) throw new Error(`There's no game called "${base}" in games/.`);
   if (language !== 'js' && !existsSync(join(gameFolder(game), 'index.html'))) {
-    throw new Error(`${base} has no version in ${LANGUAGES[language].name} yet: npm run dp -- new ${game} starts one.`);
+    throw new Error(`${base} has no version in ${languageOf(language).name} yet: npm run dp -- new ${game} starts one.`);
   }
   if (!existsSync(file)) throw new Error(`games/${base}/proof/original.json is missing: it names the copy of the original the proof uses (tools/README.md).`);
-  const original = JSON.parse(readFileSync(file, 'utf8'));
+  const original = { ...JSON.parse(readFileSync(file, 'utf8')), ...ownOriginal(game) };
   for (const key of ['console', 'name', 'title', 'code', 'sha1']) {
     if (typeof original[key] !== 'string') throw new Error(`games/${base}/proof/original.json needs "${key}".`);
   }

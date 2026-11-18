@@ -32,7 +32,7 @@ import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from
 import { LOCAL, REPO } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
-import { versionOf } from '../src/lib/languages.mjs';
+import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
@@ -86,7 +86,7 @@ export async function run(args) {
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
   if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's compiler and no other console's yet (docs/CONSOLES.md).`);
-  if (language !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
+  if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
   const compiler = readCompiler(original, `games/${base}/proof/original.json`);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${base}/proof/ has no code map yet: npm run dp -- codemap ${base} makes one.`);

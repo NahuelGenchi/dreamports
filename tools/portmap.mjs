@@ -33,7 +33,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join, relative, sep } from 'node:path';
 import { gameFolder, proofFolder, sharedProofFolder } from './lib/paths.mjs';
 import { proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
-import { LANGUAGES, OTHER_LANGUAGES, versionOf } from '../src/lib/languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, TRIALS, versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { nesNames } from './nes/functions.mjs';
 
 // a label's word and its address, or a number's: in the cartridge, or in the work RAMs, where a game copies or unpacks
@@ -129,7 +129,7 @@ export function portMap(game) {
   const names = namer(original.console, codeMap);
   const functions = new Map(), unmatched = new Map(), stops = [];
   const shifted = (address, label) => (label ? address - (shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0) : address);
-  for (const file of codeFiles(gameFolder(game), versionOf(game).language)) {
+  for (const file of codeFiles(gameFolder(game), writtenIn(versionOf(game).language))) {
     const where = relative(gameFolder(game), file).split(sep).join('/');
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       const [named, stopped] = namesAndStops(line, names);
@@ -162,10 +162,10 @@ export function portMap(game) {
 // what each language's code is written in
 const SOURCES = { js: /\.m?js$/, c: /\.[ch]$/ };
 // the version's code: every file of its language in its folder, but its proof, and for the JavaScript one, the
-// folders of the versions in other languages
+// folders of the versions in other languages, and of the trials
 export function codeFiles(folder, language, top = true) {
   const files = [];
-  const others = new Set(top && language === 'js' ? OTHER_LANGUAGES.map(key => LANGUAGES[key].folder) : []);
+  const others = new Set(top && language === 'js' ? [...OTHER_LANGUAGES.map(key => LANGUAGES[key].folder), ...Object.values(TRIALS).map(trial => trial.folder)] : []);
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     const path = join(folder, entry.name);
     if (entry.isDirectory()) {

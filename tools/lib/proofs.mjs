@@ -36,7 +36,7 @@ import { codeOf, piecesIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
-import { versionOf } from '../../src/lib/languages.mjs';
+import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
 export const PROOFS = 'proofs.json';
 /** The two proofs, by what a line calls each, with how people say it. */
@@ -142,7 +142,7 @@ const onDisk = path => (existsSync(path) && statSync(path).isFile() ? readFileSy
  * no twin here, as neither proof reaches one yet.
  */
 export function twinMarks(version, codeMap = readCodeMap(version)) {
-  if (!codeMap || versionOf(version).language !== 'c') return new Map();
+  if (!codeMap || writtenIn(versionOf(version).language) !== 'c') return new Map();
   return marksIn(codeMap, versionTwins(version));
 }
 

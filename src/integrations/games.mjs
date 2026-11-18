@@ -10,7 +10,7 @@ import { copyFile, lstat, mkdir, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ENTRY } from '../lib/entries.mjs';
-import { LANGUAGES, OTHER_LANGUAGES } from '../lib/languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, TRIALS } from '../lib/languages.mjs';
 import { checkNotes } from '../lib/notes.mjs';
 
 // a game's folder name is its address: lowercase letters and numbers, with single dashes between them
@@ -155,10 +155,14 @@ const sendOn = (to) => `<!doctype html>
 </html>
 `;
 
-// copies a game's or a kit's files, leaving out names starting with a dot and its notes
+// the folders in a game's that stay off the site: its notes, and its trials, second versions only the tools know
+// while they're tried (src/lib/languages.mjs)
+const KEPT_OFF = new Set(['notes', ...Object.values(TRIALS).map((trial) => trial.folder)]);
+
+// copies a game's or a kit's files, leaving out names starting with a dot, its notes and its trials
 async function copy(from, to) {
   for (const file of (await walk(from, false)).files) {
-    if (relative(from, file.path).split(sep)[0] === 'notes') continue;
+    if (KEPT_OFF.has(relative(from, file.path).split(sep)[0])) continue;
     const target = join(to, relative(from, file.path));
     await mkdir(dirname(target), { recursive: true });
     await copyFile(file.path, target);
