@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assemble } from '../gba/thumb.mjs';
-import { addressFinder, addressIn, readCompiler, twinsIn } from '../gba/match.mjs';
+import { addressFinder, addressIn, readCompiler, runIn, throughIn, twinsIn } from '../gba/match.mjs';
 import { readAddresses } from '../match.mjs';
 
 const fixture = name => readFileSync(new URL(`./match/${name}`, import.meta.url), 'utf8');
@@ -119,4 +119,20 @@ test('a game\'s names and addresses are read, and a wrong one is refused', () =>
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
+});
+
+test('a twin of one routine the code map holds as several functions names the run, and the run has to be one', () => {
+  assert.equal(throughIn('/** Loop, 0x08001AA4 to 0x0800258E: the whole loop. */'), 0x0800258E);
+  assert.equal(throughIn('/** Loop, 0x08001AA4: then 0x0800258E is called. */'), null);
+  // the second address comes after the first, and a label is moved as the game's names.json says
+  assert.equal(throughIn('/** 0x08002000 to 0x08001000 */'), null);
+  assert.equal(throughIn('/** sub_8001AA4 to sub_80025A0 */', [{ from: 0x08000000, to: 0x08010000, by: 0x12 }]), 0x0800258E);
+  const twins = twinsIn('/** Loop, 0x08000100 to 0x08000120: all of it. */\nvoid Loop(void) {}\n/** One, 0x08000200: one. */\nvoid One(void) {}\n');
+  assert.deepEqual(twins.map(t => [t.name, t.address, t.through ?? null]), [['Loop', 0x08000100, 0x08000120], ['One', 0x08000200, null]]);
+  const functions = [{ address: 0x08000100, size: 16, key: '08000100' }, { address: 0x08000110, size: 16, key: '08000110' }, { address: 0x08000120, size: 8, key: '08000120' }, { address: 0x08000140, size: 8, key: '08000140' }];
+  assert.deepEqual(runIn(functions, 0x08000100, 0x08000120).map(f => f.key), ['08000100', '08000110', '08000120']);
+  // a gap between two of them, or no function at either end, is no run
+  assert.equal(runIn(functions, 0x08000110, 0x08000140), null);
+  assert.equal(runIn(functions, 0x08000100, 0x08000118), null);
+  assert.equal(runIn(functions, 0x08000104, 0x08000120), null);
 });

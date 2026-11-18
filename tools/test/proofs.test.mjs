@@ -56,6 +56,12 @@ const mark = (bytes = ORIGINAL) => f => markOf(bytes.get(f.key));
 const proven = (marks = marksOf()) => withProofs(new Map(), { kind: 'bytes', proven: [{ key: '08000200' }, { key: '08000240' }], functions: codeMap.functions, marks, stopped: new Set(), mark: mark() }).functions;
 const states = options => new Map(stateOf('made-up/c', { codeMap, stopped: new Set(), mark: mark(), marks: marksOf(), ...options }).map(state => [state.key, state]));
 
+test('a twin of a run is the twin of each function of it, with one mark', () => {
+  const marks = marksOf(PROGRAM.replace('/** Fall, 0x08000200: the ball a frame further down. */', '/** Fall, 0x08000200 to 0x08000260: the ball a frame further down, as one routine. */').replace(/\/\*\* Step[^\n]*\n[^\n]*\n\n\/\*\* Skip[^\n]*\n[^\n]*\n/, ''));
+  assert.deepEqual([...marks.keys()], ['08000200', '08000240', '08000260']);
+  assert.ok([...marks.values()].every(each => each.name === 'Fall' && each.mark === marks.get('08000200').mark));
+});
+
 test('a twin is marked by its code and its file\'s own headers, and not by its comments or its spaces', () => {
   const marks = marksOf();
   assert.deepEqual([...marks.keys()], ['08000200', '08000240', '08000260']);

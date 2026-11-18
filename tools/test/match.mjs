@@ -12,7 +12,7 @@ import { LOCAL } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { assemble } from '../gba/thumb.mjs';
-import { addressFinder, matchFile } from '../gba/match.mjs';
+import { addressFinder, matchFile, runIn } from '../gba/match.mjs';
 
 const HERE = fileURLToPath(new URL('./match/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'match-test');
@@ -116,6 +116,22 @@ const missing = await matching(join(HERE, 'program.c'), { ...against, addressOf:
 const without = byName(missing);
 check(without.StepFor?.same === false && without.MoveBalls?.same === false && without.StepFor.missing.includes('gFrame') && missing.unknown.includes('gFrame'), 'a function that uses a name with no address isn\'t the same, and the name is said');
 check(without.Bounce?.same === true, 'and one that doesn\'t use it still is');
+
+// one routine the code map holds as two functions, the second where the first ends: its twin is compared with the
+// first alone, unless its comment names the run, when it's compared with both together
+const split = 0x20, whole = sizes.get(FUNCTIONS.StepFor);
+const halves = [{ address: FUNCTIONS.StepFor, size: split, key: '08000400' }, { address: FUNCTIONS.StepFor + split, size: whole - split, key: '08000420' }];
+const twoOf = { ...against, sizeOf: address => (address === FUNCTIONS.StepFor ? split : sizes.get(address) ?? null), runOf: (address, through) => runIn(halves, address, through) };
+const unnamed = byName(await matching(join(HERE, 'program.c'), twoOf));
+check(unnamed.StepFor?.run === null && unnamed.StepFor.bytes === split && unnamed.StepFor.longer === whole - split, 'a twin of a routine the code map holds as two functions is compared with the first alone, and says how much longer it is');
+const stepFor = /^(\/\/ StepFor, )0x08000400(:)/m;
+check(stepFor.test(source), 'the program has StepFor\'s comment, which the test names the run in');
+writeFileSync(join(changed, 'program.c'), source.replace(stepFor, `$10x08000400 to 0x08000420$2`));
+const named = byName(await matching(join(changed, 'program.c'), twoOf));
+check(named.StepFor?.same === true && named.StepFor.run?.length === 2 && named.StepFor.bytes === whole, `named as the run to 0x08000420, it's the same as both together, ${named.StepFor?.bytes} bytes`);
+writeFileSync(join(changed, 'program.c'), source.replace(stepFor, `$10x08000400 to 0x08000410$2`));
+const gap = byName(await matching(join(changed, 'program.c'), twoOf));
+check(gap.StepFor?.run === null && gap.StepFor.mapped === false, 'and a run that isn\'t one of the code map\'s is compared with nothing');
 
 // C the compiler won't take
 writeFileSync(join(changed, 'program.c'), `${source}\nvoid Broken(void) { return 1 +; }\n`);

@@ -176,7 +176,14 @@ export function marksIn(codeMap, { folder, files, twinsOf, read = onDisk }) {
     }
     return marks;
   }
-  for (const file of files) for (const twin of twinsOf.get(file)) if (twin.address !== null) keep(twin.address, twin, file);
+  for (const file of files) {
+    for (const twin of twinsOf.get(file)) {
+      if (twin.address === null) continue;
+      keep(twin.address, twin, file);
+      // a twin of a run (gba/match.mjs, throughIn) is the twin of each function of it
+      if (twin.through) for (const f of codeMap.functions) if (!f.bytes && f.address > twin.address && f.address <= twin.through) keep(f.address, twin, file);
+    }
+  }
   return marks;
 }
 
