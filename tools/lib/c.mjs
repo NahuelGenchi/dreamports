@@ -187,7 +187,7 @@ export function buildWasm(sources, out, kit) {
   return building.get(out);
 }
 
-async function build(sources, out, { folders, flags = [], addressOf = null }) {
+async function build(sources, out, { folders, flags = [], addressOf = null, codeOf = null }) {
   // the compiler runs in a folder of its own, with the repository's C at the same paths
   const files = filesFor(sources, folders), name = basename(out);
   const args = ['clang', ...WASM_FLAGS, ...FLAGS, ...flags,
@@ -218,7 +218,7 @@ async function build(sources, out, { folders, flags = [], addressOf = null }) {
   }
   if (said.trim()) console.log(said.trim());
   if (!made?.[name]) throw new Error('The C didn\'t build to WebAssembly, and the compiler didn\'t say why.');
-  const linked = addressOf ? await atAddresses(made[name], addressOf) : made[name];
+  const linked = addressOf ? await atAddresses(made[name], addressOf, codeOf) : made[name];
   const waits = waitsInside(linked);
   const module = waits ? await withWaits(linked) : linked;
   writeFileSync(out, module);
@@ -229,10 +229,14 @@ async function build(sources, out, { folders, flags = [], addressOf = null }) {
 // A module whose C names values it doesn't define, each put where the console keeps it, as the function check puts
 // them (wasm-addresses.mjs): so a twin names a value of the console's memory as plain C does, with `extern`, in the
 // game's build too. A name with no address stops the build, as a linker would.
-async function atAddresses(module, addressOf) {
+async function atAddresses(module, addressOf, codeOf = null) {
   const { placeAddresses } = await import('./wasm-addresses.mjs');
-  const placed = placeAddresses({ module, addressOf });
-  const called = WebAssembly.Module.imports(new WebAssembly.Module(placed.module)).filter(each => each.module === 'env').map(each => each.name);
+  // a game of twins keeps a function's address as the original's and calls through it to the twin, through its table
+  // (twins.h's TWIN_TABLE), as the function check does: so the same C keeps the same memory in the game too
+  const placed = placeAddresses({ module, addressOf, ...(codeOf ? { codeOf, translate: 'kit_twin', own: name => name === 'kit_twin' } : {}) });
+  // a function of the original the C calls and doesn't define yet is left for the page, which stops the game if it's
+  // ever called (kit/c/game.js), as a call to an address with no twin does
+  const called = WebAssembly.Module.imports(new WebAssembly.Module(placed.module)).filter(each => each.module === 'env' && addressOf(each.name) === null).map(each => each.name);
   if (placed.missing.length || called.length) {
     throw new Error(`The C didn't build to WebAssembly: nothing defines ${[...placed.missing, ...called].join(', ')}${placed.missing.length ? ', and the game\'s proof/addresses.json gives no address for a value of that name' : ''}.`);
   }
@@ -302,7 +306,7 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
   const twins = await twinsFolder(folder);
   // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
   // with what that compiler takes for granted, and each value it names where the console keeps it
-  return buildWasm([...own, ...kit.sources], out, twins ? { ...kit, folders: [...kit.folders, twins.folder], flags: kit.twinFlags, addressOf: name => twins.named.get(name) ?? null } : kit);
+  return buildWasm([...own, ...kit.sources], out, twins ? { ...kit, folders: [...kit.folders, twins.folder], flags: [...kit.twinFlags, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : kit);
 }
 
 // a file of the game's own that includes twins.h
@@ -348,6 +352,7 @@ void *kit_twin(uint32_t address);
 /** Defines kit_twin: write it once, in a file that declares every twin. */
 #define TWIN_TABLE \\
   void *kit_twin(uint32_t address) { \\
+    if (address < 0x02000000u) return (void *)(uintptr_t)address; \\
     switch (address) { TWINS(TWIN_CASE) } \\
     __builtin_trap(); \\
   }
@@ -357,8 +362,10 @@ void *kit_twin(uint32_t address);
 `;
 }
 
-/** A game's twins.h, written if what it would say is new, as { folder, named }, the folder it's in and the names the
- *  game gives addresses, or null for a game that doesn't include it: `folder` is the game's, or its version's. */
+/** A game's twins.h, written if what it would say is new, as { folder, named, addressOf }, the folder it's in, the
+ *  names the game gives addresses, and where the console keeps what a name names, as match and the function check
+ *  read it, a label by its own address among them, or null for a game that doesn't include it: `folder` is the
+ *  game's, or its version's. */
 export async function twinsFolder(folder) {
   const src = join(folder, 'src');
   if (!existsSync(src)) return null;
@@ -367,7 +374,8 @@ export async function twinsFolder(folder) {
   // the twins and the names' addresses are read as match and the function check read them (twins.mjs)
   const { versionTwins } = await import('./twins.mjs');
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
-  const { twinsOf, named } = versionTwins(game);
+  const { twinsOf, named, twins, shifts } = versionTwins(game);
+  const { addressFinder } = await import('../gba/match.mjs');
   const text = twinsHeader(own.filter(file => file.endsWith('.c')).flatMap(file => twinsOf.get(file) ?? []), named);
   const made = join(LOCAL, 'c', 'twins', ...game.split('/'));
   const header = join(made, 'twins.h');
@@ -375,7 +383,7 @@ export async function twinsFolder(folder) {
     mkdirSync(made, { recursive: true });
     writeFileSync(header, text);
   }
-  return { folder: made, named };
+  return { folder: made, named, addressOf: addressFinder({ named, twins, shifts }), codeOf: name => (twins.get(name)?.size === 1 ? [...twins.get(name)][0] | 1 : null) };
 }
 
 /** The folders under kit/ a game's build reads on `console`, as the repository has them, such as kit/c/ and kit/gba/c/. */
