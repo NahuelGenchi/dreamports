@@ -26,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, VIA, withDivision, withGives, withPlay } from './twin/cartridge.mjs';
+import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, VIA, VIDEO, withDivision, withGives, withPlay, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -66,8 +66,14 @@ const gives = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!gives.error, `the function that gives back a value and its caller build with ${compiler.name}${gives.error ? `: ${gives.error}` : ''}`);
+// and a function that reads video memory, from a file of its own
+const looks = await matchFile({
+  file: join(HERE, 'video.c'), compiler, work: join(work, 'built', 'video'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!looks.error, `the function that reads video memory builds with ${compiler.name}${looks.error ? `: ${looks.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')));
+writeFileSync(copy, withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -90,7 +96,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length])]);
+const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -132,6 +138,10 @@ try {
   const sprite = await checking(program(['VIDEO8(SPRITE_TILES + at, colour);', 'gba_vram[SPRITE_TILES - TILES + at] = colour;']));
   check(sprite.by.Paint?.kind === 'differs' && /at 0x060100[0-9A-F]{2}, in the video memory/.test(sprite.by.Paint.line), `and one that writes a sprite's tile differs, as the console drops it: ${sprite.by.Paint?.line}`);
   check(sameBut(plain, ['Paint']) && sameBut(sprite, ['Paint']), 'and every other twin is still the same');
+
+  console.log('A byte read from video memory:');
+  const looked = await checking(join(HERE, 'video.c'));
+  check(looked.by.Look?.kind === 'same' && looked.by.Look.compared === CALLS, `a twin that reads it where the kit keeps it is the same over every call, with the byte changed for some of them${looked.by.Look?.kind === 'same' ? '' : `: ${looked.by.Look?.line ?? looked.error}`}`);
 
   console.log('A function that divides through the BIOS:');
   const divided = await checking(join(HERE, 'bios.c'));

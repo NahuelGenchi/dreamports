@@ -7,6 +7,8 @@ import { madeUpGame } from '../made-up-game.mjs';
 
 export const compiler = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
 export const CARTRIDGE = 0x08000000;
+// a function that reads video memory, in a file of its own (video.c)
+export const VIDEO = { Look: 0x080005C0 };
 // where the made-up cartridge has each function, as the program's comments say, and each value the program names
 export const FUNCTIONS = { Fall: 0x08000200, Scale: 0x08000240, Sum: 0x08000280, Paint: 0x080002C0, Step: 0x08000300, Skip: 0x08000320, Choose: 0x08000340, Run: 0x08000380 };
 export const NAMED = new Map([['gBall', 0x03000100], ['gFrame', 0x03000020], ['gHandler', 0x03000040], ['gSteps', 0x08000600]]);
@@ -36,6 +38,13 @@ export function cartridge(assembly) {
   rom.writeUInt16LE(0x4770, BIOS.Div - CARTRIDGE + 2);
   Buffer.from(STEPS).copy(rom, NAMED.get('gSteps') - CARTRIDGE);
   return rom;
+}
+
+// The same cartridge with the function of twin/video.c, which reads video memory.
+export function withVideo(rom, assembly) {
+  const looked = Buffer.from(rom);
+  place(looked, assembly, VIDEO);
+  return looked;
 }
 
 // one file's functions, from the assembly the compiler wrote, each where `where` says in the cartridge
