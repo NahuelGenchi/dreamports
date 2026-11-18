@@ -26,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, VIA, VIDEO, withDivision, withGives, withPlay, withRegister, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -78,8 +78,14 @@ const shifts = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!shifts.error, `the function that changes a register builds with ${compiler.name}${shifts.error ? `: ${shifts.error}` : ''}`);
+// and a function with a branch made-up calls almost never take, from a file of its own
+const rare = await matchFile({
+  file: join(HERE, 'aim.c'), compiler, work: join(work, 'built', 'aim'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')));
+writeFileSync(copy, withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -102,7 +108,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
+const lengths = new Map([...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -131,7 +137,7 @@ try {
   const untouched = await checking(spoiled, { changes: false });
   check(untouched.by.Fall?.kind === 'same', 'isn\'t found while nothing the function reads is changed');
   const found = await checking(spoiled);
-  check(found.by.Fall?.kind === 'differs' && /was set to/.test(found.by.Fall.line) && /at 0x0300010[0-7], in the work memory/.test(found.by.Fall.line), `is found once it is: ${found.by.Fall?.line}`);
+  check(found.by.Fall?.kind === 'differs' && /at 0x0300010[0-7], in the work memory/.test(found.by.Fall.line), `is found once it is: ${found.by.Fall?.line}`);
   check(sameBut(found, ['Fall']), 'and every other twin is still the same');
   const again = await checking(spoiled);
   check(again.by.Fall?.line === found.by.Fall?.line, 'the same seed finds it at the same call');
@@ -178,6 +184,19 @@ try {
   check(unchecked.by.Count?.kind === 'same', 'a twin that gives back nothing leaves the same memory, which alone would pass it, as it passed 0x08011DBC of the pilot');
   const caught = await checking(join(silent, 'gives.c'), {}, { givesBack });
   check(caught.by.Count?.kind === 'differs' && /gives back nothing/.test(caught.by.Count.line) && new RegExp(`0x0${(GIVES.Keep).toString(16).toUpperCase().slice(0, 5)}`).test(caught.by.Count.line), `and it differs once the check reads what its caller does with r0: ${caught.by.Count?.line ?? caught.error}`);
+
+  console.log('A branch made-up calls almost never take:');
+  const unaimed = await checking(join(HERE, 'aim.c'), { aim: false });
+  check(unaimed.by.Unlock?.kind === 'same' && unaimed.by.Unlock.whole === false && /left out/.test(unaimed.by.Unlock.line), `without aiming, the calls leave it out and it isn't proven: ${unaimed.by.Unlock?.line ?? unaimed.error}`);
+  const aimedAt = await checking(join(HERE, 'aim.c'));
+  check(aimedAt.by.Unlock?.kind === 'same' && aimedAt.by.Unlock.whole === true && /aimed at a branch way/.test(aimedAt.by.Unlock.line), `aimed at, its calls take it and every path, and it's proven: ${aimedAt.by.Unlock?.line ?? aimedAt.error}`);
+  const nearly = join(work, `changed-${++variants}`);
+  cpSync(HERE, nearly, { recursive: true });
+  writeFileSync(join(nearly, 'aim.c'), readFileSync(join(HERE, 'aim.c'), 'utf8').replace('gBall.hits = 99;', 'gBall.hits = 98;'));
+  const missed = await checking(join(nearly, 'aim.c'), { aim: false });
+  check(missed.by.Unlock?.kind === 'same', `a twin wrong on that branch alone isn't found without aiming: ${missed.by.Unlock?.line ?? missed.error}`);
+  const hit = await checking(join(nearly, 'aim.c'));
+  check(hit.by.Unlock?.kind === 'differs' && /at 0x0300010[67], in the work memory/.test(hit.by.Unlock.line), `and is found by an aimed call: ${hit.by.Unlock?.line ?? hit.error}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));

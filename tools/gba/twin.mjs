@@ -76,10 +76,16 @@ export const DEFAULTS = {
   seconds: 2,        // how long a twin may take over one call
   limit: 500000,     // how many instructions the original may run in one call
   changes: true,     // whether what a function reads is changed between calls
+  aim: true,         // whether calls are aimed at the branch ways no call took yet, when changes are made
 };
 // how many calls may be made for each one that has to be compared, and how many with nothing compared before a
 // function is given up on
 const TRIES = 4, HOPELESS = 400;
+// how call.c sends a comparison: four words, then each value's origin, three words and six steps of two
+const ORIGIN_BYTES = 4 * (2 + 2 * 6), AIM_BYTES = 16 + 2 * ORIGIN_BYTES;
+// after how many calls compared, and every how many, a function's branch ways no call took are worked out to aim
+// calls at; how many calls to keep as witnesses to each; and how many aimed calls each gets before it's left
+const AIM_AFTER = 10, AIM_EVERY = 50, WITNESSES = 8, AIM_TRIES = 48;
 // the fewest calls of a function a proof by the same memory is made of
 export const KEPT_FROM = 1000;
 // how often the memory goes back to how the original left it: after this many calls, or this many in a row that
@@ -223,7 +229,21 @@ class Original {
     // each of the function's own instructions that ran, with the ways it went on (call.c)
     const ranCount = (await this.take(4)).readUInt32LE(0), list = await this.take(ranCount * 8);
     const ran = Array.from({ length: ranCount }, (_, i) => [list.readUInt32LE(i * 8), list.readUInt32LE(i * 8 + 4)]);
-    return { ended, gave, steps, hardware, leftFor, reads, numbers, pairs, runs, ran };
+    // each comparison of the function's own, with where its two values came from (call.c), to aim later calls with
+    const aimCount = (await this.take(4)).readUInt32LE(0), kept = await this.take(aimCount * AIM_BYTES);
+    const origin = at => {
+      const head = kept.readUInt32LE(at);
+      return {
+        kind: head & 0xFF, bytes: head >>> 8 & 0xFF, where: kept.readUInt32LE(at + 4),
+        steps: Array.from({ length: head >>> 16 }, (_, i) => [kept.readUInt32LE(at + 8 + i * 8), kept.readUInt32LE(at + 12 + i * 8)]),
+      };
+    };
+    const compares = Array.from({ length: aimCount }, (_, i) => ({
+      pc: kept.readUInt32LE(i * AIM_BYTES), test: kept.readUInt32LE(i * AIM_BYTES + 4) === 1,
+      a: kept.readUInt32LE(i * AIM_BYTES + 8), b: kept.readUInt32LE(i * AIM_BYTES + 12),
+      from: [origin(i * AIM_BYTES + 16), origin(i * AIM_BYTES + 16 + ORIGIN_BYTES)],
+    }));
+    return { ended, gave, steps, hardware, leftFor, reads, numbers, pairs, runs, ran, compares };
   }
 
   close() {
@@ -602,6 +622,109 @@ function chooser(seed) {
   };
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Aiming a call at a path no call took yet.
+
+// Whether a Thumb branch's condition holds after `a` was compared with `b`, or tested with it: null for a test whose
+// condition reads what a test leaves as it was.
+function holds(cond, a, b, test) {
+  const r = (test ? a & b : a - b) >>> 0, n = r >>> 31, z = r === 0;
+  const c = test ? null : a >>> 0 >= b >>> 0, v = test ? null : ((a ^ b) & (a ^ r)) >>> 31;
+  if (test && ![0, 1, 4, 5].includes(cond)) return null;
+  return [z, !z, c, !c, n === 1, n === 0, v === 1, v === 0, c && !z, !c || z, n === v, n !== v, !z && n === v, z || n !== v][cond] ?? null;
+}
+
+// The conditional branches of a function whose calls so far went one way only, each with the way none took.
+function branchesLeft(f, bytesOf) {
+  const at = f.address & ~1, bytes = bytesOf(at, f.span);
+  const branches = [];
+  for (const [where, how] of pathsLeft(bytes, at, f.ran).left) {
+    if (how === 'never ran') continue;
+    const op = bytes.readUInt16LE(where - at);
+    if ((op & 0xF000) !== 0xD000 || (op >> 8 & 15) >= 14) continue;
+    branches.push({ where, cond: op >> 8 & 15, taken: how === 'never taken' });
+  }
+  return branches;
+}
+
+// A value through the steps call.c saw it take since it was read: numbers added, shifts and masks.
+function throughSteps(value, steps) {
+  let v = value >>> 0;
+  for (const [kind, by] of steps) {
+    if (kind === 1) v = (v + by) >>> 0;
+    else if (kind === 2) v = by >= 32 ? 0 : (v << by) >>> 0;
+    else if (kind === 3) v = by >= 32 ? 0 : v >>> by;
+    else if (kind === 4) v = ((v | 0) >> Math.min(by, 31)) >>> 0;
+    else if (kind === 5) v = (v & by) >>> 0;
+  }
+  return v;
+}
+
+// The value a comparison read, as one it came from that comes out as one the branch wants: for a byte or a halfword,
+// the nearest to what it held of all it could hold, and for a word, the one that steps of adding alone give. Null when
+// none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
+// it's compared with, the likeliest to want, or one beside it.
+function sourceFor(held, bytes, now, steps, wanted, other) {
+  const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
+  const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
+  const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
+  if (!read) return null;
+  if (bytes < 4) {
+    for (let d = 1; d <= mask; d++) {
+      for (const value of [(held + d) & mask, (held - d) & mask]) if (wanted(throughSteps(read(value), steps))) return value >>> 0;
+    }
+    return null;
+  }
+  if (steps.some(([kind]) => kind !== 1)) return null;
+  const added = steps.reduce((sum, [, by]) => sum + by, 0);
+  for (const want of CANDIDATES(now, other)) if (wanted(want)) return (want - added) >>> 0;
+  return null;
+}
+const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, other - 2, other ^ 0x80000000, 0, 1, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, now + 1, now - 1, ~now].map(value => value >>> 0);
+
+// The call a witness was, with one value a comparison read changed so that the branch goes the way `wanted` says:
+// an argument, or what came from the image. Null when it can't be had that way.
+function withValue(witness, origin, now, wanted, other) {
+  if (origin.kind === 2) {
+    if (origin.where >= witness.args.length) return null;
+    const value = sourceFor(witness.args[origin.where], 4, now, origin.steps, wanted, other);
+    if (value === null) return null;
+    const args = [...witness.args];
+    args[origin.where] = value;
+    return { args, changed: witness.changed };
+  }
+  if (origin.kind !== 1 || ![1, 2, 4].includes(origin.bytes) || inImage(origin.where) < 0) return null;
+  const { where: address, bytes } = origin;
+  const set = witness.changed.find(([at, size]) => at === address && size === bytes);
+  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other);
+  if (value === null) return null;
+  return { args: witness.args, changed: [...witness.changed.filter(([at]) => at !== address), [address, bytes, value]] };
+}
+
+// A call aimed at one of a function's branches its calls haven't taken both ways: a call that made the comparison
+// before it, again, with one of the two values it compared changed so that the branch goes the other way. Null when
+// there's none to aim at, or no value found does it.
+function aimed(f, choose) {
+  // the calls that made the comparison just before a branch: at most four instructions before it, the nearest first
+  const witnessesOf = branch => {
+    for (let pc = branch.where - 2; pc >= branch.where - 8; pc -= 2) if (f.aim.witnesses.get(pc)?.length) return f.aim.witnesses.get(pc);
+    return [];
+  };
+  const open = f.aim.branches.filter(branch => witnessesOf(branch).length && (f.aim.tries.get(branch.where) ?? 0) < AIM_TRIES);
+  if (!open.length) return null;
+  const branch = choose.from(open), witness = choose.from(witnessesOf(branch)), { compare } = witness;
+  f.aim.tries.set(branch.where, (f.aim.tries.get(branch.where) ?? 0) + 1);
+  for (const side of [0, 1]) {
+    const origin = compare.from[side];
+    if (!origin.kind) continue;
+    const now = side ? compare.b : compare.a;
+    const wanted = value => holds(branch.cond, side ? compare.a : value, side ? value : compare.b, compare.test) === branch.taken;
+    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b);
+    if (call) return { ...call, witness };
+  }
+  return null;
+}
+
 const read = (image, where, bytes) => (bytes === 1 ? image[where] : bytes === 2 ? image.readUInt16LE(where) : image.readUInt32LE(where));
 const write = (image, where, bytes, value) => {
   if (bytes === 1) image[where] = value & 0xFF;
@@ -620,14 +743,14 @@ const write = (image, where, bytes, value) => {
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map() });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
   let since = 0, lost = 0;
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
@@ -662,12 +785,28 @@ export async function compareCalls({ original, twins, start, functions, options,
     }
     f.tried++;
     since++;
+    // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
+    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose) : null;
+    if (aim) {
+      mirror = Buffer.from(aim.witness.start);
+      await original.set(mirror);
+      await twins.set(mirror);
+      if (aim.witness.top !== top) await original.top(top = aim.witness.top);
+      owner = null;
+      based = aim.witness.based;
+      from = null;
+      since = FRESH_EVERY;
+      f.aimedCalls++;
+    }
+    const spare = aim ? aim.witness.spare : from?.own ? [0, 1, 2, 3].map(i => from.arg(i) >>> 0) : [];
     // what it's given: made up, or what an earlier call that could be compared was given, as it is or with one changed,
     // since a function that takes one of the game's own things can only be called with those
-    let args = f.params.map(type => choose.value(type, code));
+    let args = aim ? [...aim.args] : f.params.map(type => choose.value(type, code));
     // from its own memory of play, what play gave it, and half the time nothing else: the call play made
     const asPlayed = Boolean(from?.own) && !choose.below(2);
-    if (from?.own) {
+    if (aim) {
+      // as the witness was, with the one value changed
+    } else if (from?.own) {
       const one = args.length ? choose.below(args.length) : 0, fresh = args[one];
       args = f.params.map((_, i) => from.arg(i) >>> 0);
       if (!asPlayed && args.length && !choose.below(4)) args[one] = fresh;
@@ -678,10 +817,10 @@ export async function compareCalls({ original, twins, start, functions, options,
     }
     // what the function reads, changed: a few of the values it's been seen to read, mostly to numbers it's been seen
     // to compare with, now and then to one more or less than they hold, or to what another of them holds
-    const changed = [], used = [];
+    const changed = aim ? aim.changed.map(change => [...change]) : [], used = [];
     // but those whose changes kept ending in calls that couldn't be compared, tried again only now and then
     const fields = [...f.fields.values()].filter(field => field.lost < BLAMED || !choose.below(50));
-    if (changing && !asPlayed && fields.length && choose.below(4)) {
+    if (!aim && changing && !asPlayed && fields.length && choose.below(4)) {
       // half the time one the function was seen to compare with something, set to what it was compared with
       const wanting = fields.filter(field => field.wants.length);
       for (let n = 1 + choose.below(Math.min(4, fields.length)); n; n--) {
@@ -701,7 +840,21 @@ export async function compareCalls({ original, twins, start, functions, options,
     }
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, ...(from?.own ? { spare: [0, 1, 2, 3].map(i => from.arg(i) >>> 0) } : {}) });
+    const startedFrom = mirror;
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare });
+    // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
+    // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
+    if (theirs.ended === 0 && changing && options.aim !== false && bytesOf && f.span) {
+      let call = null;
+      for (const compare of theirs.compares) {
+        const kept = f.aim.witnesses.get(compare.pc) ?? [];
+        const wanted = f.aim.branches.some(branch => branch.where > compare.pc && branch.where - compare.pc <= 8);
+        if (kept.length >= (wanted ? WITNESSES : 2)) continue;
+        call ??= { start: Buffer.from(startedFrom), changed: changed.map(change => [...change]), args: [...args], top, spare, based };
+        kept.push({ ...call, compare });
+        f.aim.witnesses.set(compare.pc, kept);
+      }
+    }
     const expected = Buffer.from(mirror);
     for (const [address, bytes, value] of changed) write(expected, inImage(address), bytes, value);
     // each value it read, by what it held: one that was compared with something is worth setting to that, and to
@@ -788,6 +941,8 @@ export async function compareCalls({ original, twins, start, functions, options,
       if (f.returns) choose.gave(theirs.gave);
       // the original's own instructions this call ran, and the ways each went on: only a call compared counts
       for (const [where, ways] of theirs.ran) f.ran.set(where, (f.ran.get(where) ?? 0) | ways);
+      // now and then, the branch ways no call took yet, to aim calls at
+      if (bytesOf && f.span && (aim || f.compared === AIM_AFTER || f.compared % AIM_EVERY === 0)) f.aim.branches = branchesLeft(f, bytesOf);
       continue;
     }
     let where = 0;
@@ -849,7 +1004,7 @@ export function outcome(f, { calls, seconds }) {
   if (f.result?.kind === 'gives') return { kind: 'differs', line: `the twin gives back nothing, while the original gives back what its callers use: the call at ${at(f.result.call)} reads r0 after it.` };
   if (f.result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, f.result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (f.result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, f.result)}: the original came back and the twin stopped (${f.result.why}).${hardware}` };
-  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls` };
+  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls${f.aimedCalls ? `, ${count(f.aimedCalls)} of them aimed at a branch way no call had taken` : ''}` };
   // what kept the rest from being compared, the most common first
   const why = Object.entries({
     unbuilt: `the twin calls ${f.unbuilt}, which nothing built is the twin of`,
@@ -959,10 +1114,12 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   if (built.missing.length) return { missing: built.missing };
   const { twins, unknown } = built.unit;
   const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1), span: (f.address >= CARTRIDGE && sizeOf(f.address)) || 0 }));
+  let rom = null;
+  const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories });
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size) });
     } finally {
       runner.stop();
     }
@@ -973,8 +1130,6 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
     if (call !== null) f.result = { kind: 'gives', call };
   }
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
-  let rom = null;
-  const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   return {
     functions: [
       ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...whole(f, outcome(f, all), cartridge, ruledOut) })),
