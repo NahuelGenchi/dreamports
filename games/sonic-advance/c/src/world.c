@@ -18,7 +18,7 @@ void world_life_more(void) { act.lives = (act.lives + 1) & 0xFF; }
 void world_extra_life(void) { world_life_more(); music_call(MUSIC_ONE_UP, 0); }
 
 // Coll_DamagePlayer: a shield takes the hit, or with rings he drops them all, up to 48 of them scattering, and without any he
-// dies; false while he is invincible or still blinking from the last hit
+// dies, but in a title screen's demo (STAGE_FLAG__DEMO_RUNNING); false while he is invincible or still blinking from the last hit
 int world_damage(Player *p) {
   if (!player_hurt(p)) return 0;
   // the CPU partner has no rings to lose, or shield, and doesn't die of a hit
@@ -29,7 +29,7 @@ int world_damage(Player *p) {
   } else if (act.ringCount > 0) {
     scatter_launch((int)__builtin_floor(p->x), (int)__builtin_floor(p->y), act.ringCount, p->layer, p->inverted);
     act.ringCount = 0;
-  } else p->dead = 1;
+  } else if (!demo_playing()) p->dead = 1;   // in a demo a hit with no rings only knocks him aside
   return 1;
 }
 

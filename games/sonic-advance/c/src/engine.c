@@ -294,6 +294,11 @@ void clear_oam(void) {
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
 }
 static int keepOam;
+// an entry this frame's sprites end with that no task's code explains (demo.c)
+static int strayAt = -1;
+static uint16_t stray[3];
+/** This frame's sprites end with entry `index` holding these three attributes, whatever the tasks drew. */
+void engine_stray_oam(int index, uint16_t a0, uint16_t a1, uint16_t a2) { strayAt = index; stray[0] = a0; stray[1] = a1; stray[2] = a2; }
 static const uint16_t *shownOam;
 /** This frame's V-blank leaves the screen's sprites as they are. */
 void engine_keep_oam(void) { keepOam = 1; }
@@ -319,6 +324,10 @@ static void process_oam(void) {
     firstPaused = 0;
     // the entries no sprite took this frame are hidden, as the original's OAM buffer holds no leftovers
     for (uint32_t i = dst; i < OAM_ENTRIES; i++) hide_oam(i);
+  }
+  if (strayAt >= 0) {
+    for (int k = 0; k < 3; k++) e.oamBuffer[strayAt * 4 + k] = stray[k];
+    strayAt = -1;
   }
   e.oamFreeIndex = 0;
   memset(orderStart, 0xFF, sizeof orderStart); memset(orderEnd, 0xFF, sizeof orderEnd);
@@ -399,6 +408,8 @@ void hblank_dma_secondary(uint32_t target, uint32_t size, int late) {
 // --- keys (core.c: GetInput) ---------------------------------------------------------------------------------------
 static void read_keys(void) {
   e.input = e.keys & 0x3FF;
+  // a demo's act reads its tape's buttons (InputRecorderRead), and the player's own only for Start (gPhysicalInput)
+  if (demo_playing()) e.input = demo_read(e.input) & 0x3FF;
   e.pressed = (e.input ^ e.prevInput) & e.input;
   e.released = (e.input ^ e.prevInput) & e.prevInput;
   e.prevInput = e.input;

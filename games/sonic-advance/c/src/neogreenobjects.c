@@ -409,5 +409,6 @@ ActTask *grind_rail_spawn(Slot *slot) {
   GrindRail *g = OBJECT_NEW(GrindRail);
   if (!g) return NULL;
   g->o.slot = slot; g->o.x = slot->e.x;
-  return object_task(&g->o, grind_run, PRIORITY_OBJECTS);
+  // a rail's end runs before the camera's task (0x900), so the camera sees him off the rail on that same frame
+  return object_task(&g->o, grind_run, slot->e.kind == 20 ? 0x900 : PRIORITY_OBJECTS);
 }

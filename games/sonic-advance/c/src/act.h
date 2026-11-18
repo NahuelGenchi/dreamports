@@ -178,6 +178,19 @@ void titlecard_start(int level, int character, int after);
 void titlecard_made(int first);
 int titlecard_run(int pressed);
 void titlecard_display(void);
+int titlecard_bld_y(void);
+// the title screen's demos (demo.c): whether one plays, the buttons its act reads in place of the player's, its
+// manager, made with the act, and its fade over the act's display
+int demo_playing(void);
+uint16_t demo_read(uint16_t keys);
+void demo_manager_create(void);
+void demo_signs_keep(void);
+void demo_display(void);
+int demo_waves_late(void);
+/** A demo's act, made as the course select makes one, with the game's random numbers as the last demo left them. */
+void act_demo_start(int level, uint32_t seed);
+/** A demo's act ends: every task goes, the music with the stage's; returns the random numbers as it left them. */
+uint32_t act_demo_leave(void);
 extern int actHudFlash;
 void act_hold_black(void);
 void act_frame_now(void);
@@ -203,6 +216,8 @@ int front_special_start_point(void);
 
 // Secret Base act 1's spotlights (engine/spotlights.js), in actspot.c
 void spotlights_start(void);
+int spotlights_active(void);
+void spotlights_destroy(void);
 void spotlights_frame(void);
 void spotlights_beams(void);
 void spotlights_apply(void);

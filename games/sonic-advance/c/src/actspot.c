@@ -13,7 +13,7 @@
 typedef struct { int swing, accel, speed, x, y, half, spread; } LightBeam;
 
 static struct {
-  int active, fading, qBlend;
+  int active, fading, qBlend, destroy;
   int bldY;
   LightBeam beams[2];
 } spot;
@@ -65,9 +65,13 @@ static void gone(void) {
   spot.bldY = 0;
 }
 
+/** Whether the spotlights are there, and gDestroySpotlights: they go on their manager's next frame. */
+int spotlights_active(void) { return spot.active; }
+void spotlights_destroy(void) { spot.destroy = spot.active; }
+
 /** CreateSpotlights: the manager and the two beams as the act starts, with the windows on and the screen dark. */
 void spotlights_start(void) {
-  spot.active = 1; spot.fading = 0; spot.qBlend = 2 * MIN_BLEND; spot.bldY = 16;
+  spot.active = 1; spot.fading = 0; spot.destroy = 0; spot.qBlend = 2 * MIN_BLEND; spot.bldY = 16;
   spot.beams[0] = (LightBeam){ 0, 0x40, 0x800, 60, 200, 0, 0x20 };
   spot.beams[1] = (LightBeam){ 0, 8, 0x400, 200, 240, 1, 0x10 };
   e.winRegs[0] = e.winRegs[1] = 0x00F0;
@@ -91,13 +95,13 @@ void spotlights_frame(void) {
   if (spot.fading) {
     // Task_801796C
     spot.qBlend = s16(spot.qBlend - 64);
-    if (spot.qBlend < 0 || x > GONE_X || act.player.dead) { gone(); return; }
+    if (spot.qBlend < 0 || x > GONE_X || act.player.dead || spot.destroy) { gone(); return; }
     spot.bldY = spot.qBlend >> 8;
   } else {
     spot.qBlend = s16(spot.qBlend - 64) > MIN_BLEND ? s16(spot.qBlend - 64) : MIN_BLEND;
     spot.bldY = spot.qBlend >> 8;
     if (x > FADE_X) spot.fading = 1;
-    else if (act.player.dead) { gone(); return; }
+    else if (act.player.dead || spot.destroy) { gone(); return; }
   }
 }
 

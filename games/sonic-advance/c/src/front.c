@@ -258,7 +258,6 @@ void front_play(int level) {
   if (level_row(startLevel)->runsFromFirstFrame) rings_skip_first_update();
   act_frame_now();
 }
-void front_start_demo(void) { ctx.done = 1; }
 
 /** The act a Time Attack card hands over to, made inside the card's task (TimeAttack card's Task_806BBC0). */
 void front_time_attack_play(int level) {
