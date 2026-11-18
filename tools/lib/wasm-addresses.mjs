@@ -93,7 +93,7 @@ const SYMBOL_TABLE = 8, LOCAL = 0x02, UNDEFINED = 0x10, EXPLICIT_NAME = 0x40;
 const FUNCTION = 0, DATA_SYMBOL = 1, SECTION_SYMBOL = 3;
 // the kinds of place a linker fills in: a function's number in the table, as a signed number or as four bytes, and an
 // address in memory, as an unsigned or a signed number or as four bytes
-const TABLE_INDEX_SLEB = 1, TABLE_INDEX_I32 = 2, MEMORY_ADDR_LEB = 3, MEMORY_ADDR_SLEB = 4, MEMORY_ADDR_I32 = 5;
+const TABLE_INDEX_SLEB = 1, TABLE_INDEX_I32 = 2, MEMORY_ADDR_LEB = 3, MEMORY_ADDR_SLEB = 4, MEMORY_ADDR_I32 = 5, TYPE_INDEX_LEB = 6;
 // the kinds that carry a number to add
 const WITH_ADDEND = new Set([3, 4, 5, 8, 9, 11, 14, 15, 16, 17, 21, 22, 23, 25]);
 
@@ -272,8 +272,11 @@ export function placeAddresses({ module, addressOf, codeOf = () => null, transla
     const target = sections[r.u32()];
     if (!target || (target.id !== CODE && target.id !== DATA)) continue;
     for (let n = r.u32(); n; n--) {
-      const type = r.byte(), at = target.from + r.u32(), symbol = symbols[r.u32()];
+      const type = r.byte(), at = target.from + r.u32(), index = r.u32();
       const addend = WITH_ADDEND.has(type) ? r.s32() : 0;
+      // a function type's place, as a call through a pointer names it, is a type and not a symbol
+      if (type === TYPE_INDEX_LEB) continue;
+      const symbol = symbols[index];
       if (!symbol) throw new Error('The module names a place for something it doesn\'t list.');
       if (symbol.kind === DATA_SYMBOL && symbol.undefined) {
         const address = addressOf(symbol.name);
