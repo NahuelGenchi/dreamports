@@ -47,7 +47,6 @@
     "sub_8007858": "080067A0",
     "sub_80078D4": "0800681C",
     "sub_8007958": "080068A0",
-    "CreateIntroAnimation": "080638E4",
     "m4aSongNumStart": "080977E4",
     "Task_800D4B0": "0800D4B1",
     "gInput": "03001B50",
@@ -164,7 +163,7 @@
     "ProgramFlashSectorAndVerifyNBytes": "0809918D",
     "sLangScreenReturnProcs": "0868463C",
     "m4aSoundVSyncOn": "08097E65",
-    "Task_8011E08": "08011E09",
+    "Task_SpotlightBeam": "08011E09",
     "TaskDestructor_8012284": "08012285",
     "sTimerNum": "0300042C",
     "gTimerReg": "03000434",
@@ -213,6 +212,14 @@
     "gXcmdTable": "086D5798",
     "memcpy": "0809B2C4",
     "memset": "0809B324",
-    "sTriangleStep": "0809BE40"
+    "sTriangleStep": "0809BE40",
+    "gSineTable": "0809B3F0",
+    "Div": "080997E5",
+    "Mod": "080997E9",
+    "IntroOpenTitlescreenPlayMusic": "08064FC5",
+    "Task_RenderSonic": "08065225",
+    "sub_80645E4": "080645B1",
+    "Task_806562C": "080655F9",
+    "TaskDestructor_8065810": "080657DD"
   }
 }

@@ -4,28 +4,85 @@
 #include "console.h"
 
 // Where the console has an address, in a Dreamport: the work memory and the cartridge are at their own addresses, and
-// the colours, the video memory and the sprites' list are the kit's. NULL for anywhere else.
-static u8 *console_at(u32 address) {
-  if (address >= 0x05000000 && address < 0x05000400) return (u8 *)gba_pal + (address - 0x05000000);
-  if (address >= 0x06000000 && address < 0x06018000) return (u8 *)gba_vram + (address - 0x06000000);
-  if (address >= 0x07000000 && address < 0x07000400) return (u8 *)gba_oam + (address - 0x07000000);
-  if (address >= 0x04000000 && address < 0x05000000) return NULL;
-  return (u8 *)address;
+// the colours, the video memory and the sprites' list are the kit's. Each memory shows again all through its stretch
+// of addresses, as on the console, and the cartridge in each of its three. NULL for anywhere else, and for the
+// cartridge when it's written to: the console's DMA reads nothing there and writes nothing.
+static u8 *console_at(u32 address, int writing) {
+  switch (address >> 24) {
+  case 0x02: return (u8 *)(0x02000000 + (address & 0x3FFFF));
+  case 0x03: return (u8 *)(0x03000000 + (address & 0x7FFF));
+  case 0x05: return (u8 *)gba_pal + (address & 0x3FF);
+  case 0x06: {
+    u32 at = address & 0x1FFFF;
+    return (u8 *)gba_vram + (at >= 0x18000 ? at - 0x8000 : at);
+  }
+  case 0x07: return (u8 *)gba_oam + (address & 0x3FF);
+  case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D:
+    if (writing || (address & 0x1FFFFFF) >= gba_rom_size) return NULL;
+    return (u8 *)(0x08000000 + (address & 0x1FFFFFF));
+  default: return NULL;
+  }
 }
 
-u16 console_read16(u32 at) { return at < 0x400 ? gba_io[at >> 1] : 0; }
+// The display's registers are the kit's; the rest read as 0 here until the version gives them to the kit.
+u16 console_read16(u32 at) { return at < sizeof gba_io ? gba_io[at >> 1] : 0; }
 
-void console_dma3(u32 src, u32 dest, u32 control) {
-  u32 count = control & 0xFFFF, wide = control >> 26 & 1 ? 4 : 2, fixed = control >> 24 & 1, i, b;
+// DMA channel 3's control, as the console keeps it: the channel is on while its top bit is.
+static u16 dma3_control;
+
+// DMA channel 3 given its three words, as the console takes them. The channel starts only as its switch goes on: a
+// start while it's on already is no start. One asked to start at the next V-blank, H-blank or the sound's time waits,
+// on, which is what a size that spills into the control asks for, and console_vblank_dma3 runs one waiting for the
+// V-blank. One to start now runs at once, each address going up, down or nowhere as its control says, and is then off.
+static void dma3_run(u32 src, const u8 *own, u32 dest, u32 control) {
+  static const int step[4] = { 1, -1, 0, 1 };
+  u32 count = control & 0xFFFF, wide = control >> 26 & 1 ? 4 : 2, i, b;
+  int from_step = step[control >> 23 & 3] * (int)wide, to_step = step[control >> 21 & 3] * (int)wide;
   // a count of none is the most the channel takes
   if (count == 0) count = 0x10000;
+  src &= ~(wide - 1);
+  dest &= ~(wide - 1);
   for (i = 0; i < count; i++) {
-    const u8 *from = console_at(src + (fixed ? 0 : i * wide));
-    u8 *to = console_at(dest + i * wide);
+    const u8 *from = own ? own + (int)i * from_step : console_at(src + i * from_step, 0);
+    u8 *to = console_at(dest + i * to_step, 1);
     if (from == NULL || to == NULL) continue;
     for (b = 0; b < wide; b++) to[b] = from[b];
   }
 }
+
+static u32 dma3_src, dma3_dest, dma3_count;
+static const u8 *dma3_own;
+
+// from a console's address, or, with `own`, from a value of the Dreamport's own
+static void dma3_start(u32 src, const u8 *own, u32 dest, u32 control) {
+  u16 was = dma3_control;
+  dma3_control = (u16)(control >> 16) & 0xFFE0;
+  if (!(dma3_control & 0x8000) || (was & 0x8000)) return;
+  if (dma3_control >> 12 & 3) {
+    dma3_src = src;
+    dma3_own = own;
+    dma3_dest = dest;
+    dma3_count = control & 0xFFFF;
+    return;
+  }
+  dma3_run(src, own, dest, (u32)dma3_control << 16 | (control & 0xFFFF));
+  dma3_control &= ~0x8000;
+}
+
+void console_dma3(u32 src, u32 dest, u32 control) { dma3_start(src, NULL, dest, control); }
+void console_dma3_own(const void *src, u32 dest, u32 control) { dma3_start(0, (const u8 *)src, dest, control); }
+
+// At the V-blank, DMA channel 3 if it waits for it, and then off unless it repeats.
+void console_vblank_dma3(void) {
+  if ((dma3_control & 0xB000) != 0x9000) return;
+  dma3_run(dma3_src, dma3_own, dma3_dest, (u32)dma3_control << 16 | dma3_count);
+  if (!(dma3_control & 0x0200)) dma3_control &= ~0x8000;
+}
+
+// The BIOS's division, which the game calls through its two stubs, Div and Mod: the quotient and the remainder, each
+// rounded toward zero, as the console's BIOS gives them.
+s32 Div(s32 num, s32 denom) { return num / denom; }
+s32 Mod(s32 num, s32 denom) { return num % denom; }
 
 // The cartridge's flash chip, 64 KB as Sonic Advance's, on the kit's save memory, which the kit keeps for the player.
 // It reads as its bytes and takes the chip's commands as writes: two unlock writes, then which command, at 0x5555.
