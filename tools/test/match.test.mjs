@@ -136,3 +136,8 @@ test('a twin of one routine the code map holds as several functions names the ru
   assert.equal(runIn(functions, 0x08000100, 0x08000118), null);
   assert.equal(runIn(functions, 0x08000104, 0x08000120), null);
 });
+
+test('a name less a number, as agbcc writes it, is the name with the number taken away', () => {
+  const { relocations } = assemble('\t.code\t16\n\t.word\tgFoo+-0x8\n\t.word\tgFoo-0x8\n\t.word\tgFoo+0x8\n\t.word\tgFoo- -0x8\n');
+  assert.deepEqual(relocations.map(r => [r.name, r.addend]), [['gFoo', -8], ['gFoo', -8], ['gFoo', 8], ['gFoo', 8]]);
+});
