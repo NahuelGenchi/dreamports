@@ -9,6 +9,10 @@ name: Check
 # npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
+#
+# The tests run in four jobs side by side, as one after another they came near the 15-minute limit (#1503). The check
+# main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only when
+# all four have.
 on:
   pull_request:
 
@@ -16,10 +20,43 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Check
+  tests:
+    name: Check (${{ matrix.part }})
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # the site: its build, and a new game's start in a real browser
+          - part: site
+            run: |
+              npm run check
+              npm run build
+              npm run test:game
+          # the kits and the consoles' emulators
+          - part: consoles
+            run: |
+              npm run test:c-kit
+              npm run test:consoles
+              npm run test:real-console
+          # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
+          # runs; match and the NES's function check; and test:same-memory, which builds a program of the project's own
+          # as a cartridge and as a Dreamport from the same C, and has prove find every frame and the whole work memory
+          # the same in mGBA and in a browser (tools/README.md)
+          - part: functions
+            run: |
+              npm run test:twin
+              npm run test:match
+              npm run test:nes-twin
+              npm run test:same-memory
+          # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
+          # them; and a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub
+          # holds under one
+          - part: tasks
+            run: |
+              npm run test:function-tasks
+              npm run test:function-homes
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,20 +67,18 @@ jobs:
           check-latest: true
           cache: npm
       - run: npm ci
-      - run: npm run check
-      - run: npm run build
-      - run: npm run test:game
-      - run: npm run test:c-kit
-      - run: npm run test:consoles
-      - run: npm run test:real-console
-      # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA runs
-      - run: npm run test:twin
-      - run: npm run test:match
-      - run: npm run test:nes-twin
-      # test:same-memory builds a program of the project's own as a cartridge and as a Dreamport from the same C, and has
-      # prove find every frame and the whole work memory the same in mGBA and in a browser (tools/README.md)
-      - run: npm run test:same-memory
-      # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by them
-      - run: npm run test:function-tasks
-      # a big game's tasks of functions: each under its stretch's issue, and no issue past what GitHub holds under one
-      - run: npm run test:function-homes
+      - run: ${{ matrix.run }}
+
+  check:
+    name: Check
+    needs: tests
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All four parts passed
+        env:
+          RESULT: ${{ needs.tests.result }}
+        run: |
+          echo "The tests ended: $RESULT"
+          test "$RESULT" = success
