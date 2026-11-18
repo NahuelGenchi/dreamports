@@ -37,7 +37,7 @@ import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
-import { addressFinder, matchFile, readCompiler, runIn } from './gba/match.mjs';
+import { addressFinder, compilerAt, matchFile, readCompiler, runIn } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from './lib/proofs.mjs';
 import { resolve } from './read.mjs';
@@ -115,7 +115,16 @@ export async function run(args) {
     console.log(`games/${game}/ has no C yet.`);
     return 0;
   }
-  if (!isCompilerBuilt(compiler.name)) withBuildTools(console.log, tools => buildCompilers([compiler.name], console.log, tools));
+  // each file is built with the compiler that built the original's code its twins are the twins of: the game's, or a
+  // stretch's (gba/match.mjs, compilerAt). A file whose twins were built two ways can't be built one way
+  const builtWith = new Map(), mixed = new Map();
+  for (const file of chosen) {
+    const ways = new Map(twinsOf.get(file).filter(twin => twin.address !== null).map(twin => compilerAt(compiler, twin.address)).map(way => [`${way.name} ${way.flags.join(' ')}`, way]));
+    if (ways.size > 1) mixed.set(file, [...ways.keys()]);
+    builtWith.set(file, ways.size === 1 ? [...ways.values()][0] : compilerAt(compiler, -1));
+  }
+  const needed = [...new Set([...builtWith.values()].map(way => way.name))].filter(name => !isCompilerBuilt(name));
+  if (needed.length) withBuildTools(console.log, tools => buildCompilers(needed, console.log, tools));
   ensureOriginal(console.log);
 
   const read = reader(copy.path);
@@ -126,6 +135,13 @@ export async function run(args) {
   const proven = [], differing = [];
   for (const file of chosen) {
     const inside = !relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file));
+    const where = inside ? inRepo(file) : file;
+    if (mixed.has(file)) {
+      console.log(`${where}\n  Not compared: its twins are of code the original built two ways, ${mixed.get(file).join(' and ')}, as original.json's compiler says, and a file is built one way. Put each way's twins in a file of its own.`);
+      failed.push(`${where}: its twins are of code built two ways`);
+      continue;
+    }
+    const compiler = builtWith.get(file);
     const result = await matchFile({
       file, compiler, shifts, addressOf, original: read,
       root: inside ? folder : dirname(file),
@@ -134,7 +150,6 @@ export async function run(args) {
       sizeOf: address => sizes.get(address) ?? null,
       runOf: (address, through) => runIn(codeMap.functions, address, through),
     });
-    const where = inside ? inRepo(file) : file;
     if (result.error) {
       // all of what the compiler said for the file asked for, and for one of many the line that says what's wrong
       const said = result.error.split('\n');
@@ -185,7 +200,7 @@ export async function run(args) {
   if (unknown.size) console.log(`No address for ${[...unknown].join(', ')}: give each in games/${base}/proof/addresses.json (tools/README.md, Matching the original's bytes).`);
   // a version written on the kit isn't written for the console's compiler, so one line says how many files weren't
   if (failed.length && chosen.length > 1) {
-    console.log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build with ${compiler.name}, which builds only C written for it. The first is ${failed[0]}. Name a file to see all the compiler said of it.`);
+    console.log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build with the original's compiler, which builds only C written for it. The first is ${failed[0]}. Name a file to see all the compiler said of it.`);
   }
   console.log(`${count(same)} of ${count(all)} function${all === 1 ? '' : 's'} the same, ${count(sameBytes)} of ${count(bytes)} bytes.`);
   // a proof found with names from another file than the game's own isn't one the game can show again

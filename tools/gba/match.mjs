@@ -18,15 +18,42 @@ const DEFINE = 'MATCHING';
 const FLAG = /^-[mfOW][\w=-]*$/;
 const CARTRIDGE = 0x08000000;
 
-/** A game's compiler as its proof/original.json gives it, { name, flags }, checked, or an error that says what it needs. */
+// a compiler's name and flags, checked
+function compilerOf(given, where, what) {
+  if (!Object.hasOwn(COMPILERS, given.name)) throw new Error(`${where} names the compiler "${given.name}"${what}, and the tools have ${Object.keys(COMPILERS).join(' and ')}.`);
+  if (!Array.isArray(given.flags) || !given.flags.every(flag => typeof flag === 'string' && FLAG.test(flag))) {
+    throw new Error(`${where} needs the compiler's "flags"${what} as a list of those that say how the code is made, such as "-O2" and "-mthumb-interwork".`);
+  }
+  return { name: given.name, flags: given.flags };
+}
+
+/**
+ * A game's compiler as its proof/original.json gives it, { name, flags, stretches }, checked, or an error that says
+ * what it needs. `stretches` are the parts of the cartridge built another way, as a library the game was given
+ * already built was, each { from, to, name, flags }, with its first and last address: `"stretches": [{ "from":
+ * "08096AA0", "to": "0809B376", "name": "old_agbcc", "flags": [...] }]` in the compiler's own object.
+ */
 export function readCompiler(original, where) {
   const { compiler } = original;
   if (!compiler) throw new Error(`${where} doesn't say which compiler built the original: it needs "compiler": { "name": "agbcc" or "old_agbcc", "flags": [...] } (tools/README.md, Matching the original's bytes).`);
-  if (!Object.hasOwn(COMPILERS, compiler.name)) throw new Error(`${where} names the compiler "${compiler.name}", and the tools have ${Object.keys(COMPILERS).join(' and ')}.`);
-  if (!Array.isArray(compiler.flags) || !compiler.flags.every(flag => typeof flag === 'string' && FLAG.test(flag))) {
-    throw new Error(`${where} needs the compiler's "flags" as a list of those that say how the code is made, such as "-O2" and "-mthumb-interwork".`);
+  const stretches = (compiler.stretches ?? []).map(stretch => {
+    const address = /^[0-9A-F]{8}$/;
+    if (!address.test(stretch?.from) || !address.test(stretch?.to) || parseInt(stretch.from, 16) > parseInt(stretch.to, 16)) {
+      throw new Error(`${where} needs each of the compiler's "stretches" as { "from", "to", "name", "flags" }, its first and last address as eight capital hexadecimal digits.`);
+    }
+    return { from: parseInt(stretch.from, 16), to: parseInt(stretch.to, 16), ...compilerOf(stretch, where, ` for ${stretch.from} to ${stretch.to}`) };
+  }).sort((a, b) => a.from - b.from);
+  if (!Array.isArray(compiler.stretches ?? [])) throw new Error(`${where} needs the compiler's "stretches" as a list.`);
+  for (let i = 1; i < stretches.length; i++) {
+    if (stretches[i].from <= stretches[i - 1].to) throw new Error(`${where} has two of the compiler's "stretches" that overlap.`);
   }
-  return { name: compiler.name, flags: compiler.flags };
+  return { ...compilerOf(compiler, where, ''), stretches };
+}
+
+/** The compiler that built the original's code at `address`, { name, flags }: a stretch's, or the game's own. */
+export function compilerAt(compiler, address) {
+  const stretch = compiler.stretches?.find(each => address >= each.from && address <= each.to);
+  return stretch ? { name: stretch.name, flags: stretch.flags } : { name: compiler.name, flags: compiler.flags };
 }
 
 /** The address the first name in `text` means, as portmap reads names, or null: a number is an address in the copy, and
