@@ -115,7 +115,7 @@ function checkAll(versions, task) {
     for (const key of kept.functions.keys()) {
       const state = states.get(key);
       if (!state) wrong.push(`${version}: ${key} has a proof and isn't a function of the code map.`);
-      else if (state.why) wrong.push(`${version}: ${key}${state.twin ? `, ${state.twin.name} in ${state.twin.file},` : ''} is kept as proven and ${state.why === 'no twin' ? 'has no twin any more' : state.why === 'stop' ? 'has a stop in its twin' : state.why === 'twin changed' ? 'its twin, or a header of its file, changed since' : 'the copy has other bytes there'}.`);
+      else if (state.why) wrong.push(`${version}: ${key}${state.twin ? `, ${state.twin.name} in ${state.twin.file},` : ''} is kept as proven and ${state.why === 'no twin' ? 'has no twin any more' : state.why === 'stop' ? 'has a stop in its twin' : state.why === 'twin changed' ? 'its twin, or a header or another line of its file, changed since' : 'the copy has other bytes there'}.`);
     }
     if (task) {
       const group = groupNamed(groups, task);

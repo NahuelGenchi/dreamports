@@ -175,7 +175,7 @@ console.log('One line changed at a time:');
     check(run.status === 0, 'and every proof kept holds');
     write(game.replace('add_to_total(A) -> C', 'add_to_total(A) -> C if A < 200'));
     run = dp('proofs', VERSION, '--check');
-    check(run.status === 1 && /add_to_total in src\/game\.c, is kept as proven and its twin, or a header of its file, changed since/.test(run.out) && (run.out.match(/changed since/g) ?? []).length === 1, 'a contract changed makes its twin\'s proof stale, and no other\'s');
+    check(run.status === 1 && /add_to_total in src\/game\.c, is kept as proven and its twin, or a header or another line of its file, changed since/.test(run.out) && (run.out.match(/changed since/g) ?? []).length === 1, 'a contract changed makes its twin\'s proof stale, and no other\'s');
     write(game.replace('RAM[0x22]++;', 'RAM[0x22] += 2;'));
     run = dp('twin', VERSION, '--calls', '1000');
     check(run.status === 3 && lines().length === 5, 'a twin that differs loses its line');
