@@ -109,12 +109,14 @@ enum { INTR_FLAG_VBLANK = 0x0001, INTR_FLAG_HBLANK = 0x0002, INTR_FLAG_TIMER3 = 
 #define CODE(function) TWIN_ADDRESS(function)
 #define CALL(pointer) TWIN(pointer)
 
-/** One of the hardware's registers, by how far it is from 0x04000000, read as the kit has it. */
+/** One of the hardware's registers, by how far it is from 0x04000000: the display's are the kit's, and the rest the
+ *  version's own (hardware.c). */
 u16 console_read16(u32 at);
+void console_write16(u32 at, u16 value);
 #define REG_READ8(at) ((u8)console_read16(at))
 #define REG_READ16(at) console_read16(at)
-#define REG_WRITE16(at, value) gba_write(at, value)
-#define REG_WRITE32(at, value) (gba_write(at, (u16)(value)), gba_write((at) + 2, (u16)((u32)(value) >> 16)))
+#define REG_WRITE16(at, value) console_write16(at, value)
+#define REG_WRITE32(at, value) (console_write16(at, (u16)(value)), console_write16((at) + 2, (u16)((u32)(value) >> 16)))
 
 /** DMA channel 3 given the three words the console's is: done at once, as the console does one that starts now. */
 void console_dma3(u32 src, u32 dest, u32 control);

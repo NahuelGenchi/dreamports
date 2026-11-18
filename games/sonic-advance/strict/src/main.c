@@ -31,6 +31,12 @@
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
 void MP2K_event_null(void);
+void SoundMainBTM(void *at);
+
+// the console's start and what the page gives it each frame (hardware.c)
+void console_power_on(void);
+void console_set_keys(u16 keys);
+void console_start(void);
 void sub_8063E8C(u16 arg0);
 void Task_80640C8(void);
 void sub_8064244(void);
@@ -39,10 +45,16 @@ void Task_806515C(void);
 void Task_IntroChaosEmeraldUpdate(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
-void game_start(void) { gba_console_memory(1); }
+void game_start(void) {
+  gba_console_memory(1);
+  console_power_on();
+}
 
-// every frame: nothing yet
-void game_step(uint16_t keys) { (void)keys; }
+// every frame: the buttons held, then the game from where it last waited for the V-blank to its next wait
+void game_step(uint16_t keys) {
+  console_set_keys(keys);
+  kit_run(console_start);
+}
 
 // from an address kept in memory to the twin to call
 TWIN_TABLE

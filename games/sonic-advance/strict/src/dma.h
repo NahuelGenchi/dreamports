@@ -47,13 +47,14 @@
 #define REG_INTR_CHECK (*(u16 *)0x03007FF8)
 #else
 void console_dma(u32 n, u32 src, u32 dest, u32 control);
+void console_dma_own(u32 n, const void *src, u32 dest, u32 control);
 void console_dma_stop(u32 n);
 #define DMA_SET(n, src, dest, control) console_dma(n, (u32)(src), (u32)(dest), (u32)(control))
 #define DMA_STOP(n) console_dma_stop(n)
 #define DMA_SLOW_STOP(n) console_dma_stop(n)
 #define DMA_WAIT(n) {}
-#define REG_OR16(at, value) gba_write(at, console_read16(at) | (value))
-#define REG_AND16(at, value) gba_write(at, console_read16(at) & (value))
+#define REG_OR16(at, value) console_write16(at, console_read16(at) | (value))
+#define REG_AND16(at, value) console_write16(at, console_read16(at) & (value))
 #define REG_INTR_CHECK (*(u16 *)0x03007FF8)
 #endif
 
@@ -61,10 +62,18 @@ void console_dma_stop(u32 n);
 #define DMA_COPY16(n, src, dest, size) DMA_SET(n, src, dest, (u32)(0x8000 << 16 | ((size) / 2)))
 #define DMA_COPY32(n, src, dest, size) DMA_SET(n, src, dest, (u32)(0x8400 << 16 | ((size) / 4)))
 /** Fills `size` bytes at `dest` with `value` through channel `n`, 32 bits at a time, at once. */
+#ifdef MATCHING
 #define DMA_FILL32(n, value, dest, size)                                     \
   {                                                                          \
     vu32 tmp = (vu32)(value);                                                \
     DMA_SET(n, &tmp, dest, (u32)(0x8500 << 16 | ((size) / 4)));              \
   }
+#else
+#define DMA_FILL32(n, value, dest, size)                                     \
+  {                                                                          \
+    vu32 tmp = (vu32)(value);                                                \
+    console_dma_own(n, (const void *)&tmp, (u32)(dest), (u32)(0x8500 << 16 | ((size) / 4))); \
+  }
+#endif
 
 #endif

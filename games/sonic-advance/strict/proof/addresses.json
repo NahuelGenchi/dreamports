@@ -220,6 +220,7 @@
     "Task_RenderSonic": "08065225",
     "sub_80645E4": "080645B1",
     "Task_806562C": "080655F9",
-    "TaskDestructor_8065810": "080657DD"
+    "TaskDestructor_8065810": "080657DD",
+    "gMPlayJumpTableTemplate": "086D54F0"
   }
 }
