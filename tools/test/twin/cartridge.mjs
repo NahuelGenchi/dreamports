@@ -15,6 +15,8 @@ export const NAMED = new Map([['gBall', 0x03000100], ['gFrame', 0x03000020], ['g
 // what the compiler calls to call through a pointer: one instruction each, which the test puts in the cartridge itself
 export const VIA = { _call_via_r0: 0x08000500, _call_via_r1: 0x08000504, _call_via_r2: 0x08000508, _call_via_r3: 0x0800050C };
 export const STEPS = [1, 2, 5, 9];
+// a function with a branch made-up calls almost never take, in a file of its own (aim.c)
+export const AIMED = { Unlock: 0x080006C0 };
 // the BIOS's division, as a game calls it: a stub of its own in the cartridge, swi 6 and back
 export const BIOS = { Div: 0x08000510 };
 // and the function that calls it, in a file of its own (bios.c)
@@ -83,6 +85,13 @@ export function withDivision(rom, assembly) {
   const divided = Buffer.from(rom);
   place(divided, assembly, DIVIDES);
   return divided;
+}
+
+// The same cartridge with the function of twin/aim.c, whose rare branch the check has to aim at.
+export function withAimed(rom, assembly) {
+  const aimed = Buffer.from(rom);
+  place(aimed, assembly, AIMED);
+  return aimed;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of

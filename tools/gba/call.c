@@ -30,6 +30,10 @@
 //                         each stretch, where in the image, how long, and its bytes
 //                         how many of the function's own instructions ran, and each, its address and which ways it
 //                         went on: 2 somewhere else, as a branch taken does, 4 to the instruction after it, or both
+//                         how many comparisons of the function's own it made, and each: its address, 0 for a cmp or
+//                         1 for a tst, its two values, and where each came from, as from[] below keeps it: its kind,
+//                         bytes and how many steps since (in one word), where, and each of six steps, a kind and a
+//                         number
 //                       A call that didn't come back is taken back at once, and changes nothing.
 //   't' top             the stack the calls after it start on: an address, or 0 for the game's own. Answers 0.
 //   'w' count [address] the functions to see start in play, each by its address. Answers 0.
@@ -132,6 +136,104 @@ static uint8_t ran[PLACES];
 static uint32_t ranAt[PLACES];
 static size_t ranCount;
 
+// Where each register's value came from, so the check can aim a call at a branch no call took yet (twin.mjs): a
+// value read from the image, at `where`, `bytes` long, or the argument `where`, and the steps since that made the
+// register's value of it: a number added, a shift, or a mask. A load sets it, a move carries it, adding or taking away
+// a number, a shift or an and with a value from nowhere adds a step, and anything else that changes the register
+// forgets it, as does a seventh step. At
+// each comparison of the function's own, the two values and where each came from are kept.
+enum { CAME_FROM_NOWHERE = 0, CAME_FROM_MEMORY = 1, CAME_FROM_ARGUMENT = 2 };
+enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5 };
+#define STEPS 6
+struct origin { uint32_t kind, bytes, where, steps, step[STEPS], by[STEPS]; };
+// a step more for where a register's value came from: two numbers added in a row are one
+static void stepped(struct origin* o, uint32_t kind, uint32_t by) {
+	if (!o->kind) return;
+	if (kind == STEP_ADD && o->steps && o->step[o->steps - 1] == STEP_ADD) { o->by[o->steps - 1] += by; return; }
+	if (o->steps == STEPS) { o->kind = CAME_FROM_NOWHERE; return; }
+	o->step[o->steps] = kind;
+	o->by[o->steps++] = by;
+}
+static struct origin from[16];
+static uint32_t lastRead, lastReadBytes;
+static int lastReadKept;
+#define AIMS 256
+#define AIM_WORDS (4 + 2 * (2 + 2 * STEPS))
+static uint32_t aims[AIMS][AIM_WORDS];
+static size_t aimCount;
+
+// what one Thumb instruction did to the registers' origins, given the registers before it
+static void carry(uint32_t op, const uint32_t* was) {
+	int handled = -1;
+	struct origin none = { 0 };
+	if ((op & 0xF800) == 0x4800 || (op & 0xF800) == 0x9800 || (op & 0xF000) == 0xA000 || (op & 0xF800) == 0x2000) {
+		// a number from the pool, a value from the stack, an address or a number: nothing the check can change
+		handled = op >> 8 & 7;
+		from[handled] = none;
+	} else if ((op & 0xF000) == 0x5000 || (op & 0xE000) == 0x6000 || (op & 0xF000) == 0x8000) {
+		int loads = (op & 0xF000) == 0x5000 ? ((op & 0x200) ? (op & 0xC00) != 0 : (op & 0x800) != 0) : (op & 0x800) != 0;
+		if (loads) {
+			handled = op & 7;
+			struct origin read = { CAME_FROM_MEMORY, lastReadBytes, lastRead, 0, { 0 }, { 0 } };
+			from[handled] = lastReadKept ? read : none;
+		}
+	} else if ((op & 0xFC00) == 0x1C00) {
+		// add or take away a small number, which a move is with none
+		int rd = op & 7, rs = op >> 3 & 7, n = op >> 6 & 7;
+		from[rd] = from[rs];
+		if (n) stepped(&from[rd], STEP_ADD, (op & 0x200) ? (uint32_t) -n : (uint32_t) n);
+		handled = rd;
+	} else if ((op & 0xF000) == 0x3000) {
+		int rd = op >> 8 & 7, n = op & 0xFF;
+		stepped(&from[rd], STEP_ADD, (op & 0x800) ? (uint32_t) -n : (uint32_t) n);
+		handled = rd;
+	} else if ((op & 0xFFC0) == 0x4000) {
+		// an and of a value that came from somewhere with one that didn't, a mask
+		int rd = op & 7, rs = op >> 3 & 7;
+		if (from[rd].kind && !from[rs].kind) stepped(&from[rd], STEP_AND, was[rs]);
+		else if (!from[rd].kind && from[rs].kind) { uint32_t mask = was[rd]; from[rd] = from[rs]; stepped(&from[rd], STEP_AND, mask); }
+		else from[rd] = (struct origin) { 0 };
+		handled = rd;
+	} else if ((op & 0xFF00) == 0x4600) {
+		int rd = (op & 7) | (op >> 4 & 8), rs = op >> 3 & 15;
+		from[rd] = from[rs];
+		handled = rd;
+	} else if ((op & 0xE000) == 0x0000 && (op & 0x1800) != 0x1800) {
+		// a shift keeps where a value came from: a byte or a halfword made signed is shifted up and down again
+		int rd = op & 7, rs = op >> 3 & 7, n = op >> 6 & 31;
+		from[rd] = from[rs];
+		if (n || (op & 0x1800)) stepped(&from[rd], (op & 0x1800) == 0 ? STEP_LSL : (op & 0x1800) == 0x800 ? STEP_LSR : STEP_ASR, n ? (uint32_t) n : 32);
+		handled = rd;
+	}
+	for (int r = 0; r < 15; r++) if (r != handled && (uint32_t) cpu->gprs[r] != was[r]) from[r] = none;
+}
+
+// a comparison of the function's own, kept for the check to aim with: a cmp or a tst, its two values and their origins
+static void compared(uint32_t pc, uint32_t op, const uint32_t* r) {
+	int kind, a, b;
+	uint32_t bValue;
+	if ((op & 0xF800) == 0x2800) { kind = 0; a = op >> 8 & 7; b = -1; bValue = op & 0xFF; }
+	else if ((op & 0xFFC0) == 0x4280) { kind = 0; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	else if ((op & 0xFF00) == 0x4500) { kind = 0; a = (op & 7) | (op >> 4 & 8); b = op >> 3 & 15; bValue = r[b]; }
+	else if ((op & 0xFFC0) == 0x4200) { kind = 1; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	else return;
+	struct origin none = { 0 }, oa = from[a], ob = b >= 0 ? from[b] : none;
+	const struct origin* both[2] = { &oa, &ob };
+	for (size_t i = 0; i < aimCount; i++) {
+		if (aims[i][0] == pc && aims[i][5] == oa.where && aims[i][5 + 2 + 2 * STEPS] == ob.where && aims[i][4] == (oa.kind | oa.bytes << 8 | oa.steps << 16)) return;
+	}
+	if (aimCount >= AIMS) return;
+	uint32_t* kept = aims[aimCount++];
+	kept[0] = pc; kept[1] = (uint32_t) kind; kept[2] = r[a]; kept[3] = bValue;
+	for (int side = 0; side < 2; side++) {
+		uint32_t* at = kept + 4 + side * (2 + 2 * STEPS);
+		const struct origin* o = both[side];
+		at[0] = o->kind | o->bytes << 8 | o->steps << 16;
+		at[1] = o->where;
+		for (int i = 0; i < STEPS; i++) { at[2 + 2 * i] = o->step[i]; at[3 + 2 * i] = o->by[i]; }
+	}
+}
+
 // where an address is in the image, or -1
 static long inImage(uint32_t address) {
 	if (address >= 0x02000000u && address < 0x02000000u + EWRAM_BYTES) return EWRAM_AT + (address - 0x02000000u);
@@ -185,6 +287,11 @@ static void touched(uint32_t address, int bytes, int write) {
 	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;
 	if (at >= 0 && inImage(address + bytes - 1) >= 0) {
 		// a value the function read from memory, and not from its own stack, is one the check can change
+		if (!write && !gba->performingDMA) {
+			lastRead = address;
+			lastReadBytes = (uint32_t) bytes;
+			lastReadKept = !(address >= stackLow && address < stackHigh);
+		}
 		if (!write && !(address >= stackLow && address < stackHigh) && !wasRead[at] && readCount < NOTED) {
 			wasRead[at] = 1;
 			reads[readCount][0] = address;
@@ -333,6 +440,11 @@ static void call(void* state) {
 
 	hardware = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
 	stackLow = top; stackHigh = top + 4 * onStack;
+	// the first four arguments come from the call, the rest from nowhere the check can change
+	memset(from, 0, sizeof from);
+	for (uint32_t i = 0; i < 4; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
+	aimCount = 0;
+	lastReadKept = 0;
 	watching = 1;
 	uint32_t steps = 0;
 	int ended = DID_NOT;
@@ -347,16 +459,21 @@ static void call(void* state) {
 			if (!left) { left = 1; leftFor = pc; }
 		}
 		if (left) { ended = LEFT; break; }
+		uint32_t opcode = 0, was[16];
 		if (inThumb) {
 			// what a function compares, a value with a number or with another value, says which numbers are worth giving it
-			uint32_t opcode;
 			LOAD_16(opcode, pc & cpu->memory.activeMask, cpu->memory.activeRegion);
 			if ((opcode & 0xF800) == 0x2800) pair(cpu->gprs[opcode >> 8 & 7], opcode & 0xFF);
 			else if ((opcode & 0xFFC0) == 0x4280) pair(cpu->gprs[opcode & 7], cpu->gprs[opcode >> 3 & 7]);
 			else if ((opcode & 0xFF00) == 0x4500) pair(cpu->gprs[(opcode & 7) | (opcode >> 4 & 8)], cpu->gprs[opcode >> 3 & 15]);
+			if (pc >= own && pc - own < span) compared(pc, opcode, (const uint32_t*) cpu->gprs);
 		}
+		memcpy(was, cpu->gprs, sizeof was);
+		lastReadKept = 0;
 		ARMRun(cpu);
 		steps++;
+		if (inThumb) carry(opcode, was);
+		else for (int r = 0; r < 15; r++) if ((uint32_t) cpu->gprs[r] != was[r]) from[r] = (struct origin) { 0 };
 		if (pc >= own && pc - own < span) {
 			uint32_t width = inThumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM, place = (pc - own) >> 1;
 			uint32_t next = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
@@ -409,6 +526,8 @@ static void call(void* state) {
 	memcpy(reply + runsAt, count, 4);
 	out32(ended == CAME_BACK ? (uint32_t) ranCount : 0);
 	for (size_t i = 0; ended == CAME_BACK && i < ranCount; i++) { out32(own + ranAt[i] * 2); out32(ran[ranAt[i]]); }
+	out32(ended == CAME_BACK ? (uint32_t) aimCount : 0);
+	for (size_t i = 0; ended == CAME_BACK && i < aimCount; i++) for (int w = 0; w < AIM_WORDS; w++) out32(aims[i][w]);
 	send();
 }
 
