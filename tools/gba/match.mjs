@@ -57,12 +57,10 @@ export function addressFinder({ named = new Map(), twins = new Map(), shifts = [
   };
 }
 
-/** The functions a file of C defines, each { name, address, line, own }: `address` is the function of the original it's
- *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, and `own`
- *  whether it's the file's own, a static function no other file can name. */
-export function twinsIn(text, shifts = []) {
-  // the code with every comment and every text in quotes blanked, so nothing in them reads as code, and the comments
-  let code = '';
+// A file of C read three ways: `code`, with every comment and every text in quotes blanked, so nothing in them reads
+// as code, `kept`, with only its comments blanked, and the `comments`, each { from, to, text }
+function lex(text) {
+  let code = '', kept = '';
   const comments = [];
   for (let i = 0; i < text.length;) {
     const two = text.slice(i, i + 2);
@@ -73,14 +71,32 @@ export function twinsIn(text, shifts = []) {
       for (end = i + 1; end < text.length && text[end] !== text[i] && text[end] !== '\n'; end++) if (text[end] === '\\') end++;
       end++;
     } else {
+      kept += text[i];
       code += text[i++];
       continue;
     }
-    if (two === '//' || two === '/*') comments.push({ from: i, to: end, text: text.slice(i, end) });
+    const comment = two === '//' || two === '/*';
+    if (comment) comments.push({ from: i, to: end, text: text.slice(i, end) });
     code += text.slice(i, end).replace(/[^\n]/g, ' ');
+    kept += comment ? text.slice(i, end).replace(/[^\n]/g, ' ') : text.slice(i, end);
     i = end;
   }
+  return { code, kept, comments };
+}
+
+/** A file of C as what it's built from: without its comments, and with each run of spaces as one. */
+export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
+
+/** The functions a file of C defines, each { name, address, line, own, code }: `address` is the function of the original it's
+ *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, `own`
+ *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
+ *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
+ *  it is a proof of (../lib/proofs.mjs). */
+export function twinsIn(text, shifts = []) {
+  const { code, kept, comments } = lex(text);
   const twins = [];
+  // the function whose body is being read, and where its first word is
+  let open = null;
   // where the statement being read started: after the last ; or } outside every { }, or the last line for the preprocessor
   let depth = 0, start = 0;
   for (let i = 0; i < code.length; i++) {
@@ -91,7 +107,11 @@ export function twinsIn(text, shifts = []) {
       if (!depth) start = i;
     } else if (c === '}') {
       depth--;
-      if (!depth) start = i + 1;
+      if (!depth) {
+        if (open) open.twin.code = kept.slice(open.from, i + 1).replace(/\s+/g, ' ');
+        open = null;
+        start = i + 1;
+      }
     } else if (c === ';' && !depth) start = i + 1;
     else if (c === '{' && !depth++) {
       // a function's body: before it, a name and what it's given in ( )
@@ -109,7 +129,8 @@ export function twinsIn(text, shifts = []) {
         at = comment.from;
       }
       const name = m[1];
-      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)) });
+      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      open = { twin: twins.at(-1), from: first };
     }
   }
   return twins;

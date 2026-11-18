@@ -10,6 +10,11 @@
 // many more there are, and --all lists every one. --take says only which task whoever is signed in takes next, by
 // /dreamport's rules (lib/take.mjs): the piece --piece names when it can be taken, one that's theirs already, or the
 // first free one, in C unless the language is named, with what to run when nothing is free.
+//
+// A version that keeps its proofs is made a function at a time (lib/proofs.mjs), and there find goes by each
+// function's proof, not by a part's recording: its tasks are groups of functions, one whose functions are all proven
+// in this folder isn't offered, as it's done and waits only to be closed, what's missing is a group with a function
+// not proven and no task, and it says how many functions have each proof.
 
 import { UPSTREAM, pagesOf, signedInAs } from './lib/github.mjs';
 import { whatToTake } from './lib/take.mjs';
@@ -24,6 +29,9 @@ import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionOf } from '
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO } from './lib/paths.mjs';
+import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, stateOf } from './lib/proofs.mjs';
+import { functionTasks } from './tasks.mjs';
+import { readCodeMap } from './lib/proof-files.mjs';
 
 const USAGE = 'Usage: npm run dp -- find [<game>] [--take [c|javascript]] [--piece <words or #number>] [--all] [--repo <owner/name>] [--team <owner/name>]';
 // how many free or waiting pieces of a kind are listed before the rest are only counted
@@ -134,6 +142,24 @@ function list(here, claims) {
   return 0;
 }
 
+/**
+ * How a version made a function at a time stands, or null for one made a part at a time: its `groups`, its
+ * functions' `states` by key, and `groupOf(piece)`, the group a task is for, by its title.
+ */
+function functionsOf(version) {
+  if (!asksForProofs(version)) return null;
+  const codeMap = readCodeMap(version);
+  if (!codeMap) return null;
+  const groups = groupsOf(codeMap), states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
+  return { groups, states, groupOf: piece => groupNamed(groups, pieceOf(piece).name) };
+}
+
+// a task of functions whose functions all have their proof here: done, and waiting only to be closed
+const provenHere = (piece, made) => {
+  const group = made?.groupOf(piece);
+  return Boolean(group) && group.functions.every(f => made.states.get(f.key)?.kind);
+};
+
 // " in C" after a number of a version in another language than JavaScript, and nothing after JavaScript's
 const inName = language => (!language || language === 'js' ? '' : ` in ${LANGUAGES[language].name}`);
 
@@ -148,12 +174,24 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   const login = signedInAs(), lead = leadOf(game, claims, entry);
   const pieces = claims.piecesOf(game, entry), main = mainOf(local, pieces);
   const build = lead && teamBuildOf(lead, game, team);
-  const { free, waiting, buildsOn } = startable(game, claims, entry, build ? gatheredIn(build) : new Set(), local);
+  const all = startable(game, claims, entry, build ? gatheredIn(build) : new Set(), local);
+  const { waiting, buildsOn } = all;
   const reviewing = claims.reviewing();
   // a version as the tools name it: the game for its JavaScript, and its folder for another language, such as sonic-battle/c
   const version = wanted => (wanted === 'js' ? game : `${game}/${LANGUAGES[wanted].folder}`);
   const has = wanted => wanted === main || versions.some(v => v.language === wanted);
+  // a version made a function at a time goes by its functions' proofs (lib/proofs.mjs)
+  const made = new Map();
+  const madeOf = wanted => {
+    if (!made.has(wanted)) made.set(wanted, has(wanted) ? functionsOf(version(wanted)) : null);
+    return made.get(wanted);
+  };
+  const free = all.free.filter(piece => !provenHere(piece, madeOf(pieceOf(piece).language)));
   const missing = wanted => {
+    if (madeOf(wanted)) {
+      const { wanted: groups, waiting: more } = functionTasks(madeOf(wanted).groups, madeOf(wanted).states, pieces, wanted);
+      return groups.length + more;
+    }
     const proven = new Set((versions.find(v => v.language === wanted)?.proof?.gameplay?.parts ?? []).filter(part => part.proven).map(part => nameKey(part.name)));
     return has(wanted) ? missingParts(planOf(readPartsFile(game)), pieces, wanted, proven, main).length : 0;
   };
@@ -171,6 +209,8 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
     for (const below of buildsOn(found.piece)) console.log(`  Its branch starts on top of #${below.pull}, which has #${below.number} ${below.name} in review.`);
   } else if (found.do === 'start-version') {
     console.log(`It has no version in ${called} yet. npm run dp -- new ${version(found.language)} starts it, and npm run dp -- tasks ${version(found.language)} --yes opens its tasks: run both, then ask again.`);
+  } else if (found.do === 'open-tasks' && madeOf(found.language)) {
+    console.log(`Nothing is free in ${called}, and ${missing(found.language)} group${missing(found.language) === 1 ? '' : 's'} of its functions with something to prove ${missing(found.language) === 1 ? 'has' : 'have'} no task yet. npm run dp -- tasks ${version(found.language)} --yes opens them: run it, then ask again.`);
   } else if (found.do === 'open-tasks') {
     console.log(`Nothing is free in ${called}, and ${missing(found.language)} of its parts have no task yet. npm run dp -- tasks ${version(found.language)} --yes opens them: run it, then ask again.`);
   } else {
@@ -178,6 +218,14 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
     console.log(`Nothing can be taken now${languageNamed ? ` in ${called}` : ''}.`);
     for (const t of held.slice(0, SHOWN * 4)) console.log(`  ${name(t)} is @${t.assignees.map(a => a.login).join(', @')}'s${reviewing.has(t.number) ? `, in review in #${reviewing.get(t.number)}` : ''}.`);
     for (const { piece, on } of waiting.slice(0, SHOWN * 4)) console.log(`  ${name(piece)} waits on ${on.map(need => (need.number ? `#${need.number} ${need.name}` : need.name)).join(' and ')}.`);
+  }
+  // a task of functions: what it's made of, and how it's done
+  const group = found.piece && madeOf(pieceOf(found.piece).language)?.groupOf(found.piece);
+  if (group) {
+    const states = madeOf(pieceOf(found.piece).language).states, left = group.functions.filter(f => !states.get(f.key)?.kind).length;
+    const its = version(pieceOf(found.piece).language);
+    console.log(`  It's ${group.functions.length} function${group.functions.length === 1 ? '' : 's'} of the original, ${left} still to prove: npm run dp -- proofs ${its} ${group.first} lists them.`);
+    console.log(`  It's done when npm run dp -- ready ${its} --task ${group.first} says each has its proof.`);
   }
   if (found.piece) {
     if (lead && lead.toLowerCase() !== login.toLowerCase()) console.log(`  @${lead} leads the game.`);
@@ -209,6 +257,13 @@ function show(game, local, claims, team, all) {
     const called = LANGUAGES[language].name;
     row(`Code ported in ${called}`, theirs?.ported ? `${percentText(theirs.ported.percent)}, in games/${name}/` : 'not measured yet');
     row(`Gameplay proven in ${called}`, theirs?.gameplay ? gameplayText(theirs.gameplay) : 'not measured yet');
+  }
+  // a version made a function at a time: how many of its functions have each proof
+  for (const name of [local?.name, ...versions.map(v => v.name)].filter(Boolean)) {
+    const made = functionsOf(name);
+    if (!made) continue;
+    const counts = countsOf([...made.states.values()]), language = versionOf(name).language;
+    row(`Functions proven${inName(language)}`, `${counts.bytes + counts.memory} of ${counts.functions}, ${counts.bytes} by ${KINDS.bytes} and ${counts.memory} by ${KINDS.memory}: npm run dp -- proofs ${name} lists them`);
   }
   const fromStart = (proof?.gameplay?.parts ?? []).filter(part => part.proven && part.fromStart);
   if (fromStart.length) row('From a start point', fromStart.map(part => part.name), 'each proven again from power-on once the game reaches it');

@@ -22,6 +22,9 @@
 //
 // The original is reached only through the reader `read` uses (gba/read.c), and nothing of it is printed: what match
 // prints is each function's name, address, length and how much of it differs.
+//
+// In a version that keeps its proofs (lib/proofs.mjs), each function found the same is kept there as proven by the
+// same bytes, and one that differs loses that line. Only this tool and `twin` write them.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -36,6 +39,7 @@ import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
 import { addressFinder, matchFile, readCompiler } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
+import { asksForProofs, keepProofs, keptText } from './lib/proofs.mjs';
 import { resolve } from './read.mjs';
 
 const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]';
@@ -43,6 +47,29 @@ const count = n => n.toLocaleString('en-US');
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
 export { readAddresses };
+
+// what reads the original: the program `read` runs, asked for Thumb code with no list of functions, so every halfword
+// comes back as it is. Each line is an address, one or two halfwords, or a word, and what mGBA's decoder makes of them.
+function reader(copy) {
+  return (address, bytes) => {
+    const result = spawnSync(READER, [copy, '0', 'thumb', hex(address), String(bytes)], { input: '', encoding: 'utf8', maxBuffer: 64 << 20 });
+    if (result.error || result.status !== 0) throw new Error(`mGBA's decoder didn't run: ${result.error?.message ?? result.stderr.trim()}`);
+    const halfwords = [], lines = [];
+    for (const line of result.stdout.split('\n')) {
+      const m = /^[0-9A-F]{8}:\s+((?:[0-9A-F]{4,8} ?)+)\s*\t?(.*)$/.exec(line);
+      if (!m) continue;
+      for (const [i, token] of m[1].trim().split(' ').entries()) {
+        const value = parseInt(token, 16);
+        if (token.length === 8) halfwords.push(value & 0xFFFF, value >>> 16);
+        else halfwords.push(value);
+        lines.push(i ? '' : m[2].trim(), ...(token.length === 8 ? [''] : []));
+      }
+    }
+    const buffer = Buffer.alloc(Math.min(bytes, halfwords.length * 2));
+    for (let i = 0; i * 2 + 1 < buffer.length; i++) buffer.writeUInt16LE(halfwords[i], i * 2);
+    return { bytes: buffer, lines };
+  };
+}
 
 export async function run(args) {
   const rest = [];
@@ -95,6 +122,8 @@ export async function run(args) {
   let same = 0, all = 0, sameBytes = 0, bytes = 0, kept = null;
   const failed = [];
   const unknown = new Set();
+  // what goes in the version's proofs, when it keeps them (lib/proofs.mjs): each function of the code map tried
+  const proven = [], differing = [];
   for (const file of chosen) {
     const inside = !relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file));
     const result = await matchFile({
@@ -128,6 +157,7 @@ export async function run(args) {
       all++;
       bytes += f.bytes;
       const unmapped = f.mapped ? '' : ', where the code map has no function starting';
+      if (inside && f.mapped) (f.same ? proven : differing).push({ key: hex(f.address) });
       if (f.same) {
         same++;
         sameBytes += f.bytes;
@@ -148,6 +178,11 @@ export async function run(args) {
     console.log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build with ${compiler.name}, which builds only C written for it. The first is ${failed[0]}. Name a file to see all the compiler said of it.`);
   }
   console.log(`${count(same)} of ${count(all)} function${all === 1 ? '' : 's'} the same, ${count(sameBytes)} of ${count(bytes)} bytes.`);
+  // a proof found with names from another file than the game's own isn't one the game can show again
+  if (!asksForProofs(game)) {
+    // a version made a part at a time keeps no proofs, and nothing is said of them
+  } else if (more) console.log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
+  else for (const line of keptText(game, keepProofs(game, { kind: 'bytes', proven, failed: differing.map(f => f.key) }), 'bytes')) console.log(line);
   if (kept) console.log(`Each of the original's instructions is beside the twin's in ${kept}. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
   return 0;
 }

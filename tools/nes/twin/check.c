@@ -67,6 +67,8 @@ static long memory_count;
 static int banks, switches, own_bank;   // own_bank: the bank the function is in, when it's one the cartridge switches
 static uint16_t address;
 static uint8_t left_out[0x800];
+// how each of the program's instructions went on, over every call that came out the same
+static uint8_t *ran_ways;
 static long limit_ms;
 
 static uint8_t *reg_of(twin_regs *r, int n) { return n == 0 ? &r->A : n == 1 ? &r->X : &r->Y; }
@@ -184,6 +186,7 @@ static void run(tally *out, long calls, int changed) {
     if (back && late == 0) out->time++;
     if (back && memory && gives && hardware) {
       out->same++;
+      for (uint32_t j = 0; j < orig_ran_count; j++) ran_ways[orig_ran_at[j]] |= orig_ran_ways[orig_ran_at[j]];
       if (late < out->least) out->least = late;
       if (late > out->most) out->most = late;
     } else if (!out->first[0]) {
@@ -234,6 +237,8 @@ int main(int argc, char **argv) {
   banks = (int)(nes_prg_size / 0x4000);
   switches = nes_mapper == 2 && banks > 2;
   orig_init(nes_prg, nes_prg_size, nes_mapper);
+  ran_ways = calloc(nes_prg_size, 1);
+  if (!ran_ways) return 2;
   if (strcmp(argv[2], "-")) {
     file = fopen(argv[2], "rb");
     if (!file) return 2;
@@ -268,6 +273,9 @@ int main(int argc, char **argv) {
   if (memory_count) { run(&real, calls, 0); print("asItWas", &real); printf(","); }
   run(&changed, calls, 1);
   print("changed", &changed);
-  printf(",\"counts\":%s}\n", kit_spent ? "true" : "false");
+  // each instruction of the program the calls that came out the same ran, where it is and how it went on
+  printf(",\"ran\":[");
+  for (uint32_t at = 0, shown = 0; at < nes_prg_size; at++) if (ran_ways[at]) printf("%s%u,%d", shown++ ? "," : "", (unsigned)at, ran_ways[at]);
+  printf("],\"counts\":%s}\n", kit_spent ? "true" : "false");
   return 0;
 }

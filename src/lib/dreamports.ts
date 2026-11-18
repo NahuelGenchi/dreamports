@@ -21,9 +21,9 @@ export interface Fact {
 }
 
 // Read as the site is built, so the page always shows what's in the folders.
-const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts}.json', { eager: true, import: 'default' });
+const PROOF = import.meta.glob<unknown>('/games/*/proof/{original,code-map,progress,port-map,parts,proofs}.json', { eager: true, import: 'default' });
 // what a version in another language keeps of its own, its numbers (src/lib/languages.mjs)
-const VERSIONS = import.meta.glob<unknown>('/games/*/*/proof/{progress,port-map}.json', { eager: true, import: 'default' });
+const VERSIONS = import.meta.glob<unknown>('/games/*/*/proof/{progress,port-map,proofs}.json', { eager: true, import: 'default' });
 const RECORDINGS = import.meta.glob<unknown>('/games/*/proof/recordings/*.json', { eager: true, import: 'default' });
 const KITS = import.meta.glob<string>('/kit/*/README.md', { eager: true, query: '?raw', import: 'default' });
 const LISTS = import.meta.glob<readonly AchievementView[]>('/games/*/src/achievements/list.js', { import: 'ACHIEVEMENTS' });
@@ -51,6 +51,7 @@ function proofFor(game: string, language = 'js'): Proof | null {
     map: proofFile(game, 'code-map'),
     progress: own(version, 'progress'),
     portMap: own(version, 'port-map'),
+    proofs: own(version, 'proofs'),
     parts: proofFile(game, 'parts'),
     recordings: recordings as never,
   });

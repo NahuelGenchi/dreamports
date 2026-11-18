@@ -162,7 +162,23 @@ console.log('One line changed at a time:');
     check(run.status === 0 && /2 of 2 twins the same/.test(run.out), `functions are named by the twin's name or the original's, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'pick', '--calls', '300');
     check(run.status === 0 && /1 of 1 twins the same/.test(run.out), 'the game\'s name alone means its version in C');
+    // a version that keeps its proofs (../lib/proofs.mjs): each twin whose calls took every path of the original's is kept
+    run = dp('codemap', NAME);
+    check(run.status === 0 && existsSync(join(proofFolder(NAME), 'code-map.json')), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION, '--start');
+    check(run.status === 0 && existsSync(join(proofFolder(VERSION), 'proofs.json')), 'its proofs start with none');
+    const lines = () => JSON.parse(readFileSync(join(proofFolder(VERSION), 'proofs.json'), 'utf8')).functions;
+    run = dp('twin', VERSION, '--calls', '1000');
+    check(run.status === 0 && /6 of those 6 took every path of the original's function/.test(run.out) && /6 functions kept as proven by the same memory/.test(run.out) && lines().length === 6 && lines().every(line => line[1] === 'memory' && line[4] === 1000),
+      `each twin whose calls took every path of the original's is kept as proven by the same memory: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 0, 'and every proof kept holds');
+    write(game.replace('add_to_total(A) -> C', 'add_to_total(A) -> C if A < 200'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && /add_to_total in src\/game\.c, is kept as proven and its twin, or a header of its file, changed since/.test(run.out) && (run.out.match(/changed since/g) ?? []).length === 1, 'a contract changed makes its twin\'s proof stale, and no other\'s');
     write(game.replace('RAM[0x22]++;', 'RAM[0x22] += 2;'));
+    run = dp('twin', VERSION, '--calls', '1000');
+    check(run.status === 3 && lines().length === 5, 'a twin that differs loses its line');
     run = dp('twin', VERSION, '--calls', '300');
     check(run.status === 3 && /5 of 6 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the Game Boy Advance: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--frames', '10');

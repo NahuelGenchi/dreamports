@@ -19,6 +19,14 @@
 // Where `npm run dp -- untouched <version> --sort` has been run on the computer, each branch a task lists says what it
 // tests, and the task how many of its branches are of each kind. --update writes the leftover tasks already open again
 // from what's left now, with --yes, each keeping what it says of who took it.
+//
+// A version that keeps its proofs (lib/proofs.mjs) is made a function at a time, and its tasks come from its code map
+// from the first day: each a group of functions that sit together, "Task: Functions 080001C4 to 0800024C in C", which
+// lists every function with its name where the code map has one, its twin where the code has one, and whether it's
+// proven and by which proof. A group whose functions are all proven needs no task, and one whose task is open is
+// left. So many are open at once and no more, the first in the map's order, and running it again opens the next as
+// those close. --update writes the open ones again from where their functions stand now. Its parts stay as names for
+// people and as what its recordings are for, and get no tasks.
 
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
@@ -31,10 +39,13 @@ import { UPSTREAM, api } from './lib/github.mjs';
 import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
+import { asksForProofs, groupsOf, stateOf, stateText } from './lib/proofs.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
 const WAIT_MS = 90_000, EVERY_MS = 5_000;
+// how many tasks of functions a version has open at once: enough for many people, and GitHub holds 100 under one issue
+export const OPEN_AT_ONCE = 20;
 
 export async function run(args) {
   const { game: name, repo = UPSTREAM, yes = false, update = false } = options(args);
@@ -53,6 +64,8 @@ export async function run(args) {
 // the tasks of one version, as the start of this file says
 async function openTasks(version, repo, yes, update = false) {
   const { game, language } = versionOf(version);
+  // a version made a function at a time has its code map's functions for tasks, and needs no list of parts for them
+  if (asksForProofs(version)) return openFunctionTasks(version, repo, yes, update);
   const file = readPartsFile(game), parts = file.parts ?? [];
   if (!parts.length) throw new Error(`games/${game}/proof/parts.json lists no parts yet, and each task is one of them.`);
   const claims = readClaims(repo);
@@ -104,6 +117,111 @@ async function openTasks(version, repo, yes, update = false) {
     release();
   }
   console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.`);
+  return 0;
+}
+
+/**
+ * The tasks of functions a version still needs, from its `groups` (lib/proofs.mjs), its functions' `states` by key
+ * and the game's `pieces`, open and closed: { open, wanted, waiting }. `open` are the groups whose task is open,
+ * `wanted` those with a function not proven and no open task, up to as many as keeps `most` open at once, and
+ * `waiting` how many more come after them. A closed task whose group isn't proven any more gets a new one.
+ */
+export function functionTasks(groups, states, pieces, language = 'c', most = OPEN_AT_ONCE) {
+  const titles = new Set(pieces.filter(piece => piece.state === 'open').map(piece => piece.title.trim().toLowerCase()));
+  const has = group => titles.has(taskTitle(group.name, language).toLowerCase());
+  const unproven = groups.filter(group => group.functions.some(f => !states.get(f.key)?.kind));
+  const open = groups.filter(has), missing = unproven.filter(group => !has(group));
+  const wanted = missing.slice(0, Math.max(0, most - open.length));
+  return { open, wanted, waiting: missing.length - wanted.length };
+}
+
+/**
+ * The Task issue for a group of functions, under the headings of the Task form: each function with its address and
+ * size, the name the code map gives it, its twin, and where it stands, then the tools that prove one.
+ */
+export function functionTaskText(version, group, states) {
+  const { game } = versionOf(version);
+  const line = f => {
+    const state = states.get(f.key), twin = state?.twin ? `\`${state.twin.name}\` in \`${state.twin.file}\`, ` : '';
+    return `- \`${f.key}\`${f.name ? ` \`${f.name}\`` : ''}, ${f.size.toLocaleString('en')} bytes: ${twin}${state ? stateText(state) : 'no twin yet'}`;
+  };
+  const many = group.functions.length !== 1;
+  return [
+    '### Game folder', '', game, '',
+    '### Kind', '', 'Something else', '',
+    '### What it is', '',
+    `${group.name}: ${many ? `${group.functions.length} functions of the original that sit together in its code` : 'a function of the original'}, from the game's code map. ${many ? 'Each' : 'It'} needs its twin in \`games/${version}/\`, written by hand with every path of the original's, and its proof (\`docs/STANDARD.md#twins-and-their-proof\`):`,
+    '', ...group.functions.map(line), '',
+    `\`npm run dp -- read ${game} <address>\` prints a function from your own copy. \`npm run dp -- match ${version} <address>\` says whether its twin comes out as the original's bytes, and \`npm run dp -- twin ${version} <address>\` whether it leaves the same memory as the original's over thousands of calls that take every path of it. Each keeps what it proves, and nothing else does. \`npm run dp -- proofs ${version} ${group.first}\` lists these functions as they stand now.`,
+    '',
+    '### Done when', '',
+    `\`npm run dp -- ready ${version} --task ${group.first}\` says each of these functions has its proof, by the same bytes or the same memory, with no stop in its twin, and no recording that matched before differs.`,
+    '',
+    '### Taking it', '', '- [ ] I\'m taking this task myself.',
+  ].join('\n');
+}
+
+// the tasks of a version made a function at a time, as the start of this file says
+async function openFunctionTasks(version, repo, yes, update) {
+  const { game, language } = versionOf(version);
+  const codeMap = readCodeMap(version);
+  if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
+  const claims = readClaims(repo);
+  const dreamport = dreamports().find(d => d.game === game), entry = dreamport?.entry;
+  const home = claims.gameIssueOf(game, entry);
+  if (!home) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repo} yet, and its tasks go under that issue.`);
+  const main = dreamport?.language ?? 'js';
+  const where = language === main ? `#${home.number}` : `its issue for ${LANGUAGES[language].name}, under #${home.number}`;
+  const states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
+  const pieces = claims.piecesOf(game, entry);
+  const { open, wanted, waiting } = functionTasks(groupsOf(codeMap), states, pieces, language);
+  if (update) {
+    const changed = open.map(group => ({ group, issue: taskTitled(pieces, taskTitle(group.name, language), game) })).filter(({ issue }) => issue)
+      .map(({ group, issue }) => ({ group, issue, body: keepTaking(functionTaskText(version, group, states), issue.body ?? '') })).filter(({ issue, body }) => body !== (issue.body ?? '').replace(/\r\n/g, '\n'));
+    if (!changed.length) {
+      console.log(`Every open task of ${version}'s functions says where they stand now already.`);
+      return 0;
+    }
+    if (!yes) {
+      console.log(`The text of these ${changed.length} open tasks would be written again in ${repo}, public and in your name, each keeping what it says of who took it:\n${changed.map(({ group, issue }) => `  #${issue.number} ${group.name}`).join('\n')}`);
+      console.log('\nNothing was changed: --yes changes them, once you have said yes.');
+      return 0;
+    }
+    for (const { group, issue, body } of changed) {
+      api(`repos/${repo}/issues/${issue.number}`, { method: 'PATCH', body: { body } });
+      console.log(`#${issue.number} ${group.name}: written again`);
+    }
+    return 0;
+  }
+  const later = waiting ? ` ${waiting.toLocaleString('en')} more group${waiting === 1 ? '' : 's'} of its functions come after, ${OPEN_AT_ONCE} open at once: run this again as tasks close.` : '';
+  if (!wanted.length) {
+    console.log(open.length || waiting ? `${version} has ${open.length} task${open.length === 1 ? '' : 's'} of functions open already, under ${where}.${later}` : `Every function of ${version} in the cartridge has its proof, so it needs no task.`);
+    return 0;
+  }
+  const left = group => group.functions.filter(f => !states.get(f.key)?.kind).length;
+  if (!yes) {
+    console.log(`${version} is made a function at a time, so its tasks are groups of functions from its code map. A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${left(group)} of ${group.functions.length} to prove`).join('\n')}`);
+    console.log(`\nNothing was opened: --yes opens them, once you have said yes.${later}`);
+    return 0;
+  }
+  const release = holdGame(game);
+  let opened = 0;
+  try {
+    for (const group of wanted) {
+      const title = taskTitle(group.name, language);
+      const already = taskTitled(api(`repos/${repo}/issues?state=open&sort=created&direction=desc&per_page=100`) ?? [], title, game);
+      if (already) {
+        console.log(`#${already.number} ${group.name}: open already, so it wasn't opened again`);
+        continue;
+      }
+      const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title, body: functionTaskText(version, group, states) } });
+      opened++;
+      console.log(`#${issue.number} ${group.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${where} yet, and will`}`);
+    }
+  } finally {
+    release();
+  }
+  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.${later}`);
   return 0;
 }
 

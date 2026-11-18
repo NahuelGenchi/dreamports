@@ -7,6 +7,7 @@
 // last at $C000, and a store to the program as the cartridge's register. The picture's and the sound's registers
 // aren't there: a store to one is noted, and a read is noted and given a value the twin's read is given too.
 
+#include <stdlib.h>
 #include <string.h>
 #include "fceu.h"
 #include "x6502.h"
@@ -28,6 +29,11 @@ uint8_t orig_ram[0x800];
 twin_events orig_events;
 int orig_bank, orig_astray, orig_bank_reads;
 uint8_t orig_stored[0x100], orig_read[0x800];
+// which of the program's instructions a call ran, by where each is in the program, and how each went on, so the
+// check can say which of the function's paths its calls took: for a branch, taken or not
+uint32_t *orig_ran_at;
+uint8_t *orig_ran_ways;
+uint32_t orig_ran_count;
 static const uint8_t *prg;
 static uint32_t prg_size;
 static int banks, switches, bank_said;
@@ -53,6 +59,8 @@ void orig_init(const uint8_t *bytes, uint32_t size, int mapper) {
   banks = (int)(size / 0x4000);
   switches = mapper == 2 && banks > 2;
   RAM = orig_ram;
+  orig_ran_at = calloc(size, sizeof *orig_ran_at);
+  orig_ran_ways = calloc(size, 1);
   for (uint32_t a = 0; a < 0x10000; a++) {
     ARead[a] = a < 0x2000 ? read_ram : a < 0x4020 ? read_hw : a < 0x8000 ? read_none : a < 0xC000 ? read_low : read_high;
     BWrite[a] = a < 0x2000 ? write_ram : a < 0x4020 ? write_hw : a < 0x8000 ? write_none : write_cart;
@@ -86,6 +94,8 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   bank_said = bank >= 0;
   orig_events.count = 0;
   orig_astray = orig_bank_reads = 0;
+  for (uint32_t i = 0; i < orig_ran_count; i++) orig_ran_ways[orig_ran_at[i]] = 0;
+  orig_ran_count = 0;
   memset(orig_stored, 0, sizeof orig_stored);
   memset(orig_read, 0, sizeof orig_read);
   X.IRQlow = 0;
@@ -103,8 +113,15 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   long steps = 0;
   for (; X.PC != RETURN_TO && steps < MOST_STEPS && !X.jammed; steps++) {
     note_first_page();
+    uint16_t pc = X.PC;
+    uint32_t place = pc < 0x8000 ? prg_size : pc < 0xC000 ? ((uint32_t)orig_bank * 0x4000 + (pc - 0x8000)) % prg_size : prg_size - 0x4000 + (pc - 0xC000);
     X.count = 0;      // one instruction a time
     X6502_Run(1);
+    if (orig_ran_ways && place < prg_size) {
+      if (!orig_ran_ways[place]) orig_ran_at[orig_ran_count++] = place;
+      // a branch is two bytes long, so it wasn't taken when the next instruction is the one after it
+      orig_ran_ways[place] |= X.PC == (uint16_t)(pc + 2) ? TWIN_WENT_ON : TWIN_WENT_ELSEWHERE;
+    }
   }
   *cycles = (long)(timestamp - began);
   r->A = X.A; r->X = X.X; r->Y = X.Y;

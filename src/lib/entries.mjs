@@ -70,6 +70,10 @@ export const portedFunctions = portMap => {
  *   (progress.json's `played`), the instructions and branch ways played in matching frames over all the code map's
  *   functions have, as `units`; or else the parts played from start to end with every frame matching, over every part
  *   parts.json lists. `proven`, `total` and `parts` are the parts either way;
+ * - proofs, for a version that keeps its functions' proofs (`proofs`, its proofs.json, tools/lib/proofs.mjs):
+ *   { bytes, memory, unproven }, how many of the code map's functions have a twin proven by the same bytes and by the
+ *   same memory, and how many have no proof. A line for a function the port map doesn't name, or one with a stop,
+ *   doesn't count; `npm run dp -- proofs --check` keeps a line of a twin that changed since out of the file;
  * - saves, when a recording saved: { original, same, differ }, the original's writes of its save memory in the
  *   recordings, how many the Dreamport left the same, and the names of the recordings where the two differ.
  * Throws, naming every problem, when the files don't agree, such as a % that isn't what the code map and the proven
@@ -80,10 +84,11 @@ export const portedFunctions = portMap => {
  * @typedef {{ percent: number, proven: number, total: number, parts: Part[], units?: { total: number, played: number }, code?: number, content?: { total: number, read: number, percent: number } }} Gameplay
  * @typedef {{ percent: number, functions: number, named: number, played: number, unmatched: number, stops: number, stopped: number, unnamed: number }} Ported
  * @typedef {{ copy: string, percent: number | null, recordings: number, codeMap: { functions: number, bytes: number } | null,
- *   proven: { functions: number, bytes: number } | null, ported: Ported | null, gameplay: Gameplay | null }} Proof
+ *   proven: { functions: number, bytes: number } | null, ported: Ported | null, gameplay: Gameplay | null,
+ *   proofs?: { bytes: number, memory: number, unproven: number } }} Proof
  * @returns {Proof | null}
  */
-export function proofOf(game, { original, map, progress, portMap, parts, recordings: recorded = {} }) {
+export function proofOf(game, { original, map, progress, portMap, parts, proofs, recordings: recorded = {} }) {
   // a version in another language, such as sonic-battle/c, keeps its own progress.json and port-map.json, and shares
   // the rest with the game (src/lib/languages.mjs)
   const at = `games/${game}/proof/`, shared = `games/${game.split('/')[0]}/proof/`;
@@ -95,6 +100,7 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
   if (map && map.original !== original.sha1) problems.push(`${shared}code-map.json is for another copy than original.json names.`);
   if (progress && progress.original !== original.sha1) problems.push(`${at}progress.json is for another copy than original.json names.`);
   if (portMap && portMap.original !== original.sha1) problems.push(`${at}port-map.json is for another copy than original.json names.`);
+  if (proofs && proofs.original !== original.sha1) problems.push(`${at}proofs.json is for another copy than original.json names.`);
   const recordings = Object.entries(progress?.recordings ?? {});
   // a game's own word that no player could ever see these frames, which no match with the original makes up for
   for (const [name, { neverInPlay = [] }] of recordings) {
@@ -148,6 +154,16 @@ export function proofOf(game, { original, map, progress, portMap, parts, recordi
       stopped: stopped.size,
       unnamed: functions.filter(f => !named.has(f.address)).length,
     };
+    // each function's proof, in a version that keeps them: of a twin the code still has, with no stop in it
+    if (proofs) {
+      const all = Array.isArray(proofs.functions) ? proofs.functions : [];
+      const lines = all.filter(line => Array.isArray(line) && typeof line[0] === 'string' && ['bytes', 'memory'].includes(line[1]));
+      if (!Array.isArray(proofs.functions) || lines.length !== all.length) problems.push(`${at}proofs.json isn't as npm run dp -- match and npm run dp -- twin write it.`);
+      missing(lines.map(([address]) => address), 'proofs.json');
+      const holds = lines.filter(([address]) => named.has(address) && !stopped.has(address));
+      const kind = which => holds.filter(line => line[1] === which).length;
+      result.proofs = { bytes: kind('bytes'), memory: kind('memory'), unproven: functions.length - holds.length };
+    }
   } else if (progress?.percent !== undefined || portMap) {
     problems.push(`${at}${portMap ? 'port-map.json' : 'progress.json'} needs a ${shared}code-map.json to be measured against.`);
   }
@@ -299,7 +315,8 @@ export const hasCode = proof => (proof?.ported?.percent ?? 0) > 0;
 /**
  * What still keeps a Dreamport from done, as a list of plain sentences, none when it's done: it's the same game as its
  * original only once all its code is ported and all of it proven, with no stop left, every function named and every
- * save as the original's (docs/STANDARD.md#done).
+ * save as the original's (docs/STANDARD.md#done), and, in a version that keeps its functions' proofs, each function
+ * proven (tools/lib/proofs.mjs).
  * @param {Proof | null | undefined} proof
  * @returns {string[]}
  */
@@ -309,6 +326,7 @@ export function leftToDo(proof) {
   if (proof?.gameplay?.percent !== 100) left.push(`gameplay proven is ${percentText(proof?.gameplay?.percent) ?? 'not measured yet'}`);
   if (proof?.ported?.stops) left.push(`${plural(proof.ported.stops, 'stop')} in its code`);
   if (proof?.ported?.unnamed) left.push(`${plural(proof.ported.unnamed, 'function')} of the original no code names`);
+  if (proof?.proofs?.unproven) left.push(`${plural(proof.proofs.unproven, 'function')} with no proof`);
   if (proof?.saves?.differ.length) left.push(`its saves differ from the original's in ${plural(proof.saves.differ.length, 'recording')}`);
   return left;
 }

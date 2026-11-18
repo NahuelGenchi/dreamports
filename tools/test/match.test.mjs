@@ -72,10 +72,10 @@ test('a function is the twin of the address the comment just above it names, or 
     'char *text = "{ Hidden(void) {";',
   ].join('\n'));
   assert.deepEqual(twins, [
-    { name: 'Start', address: 0x08000100, line: 5, own: false },
-    { name: 'Next', address: 0x08000300, line: 12, own: true },
-    { name: 'Alone', address: null, line: 18, own: false },
-    { name: 'sub_8000500', address: 0x08000500, line: 20, own: false },
+    { name: 'Start', address: 0x08000100, line: 5, own: false, code: 'void Start(void) { if (x) { y(); } }' },
+    { name: 'Next', address: 0x08000300, line: 12, own: true, code: 'static struct Thing * Next(struct Thing *thing, void (*then)(void)) { return thing; }' },
+    { name: 'Alone', address: null, line: 18, own: false, code: 'int Alone(void) { return 0; }' },
+    { name: 'sub_8000500', address: 0x08000500, line: 20, own: false, code: 'int sub_8000500(void) { return 1; }' },
   ]);
 });
 

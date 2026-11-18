@@ -25,6 +25,11 @@ extern int orig_astray;              // reads where nothing answers on the cartr
 extern int orig_bank_reads;          // reads of $8000-$BFFF on a cartridge that switches what's there
 extern uint8_t orig_stored[0x100];   // the bytes of the stack's page stored to other than by pushing
 extern uint8_t orig_read[0x800];     // the bytes of the work memory the function read, or worked on
+// the instructions the last call ran: where each is in the program, and how each went on, by its place
+enum { TWIN_WENT_ELSEWHERE = 2, TWIN_WENT_ON = 4 };
+extern uint32_t *orig_ran_at;
+extern uint8_t *orig_ran_ways;
+extern uint32_t orig_ran_count;
 void orig_init(const uint8_t *prg, uint32_t size, int mapper);
 /** Runs the function at `pc`, with `bank` at $8000, from `r` and `flags`, until it returns. 0 when it returned with
  *  the stack where it was, 1 when it ran too long, 2 when the processor jammed, 3 when it came back with the stack

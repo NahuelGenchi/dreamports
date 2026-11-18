@@ -47,6 +47,12 @@
 // and every call without them, are "changed": the original runs once to say which bytes it reads, a few of those get
 // other values, and it runs again.
 //
+// The same memory is a proof of the paths the calls took, and of no other. So the check also says which of the
+// program's instructions the calls that came out the same ran, and which way each branch went, and a twin counts as
+// proven only when every instruction of the original's function ran and each of its branches went both ways. In a
+// version that keeps its proofs (../lib/proofs.mjs), each twin proven is kept there as proven by the same memory,
+// and one that differs loses that line. Only this tool and `match` write them.
+//
 // What it can't check yet: the registers a call starts with are drawn, not taken from play, so `if` has to say what
 // the game gives; the stack starts in one place; a cartridge that switches its program any other way than UNROM;
 // and a function that waits for the picture.
@@ -56,7 +62,9 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { basename, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
-import { readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { functionKey, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { nesInstructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { originalPlay } from '../lib/recording.mjs';
@@ -79,6 +87,8 @@ const REGISTERS = 'AXYNVZC';
 const RAM = 0x800, WORDS = RAM / 4;
 // how many calls of each kind, how long one may take, how many memories a game's recordings give, and the first frame one is taken at
 const CALLS = 5000, LIMIT = 200, MEMORIES = 2000, FIRST_FRAME = 200;
+// the fewest calls of a twin a proof by the same memory is made of
+const KEPT_FROM = 1000;
 const FLAGS = ['-std=gnu11', '-O2', '-Wall', '-Wextra', '-Wno-unused-parameter', '-Wno-unused-function', '-fwrapv', '-DDP_TWIN_CHECK'];
 const count = n => n.toLocaleString('en-US');
 const hex4 = n => n.toString(16).toUpperCase().padStart(4, '0');
@@ -345,6 +355,35 @@ export async function twin(game, options = {}) {
   log(`${count(built.contracts.length)} twin${built.contracts.length === 1 ? ' has a contract' : 's have a contract'} in ${inRepo(sources)}. ${has ? `Each gets ${count(calls)} calls from a memory of play as it was and ${count(calls)} from one changed` : `Each gets ${count(calls)} calls from random memories: --memories takes real ones from the game's recordings`}.`);
   const { results, same } = checkTwins({ built, copy: copy.path, memories: has ? kept : null, calls, seed, limit, without, only: functions, log });
   log(`${count(same)} of ${count(results.length)} twins the same as the original on every call.${without.length ? ` Left out of what was compared: ${without.map(byte => `$${hex4(byte)}`).join(', ')}.` : ''}`);
+  // which of those took every path of the original's function, which is what makes the same memory a proof
+  const codeMap = readCodeMap(game), proven = [], differing = [];
+  if (codeMap) {
+    const of = nesInstructionsOf(codeMap, readFileSync(copy.path)), { ways: ruledOut } = readUnreachable(game);
+    const banks = Math.floor(Math.max(...codeMap.functions.map(each => each.address)) / 0x4000) + 1;
+    for (const result of results) {
+      const f = codeMap.functions.find(each => each.address === result.offset);
+      if (!f) continue;
+      if (!result.same) {
+        differing.push(functionKey(f));
+        continue;
+      }
+      const ran = new Map();
+      for (let i = 0; i + 1 < (result.ran ?? []).length; i += 2) ran.set(result.ran[i], result.ran[i + 1]);
+      const { total, left } = waysLeft(of(f), f.address, ran, ruledOut);
+      result.whole = !left.length;
+      if (result.whole) proven.push({ key: functionKey(f), calls: (result.asItWas?.calls ?? 0) + (result.changed?.calls ?? 0) });
+      else {
+        const first = left.slice(0, 3).map(([where, how]) => `${nesName(where, banks)} ${how}`).join(', ');
+        log(`${result.name} ${result.call}: the same, but its calls left out ${count(left.length)} of the original's ${count(total)} instructions and branch ways, such as ${first}: it isn't proven until calls take those too.`);
+      }
+    }
+    if (same) log(`${count(proven.length)} of those ${count(same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  }
+  const keptIn = version.language === 'c' ? game : `${version.game}/c`;
+  if (!asksForProofs(keptIn)) return { results, same, tried: results.length };
+  if (from || without.length) log('Nothing was kept as proven: a proof is of the game\'s own C, with every byte compared.');
+  else if (calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+  else for (const line of keptText(keptIn, keepProofs(keptIn, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
   return { results, same, tried: results.length };
 }
 

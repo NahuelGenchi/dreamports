@@ -15,10 +15,10 @@
 //   'm'                 answers the image.
 //   's' image           puts the image in the console's memory. Answers 0.
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
-//   'c' address r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
-//                       changes those values, then calls the function at the address, odd for Thumb code, with its
-//                       first four arguments in the registers and the rest on the stack, and lets it run up to `limit`
-//                       instructions. Answers:
+//   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
+//                       changes those values, then calls the function at the address, odd for Thumb code, `span`
+//                       bytes long, with its first four arguments in the registers and the rest on the stack, and
+//                       lets it run up to `limit` instructions. Answers:
 //                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow
 //                         what it gave back, in r0, and how many instructions it ran
 //                         the first address of the hardware's registers it used, or 0
@@ -27,6 +27,8 @@
 //                         compared two values, how many stretches of the image it changed
 //                         each value read, its address and bytes; each number; the two values of each comparison;
 //                         each stretch, where in the image, how long, and its bytes
+//                         how many of the function's own instructions ran, and each, its address and which ways it
+//                         went on: 2 somewhere else, as a branch taken does, 4 to the instruction after it, or both
 //                       A call that didn't come back is taken back at once, and changes nothing.
 //   't' top             the stack the calls after it start on: an address, or 0 for the game's own. Answers 0.
 //   'w' count [address] the functions to see start in play, each by its address. Answers 0.
@@ -103,6 +105,13 @@ static int left;
 static uint8_t wasRead[IMAGE];
 static uint32_t reads[NOTED][2], numbers[NOTED], pairs[NOTED][2];
 static size_t readCount, numberCount, pairCount;
+// which of the called function's own instructions ran in this call, a place for every two bytes of it, and how each
+// went on, so the check can say which of the original's paths its calls took (twin.mjs)
+#define PLACES 0x8000
+enum { WENT_ELSEWHERE = 2, WENT_ON = 4 };
+static uint8_t ran[PLACES];
+static uint32_t ranAt[PLACES];
+static size_t ranCount;
 
 // where an address is in the image, or -1
 static long inImage(uint32_t address) {
@@ -254,7 +263,11 @@ static uint32_t stackTop(void* state) {
 }
 
 static void call(void* state) {
-	uint32_t address = in32(), r[4];
+	uint32_t address = in32(), span = in32(), r[4];
+	uint32_t own = address & ~1u;
+	if (span > PLACES * 2) span = PLACES * 2;
+	for (size_t i = 0; i < ranCount; i++) ran[ranAt[i]] = 0;
+	ranCount = 0;
 	for (int i = 0; i < 4; i++) r[i] = in32();
 	uint32_t limit = in32(), onStack = in32(), words[16] = { 0 };
 	for (uint32_t i = 0; i < onStack; i++) {
@@ -312,6 +325,12 @@ static void call(void* state) {
 		}
 		ARMRun(cpu);
 		steps++;
+		if (pc >= own && pc - own < span) {
+			uint32_t width = inThumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM, place = (pc - own) >> 1;
+			uint32_t next = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			if (!ran[place]) ranAt[ranCount++] = place;
+			ran[place] |= next == pc + width ? WENT_ON : WENT_ELSEWHERE;
+		}
 		uint32_t sp = cpu->gprs[ARM_SP];
 		if (sp < stackLow && sp >= top - STACK_ROOM) stackLow = sp;
 		// a stack that deep is a function calling itself for ever, over the rest of the memory
@@ -350,6 +369,8 @@ static void call(void* state) {
 	}
 	uint8_t count[4] = { runs & 0xFF, runs >> 8 & 0xFF, runs >> 16 & 0xFF, runs >> 24 & 0xFF };
 	memcpy(reply + runsAt, count, 4);
+	out32(ended == CAME_BACK ? (uint32_t) ranCount : 0);
+	for (size_t i = 0; ended == CAME_BACK && i < ranCount; i++) { out32(own + ranAt[i] * 2); out32(ran[ranAt[i]]); }
 	send();
 }
 

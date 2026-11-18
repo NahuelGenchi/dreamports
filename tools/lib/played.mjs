@@ -129,6 +129,30 @@ export function instructionsOf(bytes, seeds = []) {
   return { instructions, branches };
 }
 
+/** How the function check's programs say an instruction went on (gba/call.c, nes/twin/check.h): somewhere else, as a
+ *  branch taken does, or to the instruction after it. */
+export const WENT_ELSEWHERE = 2, WENT_ON = 4;
+
+/**
+ * What a function's calls left out of it, for the function check: `found` is its { instructions, branches }, as
+ * instructionsOf gives them, `address` where it starts, `ran` a Map of each address of it that ran to the ways it
+ * went on, and `ruledOut` the branch ways the game's unreachable.json says can't happen. Answers { total, left }:
+ * how many instructions and branch ways it has, and each that no call took, as [address, 'never ran',
+ * 'never taken' or 'always taken'].
+ */
+export function waysLeft(found, address, ran, ruledOut = new Map()) {
+  const left = [];
+  for (const offset of [...found.instructions].sort((a, b) => a - b)) {
+    const where = address + offset, ways = ran.get(where) ?? 0;
+    if (!ways) left.push([where, 'never ran']);
+    else if (found.branches.has(offset)) {
+      if (!(ways & WENT_ELSEWHERE) && ruledOut.get(where) !== TAKEN) left.push([where, 'never taken']);
+      if (!(ways & WENT_ON) && ruledOut.get(where) !== NOT_TAKEN) left.push([where, 'always taken']);
+    }
+  }
+  return { total: found.instructions.size + found.branches.size * 2, left };
+}
+
 /**
  * Where an NES game's instructions are, for its code map: `of(f)` gives { instructions, branches } as instructionsOf
  * does, the offsets in the function `f` that hold an instruction and, of those, the conditional branches. It's what

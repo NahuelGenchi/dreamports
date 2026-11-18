@@ -141,7 +141,7 @@ function readProofFiles(game) {
     ? Object.fromEntries(readdirSync(join(folder, 'recordings')).filter(f => f.endsWith('.json')).map(f => [f.slice(0, -5), read(`recordings/${f}`)]))
     : {};
   return {
-    original: read('original.json'), map: read('code-map.json'), progress, portMap: readFrom(own, 'port-map.json'), parts: read('parts.json'), recordings,
+    original: read('original.json'), map: read('code-map.json'), progress, portMap: readFrom(own, 'port-map.json'), parts: read('parts.json'), proofs: readFrom(own, 'proofs.json'), recordings,
   };
 }
 
