@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assemble } from '../gba/thumb.mjs';
-import { addressFinder, addressIn, readCompiler, runIn, throughIn, twinsIn } from '../gba/match.mjs';
+import { addressFinder, addressIn, compilerAt, readCompiler, runIn, throughIn, twinsIn } from '../gba/match.mjs';
 import { readAddresses } from '../match.mjs';
 
 const fixture = name => readFileSync(new URL(`./match/${name}`, import.meta.url), 'utf8');
@@ -96,7 +96,7 @@ test('a label is moved as the game\'s names.json says, and a name finds its addr
 
 test('a game says which compiler and how, with no flag that names a file', () => {
   const where = 'games/x/proof/original.json';
-  assert.deepEqual(readCompiler({ compiler: { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] } }, where), { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] });
+  assert.deepEqual(readCompiler({ compiler: { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] } }, where), { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'], stretches: [] });
   assert.throws(() => readCompiler({}, where), /doesn't say which compiler/);
   assert.throws(() => readCompiler({ compiler: { name: 'gcc', flags: [] } }, where), /names the compiler "gcc"/);
   for (const flags of [['-o', 'elsewhere'], ['-aux-info'], ['-dumpbase=x'], ['file.c'], 'O2']) {
@@ -135,6 +135,26 @@ test('a twin of one routine the code map holds as several functions names the ru
   assert.equal(runIn(functions, 0x08000110, 0x08000140), null);
   assert.equal(runIn(functions, 0x08000100, 0x08000118), null);
   assert.equal(runIn(functions, 0x08000104, 0x08000120), null);
+});
+
+test('a stretch of the cartridge a library was built in has its own compiler', () => {
+  const where = 'games/made-up/proof/original.json';
+  const game = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
+  const sound = { from: '08096AA0', to: '0809B376', name: 'old_agbcc', flags: ['-mthumb-interwork', '-O2'] };
+  const flash = { from: '08098C00', to: '08098FFF', name: 'agbcc', flags: ['-mthumb-interwork', '-O1'] };
+  const compiler = readCompiler({ compiler: { ...game, stretches: [{ from: '08096000', to: '08096A9F', ...flash, from: '08096000' }] } }, where);
+  assert.deepEqual(compiler.stretches, [{ from: 0x08096000, to: 0x08098FFF, name: 'agbcc', flags: ['-mthumb-interwork', '-O1'] }]);
+  const both = readCompiler({ compiler: { ...game, stretches: [sound] } }, where);
+  assert.deepEqual(compilerAt(both, 0x08096AA0), { name: 'old_agbcc', flags: ['-mthumb-interwork', '-O2'] });
+  assert.deepEqual(compilerAt(both, 0x0809B376), { name: 'old_agbcc', flags: ['-mthumb-interwork', '-O2'] });
+  assert.deepEqual(compilerAt(both, 0x0809B378), game);
+  assert.deepEqual(compilerAt(both, 0x08000200), game);
+  // overlapping stretches, an address written another way, a stretch backwards, or one with a flag that names a file
+  assert.throws(() => readCompiler({ compiler: { ...game, stretches: [sound, flash] } }, where), /overlap/);
+  assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, from: '8096AA0' }] } }, where), /"stretches"/);
+  assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, from: '0809B376', to: '08096AA0' }] } }, where), /"stretches"/);
+  assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, flags: ['-o', 'x'] }] } }, where), /for 08096AA0 to 0809B376/);
+  assert.throws(() => readCompiler({ compiler: { ...game, stretches: [{ ...sound, name: 'gcc' }] } }, where), /names the compiler "gcc" for/);
 });
 
 test('a name less a number, as agbcc writes it, is the name with the number taken away', () => {
