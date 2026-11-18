@@ -51,7 +51,7 @@ extern s8 gUsedSaveSectorID;
 u32 SaveSectorSum(void *sector);
 bool32 SaveGameExists(void);
 void CreateEmptySaveGame(void);
-u16 ReadFlash(u16 sectorNum, u32 offset, void *dest, u32 size);
+void ReadFlash(u16 sectorNum, u32 offset, void *dest, u32 size);
 u16 WriteSaveGame(void);
 void *EwramMalloc(u32 size);
 void EwramFree(void *p);
