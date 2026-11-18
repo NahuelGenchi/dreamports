@@ -43,7 +43,8 @@ struct Sprite {
 #define SPRITE_OAM_ORDER(index) ((index) << 6)
 #define SPRITE_PRIORITY(priority) ((priority) << 12)
 
-void UpdateSpriteAnimation(struct Sprite *s);
+s32 UpdateSpriteAnimation(struct Sprite *s);
+void DisplaySprite(struct Sprite *s);
 void *VramMalloc(u32 numTiles);
 
 /** The command that sends an animation back: how many words. */

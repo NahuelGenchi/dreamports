@@ -97,8 +97,16 @@ extern struct SpriteOffset gSpriteOffset;
 extern void *gVramGraphicsCopyQueue[32];
 extern u8 gOamFreeIndex;
 extern u8 gOamFirstPausedIndex;
-extern u16 gOamBuffer[0x200];
-extern u16 gOamMallocBuffer[0x200];
+/** A sprite of the console's list: three attributes, and a byte the engine links its own list with. */
+struct OamData {
+  /* 0x00 */ u16 attr0;
+  /* 0x02 */ u16 attr1;
+  /* 0x04 */ u16 attr2;
+  /* 0x06 */ u8 fractional;
+  /* 0x07 */ u8 integer;
+};
+extern struct OamData gOamBuffer[128];
+extern struct OamData gOamMallocBuffer[128];
 extern s8 gOamMallocOrders_StartIndex[32];
 extern s8 gOamMallocOrders_EndIndex[32];
 extern u16 gObjPalette[0x100];

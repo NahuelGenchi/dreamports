@@ -8,10 +8,12 @@
 
 #ifndef MATCHING
 #include "console.h"
+#include "animation.h"
 #include "background.h"
 #include "core.h"
 #include "language.h"
 #include "multi_sio.h"
+#include "screen.h"
 #include "stage.h"
 #include "ui.h"
 #include "logos.h"
@@ -19,6 +21,10 @@
 #include "save.h"
 #include "sprite.h"
 #include "task.h"
+
+// the twins no header of theirs declares
+struct OamData *OamMalloc(u8 order);
+void CreateTask_8011DBC(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) { gba_console_memory(1); }

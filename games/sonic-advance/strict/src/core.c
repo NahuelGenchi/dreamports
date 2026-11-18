@@ -215,10 +215,10 @@ void ClearOamBufferDma(void) {
     }
   }
   gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
-  DMA3_FILL16(0x200, gOamBuffer + 0x80 * 0, OAM_SIZE / 4);
-  DMA3_FILL16(0x200, gOamBuffer + 0x80 * 1, OAM_SIZE / 4);
-  DMA3_FILL16(0x200, gOamBuffer + 0x80 * 2, OAM_SIZE / 4);
-  DMA3_FILL16(0x200, gOamBuffer + 0x80 * 3, OAM_SIZE / 4);
+  DMA3_FILL16(0x200, gOamBuffer + 32 * 0, OAM_SIZE / 4);
+  DMA3_FILL16(0x200, gOamBuffer + 32 * 1, OAM_SIZE / 4);
+  DMA3_FILL16(0x200, gOamBuffer + 32 * 2, OAM_SIZE / 4);
+  DMA3_FILL16(0x200, gOamBuffer + 32 * 3, OAM_SIZE / 4);
   gNumVBlankCallbacks = 0;
   gFlags &= ~FLAGS_EXECUTE_VBLANK_CALLBACKS;
 }
