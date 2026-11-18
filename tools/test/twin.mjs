@@ -4,7 +4,8 @@
 // twins, built on the console's kit as a game's are. Then the check has to say every twin leaves the same memory, and
 // has to find each twin the test spoils: a `>` turned to `>=`, found only because what the function reads is changed;
 // a byte written to the kit's video memory as if it were plain memory, where the kit does what the hardware would; a
-// function reached only through a pointer; a twin that never comes back, stopped and not hung; and a twin that calls
+// function reached only through a pointer; a function that divides through the BIOS, followed there and back; a twin
+// that never comes back, stopped and not hung; and a twin that calls
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked.
@@ -25,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { cartridge, compiler, FUNCTIONS, GIVES, NAMED, PLAYED, VIA, withGives, withPlay } from './twin/cartridge.mjs';
+import { BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, VIA, withDivision, withGives, withPlay } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -53,6 +54,12 @@ if (first.error) process.exit(1);
 const assembly = readFileSync(join(work, 'built', 'program.s'), 'utf8');
 check(Object.keys(FUNCTIONS).every((name, i, names) => i === names.length - 1 || first.functions.find(f => f.name === name).length <= FUNCTIONS[names[i + 1]] - FUNCTIONS[name]), 'each function fits where the cartridge has it');
 check(/strb/.test(assembly) && /_call_via_r/.test(assembly), 'it writes single bytes and calls through a pointer');
+// and the function that divides through the BIOS, from a file of its own
+const divides = await matchFile({
+  file: join(HERE, 'bios.c'), compiler, work: join(work, 'built', 'bios'), addressOf: name => addressOf(name) ?? BIOS[name] ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!divides.error && /bl\tDiv|bl Div/.test(readFileSync(join(work, 'built', 'bios.s'), 'utf8')), `the function that divides builds with ${compiler.name} and calls the cartridge's stub for the BIOS's division${divides.error ? `: ${divides.error}` : ''}`);
 // and a function that gives back what its caller keeps, from a file of its own
 const gives = await matchFile({
   file: join(HERE, 'gives.c'), compiler, work: join(work, 'built', 'gives'), addressOf: name => addressOf(name) ?? null,
@@ -60,7 +67,7 @@ const gives = await matchFile({
 });
 check(!gives.error, `the function that gives back a value and its caller build with ${compiler.name}${gives.error ? `: ${gives.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withGives(cartridge(assembly), readFileSync(join(work, 'built', 'gives.s'), 'utf8')));
+writeFileSync(copy, withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -83,7 +90,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length])]);
+const lengths = new Map([...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -125,6 +132,15 @@ try {
   const sprite = await checking(program(['VIDEO8(SPRITE_TILES + at, colour);', 'gba_vram[SPRITE_TILES - TILES + at] = colour;']));
   check(sprite.by.Paint?.kind === 'differs' && /at 0x060100[0-9A-F]{2}, in the video memory/.test(sprite.by.Paint.line), `and one that writes a sprite's tile differs, as the console drops it: ${sprite.by.Paint?.line}`);
   check(sameBut(plain, ['Paint']) && sameBut(sprite, ['Paint']), 'and every other twin is still the same');
+
+  console.log('A function that divides through the BIOS:');
+  const divided = await checking(join(HERE, 'bios.c'));
+  check(divided.by.Share?.kind === 'same' && divided.by.Share.compared === CALLS && divided.by.Share.whole === true, `the original is followed into the BIOS and back, and its twin, which divides itself, leaves the same memory over every call${divided.by.Share?.kind === 'same' ? '' : `: ${divided.by.Share?.line ?? divided.error}`}`);
+  const shared = join(work, `changed-${++variants}`);
+  cpSync(HERE, shared, { recursive: true });
+  writeFileSync(join(shared, 'bios.c'), readFileSync(join(HERE, 'bios.c'), 'utf8').replace('gFrame = Div(total, gSteps[kind & 3]);', 'gFrame = Div(total, gSteps[kind & 3]) + 1;'));
+  const halved = await checking(join(shared, 'bios.c'));
+  check(halved.by.Share?.kind === 'differs' && /at 0x0300002[0-3], in the work memory/.test(halved.by.Share.line), `and a wrong twin of it is found: ${halved.by.Share?.line ?? halved.error}`);
 
   console.log('A twin that gives back nothing:');
   // which of the cartridge's functions give back what a caller uses, read from the callers' instructions
