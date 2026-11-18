@@ -61,3 +61,34 @@ test('a library is named by its console, or c for kit/c/lib/, and nothing else',
   assert.equal(libraryFolder('c/libgcc'), join(REPO, 'kit', 'c', 'lib', 'libgcc'));
   for (const wrong of ['m4a', 'gba/M4A', 'dreamcast/thing', 'gba/m4a/more', 'gba/../x']) assert.throws(() => libraryFolder(wrong), /isn't a library/);
 });
+
+test('a console\'s map has a block for each library and a cell for each function, coloured by where it stands', async () => {
+  const { sharedMap, sharedText, STATES } = await import('../../src/lib/shared-map.mjs');
+  const cells = states => states.map((state, i) => ({ name: `F${i}`, size: 10, state }));
+  const console = {
+    id: 'gba', name: 'Game Boy Advance', functions: 6, bytes: 60, proven: 3, provenBytes: 30, versions: 2, games: 2,
+    libraries: [
+      { id: 'gba/sound', functions: 4, proven: 2, bytes: 40, provenBytes: 20, versions: ['a/c', 'b/c'], cells: cells(['bytes', 'memory', 'written', 'unwritten']) },
+      { id: 'gba/save', functions: 2, proven: 1, bytes: 20, provenBytes: 10, versions: ['a/c'], cells: cells(['bytes', 'unwritten']) },
+    ],
+  };
+  const { svg, alt } = sharedMap(console);
+  assert.equal(alt, 'Game Boy Advance: 50% of its known shared code proven, 30 of 60 bytes and 3 of 6 functions, in 2 libraries, taken by 2 games.');
+  assert.equal(sharedText(console), alt.slice(0, -1));
+  for (const { colour } of Object.values(STATES)) assert.ok(svg.includes(`fill="${colour}" d="`), `a path of ${colour}`);
+  // one square for each function: four sides each, in the paths of the four colours
+  const squares = [...svg.matchAll(/<path fill="[^"]+" d="([^"]+)"/g)].reduce((sum, [, d]) => sum + (d.match(/M/g) ?? []).length, 0);
+  assert.equal(squares, 6);
+  assert.ok(svg.includes('gba/sound 2/4') && svg.includes('gba/save 1/2'));
+});
+
+test('docs/STATUS.md keeps one section of shared code after its table, written again in place', async () => {
+  const { sharedPart, withShared } = await import('../readme.mjs');
+  const section = text => `## Shared code\n\n${text}\n\n<!-- End of the maps of shared code. -->`;
+  const once = withShared('\n', section('none yet'));
+  assert.equal(once, `\n\n${section('none yet')}\n`);
+  assert.equal(withShared(once, section('none yet')), once);
+  assert.equal(withShared(once, section('a map')), `\n\n${section('a map')}\n`);
+  assert.equal(sharedPart(once), section('none yet'));
+  assert.equal(sharedPart('\n'), null);
+});

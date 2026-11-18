@@ -6,8 +6,8 @@
 // What it shows: each version takes the library through its proof/libraries.json and nothing else; the port map
 // counts its twins in both; the game's build links the library's C; `match` proves it by the same bytes on one copy
 // and `twin` by the same memory on the other, each on its own copy at its own addresses; `libraries` says how much of
-// the console's shared code is proven; a change to the library's C makes its proofs stale in both games at once; a
-// stop in it holds it back in both; and `libraries --check` refuses a library that names an address, a function it
+// the console's shared code is proven, and the console's map in docs/STATUS.md colours each function by where it
+// stands; a change to the library's C makes its proofs stale in both games at once; a stop in it holds it back in both; and `libraries --check` refuses a library that names an address, a function it
 // doesn't list, and a version that puts a function where its code map has another.
 
 import { createHash } from 'node:crypto';
@@ -22,6 +22,9 @@ import { ensureCaller } from '../gba/twin.mjs';
 import { firstFiles } from '../lib/new-game.mjs';
 import { formatCodeMap, hex } from '../lib/proof-files.mjs';
 import { buildGame } from '../lib/c.mjs';
+import { sharedCode } from '../libraries.mjs';
+import { sharedMapOf, writeReadme } from '../readme.mjs';
+import { sharedMap, STATES } from '../../src/lib/shared-map.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { compiler, place } from './twin/cartridge.mjs';
 
@@ -155,6 +158,8 @@ try {
   check(run.status === 0 && /2 of 2 functions the same/.test(run.out) && /2 functions kept as proven by the same bytes/.test(run.out) && kept(GAMES[0]).length === 2, `match proves the library on the first copy: ${last(run)}`);
   run = dp('twin', version(GAMES[1]), '--frames', '2', '--calls', '1000');
   check(run.status === 0 && /2 of 2 functions left the same memory/.test(run.out) && kept(GAMES[1]).every(line => line[1] === 'memory') && kept(GAMES[1]).length === 2, `twin proves it on the second, where it sits elsewhere: ${last(run)}`);
+  const cellsOf = versions => sharedCode(versions).find(each => each.id === 'gba').libraries.find(each => each.id === LIBRARY).cells.map(cell => cell.state);
+  check(JSON.stringify(cellsOf([version(GAMES[1])])) === '["memory","memory"]', 'the second game alone has each function proven by the same memory');
   run = dp('match', version(GAMES[1]));
   check(run.status === 0 && kept(GAMES[1]).every(line => line[1] === 'bytes'), 'and match proves it there by the same bytes too, the stronger proof');
   check(JSON.stringify(kept(GAMES[0]).map(line => line[2]).sort()) === JSON.stringify(kept(GAMES[1]).map(line => line[2]).sort()), 'each twin\'s mark is the same in both, as it\'s the same C');
@@ -162,16 +167,24 @@ try {
   run = dp('proofs', version(GAMES[1]), '08000900');
   check(/0x08000900 +\d+ bytes  LibPick, kit\/gba\/c\/lib\/test-made-up\/test-made-up\.c:\d+: proven by the same bytes/.test(run.out), 'proofs names the twin by its place in the kit');
   run = dp('libraries');
-  check(run.status === 0 && /Game Boy Advance: 100% of its known shared code proven, \d+ of \d+ bytes and 2 of 2 functions, in 1 library, taken by 2 versions/.test(run.out), `libraries says how much of the console's shared code is proven: ${run.out.trim().split('\n')[0]}`);
+  check(run.status === 0 && /Game Boy Advance: 100% of its known shared code proven, \d+ of \d+ bytes and 2 of 2 functions, in 1 library, taken by 2 games/.test(run.out), `libraries says how much of the console's shared code is proven: ${run.out.trim().split('\n')[0]}`);
   run = dp('libraries', version(GAMES[0]));
   check(/0x08000800  LibAdd: proven by the same bytes/.test(run.out), 'and with a version, where each function it takes stands');
+  const gba = sharedCode().find(each => each.id === 'gba'), drawn = writeReadme({ check: true }).files;
+  check(drawn.includes(sharedMapOf('gba')) && drawn.includes('docs/STATUS.md'), `readme draws the console's map, ${sharedMapOf('gba')}, and puts it in docs/STATUS.md`);
+  check((sharedMap(gba).svg.match(new RegExp(`<path fill="${STATES.bytes.colour}" d="[^"]*`))?.[0].match(/M/g) ?? []).length === 2, 'with a green cell for each function proven by the same bytes');
+  const listed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8'));
+  writeFileSync(join(FOLDER, 'library.json'), JSON.stringify({ ...listed, functions: [...listed.functions, ['LibLater', 40, null]] }));
+  run = dp('libraries');
+  check(/Game Boy Advance: 54\.54% of its known shared code proven, 48 of 88 bytes and 2 of 3 functions/.test(run.out) && JSON.stringify(cellsOf()) === '["bytes","bytes","unwritten"]', `a function the library has that nobody has written yet counts as known, and as not written: ${run.out.trim().split('\n')[0]}`);
+  writeFileSync(join(FOLDER, 'library.json'), `${JSON.stringify(listed, null, 2)}\n`);
 
   console.log('One library, held to its C in every game at once:');
   writeLibrary(TEXT.replace('gLibCount++;', 'gLibCount += 1;'));
   run = dp('proofs', '--check');
   check(run.status === 1 && GAMES.every(game => run.out.includes(version(game))) && /LibAdd/.test(run.out), 'a change to the library\'s code makes its proofs stale in both games');
   run = dp('libraries');
-  check(/Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, \d+ of \d+ bytes and 1 of 2 functions/.test(run.out), `and the console's number falls: ${run.out.trim().split('\n')[0]}`);
+  check(/Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, \d+ of \d+ bytes and 1 of 2 functions/.test(run.out) && cellsOf().includes('written'), `and the console's number falls, with the function written and not proven: ${run.out.trim().split('\n')[0]}`);
   writeLibrary(TEXT.replace('    return gLibTable[i];', '    return gLibTable[i]; // dp:stop'));
   run = dp('portmap', version(GAMES[1]));
   check(/1 stop/.test(run.out), `a stop in the library is a stop of each game that has it: ${last(run)}`);

@@ -27,13 +27,12 @@ import { nesNames } from './nes/functions.mjs';
 import { NAME, BASES } from './portmap.mjs';
 import { CONSOLES } from './consoles.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
+import { sharedText } from '../src/lib/shared-map.mjs';
 
 const USAGE = 'Usage: npm run dp -- libraries [<version>] [--check]';
 const count = n => n.toLocaleString('en');
 const plural = (n, word, words = `${word}s`) => `${count(n)} ${n === 1 ? word : words}`;
 const inRepo = path => relative(REPO, path).split(sep).join('/');
-// a share, cut and never rounded up, as the two numbers are (docs/STANDARD.md)
-const percent = (part, whole) => `${whole ? Math.floor((part / whole) * 10000) / 100 : 0}%`;
 
 export async function run(args) {
   const check = args.includes('--check');
@@ -54,39 +53,41 @@ export async function run(args) {
     return 0;
   }
   for (const each of consoles) {
-    console.log(`${each.name}: ${summary(each)}.`);
+    console.log(`${sharedText(each)}.`);
     for (const library of each.libraries) console.log(`  ${library.id}  ${count(library.proven)} of ${plural(library.functions, 'function')} proven, ${library.versions.length ? `taken by ${library.versions.join(', ')}` : 'taken by no version yet'}`);
   }
   return 0;
 }
 
-/** A console's shared code in words, as `libraries` says it. */
-export function summary(each) {
-  return `${percent(each.provenBytes, each.bytes)} of its known shared code proven, ${count(each.provenBytes)} of ${count(each.bytes)} bytes and ${count(each.proven)} of ${plural(each.functions, 'function')}, in ${plural(each.libraries.length, 'library', 'libraries')}, taken by ${plural(each.versions, 'version')}`;
-}
+/** Where a library's function stands, best first: proven by the same bytes, by the same memory, written and not proven yet, not written yet. */
+export const STATES = ['bytes', 'memory', 'written', 'unwritten'];
 
 /**
  * Each console's shared code, for every console with a library, in kit/consoles.js's order: { id, name, libraries,
- * functions, bytes, proven, provenBytes, versions }, `libraries` each { id, functions, proven, versions }. A function
- * of a library is each twin library.json lists, once however many variants have its file, and it's proven when it
- * has a proof that holds in at least one version, of `versions`, that takes it. The original's side of a proof is
- * the copy's, which isn't here, so a proof counts by its twin's mark alone, as `proofs --check` counts it without one.
+ * functions, bytes, proven, provenBytes, versions, games }, how many versions and games take its libraries, `libraries` each { id, functions, proven, bytes, provenBytes,
+ * versions, cells }, `cells` each of its functions in library.json's order as { name, size, state }, one of STATES.
+ * A function of a library is each one library.json lists, written or not, once however many variants have its file.
+ * It's proven on a console when it has a proof that holds in at least one version on that console, of `versions`,
+ * that takes it, as a library in kit/c/lib/ is built anew for each console. The original's side of a proof is the
+ * copy's, which isn't here, so a proof counts by its twin's mark alone, as `proofs --check` counts it without one.
  */
 export function sharedCode(versions = keptVersions()) {
   const libraries = libraryIds().map(readLibrary);
-  const proven = new Set(), takenBy = new Map();
-  const keyOf = (library, f) => `${library.id}\n${inRepo(f.file)}\n${f.name}`;
+  const best = new Map(), takenBy = new Map();
+  const keyOf = (id, library, f) => `${id}\n${library.id}\n${f.file ? inRepo(f.file) : ''}\n${f.name}`;
   for (const version of versions) {
     if (!existsSync(librariesFile(version))) continue;
-    const taken = versionLibraries(version, readOriginal(version).console);
-    for (const each of taken) takenBy.set(each.id, [...(takenBy.get(each.id) ?? []), version]);
+    const id = readOriginal(version).console, taken = versionLibraries(version, id);
+    for (const each of taken) takenBy.set(`${id}\n${each.id}`, [...(takenBy.get(`${id}\n${each.id}`) ?? []), version]);
     if (!asksForProofs(version)) continue;
     const states = new Map(stateOf(version, { mark: null }).map(state => [state.address, state]));
     for (const each of taken) {
       for (const [name, address] of each.functions) {
         const f = each.library.functions.find(one => one.name === name && each.files.includes(one.file));
         const state = states.get(address);
-        if (f && state?.kind && !state.why) proven.add(keyOf(each.library, f));
+        if (!f || !state?.kind || state.why) continue;
+        const key = keyOf(id, each.library, f);
+        if (!best.has(key) || STATES.indexOf(state.kind) < STATES.indexOf(best.get(key))) best.set(key, state.kind);
       }
     }
   }
@@ -94,17 +95,19 @@ export function sharedCode(versions = keptVersions()) {
   for (const id of Object.keys(CONSOLES)) {
     const own = libraries.filter(library => library.consoles.includes(id));
     if (!own.length) continue;
-    const listed = own.map(library => ({
-      id: library.id, functions: library.functions.length,
-      proven: library.functions.filter(f => proven.has(keyOf(library, f))).length,
-      bytes: library.functions.reduce((sum, f) => sum + f.size, 0),
-      provenBytes: library.functions.filter(f => proven.has(keyOf(library, f))).reduce((sum, f) => sum + f.size, 0),
-      versions: (takenBy.get(library.id) ?? []).filter(version => readOriginal(version).console === id),
-    }));
+    const listed = own.map(library => {
+      const cells = library.functions.map(f => ({ name: f.name, size: f.size, state: best.get(keyOf(id, library, f)) ?? (f.file ? 'written' : 'unwritten') }));
+      const proven = cells.filter(cell => cell.state === 'bytes' || cell.state === 'memory');
+      return {
+        id: library.id, functions: cells.length, proven: proven.length, bytes: cells.reduce((sum, cell) => sum + cell.size, 0),
+        provenBytes: proven.reduce((sum, cell) => sum + cell.size, 0), versions: takenBy.get(`${id}\n${library.id}`) ?? [], cells,
+      };
+    });
     const sum = key => listed.reduce((total, library) => total + library[key], 0);
+    const versions = new Set(listed.flatMap(library => library.versions));
     consoles.push({
       id, name: CONSOLES[id].name, libraries: listed, functions: sum('functions'), bytes: sum('bytes'), proven: sum('proven'), provenBytes: sum('provenBytes'),
-      versions: new Set(listed.flatMap(library => library.versions)).size,
+      versions: versions.size, games: new Set([...versions].map(version => versionOf(version).game)).size,
     });
   }
   return consoles;
@@ -156,7 +159,7 @@ export function checkLibraries(versions = keptVersions()) {
   for (const library of libraries) {
     const notice = join(library.folder, 'NOTICE.md');
     if (!existsSync(notice) || !readFileSync(notice, 'utf8').trim()) problems.push(`${inRepo(notice)} isn't there: each library has a notice that names each source its twins were written from, by repository and commit, or says it was written from nothing but the console's own code.`);
-    const listed = new Map(library.functions.map(f => [`${f.file}\n${f.name}`, f]));
+    const listed = new Map(library.functions.filter(f => f.file).map(f => [`${f.file}\n${f.name}`, f]));
     for (const id of library.consoles) for (const name of readdirSync(library.folder).filter(each => /\.[ch]$/.test(each))) place(id, name, inRepo(join(library.folder, name)));
     for (const file of [...library.files, ...readdirSync(library.folder).filter(name => name.endsWith('.h')).map(name => join(library.folder, name))]) {
       const text = readFileSync(file, 'utf8');

@@ -14,7 +14,8 @@
 //   "variants": { "a": ["engine.c", "mixer-a.c"], "b": [...] }: the files of each version of it there is, when
 //     games have more than one; without it every .c file of the folder is the library,
 //   "functions": [["SoundMain", 1172, "engine.c"], ...]: each of its twins, by its name, the size in bytes of the
-//     original's function, as a code map has it, and its file
+//     original's function, as a code map has it, and its file, or null for a function of the library nobody has
+//     written yet, its name from a public source, so what's known of the library is all counted
 // }
 //
 // A twin in a library names no address and nothing of any game: it's named as the library's own function, and a
@@ -66,7 +67,7 @@ export function libraryIds(kit = KIT) {
 /**
  * A library, read from its library.json and checked: { id, folder, about, consoles, compilers, files,
  * variants, functions }, `files` every .c file of its folder, `variants` a Map of each variant to its files or null,
- * and `functions` each { name, size, file }, files as full paths. Throws, saying what's wrong, when it isn't one.
+ * and `functions` each { name, size, file }, files as full paths, and null for one nobody has written yet. Throws, saying what's wrong, when it isn't one.
  */
 export function readLibrary(id) {
   const folder = libraryFolder(id), file = join(folder, LIBRARY), where = inRepo(file);
@@ -103,12 +104,13 @@ export function readLibrary(id) {
   const functions = [], seen = new Set();
   for (const entry of found.functions) {
     const parts = Array.isArray(entry) ? entry : [], [name, size, own] = parts;
-    if (parts.length !== 3 || !C_NAME.test(name ?? '') || !Number.isInteger(size) || size <= 0 || !files.includes(own)) {
-      throw wrong(`each function as ["<name>", <size>, "<file>.c"], its name in C, the size in bytes of the original's, and a .c file of its folder, and ${JSON.stringify(entry)} isn't`);
+    if (parts.length !== 3 || !C_NAME.test(name ?? '') || !Number.isInteger(size) || size <= 0 || (own !== null && !files.includes(own))) {
+      throw wrong(`each function as ["<name>", <size>, "<file>.c"], its name in C, the size in bytes of the original's, and a .c file of its folder, or null while nobody has written it, and ${JSON.stringify(entry)} isn't`);
     }
     if (seen.has(`${own}:${name}`)) throw wrong(`each function once, and ${name} in ${own} is there twice`);
+    if (own === null ? functions.some(f => f.name === name) : seen.has(`null:${name}`)) throw wrong(`${name} once, written or not`);
     seen.add(`${own}:${name}`);
-    functions.push({ name, size, file: join(folder, own) });
+    functions.push({ name, size, file: own === null ? null : join(folder, own) });
   }
   return { id, folder, about: found.about, consoles, compilers, files: files.map(name => join(folder, name)), variants, functions };
 }
