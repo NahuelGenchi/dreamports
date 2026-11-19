@@ -73,7 +73,7 @@ console.log('The EE:');
     answer = await call('scale', [], { floats: [bitsOf(a), bitsOf(b)] });
     check(answer.registers[EE_REGISTERS.fpr] === bitsOf(cut) && bitsOf(cut) !== bitsOf(nearest), `scale cuts the product towards zero, as the EE does: ${floatOf(answer.registers[EE_REGISTERS.fpr])}`);
     answer = await call('scale', [], { floats: [0x7F800000, 0x3F800000] });
-    check(answer.registers[EE_REGISTERS.fpr] === 0x7F7FFFFF, 'and takes a float whose exponent is all ones as the largest there is');
+    check(answer.registers[EE_REGISTERS.fpr] === 0x7F800000, 'and takes a float whose exponent is all ones as the number it is, as the console does');
     answer = await call('eight', [1, 2, 3, 4, 5, 6, 7, 8]);
     check(v0(answer) === 36n, 'eight adds the arguments in a0 to a3 and t0 to t3');
     answer = await call('copy16', [0x01800004, 0x01800018]);
