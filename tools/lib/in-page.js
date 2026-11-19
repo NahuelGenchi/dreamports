@@ -254,7 +254,17 @@
         // a game with no sound, or a kit from before the tools heard it, is silent
         const samples = dreamportsProof.heard ?? null, energies = new Float64Array(16);
         if (samples) { filter(samples, energies); heard = true; }
-        sound.push({ energies: Array.from(energies), samples: samples ? samples.length / 2 : SILENCE });
+        const frameSound = { energies: Array.from(energies), samples: samples ? samples.length / 2 : SILENCE };
+        // a game whose sound is proven by sound lists, as a PlayStation 2's is, gives what it gave its sound chip, and
+        // its samples exactly, hashed as lib/sound.mjs's samplesHash hashes the original's
+        if (__soundLists && typeof dreamportsProof.soundList === 'number') {
+          const bytes = new Uint8Array(dreamportsProof.soundSamples.buffer, dreamportsProof.soundSamples.byteOffset, dreamportsProof.soundSamples.byteLength);
+          let exact = 0x811C9DC5;
+          for (let b = 0; b < bytes.length; b++) exact = Math.imul(exact ^ bytes[b], 0x01000193) >>> 0;
+          Object.assign(frameSound, { list: dreamportsProof.soundList, listCount: dreamportsProof.soundListCount, exact, exactCount: dreamportsProof.soundSamples.length / 2 });
+          if (dreamportsProof.soundSamples.some(value => value !== 0)) heard = true;
+        }
+        sound.push(frameSound);
         if (first) kept.set(frame, fromRing(frame));
         if (frame >= stopsFrom && (hash !== expected[i] || (stretches && expectedMemory && memory.at(-1) !== expectedMemory[i]))) break;
       }
