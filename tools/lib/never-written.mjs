@@ -19,6 +19,7 @@
 // game's code here, as it is for every number of the proof.
 
 import { holds, step, arrivals } from './decided.mjs';
+import { ANYWHERE, moved, numbers } from './points-to.mjs';
 
 const CARTRIDGE = 0x08000000;
 const IWRAM = 0x03000000, IWRAM_END = 0x03008000;
@@ -49,7 +50,7 @@ const FROM_R1 = new Set([0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0
  * as the store is wide, over and over) or null, 'stack', or 'unknown', with `why`. `rom` is the cartridge's bytes,
  * `functions` the code map's and `copies` its copies, each { ram, cartridge, size }.
  */
-export function writesOf(rom, functions, copies = []) {
+export function writesOf(rom, functions, copies = [], followed = null) {
   const writes = [];
   const view = new DataView(rom.buffer, rom.byteOffset, rom.length);
   const word = address => (address >= CARTRIDGE && address + 4 <= CARTRIDGE + rom.length ? view.getUint32(address - CARTRIDGE, true) : null);
@@ -65,7 +66,7 @@ export function writesOf(rom, functions, copies = []) {
   for (const f of inRom) {
     const bytes = rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size);
     if (isArm(bytes)) armWrites(bytes, f.address, writes);
-    else thumbWrites(bytes, f.address, word, targets, writes);
+    else thumbWrites(bytes, f.address, word, targets, writes, followed?.complete ? followed : null);
   }
   return writes;
 }
@@ -90,11 +91,32 @@ function armWrites(bytes, address, writes) {
 }
 
 // the stores of a Thumb function, each read with what the run before it knows of the registers
-function thumbWrites(bytes, address, word, targets, writes) {
+function thumbWrites(bytes, address, word, targets, writes, followed) {
   const u16 = at => bytes[at] | bytes[at + 1] << 8;
   let state = fresh(), dma = [{}, {}, {}, {}];
   const known = (at, from, size, value) => writes.push({ at, kind: 'known', from: u32(from), to: u32(from + size), bytes: value === null ? null : Array.from({ length: Math.min(size, 4) }, (_, i) => value >>> (8 * i) & 0xFF) });
   const unknown = (at, why) => writes.push({ at, kind: 'unknown', why });
+  // a store whose base the run doesn't know, where the pass that follows pointers bounds it (points-to.mjs): to each
+  // place it can be, an allocator's arena for one of its objects, or the stack; or else where the check can't follow
+  const pointed = (at, size, extra = 0) => {
+    const found = followed?.stores.get(at);
+    const where = found ? moved(found.base, found.offset + extra) : ANYWHERE;
+    if (where === ANYWHERE) return unknown(at, `the store at ${hex(at)} writes through a pointer the check can't follow`);
+    const values = numbers(found.value);
+    for (const e of where) {
+      if (e[0] === 's') { writes.push({ at, kind: 'stack' }); continue; }
+      if (e[0] === 'h') {
+        const arena = followed.sites.get(Number(e.slice(1, e.lastIndexOf(':'))));
+        if (!arena) return unknown(at, `the store at ${hex(at)} writes into an object the check can't place`);
+        known(at, arena.from, arena.to - arena.from, null);
+        continue;
+      }
+      const a = Number(e.slice(1));
+      if (a >= 0x04000000 && a < 0x04000400) { if (a >= 0x040000B0 && a < 0x040000E0) unknown(at, `the store at ${hex(at)} starts a DMA through a pointer`); continue; }
+      if (values && values.length <= 16) for (const v of values) known(at, a, size, v & (size === 4 ? 0xFFFFFFFF : size === 2 ? 0xFFFF : 0xFF));
+      else known(at, a, size, null);
+    }
+  };
   // a store to a DMA channel's registers: its destination and length are kept, and a start writes where they say
   const dmaStore = (at, where, size, value) => {
     if (where < 0x040000B0 || where >= 0x040000E0) return;
@@ -116,7 +138,7 @@ function thumbWrites(bytes, address, word, targets, writes) {
   // a store of `size` bytes at a base and an offset: where the run knows both, to that place; to the stack; or anywhere
   const store = (at, base, offset, size, value) => {
     const b = state.r[base];
-    if (b === null || offset === null) return unknown(at, `the store at ${hex(at)} writes through r${base}, a pointer the check can't follow`);
+    if (b === null || offset === null) return followed ? pointed(at, size) : unknown(at, `the store at ${hex(at)} writes through r${base}, a pointer the check can't follow`);
     const where = u32(b + offset);
     if (where >= 0x04000000 && where < 0x04000400) return dmaStore(at, where, size, value);
     known(at, where, size, value === null ? null : value & (size === 4 ? 0xFFFFFFFF : size === 2 ? 0xFFFF : 0xFF));
@@ -151,10 +173,15 @@ function thumbWrites(bytes, address, word, targets, writes) {
     } else if ((op & 0xF800) === 0xC000) {
       // STMIA: each register, from where the base is
       const base = r[op >> 8 & 7], list = [0, 1, 2, 3, 4, 5, 6, 7].filter(i => op >> i & 1);
-      if (base === null) unknown(pc, `the store at ${hex(pc)} writes through r${op >> 8 & 7}, a pointer the check can't follow`);
+      if (base === null) {
+        if (followed) list.forEach((_, n) => pointed(pc, 4, 4 * n - 4 * (list.length - 1)));
+        else unknown(pc, `the store at ${hex(pc)} writes through r${op >> 8 & 7}, a pointer the check can't follow`);
+      }
       else list.forEach((i, n) => known(pc, base + 4 * n, 4, r[i]));
     } else if ((op & 0xFF00) === 0xDF00) {
-      biosWrites(op & 0xFF, r, pc, known, unknown);
+      // what the run doesn't know of the registers the BIOS is given, the pass may
+      const given = followed?.swis.get(pc), one = v => { const n = numbers(v ?? ANYWHERE); return n && n.length === 1 ? n[0] : null; };
+      biosWrites(op & 0xFF, given ? r.map((v, i) => (v !== null ? v : i <= 2 ? one(given[`r${i}`]) : null)) : r, pc, known, unknown);
     }
     step(state, op, pc, word);
     if (endsThumb(op)) { state = fresh(); dma = [{}, {}, {}, {}]; }
@@ -212,6 +239,17 @@ export function valuesAt(address, bytes, writes) {
   return { values: new Set(values) };
 }
 
+// what a Thumb load reads into: { to, bytes, signed }, or null for no load from memory through a register
+function loadShape(op) {
+  if ((op & 0xE000) === 0x6000 && op & 0x0800) return { to: op & 7, bytes: op & 0x1000 ? 1 : 4, signed: false };
+  if ((op & 0xF800) === 0x8800) return { to: op & 7, bytes: 2, signed: false };
+  if ((op & 0xF000) === 0x5000 && (op >> 9 & 7) >= 3) {
+    const kind = op >> 9 & 7;
+    return { to: op & 7, bytes: { 3: 1, 4: 4, 5: 2, 6: 1, 7: 2 }[kind], signed: kind === 3 || kind === 7 };
+  }
+  return null;
+}
+
 // a Thumb load from a place the run knows: { to, address, bytes, signed }, or null
 function loadOf(op, r) {
   if ((op & 0xE000) === 0x6000 && op & 0x0800) {
@@ -235,7 +273,8 @@ function loadOf(op, r) {
  * this game because of the values it reads: { decided: { address, way, from, fields } }, with each value it goes by as
  * { address, bytes, values }, or { cannot }, why not. `writes` is what writesOf gives for the game.
  */
-export function neverWrittenBranch(rom, functions, branch, writes) {
+export function neverWrittenBranch(rom, functions, branch, writes, followed = null) {
+  if (!followed?.complete) followed = null;
   const f = functions.find(each => !each.bytes && branch >= each.address && branch < each.address + each.size);
   if (!f) return { cannot: `${hex(branch)} isn't in a function of the code map` };
   const bytes = rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size);
@@ -252,7 +291,13 @@ export function neverWrittenBranch(rom, functions, branch, writes) {
   const run = (given = new Map()) => {
     const state = fresh(), loads = [];
     for (let pc = start; pc < at; pc += 2) {
-      const load = loadOf(u16(pc), state.r);
+      let load = loadOf(u16(pc), state.r);
+      if (load) load = { ...load, addresses: [load.address] };
+      else if (followed && loadShape(u16(pc))) {
+        // a load through a pointer the run doesn't know, where the pass that follows pointers bounds it to addresses
+        const found = followed.loads.get(f.address + pc), where = found ? numbers(moved(found.base, found.offset)) : null;
+        if (where) load = { ...loadShape(u16(pc)), addresses: where, address: where[0] };
+      }
       step(state, u16(pc), f.address + pc, word);
       if (!load) continue;
       loads.push({ pc: f.address + pc, ...load });
@@ -265,21 +310,26 @@ export function neverWrittenBranch(rom, functions, branch, writes) {
   };
   const plain = run();
   if (plain.taken !== null) return { cannot: `the code alone decides ${hex(branch)}, as untouched --decided says` };
-  if (!plain.loads.length) return { cannot: `the run from ${hex(f.address + start)} to ${hex(branch)} reads nothing from a place it knows: what the branch goes by comes from before the run, or through a pointer` };
+  if (!plain.loads.length) return { cannot: `the run from ${hex(f.address + start)} to ${hex(branch)} reads nothing from a place it knows${followed ? ' or the pass that follows pointers bounds' : ''}: what the branch goes by comes from before the run, or through a pointer` };
   const fields = [];
   for (const load of plain.loads) {
     // the cartridge holds what it holds; the work memory is what the game writes; anything else isn't followed here
-    if (load.address >= CARTRIDGE && load.address + load.bytes <= CARTRIDGE + rom.length) {
-      let value = 0;
-      for (let i = 0; i < load.bytes; i++) value |= rom[load.address - CARTRIDGE + i] << (8 * i);
-      fields.push({ ...load, values: [u32(value)], cartridge: true });
-      continue;
+    let values = new Set(), cartridge = true;
+    for (const address of load.addresses) {
+      if (address >= CARTRIDGE && address + load.bytes <= CARTRIDGE + rom.length) {
+        let value = 0;
+        for (let i = 0; i < load.bytes; i++) value |= rom[address - CARTRIDGE + i] << (8 * i);
+        values.add(u32(value));
+        continue;
+      }
+      cartridge = false;
+      const inWork = (address >= 0x02000000 && address + load.bytes <= 0x02040000) || (address >= IWRAM && address + load.bytes <= IWRAM_END);
+      if (!inWork) return { cannot: `${hex(branch)} goes by the ${sized(load.bytes)} at ${hex(address)}, which isn't in the work memory or the cartridge` };
+      const found = valuesAt(address, load.bytes, writes);
+      if (found.cannot) return { cannot: `${hex(branch)} goes by the ${sized(load.bytes)} at ${hex(address)}, and ${found.cannot}` };
+      for (const v of found.values) values.add(v);
     }
-    const inWork = (load.address >= 0x02000000 && load.address + load.bytes <= 0x02040000) || (load.address >= IWRAM && load.address + load.bytes <= IWRAM_END);
-    if (!inWork) return { cannot: `${hex(branch)} goes by the ${sized(load.bytes)} at ${hex(load.address)}, which isn't in the work memory or the cartridge` };
-    const found = valuesAt(load.address, load.bytes, writes);
-    if (found.cannot) return { cannot: `${hex(branch)} goes by the ${sized(load.bytes)} at ${hex(load.address)}, and ${found.cannot}` };
-    fields.push({ ...load, values: [...found.values].sort((a, b) => a - b) });
+    fields.push({ ...load, values: [...values].sort((a, b) => a - b), ...(cartridge ? { cartridge: true } : {}) });
   }
   let combos = [new Map()];
   for (const field of fields) {
