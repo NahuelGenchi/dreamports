@@ -9,7 +9,7 @@
 // every run. Memory cards a recording starts from go where the emulator keeps them, as kit/ps2/card.js writes them.
 //
 // Then the program is a game of its own, in a folder of its own that it removes after, whose Dreamport in C keeps a
-// stretch of main memory where the console does (kit/ps2/c/memory.c), and `prove` compares it after every frame: a
+// stretch of main memory where the console does (kit/ps2/c/ps2.c), and `prove` compares it after every frame: a
 // stretch neither writes is the same in every frame, and the program's own code, which the Dreamport doesn't hold, is
 // found differing at once, at its first byte. And `route` searches it, saving the console's state and bringing it back
 // at every step, as Play! does with its own save states, until the flat program's square reaches a place: it gets
