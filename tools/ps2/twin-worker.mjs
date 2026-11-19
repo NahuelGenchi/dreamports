@@ -5,9 +5,12 @@
 // so the whole memory never crosses between threads. It's told what to do in messages:
 //
 //   { set: image }      the memory every call starts from, as original.mjs lays it out. Answers { done: true }.
+//   { types: name, count }
+//                       asks the module's function of that name for the compiler's word on `count` types of a twin,
+//                       its arguments' and then what it gives back (twin.mjs, wrapOf). Answers { types }.
 //   { call: name, args, changes, chunks, skip }
 //                       puts the image back with `changes`, each [address, bytes, value], calls the function with
-//                       `args`, and compares what it left with the image the original left, the image with `changes`
+//                       `args`, each as 64 bits, and compares what it left with the image the original left, the image with `changes`
 //                       and the original's `chunks` laid over it, but in the `skip` stretches of the image, each
 //                       [from, to]. Answers { gave, differs }, what it gave back and the first place that differs,
 //                       { at, ours, theirs } or null, or { stopped: why } when it stopped: on its own, because it
@@ -96,6 +99,10 @@ parentPort.on('message', message => {
     parentPort.postMessage({ done: true });
     return;
   }
+  if (message.types) {
+    parentPort.postMessage({ types: Array.from({ length: message.count }, (_, k) => exports[message.types](k) >>> 0) });
+    return;
+  }
   views();
   // the image back as it was where the last call left it otherwise, the module's own values and its stack
   for (const [from, to] of touched) memory.set(given(from, to), from);
@@ -116,8 +123,7 @@ parentPort.on('message', message => {
   touched = laid.map(([from, to]) => [from, to]);
   let gave;
   try {
-    gave = exports[message.call](...message.args);
-    gave = typeof gave === 'bigint' ? BigInt.asUintN(64, gave) : gave >>> 0;
+    gave = BigInt.asUintN(64, exports[message.call](...message.args.map(value => BigInt.asUintN(64, BigInt(value)))));
   } catch (error) {
     views();
     touched.push([0, size], [nowhere.at, nowhere.at + nowhere.bytes]);

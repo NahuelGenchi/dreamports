@@ -83,6 +83,7 @@ export async function run(args) {
   }
   const beyond = why => [...states.values()].filter(state => state.beyond === why).length;
   if (beyond('start')) console.log(`\nThe cartridge's start, ${plural(beyond('start'), 'function')}, is in no task: it runs once before any function is called and never comes back, which is the kit's to do in a Dreamport, and neither proof reaches it yet.`);
+  if (beyond('elsewhere')) console.log(`\n${plural(beyond('elsewhere'), 'function')} of the disc's other programs and of its vector units' ${beyond('elsewhere') === 1 ? 'is' : 'are'} in no task: neither proof reaches one yet.`);
   if (beyond('memory')) console.log(`\n${plural(beyond('memory'), 'function')} the game makes in its work memory ${beyond('memory') === 1 ? 'is' : 'are'} in no task: neither proof reaches one yet.`);
   console.log(`\nnpm run dp -- proofs ${version} <a task's first address> lists a task's functions, each with its twin and its proof.`);
   return 0;
@@ -173,7 +174,7 @@ function show(version, group, states) {
 function begin(version) {
   const { game, language } = versionOf(version), original = readOriginal(version);
   if (writtenIn(language) !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
-  if (!['gba', 'nes'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance and the NES, and on no other console yet (docs/CONSOLES.md).');
+  if (!['gba', 'nes', 'ps2'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES and the PlayStation 2, and on no other console yet (docs/CONSOLES.md).');
   if (!readCodeMap(version)) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
   console.log(startProofs(version)
     ? `Written: games/${version}/proof/${PROOFS}, with no proof in it yet. ${version} is made a function at a time from here on: npm run dp -- tasks ${version} opens its tasks from its code map, and npm run dp -- match and npm run dp -- twin keep each proof they find.`
