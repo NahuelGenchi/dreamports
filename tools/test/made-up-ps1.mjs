@@ -127,3 +127,79 @@ export function madeUpExe() {
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return { exe: Buffer.concat([header, text]), labels, functions };
 }
+
+// A second program, for the PlayStation's kit (ps1-kit.mjs): it sets up the screen as a game does, 320 by 240 from
+// video memory's corner, and every V-blank fills it with the background and draws a square that moves STEP pixels a
+// frame, round and round, written in the assembly the tools assemble (../ps1/assemble.mjs), with interrupts off so it
+// waits for the V-blank by watching for it. The V-blank the BIOS left marked is cleared first, so it draws its first
+// frame after the first V-blank of its own, and the console shows it a frame later, as `prove` expects.
+
+/** What the program draws, in the GPU's colours of 8 bits a channel, blue highest. */
+export const GPU = { BACKGROUND: 0x402010, SQUARE: 0x00C0F0, SQUARE_Y: 100, SIZE: 32, STEP: 2 };
+
+/** The program as the console boots it: a PS-X EXE. */
+export async function madeUpGpuExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { BACKGROUND, SQUARE, SQUARE_Y, SIZE, STEP } = GPU;
+  const made = assemble(`
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE5000000
+	sw	$t1, 0x1810($t0)
+	move	$s0, $zero
+wait:
+	lw	$t1, 0x1070($t0)
+	nop
+	andi	$t1, $t1, 1
+	beqz	$t1, wait
+	nop
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	li	$t1, ${0x02000000 | BACKGROUND}
+	sw	$t1, 0x1810($t0)
+	sw	$zero, 0x1810($t0)
+	li	$t1, ${240 << 16 | 320}
+	sw	$t1, 0x1810($t0)
+	li	$t1, ${0x60000000 | SQUARE}
+	sw	$t1, 0x1810($t0)
+	lui	$t2, ${SQUARE_Y}
+	or	$t2, $t2, $s0
+	sw	$t2, 0x1810($t0)
+	li	$t1, ${SIZE << 16 | SIZE}
+	sw	$t1, 0x1810($t0)
+	addiu	$s0, $s0, ${STEP}
+	andi	$s0, $s0, 0xFF
+	b	wait
+	nop
+`);
+  const text = Buffer.alloc(2048);
+  Buffer.from(made.sections.get('.text').bytes).copy(text);
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}

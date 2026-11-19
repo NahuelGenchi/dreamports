@@ -19,7 +19,8 @@
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
 //   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
-//                       changes those values, then calls the function at the address, odd for Thumb code, `span`
+//                       changes those values, the display's status at 0x04000004 among them, then calls the
+//                       function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
 //                       lets it run up to `limit` instructions. Answers:
 //                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow,
@@ -147,12 +148,13 @@ static size_t ranCount;
 
 // Where each register's value came from, so the check can aim a call at a branch no call took yet (twin.mjs): a
 // value read from the image, at `where`, `bytes` long, or the argument `where`, and the steps since that made the
-// register's value of it: a number added, a shift, or a mask. A load sets it, a move carries it, adding or taking away
-// a number, a shift or an and with a value from nowhere adds a step, and anything else that changes the register
-// forgets it, as does a seventh step. At
+// register's value of it: a number added, a shift, a mask, or turning it round. A load sets it, a move carries it,
+// adding or taking away a number or another register, which counts as the number it holds, a shift, an and with a
+// value from nowhere or a neg adds a step, and anything else that changes the register forgets it, as does a seventh
+// step. At
 // each comparison of the function's own, the two values and where each came from are kept.
 enum { CAME_FROM_NOWHERE = 0, CAME_FROM_MEMORY = 1, CAME_FROM_ARGUMENT = 2 };
-enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5 };
+enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5, STEP_NEG = 6 };
 #define STEPS 6
 struct origin { uint32_t kind, bytes, where, steps, step[STEPS], by[STEPS]; };
 // a step more for where a register's value came from: two numbers added in a row are one
@@ -191,6 +193,33 @@ static void carry(uint32_t op, const uint32_t* was) {
 		int rd = op & 7, rs = op >> 3 & 7, n = op >> 6 & 7;
 		from[rd] = from[rs];
 		if (n) stepped(&from[rd], STEP_ADD, (op & 0x200) ? (uint32_t) -n : (uint32_t) n);
+		handled = rd;
+	} else if ((op & 0xFC00) == 0x1800) {
+		// add or take away another register: one of the two from somewhere and the other as the number it holds now,
+		// a number less a value being the value turned round and the number added (#1570)
+		int rd = op & 7, rs = op >> 3 & 7, rn = op >> 6 & 7, sub = (op & 0x200) != 0;
+		struct origin o = { 0 };
+		if (from[rs].kind) {
+			o = from[rs];
+			stepped(&o, STEP_ADD, sub ? (uint32_t) -was[rn] : was[rn]);
+		} else if (from[rn].kind) {
+			o = from[rn];
+			if (sub) stepped(&o, STEP_NEG, 0);
+			stepped(&o, STEP_ADD, was[rs]);
+		}
+		from[rd] = o;
+		handled = rd;
+	} else if ((op & 0xFF00) == 0x4400) {
+		// add a high register: the same, as the number the other holds now
+		int rd = (op & 7) | (op >> 4 & 8), rs = op >> 3 & 15;
+		if (from[rd].kind) stepped(&from[rd], STEP_ADD, was[rs]);
+		else if (from[rs].kind) { from[rd] = from[rs]; stepped(&from[rd], STEP_ADD, was[rd]); }
+		handled = rd;
+	} else if ((op & 0xFFC0) == 0x4240) {
+		// a value turned round, 0 less it
+		int rd = op & 7, rs = op >> 3 & 7;
+		from[rd] = from[rs];
+		stepped(&from[rd], STEP_NEG, 0);
 		handled = rd;
 	} else if ((op & 0xF000) == 0x3000) {
 		int rd = op >> 8 & 7, n = op & 0xFF;
@@ -367,16 +396,36 @@ static void aligned(uint32_t address, uint32_t bytes) {
 	}
 }
 
+// A twin has no clock, so in a call the console's has none either: the display's status bits, which say whether it's
+// in the V-blank, an H-blank or the line asked for, and the line it's on, read as they were as the call started, or as
+// the check set the status, to start a call outside the V-blank (#1569). What the function writes to the status's
+// other bits it reads back.
+#define DISPSTAT_AT 0x04000004u
+#define VCOUNT_AT 0x04000006u
+static uint16_t heldStatus, heldLine;
+static uint32_t held(uint32_t address, int bytes, uint32_t value) {
+	if (!watching || address >= VCOUNT_AT + 2 || address + bytes <= DISPSTAT_AT) return value;
+	uint32_t both = (uint32_t) heldLine << 16 | heldStatus;
+	for (int i = 0; i < bytes; i++) {
+		uint32_t at = address + i, shift = 8 * i;
+		if (at < DISPSTAT_AT || at >= VCOUNT_AT + 2) continue;
+		uint32_t keep = at == DISPSTAT_AT ? 0xF8u : at == DISPSTAT_AT + 1 ? 0xFFu : 0u;
+		uint32_t byte = (value >> shift & keep) | (both >> 8 * (at - DISPSTAT_AT) & ~keep & 0xFFu);
+		value = (value & ~(0xFFu << shift)) | byte << shift;
+	}
+	return value;
+}
+
 static uint32_t load32(struct ARMCore* c, uint32_t address, int* cycles) {
 	aligned(address, 4);
 	touched(address & ~3u, 4, 0);
-	uint32_t value = memory.load32(c, address, cycles);
+	uint32_t value = held(address & ~3u, 4, memory.load32(c, address, cycles));
 	// a number the code keeps beside itself
 	if (watching && address >= CARTRIDGE) number(value);
 	return value;
 }
-static uint32_t load16(struct ARMCore* c, uint32_t address, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 0); return memory.load16(c, address, cycles); }
-static uint32_t load8(struct ARMCore* c, uint32_t address, int* cycles) { touched(address, 1, 0); return memory.load8(c, address, cycles); }
+static uint32_t load16(struct ARMCore* c, uint32_t address, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 0); return held(address & ~1u, 2, memory.load16(c, address, cycles)); }
+static uint32_t load8(struct ARMCore* c, uint32_t address, int* cycles) { touched(address, 1, 0); return held(address, 1, memory.load8(c, address, cycles)); }
 static void store32(struct ARMCore* c, uint32_t address, int32_t value, int* cycles) {
 	asked(address & ~3u, (uint32_t) value, 4);
 	aligned(address, 4);
@@ -470,8 +519,15 @@ static void call(void* state) {
 	if (onStack > 16) onStack = 16;
 	takeImage(undo);
 	memcpy(before, undo, IMAGE);
+	heldStatus = gba->memory.io[(DISPSTAT_AT - 0x04000000u) >> 1];
+	heldLine = gba->memory.io[(VCOUNT_AT - 0x04000000u) >> 1];
 	for (uint32_t changes = in32(); changes; changes--) {
 		uint32_t where = in32(), bytes = in32(), value = in32();
+		// the display's status, as the call starts: only its bits that say where the display is
+		if (where == DISPSTAT_AT && bytes == 2) {
+			heldStatus = (uint16_t) ((heldStatus & ~7u) | (value & 7u));
+			continue;
+		}
 		long at = inImage(where);
 		if (at < 0 || bytes > 4 || inImage(where + bytes - 1) < 0) continue;
 		for (uint32_t i = 0; i < bytes; i++) before[at + i] = value >> 8 * i & 0xFF;

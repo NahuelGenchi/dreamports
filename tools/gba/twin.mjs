@@ -44,7 +44,7 @@ import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { resolve } from '../read.mjs';
 import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
-import { looksLikeArm } from './functions.mjs';
+import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
 import { addressFinder, twinsIn } from './match.mjs';
@@ -70,6 +70,13 @@ const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
+// the display's status, and its bit that says the display is in the V-blank
+const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1;
+// whether some code keeps a word beside it, where words start
+const holdsWord = (bytes, word) => {
+  for (let at = 0; at + 4 <= bytes.length; at += 4) if (bytes.readUInt32LE(at) === word) return true;
+  return false;
+};
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -686,28 +693,40 @@ function throughSteps(value, steps) {
     else if (kind === 3) v = by >= 32 ? 0 : v >>> by;
     else if (kind === 4) v = ((v | 0) >> Math.min(by, 31)) >>> 0;
     else if (kind === 5) v = (v & by) >>> 0;
+    else if (kind === 6) v = (0 - v) >>> 0;
   }
   return v;
 }
 
 // The value a comparison read, as one it came from that comes out as one the branch wants: for a byte or a halfword,
-// the nearest to what it held of all it could hold, and for a word, the one that steps of adding alone give. Null when
-// none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
+// the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
+// give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-function sourceFor(held, bytes, now, steps, wanted, other) {
+export function sourceFor(held, bytes, now, steps, wanted, other) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
   if (!read) return null;
   if (bytes < 4) {
+    // through a mask, a flag among others: one bit changed first, as the nearest number can change many (#1570)
+    if (steps.some(([kind]) => kind === 5)) {
+      for (let bit = 0; bit < bits; bit++) if (wanted(throughSteps(read((held ^ 1 << bit) & mask), steps))) return ((held ^ 1 << bit) & mask) >>> 0;
+    }
     for (let d = 1; d <= mask; d++) {
       for (const value of [(held + d) & mask, (held - d) & mask]) if (wanted(throughSteps(read(value), steps))) return value >>> 0;
     }
     return null;
   }
-  if (steps.some(([kind]) => kind !== 1)) return null;
-  const added = steps.reduce((sum, [, by]) => sum + by, 0);
-  for (const want of CANDIDATES(now, other)) if (wanted(want)) return (want - added) >>> 0;
+  // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
+  if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
+  let sign = 1, added = 0;
+  for (const [kind, by] of steps) {
+    if (kind === 6) {
+      sign = -sign;
+      added = -added;
+    } else added += by;
+  }
+  for (const want of CANDIDATES(now, other)) if (wanted(want)) return (sign * (want - added)) >>> 0;
   return null;
 }
 const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, other - 2, other ^ 0x80000000, 0, 1, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, now + 1, now - 1, ~now].map(value => value >>> 0);
@@ -773,7 +792,7 @@ const write = (image, where, bytes, value) => {
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map() }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
@@ -868,10 +887,15 @@ export async function compareCalls({ original, twins, start, functions, options,
         changed.push([address, bytes, (value & mask) >>> 0]);
       }
     }
+    // a function that may read whether the display is in the V-blank, as it keeps the status's address beside its
+    // code or a call of it used the hardware, now and then started the other way: in a call the display's status stays
+    // as it started, the clock a twin doesn't have stopped on both sides (#1569)
+    if (!aim && changing && !asPlayed && status !== null && f.status && !choose.below(4)) changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
     const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
+    if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
     if (theirs.ended === 0 && changing && options.aim !== false && bytesOf && f.span) {
@@ -886,7 +910,7 @@ export async function compareCalls({ original, twins, start, functions, options,
       }
     }
     const expected = Buffer.from(mirror);
-    for (const [address, bytes, value] of changed) write(expected, inImage(address), bytes, value);
+    for (const [address, bytes, value] of changed) if (inImage(address) >= 0) write(expected, inImage(address), bytes, value);
     // each value it read, by what it held: one that was compared with something is worth setting to that, and to
     // the numbers beside it
     const holding = new Map();
@@ -1011,7 +1035,7 @@ export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
   const never = new Map([...ruledOut].filter(([where]) => where >= address && where < address + bytes.length).map(([where, way]) => [where - address, way]));
   let found;
   for (;;) {
-    found = instructionsOf(bytes, [...seeds], never);
+    found = instructionsOf(bytes, [...seeds], never, { longJumps: true });
     const before = seeds.size;
     for (let word = (4 - address % 4) % 4; word + 4 <= bytes.length; word += 4) {
       if (found.instructions.has(word) || found.instructions.has(word + 2)) continue;
@@ -1158,9 +1182,12 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   let rom = null;
   const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
-    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers: await original.registers() });
+    const registers = await original.registers();
+    // a function whose code keeps the display status's address beside it reads whether the display is in the V-blank
+    for (const f of functions) f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
+    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut });
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000) });
     } finally {
       runner.stop();
     }
@@ -1267,8 +1294,10 @@ export async function twin(game, options = {}) {
   const header = await twinsFolder(folder);
   const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
-  // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs)
+  // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs), each function's paths with the pieces
+  // it goes on into by a BL used as a long jump, which the code map keeps as functions of their own
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  for (const [address, size] of withLongJumps(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE), { isArm })) sizes.set(address, size);
   const givesBack = givesBackUsed(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE && !isArm(f.address)).map(f => ({ address: f.address, size: f.size })));
   const { ways: ruledOut } = readUnreachable(game);
   const proven = [], differing = [];

@@ -36,6 +36,7 @@ const OWN = {
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gif.c', 'ee.c', 'vu.c'], header: true },
+  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
