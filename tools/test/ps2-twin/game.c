@@ -5,6 +5,12 @@
 
 #include "ps2.h"
 
+// the game's own names for its types, which the check asks the compiler about
+typedef unsigned char u8;
+typedef float f32;
+typedef long long s64;
+enum which { FIRST, SECOND, THIRD };
+
 extern const unsigned values[];
 extern unsigned char buffer[];
 extern int (*const functions[])(int);
@@ -15,7 +21,7 @@ int sum(int a, int b) {
 }
 
 /** 0x0010009C: count bytes of value from to */
-void fill(unsigned char *to, int count, int value) {
+void fill(u8 *to, int count, int value) {
   while (count != 0) {
     *to++ = value;
     count--;
@@ -33,17 +39,17 @@ int twice(int a) {
 }
 
 /** 0x001000F0: a sum of two 64-bit numbers */
-long long wide(long long a, long long b) {
+s64 wide(s64 a, s64 b) {
   return a + b;
 }
 
 // a product as the EE's FPU makes it: cut towards zero, a float whose exponent is all ones taken as the number it is
-static float product(float a, float b) {
+static f32 product(f32 a, f32 b) {
   return ee_mul(a, b);
 }
 
 /** 0x001000F8: a product of two floats, cut towards zero */
-float scale(float a, float b) {
+f32 scale(f32 a, f32 b) {
   return product(a, b);
 }
 
@@ -68,11 +74,11 @@ int likely(int a) {
 }
 
 /** 0x00100158: a switch */
-int pick(unsigned n) {
+int pick(enum which n) {
   switch (n) {
-  case 0: return 10;
-  case 1: return 20;
-  case 2: return 30;
+  case FIRST: return 10;
+  case SECOND: return 20;
+  case THIRD: return 30;
   }
   return 0;
 }
@@ -86,6 +92,11 @@ void hardware(unsigned value) {
 /** 0x001001E8: reached through the table of functions */
 int shine(int a) {
   return 1;
+}
+
+/** 0x001001F0: ten numbers' sum, the last two on the stack */
+int ten(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j) {
+  return a + b + c + d + e + f + g + h + i + j;
 }
 
 /** 0x0010001C: the rest, one after another, and the first of the table through its pointer */
