@@ -5,6 +5,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ONE_WRITE, compareSaves, fromFrame, writesIn } from '../lib/saves.mjs';
 import { proofOf } from '../../src/lib/entries.mjs';
+// the PlayStation 2's part of this, in a file of its own, run with it
+import './ps2-held.test.mjs';
 
 const bytes = (...values) => Uint8Array.from(values);
 
