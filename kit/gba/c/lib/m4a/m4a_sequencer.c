@@ -257,8 +257,6 @@ void m4aSoundVSync(void)
     REG_DMA2CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
 }
 
-void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track);
-
 /**
  * A music player's step for a frame: as many of its ticks as its tempo makes, each running every track's commands
  * up to its next wait and moving its LFO on, then each track's volume and pitch handed to its channels.
@@ -442,8 +440,6 @@ void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track)
         volume = 0xFF;
     chan->leftVol = volume;
 }
-
-void clear_modM(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track);
 
 /**
  * A note, for as long as the clock table's entry `clock` says, with its key, velocity and added length if the
