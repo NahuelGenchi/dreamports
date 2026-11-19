@@ -29,7 +29,14 @@ for (const { module: from, name, kind } of WebAssembly.Module.imports(module)) {
     : () => { throw new Unbuilt(name); };
 }
 const { exports } = new WebAssembly.Instance(module, imports);
-const memory = new Uint8Array(exports.memory.buffer), view = new DataView(exports.memory.buffer);
+let memory = new Uint8Array(exports.memory.buffer), view = new DataView(exports.memory.buffer);
+// the views again after a call made the module's memory grow, as one through the C library's allocator does, which
+// leaves the old ones on nothing
+function fresh() {
+  if (memory.buffer === exports.memory.buffer) return;
+  memory = new Uint8Array(exports.memory.buffer);
+  view = new DataView(exports.memory.buffer);
+}
 // the cartridge, where the console has it: a twin reads its data from there
 const rom = readFileSync(workerData.copy);
 if (CARTRIDGE + rom.length > memory.length) throw new Error('The twins\' memory doesn\'t reach the end of the cartridge.');
@@ -67,6 +74,7 @@ function give(image) {
 }
 
 parentPort.on('message', message => {
+  fresh();
   if (message.set) {
     give(message.set);
     parentPort.postMessage({ done: true });
@@ -99,6 +107,7 @@ parentPort.on('message', message => {
     else parentPort.postMessage({ stopped: String(error.message ?? error) });
     return;
   }
+  fresh();
   const image = new Uint8Array(IMAGE);
   for (const { at, address, bytes } of regions) image.set(memory.subarray(address, address + bytes), at);
   parentPort.postMessage({ gave, image }, [image.buffer]);
