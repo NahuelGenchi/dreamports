@@ -21,6 +21,8 @@
     "test:rebuild": "node tools/test/rebuild.mjs",
     "test:nes-twin": "node tools/test/nes-twin.mjs",
     "test:ps1-call": "node tools/test/ps1-call.mjs",
+    "test:ps1-twin": "node tools/test/ps1-twin.mjs",
+    "test:ps1-gcc": "node tools/test/ps1-gcc.mjs",
     "test:same-memory": "node tools/test/same-memory.mjs",
     "test:function-tasks": "node tools/test/function-tasks.mjs",
     "test:libraries": "node tools/test/libraries.mjs",
