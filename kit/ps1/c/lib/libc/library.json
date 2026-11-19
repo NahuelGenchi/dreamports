@@ -1,0 +1,23 @@
+{
+  "about": "Sony's PsyQ C library for the PlayStation, libc: the C functions games link, most of them small functions that ask the BIOS's A calls for the work, and sprintf and memmove written out",
+  "functions": [
+    ["exit", 16, null],
+    ["puts", 16, null],
+    ["setjmp", 16, null],
+    ["strcat", 16, null],
+    ["strcpy", 16, null],
+    ["strlen", 16, null],
+    ["memcpy", 16, null],
+    ["memset", 16, null],
+    ["rand", 16, null],
+    ["srand", 16, null],
+    ["malloc", 16, null],
+    ["free", 16, null],
+    ["printf", 16, null],
+    ["sprintf", 2140, null],
+    ["memchr", 16, null],
+    ["memmove", 108, null],
+    ["strcmp", 16, null],
+    ["strncmp", 16, null]
+  ]
+}

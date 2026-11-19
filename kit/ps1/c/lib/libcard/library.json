@@ -1,0 +1,12 @@
+{
+  "about": "Sony's PsyQ memory card library for the PlayStation, libcard",
+  "functions": [
+    ["_card_info", 16, null],
+    ["_card_load", 16, null],
+    ["InitCARD", 16, null],
+    ["StartCARD", 16, null],
+    ["_card_clear", 56, null],
+    ["_card_write", 16, null],
+    ["_new_card", 16, null]
+  ]
+}
