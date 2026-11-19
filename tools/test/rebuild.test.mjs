@@ -75,11 +75,14 @@ test('two twins over one function are caught', () => {
   assert.deepEqual(result.outside.map(s => [s.why, s.name, s.other, s.bytes]), [['over another', 'Again', 'F08000000', 0x20]]);
 });
 
-test('a twin longer than its function runs past its end', () => {
+test('a twin the same as its function that goes on runs past its end, and one that differs stays in it', () => {
   const twins = laid();
   twins[0].bytes = Buffer.from(read(0x08000000, 0x22));
   const result = rebuildOf({ functions, read, laid: twins });
   assert.deepEqual(result.outside.map(s => [s.why, s.from, s.bytes]), [['past its end', 0x08000020, 2], ['over another', 0x08000020, 2]]);
+  twins[0].bytes = Buffer.alloc(0x40, 0x12);
+  const differing = rebuildOf({ functions, read, laid: twins });
+  assert.deepEqual([differing.outside.length, differing.differs, differing.same], [0, 0x20, 0x1E]);
 });
 
 test('a function proven by the same memory is proven another way, and its twin isn\'t laid', () => {
@@ -90,8 +93,9 @@ test('a function proven by the same memory is proven another way, and its twin i
   assert.equal(result.another, 0x10);
   assert.equal(result.complete, true);
   assert.equal(result.outside.length, 0);
-  // without its proof the same twin differs, and spills over what follows
-  assert.equal(rebuildOf({ functions, read, laid: twins }).complete, false);
+  // without its proof the same twin differs
+  const unproven = rebuildOf({ functions, read, laid: twins });
+  assert.deepEqual([unproven.complete, unproven.differs], [false, 0x10]);
 });
 
 test('what no twin covers is said by stretch, with whether a twin wasn\'t built and the cartridge\'s start', () => {

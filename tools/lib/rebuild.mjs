@@ -51,7 +51,9 @@ export const biggestFirst = list => [...list].sort((a, b) => (b.to - b.from) - (
  *               of a run, and `calls` the addresses its calls go to
  *   states      each function's state by key, as lib/proofs.mjs's stateOf gives it: { kind, twin, beyond }
  * A twin of a function proven by the same memory whose bytes aren't the original's isn't laid, as its proof was never
- * of bytes: code in assembly or ARM, which no compiler rebuilds. Answers { code, same, libraries, another, differs,
+ * of bytes: code in assembly or ARM, which no compiler rebuilds. A twin that differs in its own function is laid only
+ * over it, and one the same there that goes on past its end is laid whole and said, as the code map may hold one
+ * routine as two. Answers { code, same, libraries, another, differs,
  * padding, none, unbuilt, start, differing, missing, outside, calls, made, complete }: the code map's bytes in the
  * cartridge, and of them how many are the same, the same from a shared library, proven another way, differing,
  * padding (zeros after a twin's end that line up the next function on four bytes) and covered by no twin, with those of
@@ -88,10 +90,15 @@ export function rebuildOf({ functions, read, laid, states = new Map(), cartridge
       return;
     }
     // where the twin's own functions end: its function's, or its run's last one's, or nowhere for no function
-    const end = starts.has(twin.address) ? (twin.run ? twin.run.at(-1).address + twin.run.at(-1).size : code[starts.get(twin.address)].address + code[starts.get(twin.address)].size) - lo : at;
-    if (!starts.has(twin.address)) outside.push({ why: 'no function', name: twin.name, file: twin.file, from: twin.address, to: twin.address + twin.bytes.length - 1, bytes: twin.bytes.length });
-    else if (at + twin.bytes.length > end) outside.push({ why: 'past its end', name: twin.name, file: twin.file, from: end + lo, to: twin.address + twin.bytes.length - 1, bytes: at + twin.bytes.length - end });
-    for (let i = 0; i < twin.bytes.length; i++) {
+    const mapped = starts.has(twin.address);
+    const end = mapped ? (twin.run ? twin.run.at(-1).address + twin.run.at(-1).size : code[starts.get(twin.address)].address + code[starts.get(twin.address)].size) - lo : at;
+    // a twin that differs in its own function is laid only over it, as what it would lay past is no more than how it
+    // differs: one the same there that goes on is a routine the code map holds as two, or a wrong address
+    const own = Math.min(twin.bytes.length, end - at), ownSame = mapped && original.subarray(at, at + own).equals(twin.bytes.subarray(0, own));
+    const until = !mapped || ownSame ? twin.bytes.length : own;
+    if (!mapped) outside.push({ why: 'no function', name: twin.name, file: twin.file, from: twin.address, to: twin.address + twin.bytes.length - 1, bytes: twin.bytes.length });
+    else if (until > own) outside.push({ why: 'past its end', name: twin.name, file: twin.file, from: end + lo, to: twin.address + twin.bytes.length - 1, bytes: until - own });
+    for (let i = 0; i < until; i++) {
       const place = at + i;
       if (layers[place]++) {
         const key = `${owner[place]}:${index}`;
