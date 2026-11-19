@@ -473,8 +473,14 @@ void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint3
 // The BIOS's own code, as the emulator's runs it, a step at a time, each with the events due before it: all of it
 // from the BIOS, which has no wait states, so a step is a cycle, and what it reaches of the rest of memory.
 
+// what the game wrote to the registers and the runs haven't reached yet, and how many of its stores came after a frame's
+// end in a run the frame ended in
+enum { WAITING = 64 };
+static uint32_t waiting_at[WAITING];
+static uint16_t waiting_value[WAITING];
+static int waiting_count, late;
+
 static void (*frame_wait)(void);
-static int pending;   // a frame ended with an instruction whose work the game hasn't done yet
 
 void gba_clock_on_frame_end(void (*wait)(void)) { frame_wait = wait; }
 
@@ -482,13 +488,6 @@ void gba_clock_on_frame_end(void (*wait)(void)) { frame_wait = wait; }
 static void wait_if_ended(void) {
   if (frame_ended && frame_wait) frame_wait();
 }
-static void wait_if_pending(void) {
-  if (pending) {
-    pending = 0;
-    if (frame_wait) frame_wait();
-  }
-}
-
 // a step of the BIOS's code taking `extra` cycles beyond its own, from the BIOS
 static void bios(int extra) {
   begin();
@@ -519,7 +518,8 @@ void gba_clock_start(void) {
   dma_event = -1;
   soundcnt_high = soundcnt_x = 0;
   frame = 0;
-  frame_ended = pending = 0;
+  frame_ended = 0;
+  waiting_count = late = 0;
   // the BIOS from its reset: a branch to its start, which reads the cartridge's first instruction's top byte and,
   // with one there, goes on to the cartridge's start in ARM code
   bios(jump_time(BIOS_CODE, 0));
@@ -534,7 +534,6 @@ void gba_clock_start(void) {
 // fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs, `index` from 0.
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
   if (number != 0x0B) return -1;
-  wait_if_pending();
   // the swi itself: its fetch, and the jump to the BIOS's vector
   begin();
   wait.region = (pc >> 24) & 15;
@@ -665,11 +664,12 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// A run of the original's Thumb instructions, read from the player's copy.
+// A run of the original's Thumb instructions, read from the player's copy, whose work the game has just done. What it
+// wrote to the registers waits here until the run's store of each, which takes it at that store's own time.
 
+#ifndef GBA_CLOCK_CODE
 // the code at `at`: the player's copy in the cartridge, or what the game copied to the console's memory, where the
 // same-memory build keeps it (gba_console_memory)
-#ifndef GBA_CLOCK_CODE
 static uint16_t code16(uint32_t at) {
   if (at < 0x08000000u) return *(const volatile uint16_t *)(uintptr_t)at;
   uint32_t offset = at - 0x08000000u;
@@ -681,6 +681,42 @@ uint16_t GBA_CLOCK_CODE(uint32_t at);
 #define code16 GBA_CLOCK_CODE
 #endif
 
+
+void gba_clock_written(uint32_t address, uint16_t value) {
+  if (waiting_count == WAITING) {
+    // more than any run writes: the oldest goes on now
+    gba_clock_write16(waiting_at[0], waiting_value[0]);
+    for (int i = 1; i < WAITING; i++) {
+      waiting_at[i - 1] = waiting_at[i];
+      waiting_value[i - 1] = waiting_value[i];
+    }
+    waiting_count--;
+  }
+  waiting_at[waiting_count] = address & ~1u;
+  waiting_value[waiting_count++] = value;
+}
+
+// what the game wrote to the registers a store of `bytes` at `address` reaches: WAITCNT's value, which changes the
+// store's own waits, alone (`waitcnt`), or the rest, at the time the store started
+static int take_written(uint32_t address, uint32_t bytes, int waitcnt) {
+  int value = -1, kept = 0;
+  for (int i = 0; i < waiting_count; i++) {
+    int reached = waiting_at[i] >= (address & ~1u) && waiting_at[i] < address + bytes;
+    int is_waitcnt = waiting_at[i] == 0x04000204;
+    if (reached && waitcnt && is_waitcnt) value = waiting_value[i];
+    else if (reached && !waitcnt && !is_waitcnt) gba_clock_write16(waiting_at[i], waiting_value[i]);
+    else {
+      waiting_at[kept] = waiting_at[i];
+      waiting_value[kept++] = waiting_value[i];
+      continue;
+    }
+  }
+  waiting_count = kept;
+  return value;
+}
+
+int gba_clock_late(void) { return late; }
+
 // whether a Thumb instruction writes memory: a store, a push, a block store
 static int thumb_writes(uint16_t op) {
   if ((op & 0xF000) == 0x5000) return ((op >> 9) & 7) <= 2;
@@ -689,8 +725,7 @@ static int thumb_writes(uint16_t op) {
 }
 
 void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
-  int k = 0;
-  wait_if_pending();
+  int k = 0, ended = 0;
   for (uint32_t pc = from; pc <= to; pc += 2) {
     uint16_t op = code16(pc);
     gba_access a[1] = { { 0, 0, 0, 0 } };
@@ -712,9 +747,8 @@ void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at
       int writes, bytes;
       if ((op & 0xF000) == 0x5000) {
         static const int BYTES[8] = { 4, 2, 1, 1, 4, 2, 1, 2 };
-        static const int WRITES[8] = { 1, 1, 1, 0, 0, 0, 0, 0 };
         bytes = BYTES[(op >> 9) & 7];
-        writes = WRITES[(op >> 9) & 7];
+        writes = ((op >> 9) & 7) <= 2;
       } else if ((op & 0xE000) == 0x6000) {
         bytes = op & 0x1000 ? 1 : 4;
         writes = !(op & 0x0800);
@@ -723,23 +757,30 @@ void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at
         writes = !(op & 0x0800);
       }
       a[0] = (gba_access){ k < count ? at[k++] : 0, (uint32_t)bytes, (uint32_t)writes, 0 };
-      if (writes && (a[0].address & ~1u) == 0x04000204 && k < count) a[0].value = at[k++];   // WAITCNT's new value
       n = 1;
     } else if ((op & 0xFFC0) == 0x4340) value = k < count ? at[k++] : 0;   // mul: what it multiplies by
-    gba_clock_thumb(pc, op, pc == to ? next : pc + 2, value, a, n);
-    if (frame_ended) {
-      // the frame ends after this instruction's work: now, unless its work is the store the game does after the run
-      if (pc == to && thumb_writes(op)) pending = 1;
-      else if (frame_wait) frame_wait();
+    // a store to the registers takes what the game wrote there as it runs, WAITCNT's within the instruction
+    int registers = n && a[0].writes && (a[0].address >> 24) == 4;
+    uint32_t reach = a[0].bytes & 0x100 ? 4 * (a[0].bytes & 0xFF) : a[0].bytes;
+    if (registers) {
+      int waitcnt = take_written(a[0].address, reach, 1);
+      if (waitcnt >= 0) a[0].value = (uint32_t)waitcnt;
     }
+    gba_clock_thumb(pc, op, pc == to ? next : pc + 2, value, a, n);
+    if (registers) take_written(a[0].address, reach, 0);
+    if (frame_ended) ended++;
+    // a store to the work memory after the frame's end, in a run the game did whole before the call, is one the
+    // Dreamport's frame has and the console's doesn't: the run should end there
+    else if (ended && thumb_writes(op) && !((op & 0xF000) == 0x9000 || (op & 0xF600) == 0xB400) && n && (a[0].address >> 24) != 4) late++;
   }
+  while (ended-- > 0)
+    if (frame_wait) frame_wait();
 }
 
 static uint32_t code32(uint32_t at) { return (uint32_t)code16(at) | (uint32_t)code16(at + 2) << 16; }
 
 void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
-  int k = 0;
-  wait_if_pending();
+  int k = 0, ended = 0;
   for (uint32_t pc = from; pc <= to; pc += 4) {
     uint32_t op = code32(pc);
     gba_access a[1] = { { 0, 0, 0, 0 } };
@@ -751,9 +792,8 @@ void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t
       n = 1;
     }
     gba_clock_arm(pc, op, pc == to ? next : pc + 4, 0, 0, a, n);
-    if (frame_ended) {
-      if (pc == to && n && a[0].writes) pending = 1;
-      else if (frame_wait) frame_wait();
-    }
+    if (frame_ended) ended++;
   }
+  while (ended-- > 0)
+    if (frame_wait) frame_wait();
 }

@@ -42,7 +42,7 @@ void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint3
  *  its store runs, for the game to do that work then. Gives 0, or -1 for a call the clock doesn't know. */
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index));
 
-/** A register the instruction being timed writes, as it runs: the DMA channels', the timers', the sound's and WAITCNT. */
+/** A register the instruction timed last writes, as it runs: the DMA channels', the timers', the sound's and WAITCNT. */
 void gba_clock_write16(uint32_t address, uint16_t value);
 
 /** The frame the clock is in, from 0 at power-on. */
@@ -53,19 +53,27 @@ uint32_t gba_clock_frame(void);
 int gba_clock_frame_ended(void);
 
 // ---------------------------------------------------------------------------------------------------------------
-// A game's C says which of the original's instructions it has done, a run at a time, and the clock reads them from the
-// cartridge where the console has it (gba_console_memory(1)). When a frame ends inside a run, gba_clock_wait, which
-// the game gives, ends the Dreamport's frame there (kit_wait_frame, kit/c/pause.c).
+// A game's C does the work of a run of the original's instructions, then says which they were, and the clock reads them
+// from the cartridge where the console has it (gba_console_memory(1)), or from memory for code the game copied there.
+// When a frame ends inside a run, gba_clock_wait, which the game gives, ends the Dreamport's frame after it
+// (kit_wait_frame, kit/c/pause.c): a run should end with the last store to the work memory that a frame's end can
+// come before, which gba_clock_late() counts the misses of.
 
 /** What ends the Dreamport's frame: kit_wait_frame for a game that waits from inside a function. */
 void gba_clock_on_frame_end(void (*wait)(void));
 
-/** The Thumb instructions from `from` to `to`, one after another, the last going on to `next`. Each load or store
- *  among them that doesn't read the program counter or the stack takes the next address of `at` (`count` of them),
- *  and a mul takes the next as its first register's value. The run's only write to memory, if any, is its last
- *  instruction's, which the game does after this call: a frame that ends before then ends here, and one that ends
- *  with it ends as the next run starts. */
+/** A register the game wrote, which waits for the store of it in the next runs: the DMA channels', the timers', the
+ *  sound's and WAITCNT, whose time the store's decides. */
+void gba_clock_written(uint32_t address, uint16_t value);
+
+/** The Thumb instructions from `from` to `to`, one after another, the last going on to `next` (odd to stay in Thumb
+ *  code), whose work the game has done. Each load or store among them that doesn't read the program counter or the
+ *  stack takes the next address of `at` (`count` of them), and a mul takes the next as its first register's value. */
 void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count);
+
+/** How many stores to the work memory came after a frame's end inside the run it ended in: what the Dreamport's frame
+ *  has and the console's doesn't. */
+int gba_clock_late(void);
 
 /** The same for ARM code, read a word at a time, all of it run always, as a cartridge's start is. */
 void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count);

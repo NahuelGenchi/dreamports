@@ -110,15 +110,13 @@ int main(int argc, char** argv) {
 			gba_clock_swi(pc, op & 0xFF, r[0], r[1], r[2], NULL);
 			continue;
 		}
-		// what the clock can't read from the instruction: the addresses it reached but through the pool or the stack,
-		// WAITCNT's new value after its address, and what a mul multiplies by
+		// as a game does: the instruction's work, which wrote these registers, then what the clock can't read from it,
+		// the addresses it reached but through the pool or the stack, and what a mul multiplies by
+		for (uint32_t i = 0; i < writeCount; i++) gba_clock_written(writes[i][0], (uint16_t) writes[i][1]);
 		uint32_t at[MOST + 2]; int n = 0;
 		if (thumb) {
 			int pool = (op & 0xF800) == 0x4800, stack = (op & 0xF000) == 0x9000 || (op & 0xF600) == 0xB400;
-			if (!pool && !stack) for (uint32_t i = 0; i < reachedCount; i++) {
-				at[n++] = reached[i];
-				if ((reached[i] & ~1u) == 0x04000204 && writeCount) at[n++] = writes[0][1];
-			}
+			if (!pool && !stack) for (uint32_t i = 0; i < reachedCount; i++) at[n++] = reached[i];
 			if ((op & 0xFFC0) == 0x4340) at[n++] = r[op & 7];
 			gba_clock_run(pc, pc, next, at, n);
 		} else {
@@ -127,7 +125,6 @@ int main(int argc, char** argv) {
 		}
 		compared++;
 		if (gba_clock_started() != start && !differ++) { firstPc = pc; firstOp = op; firstClock = gba_clock_started(); firstEmulator = start; }
-		for (uint32_t i = 0; i < writeCount; i++) gba_clock_write16(writes[i][0], (uint16_t) writes[i][1]);
 	}
 	int framesDiffer = 0;
 	for (int f = 0; f < emulatorFrames; f++) {
