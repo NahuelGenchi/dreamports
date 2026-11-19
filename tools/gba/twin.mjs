@@ -444,14 +444,17 @@ const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 
  *   root: the folder the C is in, and includes: the folders it includes from, besides the kit's
  *   files: every .c file of the version, where what a file names and doesn't define is looked for
  *   console: whose kit it's built on, and whose names its comments use
- *   layout: { base, memory, code }, where the module's own values start, how many bytes of memory it has, or null for
- *     as many as the linker says, and how the original keeps a function's address: another console's (../ps1/twin.mjs)
+ *   layout: { base, memory, code, own }, where the module's own values start, how many bytes of memory it has, or null
+ *     for as many as the linker says, how the original keeps a function's address: another console's (../ps1/twin.mjs),
+ *     and the address below which a function's address is the module's own, 0x02000000 unless said
+ *   signature(text, name): what a twin takes and gives, as signatureOf says it, and wrap(call): the line of C that
+ *     calls it from the check, for a console whose calls carry more than whole words (../ps2/twin.mjs)
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
  *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
  *     twinsIn takes it, or null (../lib/twins.mjs)
  * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
   const source = treeOf(root), elsewhere = {}, placed = new Map();
@@ -481,7 +484,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
-          const signature = signatureOf(text, twin.name);
+          const signature = signatureFor(text, twin.name);
           if (signature) calls.push({ ...twin, ...signature, call: `${CALL}${n}_${twin.name}` });
           else unknown.push(twin.name);
         }
@@ -492,6 +495,10 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
           const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
           for (const { name: twin, params, returns, call } of calls) {
+            if (wrap) {
+              lines.push(wrap({ name: twin, params, returns, call }));
+              continue;
+            }
             const taken = params.map((_, i) => `unsigned a${i}`).join(', ') || 'void', passed = params.map((_, i) => `a${i}`).join(', ');
             lines.push(returns ? `unsigned ${call}(${taken}) { return (unsigned)${twin}(${passed}); }` : `unsigned ${call}(${taken}) { ${twin}(${passed}); return 0; }`);
           }
@@ -561,7 +568,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       `void *${CODE}(unsigned address) {`,
       '  void *twin;',
       // a function of the module's own, with no address in the original, is kept as the module numbers it
-      '  if (address < 0x02000000u) return (void *)address;',
+      `  if (address < 0x${(layout.own ?? 0x02000000).toString(16).toUpperCase()}u) return (void *)address;`,
       '  address &= ~1u;',
       ...linked.map(each => `  if ((twin = ${CODE}_${each.n}(address))) return twin;`),
       `  return ${NO_CODE}(address);`,
