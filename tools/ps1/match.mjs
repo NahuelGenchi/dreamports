@@ -18,7 +18,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { LOCAL, REPO } from '../lib/paths.mjs';
-import { hex, readCodeMap } from '../lib/proof-files.mjs';
+import { hex, inBootProgram, readCodeMap } from '../lib/proof-files.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { versionTwins } from '../lib/twins.mjs';
@@ -326,31 +326,48 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
   return { functions, unknown: [...unknown] };
 }
 
+// what match needs to know of the PlayStation: how its games say they were built, how a file is built and compared,
+// where the program a disc boots is and where it points $gp, and how its code names an address
+const PLAYSTATION = {
+  console: 'ps1', place: 'the PlayStation', compiler: 'GCC', label: LABEL, labelExample: 'D_800D8408', readCompiler, wayAt, wayText, matchFile,
+  programOf: async path => {
+    const exe = await ps1Program(path);
+    return { program: exeOf(exe), gp: gpOf(exe) };
+  },
+  resolve: (game, codeMap, what) => ps1Resolve(game, codeMap, what).address,
+};
+
 /** match on a PlayStation game: as ../match.mjs does on the Game Boy Advance, with `log` for what it says. */
-export async function matchGame({ game, what = null, more = null, whole = false, original, log = console.log }) {
-  if (whole) throw new Error('--whole rebuilds a Game Boy Advance cartridge: on the PlayStation, match compares a function at a time for now.');
+export const matchGame = options => matchGameOn(PLAYSTATION, options);
+
+/**
+ * match on a game of a console whose programs come off a disc, as the PlayStation and the PlayStation 2
+ * (../ps2/match.mjs): `on` is what match needs to know of the console, as PLAYSTATION above has it.
+ */
+export async function matchGameOn(on, { game, what = null, more = null, whole = false, original, log = console.log }) {
+  if (whole) throw new Error(`--whole rebuilds a Game Boy Advance cartridge: on ${on.place}, match compares a function at a time for now.`);
   const { game: base, language } = versionOf(game);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
-  const compiler = readCompiler(original, `games/${base}/proof/original.json`);
+  const compiler = on.readCompiler(original, `games/${base}/proof/original.json`);
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${base}/proof/ has no code map yet: npm run dp -- codemap ${base} makes one.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`match compares with ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  const exe = await ps1Program(copy.path), program = exeOf(exe), gp = gpOf(exe);
+  const { program, gp } = await on.programOf(copy.path);
 
-  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   const { folder, shifts, files, twinsOf, twins, named, libraries, givenOf } = versionTwins(game, more ? resolvePath(more) : null);
   const libraryFiles = new Set(libraries.flatMap(library => library.files));
   // a name the version gives an address: its own, a twin's in another file, or a label's
-  const addressOf = name => named.get(name) ?? (twins.get(name)?.size === 1 ? [...twins.get(name)][0] : null) ?? (LABEL.test(name) ? addressIn(name, shifts, 'ps1') : null);
+  const addressOf = name => named.get(name) ?? (twins.get(name)?.size === 1 ? [...twins.get(name)][0] : null) ?? (on.label.test(name) ? addressIn(name, shifts, on.console) : null);
 
   let chosen = files, only = null;
   if (what) {
     const file = [resolvePath(what), join(folder, what)].find(path => path.endsWith('.c') && existsSync(path));
     if (file) chosen = [file];
     else {
-      const address = twins.get(what)?.size === 1 ? [...twins.get(what)][0] : ps1Resolve(game, codeMap, what).address;
+      const address = twins.get(what)?.size === 1 ? [...twins.get(what)][0] : on.resolve(game, codeMap, what);
       chosen = files.filter(path => twinsOf.get(path).some(twin => twin.address === address));
       if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${what}: the comment above it names the address, as in /** 0x${hex(address)}: what it does */.`);
       only = address;
@@ -367,28 +384,28 @@ export async function matchGame({ game, what = null, more = null, whole = false,
     const inside = !relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file));
     const where = inside ? inRepo(file) : file;
     if (libraryFiles.has(file)) {
-      log(`${where}\n  Not compared: a shared library's file, which match builds on the Game Boy Advance and not yet on the PlayStation.`);
+      log(`${where}\n  Not compared: a shared library's file, which match builds on the Game Boy Advance and not yet on ${on.place}.`);
       continue;
     }
     // a file is built the way the original's code its twins are of was built: the game's, or a stretch's
-    const ways = new Map(twinsOf.get(file).filter(twin => twin.address !== null).map(twin => wayAt(compiler, twin.address)).map(way => [wayText(way), way]));
+    const ways = new Map(twinsOf.get(file).filter(twin => twin.address !== null).map(twin => on.wayAt(compiler, twin.address)).map(way => [on.wayText(way), way]));
     if (ways.size > 1) {
       log(`${where}\n  Not compared: its twins are of code the original built two ways, ${[...ways.keys()].join(' and ')}, as original.json's compiler says, and a file is built one way. Put each way's twins in a file of its own.`);
       failed.push(`${where}: its twins are of code built two ways`);
       continue;
     }
-    const result = await matchFile({
-      file, compiler: ways.size === 1 ? [...ways.values()][0] : wayAt(compiler, -1), shifts, addressOf, program, gp, given: givenOf(file),
+    const result = await on.matchFile({
+      file, compiler: ways.size === 1 ? [...ways.values()][0] : on.wayAt(compiler, -1), shifts, addressOf, program, gp, given: givenOf(file),
       root: inside ? folder : dirname(file),
       includes: [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
       work: join(LOCAL, 'match', game, inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', basename(file, '.c'))),
       sizeOf: address => sizes.get(address) ?? null,
-      runOf: (address, through) => runIn(codeMap.functions, address, through),
+      runOf: (address, through) => runIn(codeMap.functions.filter(inBootProgram), address, through),
       log,
     });
     if (result.error) {
       const said = result.error.split('\n');
-      if (chosen.length === 1) log(`${where}\n  Didn't build with GCC: ${said.join('\n  ')}`);
+      if (chosen.length === 1) log(`${where}\n  Didn't build with ${on.compiler}: ${said.join('\n  ')}`);
       failed.push(`${where}: ${said.find(line => /error/.test(line)) ?? said[0]}`);
       continue;
     }
@@ -431,7 +448,7 @@ export async function matchGame({ game, what = null, more = null, whole = false,
       if (only !== null) kept = listing(game, f, original.name);
     }
   }
-  if (unknown.size) log(`No address for ${[...unknown].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_800D8408 (tools/README.md, Matching the original's bytes).`);
+  if (unknown.size) log(`No address for ${[...unknown].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as ${on.labelExample} (tools/README.md, Matching the original's bytes).`);
   if (failed.length && chosen.length > 1) {
     log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build with the original's compiler, which builds only C written for it. The first is ${failed[0]}. Name a file to see all the compiler said of it.`);
   }
