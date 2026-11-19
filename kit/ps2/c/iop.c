@@ -1,6 +1,7 @@
 // The PlayStation 2's second processor, the IOP, as a Dreamport's twins of a game's own IOP modules reach it (ps2.h):
 // its memory, and its hardware as the modules write it, the sound chip's registers (spu2.c) and the two DMA channels that
-// move sound to and from it, 4 for core 0 and 7 for core 1, as the console's emulator, Play!, has them.
+// move sound to and from it, 4 for core 0 and 7 for core 1, and the SIO2, which the pads are on (pad.c), with its two, 11
+// and 12, as the console's emulator, Play!, has them.
 //
 // And the console's time as the emulator keeps it, which says when the sound chip mixes each block of its samples. The
 // emulator runs the console in slices of 4,800 of the EE's clock ticks, the IOP 600 of its own in each, and at the top
@@ -30,7 +31,8 @@ uint8_t *iop_memory(void) {
 // DMA to the sound chip
 
 typedef struct { uint32_t madr, bcr, chcr; } channel;
-static channel channels[2];
+// the sound chip's two, then the SIO2's, 11 in and 12 out
+static channel channels[4];
 static uint32_t dma_ended;
 
 // a channel's transfer goes on as far as its core takes it, as the emulator's does each time it's started or picked up
@@ -38,7 +40,8 @@ static void resume(int n) {
   channel *c = &channels[n];
   if (!(c->chcr & 0x01000000)) return;
   uint32_t size = (c->bcr & 0xFFFF) * 4, blocks = c->bcr >> 16;
-  uint32_t taken = spu2_dma(n, iop_memory() + (c->madr & 0x1FFFFFFF & (IOP_RAM_SIZE - 1)), size, blocks, c->chcr & 1);
+  uint8_t *data = iop_memory() + (c->madr & 0x1FFFFFFF & (IOP_RAM_SIZE - 1));
+  uint32_t taken = n < 2 ? spu2_dma(n, data, size, blocks, c->chcr & 1) : n == 2 ? sio2_dma_in(data, size, blocks) : sio2_dma_out(data, size, blocks);
   blocks = (blocks - taken) & 0xFFFF;
   c->bcr = (c->bcr & 0xFFFF) | blocks << 16;
   c->madr += size * taken;
@@ -67,8 +70,11 @@ static uint32_t channel_read(int n, uint32_t offset) {
 // ----------------------------------------------------------------------------------------------------------------
 // The IOP's addresses
 
+static int is_pads(uint32_t at) { return at >= 0x1F808200 && at <= 0x1F8082FF; }
 static int is_sound(uint32_t at) { return (at >= 0x1F801C00 && at <= 0x1F801DFF) || (at >= 0x1F900000 && at <= 0x1F90FFFF); }
-static int channel_of(uint32_t at) { return at >= 0x1F8010C0 && at < 0x1F8010D0 ? 0 : at >= 0x1F801500 && at < 0x1F801510 ? 1 : -1; }
+static int channel_of(uint32_t at) {
+  return at >= 0x1F8010C0 && at < 0x1F8010D0 ? 0 : at >= 0x1F801500 && at < 0x1F801510 ? 1 : at >= 0x1F801540 && at < 0x1F801550 ? 2 : at >= 0x1F801550 && at < 0x1F801560 ? 3 : -1;
+}
 
 static void hardware_write(uint32_t address, uint32_t value, int bytes) {
   uint32_t at = address & 0x1FFFFFFF;
@@ -78,6 +84,10 @@ static void hardware_write(uint32_t address, uint32_t value, int bytes) {
   }
   if (is_sound(at)) {
     spu2_write(at, value);
+    return;
+  }
+  if (is_pads(at)) {
+    sio2_write(at, value);
     return;
   }
   int n = channel_of(at);
@@ -90,6 +100,7 @@ static uint32_t hardware_read(uint32_t address, int bytes) {
     return value;
   }
   if (is_sound(at)) return spu2_read(at);
+  if (is_pads(at)) return sio2_read(at);
   int n = channel_of(at);
   return n >= 0 ? channel_read(n, at & 0xF) : 0;
 }
