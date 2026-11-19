@@ -2,11 +2,19 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { looksLikeAnyCopy, readAnyCopy } from '../lib/read-copy.mjs';
+import { deflateRawSync } from 'node:zlib';
+import { looksLikeAnyCopy, openDisc, readAnyCopy, readDiscFile } from '../lib/read-copy.mjs';
+import { openDisc as openDiscOf } from '../../kit/copy/disc.js';
+import { readFileOn, whatDisc } from '../../kit/copy/iso9660.js';
+import { blobSource } from '../../kit/copy/source.js';
+import { lzmaDecode } from '../../kit/copy/lzma.js';
+import { inflateRaw } from '../../kit/copy/inflate.js';
+import { flacDecode } from '../../kit/copy/flac.js';
+import { cdFrames, flacFrames, lzmaLiterals, madeUpProgram, madeUpPs2Disc, madeUpSound, toRaw, writeChd, writeChdV4, writeCso } from './made-up-disc.mjs';
 
 const folder = mkdtempSync(join(tmpdir(), 'dp-copies-'));
 after(() => rmSync(folder, { recursive: true, force: true }));
@@ -178,4 +186,102 @@ test('a Game Boy Advance game is known by its header, whatever its file is calle
 
 test('a .cue whose track has gone is no copy, and stops nothing', async () => {
   assert.equal(await readAnyCopy(write('gone.cue', 'FILE "not-here.bin" BINARY\n  TRACK 01 MODE1/2352\n')), null);
+});
+
+// --- discs in every kind of file they come in (kit/copy/) --------------------------------------------------------------
+
+const hash = bytes => createHash('sha1').update(bytes).digest('hex');
+const madeUp = {
+  cd: madeUpPs2Disc({ sectors: 300, files: { 'DATA.BIN': Buffer.alloc(100000, 7) } }),
+  dvd: madeUpPs2Disc({ dvd: true, sectors: 600, files: { 'DATA.BIN': Buffer.alloc(300000, 9), 'NOISE.BIN': madeUpProgram(40000, 5) } }),
+};
+const raw = toRaw(madeUp.cd), sound = madeUpSound(40);
+
+test('a disc is the same disc in every kind of file it comes in', async () => {
+  write('cd.iso', madeUp.cd);
+  write('cd.bin', raw);
+  write('sound.bin', sound);
+  write('cd.cue', 'FILE "cd.bin" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\nFILE "sound.bin" BINARY\n  TRACK 02 AUDIO\n    INDEX 00 00:00:00\n    INDEX 01 00:00:10\n');
+  const cd = cdFrames([{ type: 'MODE2_RAW', sectors: raw }, { type: 'AUDIO', sectors: sound, pregap: 10 }]);
+  const cdChd = writeChd(cd.data, { metadata: cd.metadata });
+  assert.deepEqual(Object.keys(cdChd.used).sort(), ['cdfl', 'cdlz', 'cdzl', 'none'], 'every CD codec is tried');
+  write('cd.chd', cdChd);
+  write('dvd.iso', madeUp.dvd);
+  const dvdChd = writeChd(madeUp.dvd, { hunkBytes: 8192, unitBytes: 2048, codecs: ['lzma', 'zlib', 'huff', 'flac'], metadata: [['DVD ', '']] });
+  assert.deepEqual(Object.keys(dvdChd.used).sort(), ['flac', 'huff', 'lzma', 'none', 'self', 'zlib'], 'every codec is tried');
+  write('dvd.chd', dvdChd);
+  write('old.chd', writeChdV4(madeUp.dvd, { metadata: [['DVD ', '']] }));
+  write('dvd.cso', writeCso(madeUp.dvd));
+  write('dvd2.cso', writeCso(madeUp.dvd, { version: 2, align: 2 }));
+  write('dvd.zso', writeCso(madeUp.dvd, { format: 'zso' }));
+
+  const kinds = {
+    'cd.iso': ['iso', 'cd', hash(madeUp.cd)], 'cd.bin': ['bin', 'cd', hash(raw)],
+    'cd.cue': ['cue', 'cd', hash(Buffer.concat([raw, sound])), [hash(raw), hash(sound)]], 'cd.chd': ['chd', 'cd', hash(Buffer.concat([raw, sound])), [hash(raw), hash(sound)]],
+    'dvd.iso': ['iso', 'dvd', hash(madeUp.dvd)], 'dvd.chd': ['chd', 'dvd', hash(madeUp.dvd)], 'old.chd': ['chd', 'dvd', hash(madeUp.dvd)],
+    'dvd.cso': ['cso', 'dvd', hash(madeUp.dvd)], 'dvd2.cso': ['cso', 'dvd', hash(madeUp.dvd)], 'dvd.zso': ['zso', 'dvd', hash(madeUp.dvd)],
+  };
+  for (const [name, [format, kind, sha1, tracks]] of Object.entries(kinds)) {
+    const path = join(folder, name), copy = await readAnyCopy(path);
+    assert.deepEqual([copy.console, copy.code, copy.format, copy.sha1, copy.tracks], ['ps2', 'SLUS_999.99', format, sha1, tracks], name);
+    assert.deepEqual(await readDiscFile(path, 'SLUS_999.99'), madeUpProgram(), name);
+    const disc = await openDisc(path);
+    try {
+      assert.equal(disc.kind, kind, name);
+      const image = kind === 'cd' ? madeUp.cd : madeUp.dvd;
+      assert.deepEqual(Buffer.from(await disc.data(24, 3)), image.subarray(24 * 2048, 27 * 2048), name);
+      // a CD's sectors as its drive reads them, sync, header, EDC and ECC made again where the file left them out
+      if (kind === 'cd') assert.deepEqual(Buffer.from(await disc.read(16, 4)), raw.subarray(16 * 2352, 20 * 2352), name);
+      if (format === 'cue' || format === 'chd' && kind === 'cd') {
+        assert.deepEqual(disc.tracks, [{ number: 1, type: 'mode2', first: 0, pregap: 0, sectors: 300 }, { number: 2, type: 'audio', first: 310, pregap: 10, sectors: 30 }], name);
+        assert.deepEqual(Buffer.from(await disc.read(300, 40)), sound, `${name}'s sound, the right way round`);
+      }
+    } finally {
+      await disc.close();
+    }
+  }
+});
+
+test('the page reads a disc as the tools do, from the File the player chose', async () => {
+  const blob = new Blob([writeCso(madeUp.dvd, { version: 2 })]);
+  const disc = await openDiscOf(blobSource(blob, 'game.cso'));
+  assert.equal(disc.format, 'cso');
+  assert.deepEqual(await whatDisc(disc), { console: 'ps2', title: 'MADE UP DISC', code: 'SLUS_999.99' });
+  assert.deepEqual(Buffer.from(await readFileOn(disc, 'NOISE.BIN')), madeUpProgram(40000, 5));
+});
+
+test("the codecs undo what their own encoders made, and deflate leaves what's after its end", () => {
+  const bytes = Buffer.concat([madeUpProgram(5000, 3), Buffer.alloc(3000, 0x41)]);
+  assert.deepEqual(Buffer.from(lzmaDecode(lzmaLiterals(bytes), bytes.length)), bytes);
+  assert.deepEqual(Buffer.from(inflateRaw(Buffer.concat([deflateRawSync(bytes), Buffer.alloc(9, 0xAA)]), bytes.length)), bytes);
+  const samples = madeUpSound(4), out = new Uint8Array(samples.length);
+  flacDecode(flacFrames(samples, { block: 300 }), samples.length / 4, out);
+  assert.deepEqual(Buffer.from(out), samples);
+});
+
+test('a disc of several gigabytes is read a few sectors at a time, its far sectors right', async () => {
+  // a made-up DVD of 5 GB whose last file is past 4 GB in, the file system keeping its gaps as nothing
+  const far = Buffer.from('FAR AWAY '.repeat(500));
+  const path = join(folder, 'big.iso');
+  madeUpPs2Disc({ dvd: true, sectors: 2_500_000, files: { 'FAR.BIN': far }, at: { 'FAR.BIN': 2_400_000 }, path });
+  const before = process.memoryUsage().rss;
+  const disc = await openDisc(path);
+  try {
+    assert.equal(disc.sectors, 2_500_000);
+    assert.equal(disc.layerBreak, 0);
+    assert.deepEqual(Buffer.from(await readFileOn(disc, 'FAR.BIN')), far);
+  } finally {
+    await disc.close();
+  }
+  // and as the page reads the File the player chose, here a stand-in for one, as Node's own openAsBlob has a file
+  // past 4 GB as smaller than it is
+  const handle = openSync(path, 'r');
+  try {
+    const file = { size: statSync(path).size, slice: (from, to) => ({ arrayBuffer: async () => { const bytes = Buffer.alloc(to - from); readSync(handle, bytes, 0, bytes.length, from); return bytes.buffer; } }) };
+    const blobDisc = await openDiscOf(blobSource(file, 'big.iso'));
+    assert.deepEqual(Buffer.from(await readFileOn(blobDisc, 'FAR.BIN')), far);
+  } finally {
+    closeSync(handle);
+  }
+  assert.ok(process.memoryUsage().rss - before < 64 * 1024 * 1024, 'reading it takes little memory');
 });
