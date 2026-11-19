@@ -254,7 +254,7 @@ writeFileSync(played, withPlay(readFileSync(copy), readFileSync(join(work, 'buil
 // 150 frames of someone's play, a bit for each button held: nothing, then A, which makes the stage, then B for a while
 const held = frame => (frame >= 20 && frame < 30 ? 1 : 0) | (frame >= 60 && frame < 90 ? 2 : 0);
 const plays = [{ name: 'made-up-play', buttons: Array.from({ length: 150 }, (_, frame) => held(frame)), sets: [] }];
-const addresses = [...Object.values(FUNCTIONS), PLAYED.Shine];
+const addresses = [...Object.values(FUNCTIONS), PLAYED.Shine, PLAYED.Glow];
 const taking = async name => {
   const folder = join(work, name);
   const taken = await takeMemories({ open: () => openCaller(played), addresses, plays, folder, key: memoriesKey({ sha1: 'made up', addresses, plays }) });
@@ -262,14 +262,14 @@ const taking = async name => {
 };
 const kept = await taking('memories');
 const own = kept.memories.of(PLAYED.Shine);
-check(kept.taken.functions === 1 && own.length >= 2 && own.length <= 4, `the play gives Shine ${own.length} memories of its own, and the functions it never ran none`);
+check(kept.taken.functions === 2 && own.length >= 2 && own.length <= 4 && kept.memories.of(PLAYED.Glow).length >= 2, `the play gives Shine ${own.length} memories of its own, Glow some too, and the functions it never ran none`);
 check(own.every(memory => memory.frame >= 20 && memory.image().readUInt32LE(0x40060) === 0x02000400 && [1, 7].includes(memory.arg(0))), 'each from a frame after the stage was made, with the stage in it and what Shine was given');
 
 // how long Shine is in the cartridge, as a game's code map says it, so the check can say which of its paths ran
-const shineLength = play.functions.find(f => f.name === 'Shine').length;
+const shineLength = play.functions.find(f => f.name === 'Shine').length, glowLength = play.functions.find(f => f.name === 'Glow').length;
 const second = await openOriginal(played, 2);
 const shining = async (file, options = {}, memories = null) => {
-  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : null), options: { calls: CALLS, seconds: 1, ...options } });
+  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : address === PLAYED.Glow ? glowLength : null), options: { calls: CALLS, seconds: 1, ...options } });
   return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
 };
 // play.c as it is, or with one thing replaced, in a folder of its own
@@ -291,6 +291,9 @@ try {
   const warm = await shining(playFile(), {}, kept.memories);
   check(warm.by.Shine?.kind === 'same' && warm.by.Shine.compared === CALLS, `from its memories of play it leaves the same memory over ${CALLS} calls${warm.by.Shine?.kind === 'same' ? '' : `: ${warm.by.Shine?.line ?? warm.error}`}`);
   check(warm.by.Shine?.whole === true && /took every path of the original's/.test(warm.by.Shine.line), `and those calls took every path of the original's, which a proof by the same memory asks from memories of play too: ${warm.by.Shine?.line}`);
+  // Glow runs code play put in the fast work memory, which loads a constant from beside itself: that's the code's, and
+  // the check never changes it, as it would a value the function read (#1518)
+  check(warm.by.Glow?.kind === 'same' && warm.by.Glow.compared === CALLS, `a function that runs code in the work memory leaves the same memory over ${CALLS} calls, the constant that code keeps beside itself left as it is${warm.by.Glow?.kind === 'same' ? '' : `: ${warm.by.Glow?.line ?? warm.error}`}`);
   const one = await shining(playFile(), { calls: 1 }, kept.memories);
   check(one.by.Shine?.kind === 'same' && one.by.Shine.whole === false && /left out/.test(one.by.Shine.line), `and a single call from a memory of play, which can't take a branch both ways, is the same and no proof: ${one.by.Shine?.line}`);
   const others = await checkFile({ original: second.original, start: second.start, copy: played, file: program(), addressOf, memories: kept.memories, options: { calls: CALLS, seconds: 1 } });
