@@ -50,6 +50,15 @@ check(frames[0] && frames[0].emulator - FIRST_FRAME_END > 1000, `frame 0 ends af
 check(frames.some(f => f.pc < 0x4000), `and a frame ends inside the BIOS's CpuSet: frame ${frames.findIndex(f => f.pc < 0x4000)}`);
 check(ran.status === 0, `clock-check says the same (it exits with ${ran.status})`);
 
+// a frame the clock isn't told of, as a game leaves between the stretches it times: it goes on from the emulator's
+// time after it, and has to keep the emulator's time from there, the timer and the sound's DMA brought up to it
+// (a frame of the program's last loop: the clock times a whole CpuSet as it's called, so one can't be left out of it)
+const SKIPPED = 5;
+const again = spawnSync(CLOCK, [cartridge, String(FRAMES), String(SKIPPED)], { encoding: 'utf8' });
+const after = again.stdout.trim().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+const sum = after.find(line => 'compared' in line), ends = after.filter(line => 'frame' in line && line.frame > SKIPPED);
+check(sum && sum.compared > 0 && sum.compared < total.compared && sum.differ === 0, `with frame ${SKIPPED} left untimed and the clock resumed after it, every instruction it's told of still starts at the emulator's time: ${sum ? `${sum.compared} compared, ${sum.differ} differ${sum.differ ? `, the first at 0x${sum.first.pc.toString(16)}, ${sum.first.clock} by the clock and ${sum.first.emulator} in the emulator` : ''}` : again.stderr}`);
+
 if (failed) {
   console.log(`${failed} failed.`);
   process.exit(1);
