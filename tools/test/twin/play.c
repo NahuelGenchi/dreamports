@@ -2,7 +2,9 @@
 // The cartridge starts Play, which makes a stage once A is held and shines its lamp every frame from then on. Shine
 // reads the lamp through the stage, the stage's room and the room's lamp, none of which is anywhere until play makes
 // them: called from the memory the console has at power-on it reads address 0, where a twin can't follow, as most of
-// a real game's functions do. Only a memory of play has a stage for it.
+// a real game's functions do. Only a memory of play has a stage for it. Play also puts a little code of its own in the
+// fast work memory, as a game copies code there to run it faster, and Glow runs it every frame: that code loads a
+// constant from beside itself, which is the code's and not a value the check may change (#1518).
 #include "program.h"
 
 #define FULL 100
@@ -39,6 +41,20 @@ void Shine(u8 by) {
   lamp->light = light;
 }
 
+// where play puts its code in the fast work memory, and the constant that code loads from beside itself
+#define GLOW_CODE 0x03000200
+#define GLOW 0x5EED1234
+
+/** Glow, 0x08000800: the stage's lamp's count as the code play put in the fast work memory gives it. */
+void Glow(void) {
+#ifdef MATCHING
+  gStage->room->lamp->lit = ((u32(*)(void))(GLOW_CODE | 1))();
+#else
+  // what that code does: it gives back its constant
+  gStage->room->lamp->lit = GLOW;
+#endif
+}
+
 #ifdef MATCHING
 // the line the screen is drawing, and the buttons, a bit each, 0 while held
 #define LINE (*(volatile u16 *)0x04000006)
@@ -47,13 +63,17 @@ void Shine(u8 by) {
 #define KEY_B 2
 
 /** Play: the made-up game itself, which the cartridge starts and which never comes back, so it has no twin. Each
- *  frame, it makes the stage if A is held and there's none yet, or shines the stage's lamp, less with B held. */
+ *  frame, it makes the stage if A is held and there's none yet, with its code in the fast work memory, or shines the
+ *  stage's lamp, less with B held, and has it glow. */
 void Play(void) {
   for (;;) {
     while (LINE != 160) {}
     while (LINE == 160) {}
-    if (gStage) Shine(KEYS & KEY_B ? 7 : 1);
-    else if (!(KEYS & KEY_A)) {
+    if (gStage) {
+      Shine(KEYS & KEY_B ? 7 : 1);
+      Glow();
+    } else if (!(KEYS & KEY_A)) {
+      u16 *code = (u16 *)GLOW_CODE;
       struct Stage *stage = (struct Stage *)0x02000400;
       struct Room *room = (struct Room *)0x02000420;
       struct Lamp *lamp = (struct Lamp *)0x02000440;
@@ -64,6 +84,10 @@ void Play(void) {
       room->lamp = lamp;
       stage->room = room;
       stage->rooms = 1;
+      // ldr r0, [pc, #0] and bx lr: the word after them
+      code[0] = 0x4800;
+      code[1] = 0x4770;
+      *(u32 *)(GLOW_CODE + 4) = GLOW;
       gStage = stage;
     }
   }
