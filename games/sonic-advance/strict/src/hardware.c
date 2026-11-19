@@ -4,6 +4,7 @@
 #include "console.h"
 #include "core.h"
 #include "clock.h"
+#include "stack.h"
 
 // Where the console has an address, in a Dreamport: the work memory and the cartridge are at their own addresses, and
 // the colours, the video memory and the sprites' list are the kit's. Each memory shows again all through its stretch
@@ -282,6 +283,9 @@ void console_start(void) {
   gba_clock_run_arm(0x08000000, 0x08000000, 0x080000C0, NULL, 0);
   gba_clock_run_arm(0x080000C0, 0x080000EC, 0x08001495, vector, 1);
   *(u32 *)0x03007FFC = 0x080000FC;
+  // the system mode's stack, as the start sets it, and AgbMain called with lr from its mov lr, pc at 0x080000E8
+  gba_stack_start(0x03007F00);
+  gba_stack_call(0x080000F0);
   AgbMain();
 }
 
