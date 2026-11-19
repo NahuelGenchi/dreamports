@@ -19,11 +19,12 @@
 // which takes a recording that plays it: the game's glue is shown working, never taken on trust.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { REPO, gameFolder } from './paths.mjs';
 import { hex, readCodeMap } from './proof-files.mjs';
 import { asksForProofs, headersOf, KINDS, marksIn, originalMarks, PROOFS, readProofs, stateOf } from './proofs.mjs';
+import { librariesFile } from './libraries.mjs';
 import { codeOf, piecesIn } from '../gba/match.mjs';
 import { codeFiles, portMap, readShifts } from '../portmap.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
@@ -190,6 +191,8 @@ export function stepProofs(version, base, { committed = false } = {}) {
   if (committed && (git(['status', '--porcelain', '--', `games/${versionOf(version).game}`]) ?? '').trim()) problems.push(`games/${versionOf(version).game}/ has changes that aren't committed, and its proofs are held to the commit: commit them first.`);
   const codeMap = readCodeMap(version);
   if (!codeMap) return { keeps: true, functions: [], problems: [...problems, `games/${versionOf(version).game}/proof/ has no code map.`] };
+  // the twins of a shared library are in the kit, which this reads nothing of yet (lib/libraries.mjs)
+  if (existsSync(librariesFile(version))) return { keeps: true, functions: [], problems: [...problems, `${version} takes shared libraries from the kit, and a step's proofs stand in for a clip only for twins in its own folder so far.`] };
   let proofs = null;
   try {
     proofs = readProofs(version);

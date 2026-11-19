@@ -141,15 +141,16 @@ export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
  *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, `own`
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
- *  it is a proof of (../lib/proofs.mjs). */
-export const twinsIn = (text, shifts = []) => piecesIn(text, shifts).functions;
+ *  it is a proof of (../lib/proofs.mjs). A file of a shared library names no address: `given`, a Map of its twins'
+ *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. */
+export const twinsIn = (text, shifts = [], given = null) => piecesIn(text, shifts, given).functions;
 
 /** A file of C in pieces: the `functions` it defines, as twinsIn gives them, and the `rest`, everything it holds
  *  outside them, in order, each { text, pre }: a line for the preprocessor, with `pre`, or a declaration up to its ;,
  *  without its comments and with each run of spaces as one. It's what every function of the file is built with
  *  beside its own code, so a proof is of it too (../lib/proofs.mjs), and a step that changes it changes more than
  *  the functions it names (../lib/proven-step.mjs). */
-export function piecesIn(text, shifts = []) {
+export function piecesIn(text, shifts = [], given = null) {
   const { code, kept, comments } = lex(text);
   const twins = [], rest = [];
   // where what's outside every function, and not yet kept, starts
@@ -203,8 +204,9 @@ export function piecesIn(text, shifts = []) {
         if (!comment.text.startsWith('//')) break;
         at = comment.from;
       }
-      const name = m[1], through = throughIn(above.join('\n'), shifts);
-      twins.push({ name, address: addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts), ...(through === null ? {} : { through }), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts);
+      const address = given ? given.get(name) ?? null : addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts);
+      twins.push({ name, address, ...(through === null ? {} : { through }), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
@@ -253,23 +255,10 @@ export async function preprocess(file, root, includes) {
 }
 
 /**
- * Builds `file` and compares each function it defines with the original's.
- *   root, includes: the folder the file's C is in, and the folders it includes from
- *   compiler: { name, flags }, as readCompiler gives it
- *   work: the folder for what's built, <work>.i and <work>.s
- *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
- *     Thumb function), or null
- *   sizeOf(address): how long the code map says the function there is, or null when none starts there
- *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
- *     gives them, or null
- *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
- *     reader says of each halfword
- *   shifts: how far the labels' release is from the copy (portmap.mjs)
- * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
- * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
- * didn't build, with what the compiler said.
+ * Builds `file` with the console's compiler, as match does, in `work` (<work>.i and <work>.s), and assembles what it
+ * wrote: { made, assembly }, `made` as the tools' assembler gives it (thumb.mjs), or { error }, what went wrong.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [] }) {
+export async function compileFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work }) {
   mkdirSync(dirname(work), { recursive: true });
   let preprocessed;
   try {
@@ -289,14 +278,37 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
     return { error: (wrong.length ? wrong : said).join('\n').replaceAll(`${work}.i`, basename(file)) };
   }
   const assembly = readFileSync(`${work}.s`, 'utf8');
-  let made;
   try {
-    made = assemble(assembly);
+    return { made: assemble(assembly), assembly };
   } catch (error) {
     return { error: error.message };
   }
+}
+
+/**
+ * Builds `file` and compares each function it defines with the original's.
+ *   root, includes: the folder the file's C is in, and the folders it includes from
+ *   compiler: { name, flags }, as readCompiler gives it
+ *   work: the folder for what's built, <work>.i and <work>.s
+ *   addressOf(name): the address in the original of a name the file doesn't define, as its code keeps it (odd for a
+ *     Thumb function), or null
+ *   sizeOf(address): how long the code map says the function there is, or null when none starts there
+ *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
+ *     gives them, or null
+ *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
+ *     reader says of each halfword
+ *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ *   given: for a file of a shared library, where the copy has each of its twins, as twinsIn takes it
+ * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
+ * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
+ * didn't build, with what the compiler said.
+ */
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+  const built = await compileFile({ file, root, includes, compiler, work });
+  if (built.error) return built;
+  const { made, assembly } = built;
   const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split('\n');
-  const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts).map(twin => [twin.name, twin]));
+  const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
