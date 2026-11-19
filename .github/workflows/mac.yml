@@ -125,6 +125,14 @@ jobs:
           npm --version
           npm ci
 
+      # match's compilers on a Mac with Apple's chip (#1588, #1624): Sony's own, built from its source with Apple's
+      # clang and kept only if it makes the original compiler's objects, and SN Systems' builds, programs for Windows
+      # that wibo's build for Intel's chip runs through Rosetta 2, which a person installs from Apple this way
+      - name: Rosetta 2, from Apple
+        run: softwareupdate --install-rosetta --agree-to-license
+      - run: npm run test:ps2-gcc
+      - run: npm run test:ps2-match
+
       - name: The tools' own builds
         run: npm run dp -- setup
 

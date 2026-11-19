@@ -27,8 +27,6 @@ const ALSO = { s8: 30, a4: 8, a5: 9, a6: 10, a7: 11 };
 /** The fields of a vector unit's register, by the four bits an instruction names them with, x the highest. */
 export const fieldsOf = bits => ['x', 'y', 'z', 'w'].filter((_, i) => bits & (8 >> i)).join('');
 const bitsOf = text => [...text].reduce((bits, c) => bits | (8 >> 'xyzw'.indexOf(c)), 0);
-/** A vector unit's control registers, as CFC2 and CTC2 name them, from 16 on. */
-export const VU_CONTROL = { 16: 'Status', 17: 'MAC', 18: 'Clipping', 20: 'R', 21: 'I', 22: 'Q', 26: 'TPC', 27: 'CMSAR0', 28: 'FBRST', 29: 'VPU-STAT', 31: 'CMSAR1' };
 
 const hexOf = n => `0x${(n >>> 0).toString(16).toUpperCase()}`;
 const signed16 = word => (word << 16) >> 16;

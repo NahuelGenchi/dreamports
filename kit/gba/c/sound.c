@@ -321,11 +321,46 @@ void gba_sound_vsync_off(void) { take(OP_VSYNC_OFF, 0, 0, 0, 0); }
 void gba_sound_vsync_on(void) { take(OP_VSYNC_ON, 0, 0, 0, 0); }
 void gba_sound_manager_call(int op, int a, int b, int c) { if (op >= SOUND_OP_MANAGER) take(op, a, b, c, 0); }
 
+// ---- a game that runs the console's own sound engine ----
+
+// Such a game, as one whose every function is a twin of the original's, makes the engine's work itself, in the
+// console's memory: the kit is then only the sound hardware. The game hands it each register of the sound as it writes
+// it, and each frame the samples the console's DMA would feed the two FIFOs during it.
+static int console, consoleSamples, consoleNext;
+
+void gba_sound_console(void) {
+  apu_init(&apu);
+  clear_buffers();
+  console = running = 1;
+  consoleSamples = consoleNext = 0;
+  cycle = 0;
+  nextFrame = 0;
+}
+
+void gba_sound_console_write(int reg, int value) {
+  if (console && reg >= 0x60 && reg < 0xA0) apu_write(&apu, reg, value & 0xFF);
+}
+
+void gba_sound_console_samples(const int8_t *a, const int8_t *b, int count) {
+  if (!console) return;
+  if (count > 704) count = 704;
+  if (count < 0) count = 0;
+  __builtin_memcpy(pending, a, (size_t)count);
+  __builtin_memcpy(pending + count, b, (size_t)count);
+  consoleNext = count;
+}
+
 // ---- the clock ----
 
 static void frame(void) {
   int8_t *was = playing;
   playing = pending; pending = was;
+  if (console) {
+    // the samples the game gave for this frame, or none, which is silence from the FIFOs
+    consoleSamples = consoleNext;
+    consoleNext = 0;
+    return;
+  }
   game_sound_frame(&engine, queue, queued);
   queued = 0;
   int n = engine.samples;
@@ -347,10 +382,11 @@ static void frame(void) {
 // the cycle counts start again from 0 with each frame, so they stay small
 static void tick(void) {
   if (cycle >= nextFrame) { cycle -= nextFrame; nextFrame = FRAME_CYCLES; apu.late = cycle; frame(); }
-  int n = engine.samples, i = cycle / (FRAME_CYCLES / n);
+  int n = console ? consoleSamples : engine.samples, i = n ? cycle / (FRAME_CYCLES / n) : 0;
+  if (i >= n) i = n ? n - 1 : 0;
   apu_run(&apu, APU_TICK);
   int out[2];
-  apu_mix(&apu, playing[i], playing[n + i], out);
+  apu_mix(&apu, n ? playing[i] : 0, n ? playing[n + i] : 0, out);
   curL = out[0]; curR = out[1];
   cycle += APU_TICK;
 }

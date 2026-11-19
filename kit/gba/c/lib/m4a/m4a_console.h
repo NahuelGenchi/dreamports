@@ -7,6 +7,7 @@
 //   u16 console_io[]: the console's registers, each at its distance from 0x04000000, which the engine writes and reads
 //   u32 console_vcount_at(void): where the line count is kept, a line on each time it's looked at, as the console's
 //     goes on while the engine waits for one line
+//   void console_wrote(const volatile void *where, u32 bytes): told of each register the engine writes (M4A_SET)
 #ifndef M4A_CONSOLE_H
 #define M4A_CONSOLE_H
 
@@ -93,6 +94,16 @@ void CpuSet(const void *src, void *dest, u32 control);
 #else
 #define M4A_TIME(function, from, to, next, ...)
 #define M4A_DIVIDE(numerator, denominator)
+#endif
+
+// A register's write, `M4A_SET(register, value)`: the plain assignment for the console's compiler. In a Dreamport the
+// version is then told which register was written, console_wrote(where, bytes), `where` in console_io, so one that
+// plays the engine's sound hands it to its sound hardware as it's written, and one that doesn't does nothing there.
+#ifdef MATCHING
+#define M4A_SET(reg, value) reg = value
+#else
+void console_wrote(const volatile void *where, u32 bytes);
+#define M4A_SET(reg, value) ((reg) = (value), console_wrote(&(reg), sizeof(reg)))
 #endif
 
 // the console's sound and DMA registers the engine writes, each as the C its source names
