@@ -367,6 +367,23 @@ export function untouchedOf(game, codeMap, cartridge = null) {
 }
 
 /**
+ * Whether a version used something of each cell of its cartridge's data in a frame that matched, as its played.json
+ * says, for the bytes accounted for (lib/rebuild.mjs): `used(cell)`, a cell numbered from the copy's start, of `bytes`,
+ * the copy's length. Nothing is used of a version with no played.json, or one of another code map.
+ */
+export function usedCells(game, codeMap, bytes) {
+  const played = readPlayed(game), size = Math.ceil(Math.ceil(Math.min(bytes, 0x02000000) / CELL) / 8);
+  const read = new Uint8Array(size);
+  if (followsContent(codeMap) && played.places === layoutOf(codeMap).places) {
+    for (const text of Object.values(played.content ?? {})) {
+      const set = unpack(text, size);
+      for (let i = 0; i < size; i++) read[i] |= set[i];
+    }
+  }
+  return cell => cell >> 3 < size && has(read, cell);
+}
+
+/**
  * What's left of a version as pieces someone can take, once its parts are all played through (tools/tasks.mjs):
  * `functions` from untouchedOf, `parts` the game's, in a player's order, each { name, recording }, and `ran` each
  * recording's functions that ran in matching frames, by its name (progress.json). A function played in part goes with

@@ -4,6 +4,10 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+/** Where a cartridge's header is, its first and last address: the 192 bytes the console reads as it starts, a jump
+ *  to the game's code first, then the logo, the title, the code and a checksum. */
+export const HEADER = [0x08000000, 0x080000BF];
+
 // the last letter of a game code: the region the cartridge was made for
 const REGIONS = { J: 'Japan', E: 'USA', P: 'Europe', D: 'Germany', F: 'France', I: 'Italy', S: 'Spain', K: 'Korea', C: 'China', X: 'Europe', Y: 'Europe' };
 

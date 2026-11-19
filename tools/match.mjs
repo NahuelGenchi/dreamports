@@ -29,12 +29,17 @@
 // A shared library the version takes (lib/libraries.mjs) is compared as the version's own files, at the addresses its
 // proof/libraries.json gives, each file built from the library's folder alone with the compiler its library.json
 // names, whichever game it's in.
+//
+// npm run dp -- match <version> --whole [--all] rebuilds the whole cartridge instead (lib/rebuild.mjs): every file
+// built as above, each twin's bytes laid over the copy at its address, in memory only, and every byte of the code
+// map's code compared, which finds what a function's own proof can't, as a function the code map missed. It prints
+// totals and stretches, by address, and keeps no proof: it changes nothing.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { LOCAL, REPO } from './lib/paths.mjs';
-import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { cartridgeOf, hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { readCopy } from './gba/header.mjs';
@@ -43,11 +48,12 @@ import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
 import { addressFinder, compilerAt, matchFile, readCompiler, runIn } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
-import { asksForProofs, keepProofs, keptText } from './lib/proofs.mjs';
+import { asksForProofs, keepProofs, keptText, originalMarks, stateOf } from './lib/proofs.mjs';
+import { rebuildOf } from './lib/rebuild.mjs';
 import { resolve } from './read.mjs';
 import { CONSOLES } from './consoles.mjs';
 
-const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]';
+const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]\n       npm run dp -- match <version> --whole [--all]';
 const count = n => n.toLocaleString('en-US');
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
@@ -79,15 +85,18 @@ function reader(copy) {
 export async function run(args) {
   const rest = [];
   let more = null;
+  const whole = args.includes('--whole'), every = args.includes('--all');
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--addresses') {
       more = args[++i];
       if (!more) throw new Error(`--addresses needs a file. ${USAGE}`);
-    } else if (args[i].startsWith('--')) throw new Error(`match has no ${args[i]}. ${USAGE}`);
-    else rest.push(args[i]);
+    } else if (args[i].startsWith('--') && !['--whole', '--all'].includes(args[i])) throw new Error(`match has no ${args[i]}. ${USAGE}`);
+    else if (!args[i].startsWith('--')) rest.push(args[i]);
   }
   const [game, what] = rest;
   if (!game || rest.length > 2) throw new Error(USAGE);
+  if (whole && (what || more)) throw new Error(`--whole rebuilds the whole cartridge from the version's own files and names, so it takes no file, function or --addresses. ${USAGE}`);
+  if (every && !whole) throw new Error(`--all is for --whole, to list every stretch. ${USAGE}`);
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
   if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's compiler and no other console's yet (docs/CONSOLES.md).`);
@@ -147,6 +156,8 @@ export async function run(args) {
   const unknown = new Set();
   // what goes in the version's proofs, when it keeps them (lib/proofs.mjs): each function of the code map tried
   const proven = [], differing = [];
+  // with --whole, each twin built, for the cartridge rebuilt
+  const laid = [];
   for (const file of chosen) {
     const library = libraryOf.get(file)?.library ?? null;
     const inside = library !== null || (!relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file)));
@@ -175,6 +186,13 @@ export async function run(args) {
       const said = result.error.split('\n');
       if (chosen.length === 1) console.log(`${where}\n  Didn't build with ${compiler.name}: ${said.join('\n  ')}`);
       failed.push(`${where}: ${said.find(line => /error/.test(line)) ?? said[0]}`);
+      continue;
+    }
+    if (whole) {
+      for (const f of result.functions) {
+        if (f.address === null || f.elsewhere || (f.through !== null && !f.run)) continue;
+        laid.push({ name: f.name, address: f.address, bytes: f.made, file: where, library: library?.id ?? null, run: f.run, calls: f.calls });
+      }
       continue;
     }
     const shown = result.functions.filter(f => only === null || f.address === only);
@@ -223,6 +241,7 @@ export async function run(args) {
   if (failed.length && chosen.length > 1) {
     console.log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build with the original's compiler, which builds only C written for it. The first is ${failed[0]}. Name a file to see all the compiler said of it.`);
   }
+  if (whole) return wholeReport(game, { codeMap, copy, laid, all: every });
   console.log(`${count(same)} of ${count(all)} function${all === 1 ? '' : 's'} the same, ${count(sameBytes)} of ${count(bytes)} bytes.`);
   // a proof found with names from another file than the game's own isn't one the game can show again
   if (!asksForProofs(game)) {
@@ -249,4 +268,53 @@ function listing(game, f, name) {
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, text);
   return inRepo(file);
+}
+
+// --whole: the cartridge rebuilt from every twin built, compared with the copy, in memory only, and said as totals and
+// stretches by address
+function wholeReport(game, { codeMap, copy, laid, all }) {
+  const states = new Map(stateOf(game, { codeMap, mark: originalMarks(game, codeMap) }).map(state => [state.key, state]));
+  const result = rebuildOf({ functions: codeMap.functions, read: cartridgeOf(copy.path, 'gba'), laid, states });
+  const bytes = n => `${count(n)} byte${n === 1 ? '' : 's'}`;
+  const share = n => (result.code ? `, ${(Math.floor(n / result.code * 10000) / 100).toLocaleString('en-US')}%` : '');
+  const most = list => (all ? list : list.slice(0, 20));
+  const more = list => (!all && list.length > 20 ? [`    and ${count(list.length - 20)} more: --all lists them.`] : []);
+  const at = address => `0x${hex(address)}`;
+  const span = s => (s.from === s.to ? at(s.from) : `${at(s.from)} to ${at(s.to)}`);
+  console.log(`\nThe whole cartridge rebuilt: ${count(laid.length)} twins laid over your copy, in memory only, and ${bytes(result.code)} of the code map's code compared.`);
+  console.log(`  The same:              ${bytes(result.same)}${share(result.same)}${result.libraries ? `, ${bytes(result.libraries)} of them from shared libraries` : ''}`);
+  console.log(`  Proven another way:    ${bytes(result.another)}${share(result.another)}, by the same memory`);
+  console.log(`  Padding:               ${bytes(result.padding)}, zeros after a twin that line up the next function on four bytes`);
+  console.log(`  Differs:               ${bytes(result.differs)}${share(result.differs)}`);
+  console.log(`  No twin:               ${bytes(result.none)}${share(result.none)}${result.unbuilt ? `, ${bytes(result.unbuilt)} of them of twins no build laid` : ''}${result.start ? `, ${bytes(result.start)} the cartridge's start, which the kit does in a Dreamport` : ''}`);
+  if (result.made.functions) console.log(`  Made in work memory:   ${count(result.made.functions)} functions the game makes in its work memory, which aren't the cartridge's bytes, ${count(result.made.proven)} of them proven by the same memory`);
+  if (result.differing.length) {
+    console.log(`\nTwins that differ, each with the stretch from its first differing byte to its last:`);
+    for (const s of most(result.differing)) console.log(`  ${span(s)}  ${s.name}, ${s.file}: ${bytes(s.bytes)} differ`);
+    for (const line of more(result.differing)) console.log(line);
+  }
+  if (result.missing.length) {
+    console.log(`\nCode no twin covers, the biggest first:`);
+    for (const s of most(result.missing)) {
+      const functions = s.functions.length === 1 ? `function ${at(s.functions[0])}` : `${count(s.functions.length)} functions from ${at(s.functions[0])}`;
+      const why = s.start ? ', the cartridge\'s start' : s.unbuilt ? ', whose twin no build laid' : '';
+      console.log(`  ${span(s)}  ${bytes(s.to - s.from + 1)}, ${functions}${why}`);
+    }
+    for (const line of more(result.missing)) console.log(line);
+  }
+  if (result.outside.length) {
+    console.log(`\nOutside the code map: the code map missed a function or holds two as one, a comment names the wrong address, or two twins claim one function.`);
+    const why = s => (s.why === 'no function' ? 'laid where no function of the code map starts' : s.why === 'past its end' ? 'laid past its function\'s end' : `laid over ${s.other}`);
+    for (const s of most(result.outside)) console.log(`  ${span(s)}  ${s.name}, ${s.file}: ${bytes(s.bytes)} ${why(s)}`);
+    for (const line of more(result.outside)) console.log(line);
+  }
+  if (result.calls.length) {
+    console.log(`\nCalls to where no function of the code map starts: a function it missed, or a wrong address in addresses.json.`);
+    for (const c of most(result.calls)) console.log(`  ${at(c.target)}  from ${c.name}, ${c.file}${c.inside !== undefined ? `, ${count(c.target - c.inside)} bytes into function ${at(c.inside)}` : ''}`);
+    for (const line of more(result.calls)) console.log(line);
+  }
+  console.log(result.complete
+    ? '\nEvery byte of the code map\'s code is rebuilt the same, proven another way or padding, with nothing outside it.'
+    : '\nNot every byte of the code map\'s code is rebuilt yet: the lists above say where.');
+  return 0;
 }
