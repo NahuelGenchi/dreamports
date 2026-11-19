@@ -88,7 +88,14 @@ function endOf(wordAt, start, limit, strict = false) {
 
 /** The functions in the program, each { address, size }, in order, those in `listed` kept as they are. */
 export function findFunctions(program, listed = []) {
-  const { entry, load, text } = exeOf(program), end = load + text.length;
+  return findFunctionsIn(exeOf(program), listed);
+}
+
+/** The functions in `text`, code for the PlayStation's processor loaded at `load` that starts at `entry`, as
+ *  findFunctions finds them in a PS-X EXE: for any such code, as a PlayStation 2 game's modules for its second
+ *  processor are (../ps2/functions.mjs). */
+export function findFunctionsIn({ entry, load, text }, listed = []) {
+  const end = load + text.length;
   const inside = address => address >= load && address < end && address % 4 === 0;
   const wordAt = address => text.readUInt32LE(address - load);
   const starts = new Map();

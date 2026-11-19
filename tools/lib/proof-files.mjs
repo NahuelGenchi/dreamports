@@ -15,6 +15,7 @@ import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
 import { nesProgram } from '../nes/functions.mjs';
+import { loadCopy, loadedCopy } from '../ps2/ledger.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -122,16 +123,29 @@ export function readCodeMap(game) {
   return { ...parseCodeMap(JSON.parse(readFileSync(file, 'utf8'))), ...(existsSync(original) ? { console: JSON.parse(readFileSync(original, 'utf8')).console } : {}) };
 }
 
-/** A code map's JSON, read as readCodeMap gives it. */
+// a key's parts: the address, the first bytes of a function made in RAM, the program it's in when a game has several,
+// as a PlayStation 2 disc does, and ~vu for a vector unit's program (ps2/functions.mjs)
+const KEY = /^([0-9A-F]{8})(?:\/([0-9A-F]{16}))?(?:@(.+?))?(~vu)?$/;
+
+/** A code map's JSON, read as readCodeMap gives it. A function in another program than the one the game boots has its
+ *  `program`, and a vector unit's program `vu`. */
 export function parseCodeMap(map) {
-  const functions = map.functions.map(([key, size, name]) => ({ key, address: parseInt(key, 16), size, name, ...(key.includes('/') ? { bytes: key.split('/')[1] } : {}) }));
+  const functions = map.functions.map(([key, size, name]) => {
+    const [, , bytes, program, vu] = KEY.exec(key) ?? [];
+    return { key, address: parseInt(key, 16), size, name, ...(bytes ? { bytes } : {}), ...(program ? { program } : {}), ...(vu ? { vu: true } : {}) };
+  });
   functions.sort((a, b) => a.address - b.address || a.key.localeCompare(b.key));
   const copies = (map.copies ?? []).map(([ram, cartridge, size, packed, from]) => ({ ram: parseInt(ram, 16), cartridge: parseInt(cartridge, 16), size, ...(packed ? { packed } : {}), ...(from ? { from } : {}) }));
   return { ...map, functions, copies };
 }
 
-/** A function's key in the proof files: its address, and for one the game makes in its work RAM, its first bytes. */
-export const functionKey = f => hex(f.address) + (f.bytes ? `/${f.bytes}` : '');
+/** A function's key in the proof files: its address, and for one the game makes in its work RAM, its first bytes, for
+ *  one in another program, @ and the program, and for a vector unit's, ~vu. */
+export const functionKey = f => hex(f.address) + (f.bytes ? `/${f.bytes}` : '') + (f.program ? `@${f.program}` : '') + (f.vu ? '~vu' : '');
+
+/** Whether a function is one of the code the game boots runs where its address says: not one it makes in RAM, nor
+ *  another program's, nor a vector unit's. */
+export const inBootProgram = f => !f.bytes && !f.program && !f.vu;
 
 /** Writes a code map, a function to a line, and the copies after. */
 export function writeCodeMap(game, map) {
@@ -153,21 +167,32 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 
 /** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
  *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
- *  (nes/functions.mjs). Its `copy()` gives the whole file. */
+ *  (nes/functions.mjs). Its `copy()` gives the whole file. With 'ps2' the address is where the EE runs the program the
+ *  disc boots, `disc` is the copy's path, whose sectors are its content, and `code(f)` what a function of the code map
+ *  is made of, on whichever processor and in whichever program of the disc, once prepareCopy has read it (ps2/ledger.mjs). */
 export function cartridgeOf(path, console = 'gba') {
   let bytes = null, program = null;
   const copy = () => (bytes ??= readFileSync(path));
+  if (console === 'ps2') return Object.assign((address, count) => (program ??= loadedCopy(path).read)(address, count), { copy, disc: path, code: f => loadedCopy(path).codeOf(f) });
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
   return Object.assign(read, { copy });
 }
 
+/** Reads what a copy's console needs read at once before cartridgeOf can give its bytes: a PlayStation 2's program
+ *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs). Nothing for another console. */
+export async function prepareCopy(path, console) {
+  if (console === 'ps2') await loadCopy(path);
+}
+
 /** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its
  *  address, those the game makes in RAM only with their bytes there, and each cartridge function a copy holds where the
  *  copy runs, with its bytes, so it counts when the copy is there. `cartridge(address, bytes)` reads the copy's bytes. */
 export function watchesOf(codeMap, cartridge) {
-  const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) }));
+  // on the PlayStation 2, the functions of the program the disc boots alone: another program's, a module's and a vector
+  // unit's are at addresses of their own, and count from what ran where their bytes are (lib/played.mjs)
+  const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) })).filter((_, index) => !codeMap.functions[index].program && !codeMap.functions[index].vu);
   for (const copy of codeMap.copies ?? []) {
     if (copy.packed) continue;
     codeMap.functions.forEach((f, index) => {

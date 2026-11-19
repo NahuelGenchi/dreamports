@@ -31,13 +31,18 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
+// The environment's DP_MEMORY and DP_SAVES, when they're set, ask for the console's memory after every frame and its
+// memory cards' files each time they change, from a core that says where it keeps them, as the PlayStation 2's does with
+// the tools' patch (held.h).
+//
 // The environment's DP_DRAWS, when it's set, names a file for each frame's draw list, from a core that keeps one, as the
 // PlayStation 2's does with the tools' patch (play.patch): a hash of everything the console gave its graphics chip that
 // frame, and how many things that was, 32 bits each. That's what a 3D game is proven by (docs/STANDARD.md).
 //
 // A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window: on Linux from EGL,
 // on Mesa's llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card, and on
-// a Mac from CGL, on Apple's OpenGL. It stops with a sentence on a computer that can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
+// a Mac from CGL, on Apple's software renderer, which does the same there. It stops with a sentence on a computer that
+// can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
 
@@ -151,6 +156,8 @@ static uint32_t* sizes;   // each size the picture had: the frame it started at,
 static size_t sizeCount, sizeRoom;
 
 #include "ran.h"
+#include "ran-ps2.h"
+#include "held.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -209,20 +216,22 @@ static void* procAddress(const char* name) {
 
 #if defined(__APPLE__)
 // A Mac's: Apple's OpenGL, a core profile with no window, from CGL, found when it's wanted so the host builds with a
-// compiler alone. It draws on the Mac's graphics chip, so its pictures can differ from Linux's in small ways, which a
-// game proven by draw lists, as a PlayStation 2 game is, doesn't depend on (docs/CONSOLES.md). Untried on a Mac so far.
+// compiler alone. It asks for Apple's software renderer, which draws on the processor, so a picture is the same on
+// every Mac whatever its graphics chip, as llvmpipe's is on Linux. Apple's and Mesa's still draw some things
+// differently, which a game proven by draw lists, as a PlayStation 2 game is, doesn't depend on (docs/CONSOLES.md).
 #define CGL_PFA_OPENGL_PROFILE 99
 #define CGL_OPENGL_CORE_3_2 0x3200
 #define CGL_PFA_COLOR_SIZE 8
 #define CGL_PFA_ALPHA_SIZE 11
 #define CGL_PFA_DEPTH_SIZE 12
 #define CGL_PFA_STENCIL_SIZE 13
+#define CGL_PFA_RENDERER_ID 70
+#define CGL_RENDERER_SOFTWARE 0x00020400
 static void* openGl;
 static void* frameworkFunction(const char* name) {
 	return dlsym(openGl, name);
 }
 static const char* makeContext(bool any) {
-	(void) any;
 	if (graphics->contextType != CONTEXT_OPENGL_CORE && graphics->contextType != CONTEXT_OPENGL) return "of OpenGL ES, which a Mac has none of";
 	openGl = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_NOW | RTLD_LOCAL);
 	if (!openGl) return "which needs Apple's OpenGL, and this Mac's wouldn't load";
@@ -230,7 +239,8 @@ static const char* makeContext(bool any) {
 	int (*create)(void*, void*, void**) = dlsym(openGl, "CGLCreateContext");
 	int (*makeCurrent)(void*) = dlsym(openGl, "CGLSetCurrentContext");
 	if (!choose || !create || !makeCurrent) return "which needs CGL, and this Mac's OpenGL has none";
-	const int wanted[] = { CGL_PFA_OPENGL_PROFILE, CGL_OPENGL_CORE_3_2, CGL_PFA_COLOR_SIZE, 24, CGL_PFA_ALPHA_SIZE, 8, CGL_PFA_DEPTH_SIZE, 24, CGL_PFA_STENCIL_SIZE, 8, 0 };
+	// with DP_ANY_GRAPHICS, the renderer the Mac would choose, on its graphics chip
+	const int wanted[] = { CGL_PFA_OPENGL_PROFILE, CGL_OPENGL_CORE_3_2, CGL_PFA_COLOR_SIZE, 24, CGL_PFA_ALPHA_SIZE, 8, CGL_PFA_DEPTH_SIZE, 24, CGL_PFA_STENCIL_SIZE, 8, any ? 0 : CGL_PFA_RENDERER_ID, CGL_RENDERER_SOFTWARE, 0 };
 	void* format = NULL;
 	void* context = NULL;
 	int count = 0;
@@ -291,7 +301,9 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	const char* renderer = getString(GL_RENDERER);
 	// what drew it, with nothing in it that would end the JSON it's said in
 	for (size_t i = 0; renderer && renderer[i] && i < sizeof drawnBy - 1; i++) drawnBy[i] = renderer[i] == '"' || renderer[i] == '\\' ? '\'' : renderer[i];
-#ifndef __APPLE__
+#ifdef __APPLE__
+	if (!any && (!renderer || !strstr(renderer, "Software"))) return "and this Mac's draws on its graphics chip, not with Apple's software renderer, so its pictures could differ from every other Mac's";
+#else
 	if (!any && (!renderer || !strstr(renderer, "llvmpipe"))) return "and this computer's draws on its graphics card, not with Mesa's llvmpipe, so its pictures could differ from everyone else's";
 #endif
 	void (*genFramebuffers)(int, unsigned*) = glFunction("glGenFramebuffers");
@@ -549,10 +561,15 @@ static void* find(void* library, const char* name) {
 
 // what the search needs of the console (lib/explore.h): the one core this program runs
 static size_t searchSize;
+static int searchCounts;                    // whether it counts what hasn't been played (ran-ps2.h)
+static uint64_t (*searchFrames)(void);      // how long the console has played, from a core that says
+#define SEARCH_UNTOUCHED 0xFFFF0000u
+#define SEARCH_FRAMES 0xFFFF0004u
 static void searchFrame(void* console, uint32_t buttons) {
 	(void) console;
 	held = buttons;
 	sampleCount = 0;
+	ps2search.untouched = 0;
 	retro_run();
 }
 static void searchSave(void* console, void* to) {
@@ -571,6 +588,15 @@ static void searchLoad(void* console, const void* from) {
 }
 static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t* value) {
 	(void) console;
+	// the two values no console has: what happened in the last frame that hadn't been played, and how long it has played
+	if (address == SEARCH_UNTOUCHED && searchCounts) {
+		*value = ps2search.untouched;
+		return 1;
+	}
+	if (address == SEARCH_FRAMES && searchFrames) {
+		*value = (uint32_t) searchFrames();
+		return 1;
+	}
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
 	if (!memory || (size_t) address + bytes > retro_get_memory_size(MEMORY_SYSTEM_RAM)) return 0;
 	*value = 0;
@@ -611,7 +637,7 @@ int main(int argc, char** argv) {
 	settingCount = argc - at - 2;
 	picture = malloc(wantedW * wantedH * 2 + 2);
 	systemFolder = getenv("DP_SYSTEM") ? getenv("DP_SYSTEM") : ".";
-	saveFolder = getenv("DP_SAVES") ? getenv("DP_SAVES") : ".";
+	saveFolder = getenv("DP_SAVE_FOLDER") ? getenv("DP_SAVE_FOLDER") : ".";
 
 	void* library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	if (!library) {
@@ -645,6 +671,33 @@ int main(int argc, char** argv) {
 	retro_set_input_poll(inputPoll);
 	retro_set_input_state(inputState);
 	retro_init();
+
+	// what ran, from a core that tells of every instruction, only when something of it is asked for, told before the game
+	// loads, as the PlayStation 2's core starts the console as it does
+	if (!live && !route) {
+		size_t functionsSize = 0;
+		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
+		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY")))) {
+			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
+			if (watch) ps2Open(watch, functions);
+			else if (tell) tell(ranInstruction);
+			else {
+				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
+				return 2;
+			}
+		}
+	}
+
+	// a search for what hasn't been played, on a core that tells of what it runs, told before the game loads too
+	if (route) {
+		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		searchCounts = watch && ps2SearchOpen(watch);
+		searchFrames = dlsym(library, "dreamports_frames");
+	}
+
+	// the memory cards the game starts from, before it loads (held.h)
+	if (!live && !route) heldStart(dlsym(library, "dreamports_memory_card"));
 
 	struct system_info info = { 0 };
 	retro_get_system_info(&info);
@@ -726,22 +779,11 @@ int main(int argc, char** argv) {
 		fprintf(err, "The core keeps no sound lists, which this game's sound is proven by.\n");
 		return 2;
 	}
+	heldOpen(dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_memory_card"));
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
 	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
-	// what ran, from a core that tells of every instruction, only when something of it is asked for
-	size_t functionsSize = 0;
-	uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
-	if (ranOpen(functions, functionsSize / 4)) {
-		void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
-		if (!tell) {
-			fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
-			return 2;
-		}
-		tell(ranInstruction);
-	}
-
 	for (long frame = 0; frame < frames; frame++) {
 		held = (size_t) frame < buttonsSize / 4 ? buttons[frame] : 0;
 		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
@@ -761,6 +803,7 @@ int main(int argc, char** argv) {
 			for (uint32_t i = 0; i < bytes; i++) value |= (uint32_t) memory[address + i] << (i * 8);
 			readValues[nextRead] = value;
 		}
+		heldFrame(frame);
 		uint32_t hash, plain, ranCount;
 		hashOf(&hash, &plain);
 		const uint32_t* ranNow = ranInFrame(&ranCount);
@@ -798,6 +841,8 @@ int main(int argc, char** argv) {
 	if (soundFile) fclose(soundFile);
 	if (drawsFile) fclose(drawsFile);
 	ranClose();
+	ps2Close();
+	heldClose();
 	fflush(out);
 	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);

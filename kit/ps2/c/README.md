@@ -16,6 +16,7 @@ Like the rest of the kits it's under [GPL-3.0-or-later](../LICENSE), and nothing
 | `gs-kit.h` | What the GS's files share |
 | `gif.c` | The GIF: packets, as a game or a vector unit program builds them, turned into the GS's register writes |
 | `ee.c` | The EE's float sums, each cut towards zero, with its division and square root |
+| `memory.c` | Where a game keeps each stretch of the console's memory, the EE's, the IOP's or the sound chip's, which it says with `ps2_console_memory`, for `prove` to compare with the original's after every frame ([the same-memory build](../../../tools/README.md#the-same-memory-build)) |
 | `vu.c` | The vector units' sums, four floats at a time, on the fields an instruction names |
 | `iop.c` | The IOP's memory and its hardware as a module's loads and stores reach it, the sound chip's DMA channels, and the console's time, which says when the sound chip mixes |
 | `spu2.c` | The SPU2, both cores as the console's emulator mixes them, and each frame's sound list |
@@ -78,4 +79,4 @@ Sums that overflow aren't done the console's way yet, and RSQRT, the clip test, 
 
 `npm run test:ps2-sound` does the same for the IOP: a program of the project's own whose EE loads its own IOP module through the SIF, and the module plays a tone and a click on both of the chip's cores, with envelopes, a pitch that moves every frame, two volume sweeps, the reverb and keys let go of and keyed on again, and has an RPC server of its own that the EE calls every frame. The EE writes everything the SIF gives it into GS LABEL writes, so its draw list carries them: what SifGetReg says of the SIF's registers, the ids SifSetDma gives and what SifDmaStat says, every word of the IOP's replies, and the server's answers. Its Dreamport in C, the EE's code and the module written again with the kit's SIF and IOP, has the same draw list and the same sound list, and the kit mixes every sample the emulator does, all 300 frames. One with its pitch a step out on one frame is found on that frame by its sound list, and one that asks SifDmaStat before the IOP has answered is found at once by its draw list. With the voices' samples interpolated the textbook way, in one sum rather than the emulator's two, every frame differs by its samples.
 
-They aren't run on every pull request, as the emulator takes minutes to build, and they run on Linux and macOS alone ([Other consoles](../../../docs/CONSOLES.md#the-playstation-2)).
+They aren't part of Check, as the emulator takes minutes to build, and they run on Linux and macOS alone, where the Mac workflow runs them on GitHub's Mac with Apple's chip for pull requests that touch the PlayStation 2's files ([Other consoles](../../../docs/CONSOLES.md#the-playstation-2)).

@@ -45,7 +45,7 @@ const OWN = {
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks'],
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
-  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'vu.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c'], header: true },
+  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'vu.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'memory.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
 };
 
@@ -435,8 +435,8 @@ export async function twinsFolder(folder) {
   const { twinsOf, named, twins, shifts, libraries } = versionTwins(game);
   const { addressFinder } = await import('../gba/match.mjs');
   // how long each of the original's functions is, from the game's code map, to know a copy of one
-  const { readCodeMap } = await import('./proof-files.mjs');
-  const sizes = new Map((readCodeMap(game)?.functions ?? []).filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const { inBootProgram, readCodeMap } = await import('./proof-files.mjs');
+  const sizes = new Map((readCodeMap(game)?.functions ?? []).filter(inBootProgram).map(f => [f.address, f.size]));
   const text = twinsHeader([...own.filter(file => file.endsWith('.c')), ...libraries.flatMap(library => library.files)].flatMap(file => twinsOf.get(file) ?? []), named, address => sizes.get(address) ?? null);
   const made = join(LOCAL, 'c', 'twins', ...game.split('/'));
   const header = join(made, 'twins.h');

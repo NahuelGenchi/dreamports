@@ -61,6 +61,13 @@ float ee_div(float a, float b);
 /** The square root of a float taken without its sign, cut the same way. */
 float ee_sqrt(float value);
 
+// The console's memory, for a game that keeps it where the console does, for the proof tools to compare after every
+// frame (memory.c): `memory` is PS2_EE, PS2_IOP or PS2_SPU2, `address` where the stretch starts in that memory, as the
+// console's own addresses go (main memory from 0, the scratchpad at 0x70000000, vector unit 1's data at 0x1100C000),
+// `size` its bytes, and `at` where the game keeps them.
+enum { PS2_EE, PS2_IOP, PS2_SPU2 };
+void ps2_console_memory(uint32_t memory, uint32_t address, uint32_t size, void *at);
+
 // The vector units' sums, for a program on one written again in C. A vector is four floats, x, y, z and w, or the same
 // bits as whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
 typedef union { float f[4]; int32_t i[4]; uint32_t u[4]; } vu_vector;

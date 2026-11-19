@@ -29,7 +29,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { proofFolder, REPO } from './paths.mjs';
-import { cartridgeOf, hex, readCodeMap, readOriginal } from './proof-files.mjs';
+import { cartridgeOf, hex, inBootProgram, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn } from '../gba/match.mjs';
@@ -156,7 +156,7 @@ export function twinMarks(version, codeMap = readCodeMap(version)) {
 export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null, read = onDisk }) {
   const marks = new Map();
   const folders = [join(folder, 'src'), folder].filter(path => read !== onDisk || existsSync(path));
-  const keyAt = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.key]));
+  const keyAt = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.key]));
   const inFolder = file => (givenOf(file) ? relative(REPO, file) : relative(folder, file)).split(sep).join('/');
   // what a twin is built with beside its own code: what its file holds outside every function, and the game's own
   // headers the file includes
@@ -186,7 +186,7 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
       if (twin.address === null) continue;
       keep(twin.address, twin, file);
       // a twin of a run (gba/match.mjs, throughIn) is the twin of each function of it
-      if (twin.through) for (const f of codeMap.functions) if (!f.bytes && f.address > twin.address && f.address <= twin.through) keep(f.address, twin, file);
+      if (twin.through) for (const f of codeMap.functions) if (inBootProgram(f) && f.address > twin.address && f.address <= twin.through) keep(f.address, twin, file);
     }
   }
   return marks;

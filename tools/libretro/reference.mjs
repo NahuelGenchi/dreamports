@@ -50,9 +50,10 @@ export function libretroReference(machine) {
     mkdirSync(saves, { recursive: true });
     mkdirSync(system, { recursive: true });
     // a core that keeps its settings and memory cards in the person's home folder, as Play! does, finds them in that empty
-    // one instead, so nothing carries from one run to the next
-    const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves };
-    const env = { DP_SYSTEM: system, DP_SAVES: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
+    // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
+    // Documents folder, which CFFIXED_USER_HOME moves there too
+    const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
@@ -60,15 +61,29 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    seesInstructions: core.ran === true,
+    seesInstructions: !!core.ran,
     seesEntries: core.ran === true,
+    // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
+    // went by (DP_WHY, libretro/ran-ps2.h)
+    saysWhy: core.ran === 'blocks',
+    // its search counts what hasn't been played, from a list of what's left to play, as its memory holds other code than
+    // the game's (libretro/ran-ps2.h, DP_UNPLAYED), and how long the console has played
+    searchesWhatRan: core.ran === 'blocks',
+    searchListsUnplayed: core.ran === 'blocks',
+    // and one that says where it keeps the console's memory and its memory cards, as the PlayStation 2's does with the
+    // tools' patch, has its memory compared after every frame, its cards' files each time they change, and can start from
+    // cards a player's report carries (libretro/held.h)
+    seesMemory: core.holds === true,
+    seesSaves: core.holds === true,
+    startsFromSave: core.holds === true,
+    isSaveMemory: () => core.holds === true,
     ensureOriginal: log => buildReference(machine, log),
     async runOriginal({ copy, ...rest }) {
       const named = forRun(copy);
       let result;
       try {
         result = await runReference({
-          ...rest, program: HOST, env: named.env, width, height, buttonBytes: 4,
+          ...rest, program: HOST, env: { ...named.env, ...rest.env, ...(rest.startSave ? { DP_SAVE_START: resolve(rest.startSave) } : {}) }, width, height, buttonBytes: 4,
           args: names => [coreFile(core), named.path, String(rest.frames), names.buttons, core.ran ? names.functions : '-', names.pictures, names.sound, names.sets, '-', String(width), String(height), ...options],
         });
       } finally {

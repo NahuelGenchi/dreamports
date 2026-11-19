@@ -16,14 +16,26 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_SOURCE = join(HERE, 'host.c');
 // the route finder's search, which the host includes (lib/explore.h)
 const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
-// what ran of the original, which the host includes too (ran.h)
-const RAN = join(HERE, 'ran.h');
+// what ran of the original, which the host includes too (ran.h, and ran-ps2.h for the PlayStation 2)
+const RAN = join(HERE, 'ran.h'), RAN_PS2 = join(HERE, 'ran-ps2.h');
+// and what the console holds, its memory and its memory cards (held.h)
+const HELD = join(HERE, 'held.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
+// On a Mac the host and the emulator are built for the processor Node.js runs as, arm64 on Apple's chip, named to the
+// compiler and to CMake, as Homebrew's CMake runs as arm64 even when Node.js runs as an Intel program through Rosetta,
+// and a host can't load an emulator built for the other
+const MAC_ARCH = process.platform === 'darwin' ? (process.arch === 'arm64' ? 'arm64' : 'x86_64') : null;
 export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
-// a core with a patch of the project's own has the patch's hash in its name too, so a build without it is never used
-const patchHash = core => core.patch ? `-${createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 8)}` : '';
-export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${patchHash(core)}${EXTENSION}`);
+// What CMake builds a core with. Every product and sum the emulator's own C++ works out is rounded on its own, as
+// -ffp-contract=off asks: a compiler for arm64, such as Apple's on a Mac, would otherwise fuse a product and a sum into
+// one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
+const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
+  ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
+// a core with a patch of the project's own has the patch's hash in its name too, and one CMake builds the hash of what it's
+// built with, so a build without either is never used
+const builtWith = core => core.patch || core.cmake ? `-${createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '').digest('hex').slice(0, 8)}` : '';
+export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
   try {
@@ -41,7 +53,7 @@ const isCurrent = (source, target, also) => existsSync(target) && existsSync(sou
 
 function compile(what, source, target, args, tools, also) {
   if (isCurrent(source, target, also)) return;
-  run(what, tools?.gcc ?? 'cc', ['-O2', '-std=gnu11', '-o', target, source, ...args], FOLDER, tools?.env);
+  run(what, tools?.gcc ?? 'cc', ['-O2', '-std=gnu11', ...(MAC_ARCH ? ['-arch', MAC_ARCH] : []), '-o', target, source, ...args], FOLDER, tools?.env);
   writeFileSync(sourceOf(target), textOf(source, also));
 }
 
@@ -58,14 +70,19 @@ export function fetchSource({ core, name }) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
-  // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
-  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  if (core.patch) {
+    // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
+    // emulator's own files, and the patch won't write over it
+    for (const [, added] of readFileSync(join(REPO, core.patch), 'utf8').matchAll(/^diff --git a\/(\S+) b\/\S+\nnew file mode/gm)) rmSync(join(source, added), { force: true });
+    // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
+    run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  }
   return source;
 }
 
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN]);
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
@@ -73,7 +90,7 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);
+    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
@@ -88,7 +105,7 @@ export function buildReference(machine, log) {
   // said before a build of several minutes that couldn't run here
   if (core.graphics && process.platform === 'win32') throw new Error(`${name} can't run in the tools on Windows yet: its emulator draws with OpenGL, and the tools give it a context only on Linux and macOS so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
-  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });

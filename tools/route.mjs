@@ -30,7 +30,7 @@ import { join, relative } from 'node:path';
 import os from 'node:os';
 import { LOCAL, REPO, sharedProofFolder } from './lib/paths.mjs';
 import { readCodeMap, readOriginal, readRecordings } from './lib/proof-files.mjs';
-import { NOT_TAKEN, RAN, TAKEN, provenUnits, ranIn, untouchedOf } from './lib/played.mjs';
+import { NOT_TAKEN, RAN, TAKEN, provenUnits, ranIn, unplayedUnits, untouchedOf } from './lib/played.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { compress, expand, originalPlay, writeRecording } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
@@ -105,10 +105,11 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const untouched = /^untouched(?::[0-9A-Fa-f]{7,8})?$/.test(goalText);
   if (untouched) {
     const codeMap = readCodeMap(game);
-    if (reference.searchesWhatRan !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose search counts what hasn't been played, which is the Game Boy Advance so far.");
+    if (reference.searchesWhatRan !== true || !codeMap) throw new Error("--goal untouched needs a code map and a console whose search counts what hasn't been played, which is the Game Boy Advance and the PlayStation 2 so far.");
     route.values = { ...route.values, untouched: { address: 'FFFF0000', bytes: 4 } };
     route.goals = { ...route.goals, [goalText]: 'untouched>0' };
-    provenFile = Buffer.from(provenUnits(game, codeMap).buffer);
+    // what's been played, or on a console whose search is given what to look for, what's left (lib/played.mjs)
+    provenFile = Buffer.from((reference.searchListsUnplayed === true ? unplayedUnits : provenUnits)(game, codeMap).buffer);
     if (goalText.includes(':')) {
       const address = parseInt(goalText.split(':')[1], 16);
       const f = untouchedOf(game, codeMap).functions.find(each => address >= each.address && address < each.address + each.size);
@@ -126,7 +127,7 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
           ownLost = `frames>${after}`;
           console.log(`The branch ran only at set moments in ${sourceName}, the last in frame ${after - 120}, so play past frame ${after} doesn't count: --lost says otherwise.`);
         }
-        testedValues(records).forEach((tested, i) => {
+        testedValues(records, original.console).forEach((tested, i) => {
           const key = `tested${i + 1}`;
           route.values[key] = { address: hex(tested.address), bytes: tested.bytes };
           steering[key] = Math.max(1, Math.ceil(Math.abs(tested.held - tested.against) / 16));
@@ -176,7 +177,11 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
   const way = originalPlay(source, { frames: cut, keysLate });
   const masks = way.originalHeld.map(list => list.reduce((mask, b) => mask | (KEY[b] ?? 0), 0));
   if (keysLate) masks.unshift(0);
-  const searching_ = () => ({ ...reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' }), ...(provenFile ? { env: { DP_PROVEN: 'proven.bin', ...(target ? { DP_TARGET: target } : {}) } } : {}) });
+  // with what an emulator's own run needs of the environment kept, as a libretro core's folders are
+  const searching_ = () => {
+    const found = reference.searchOriginal({ copy: copy.path, spec: 'spec.txt' });
+    return provenFile ? { ...found, env: { ...found.env, [reference.searchListsUnplayed === true ? 'DP_UNPLAYED' : 'DP_PROVEN']: 'proven.bin', ...(target ? { DP_TARGET: target } : {}) } } : found;
+  };
   const searcher = searching_();
   const pack = list => Buffer.from((searcher.buttonBytes === 4 ? Uint32Array : Uint16Array).from(list).buffer);
   const prefix = pack(masks), sets = Buffer.from(Uint32Array.from(way.sets.flatMap(({ frame, address, bytes, value: v }) => [frame, address, bytes, v])).buffer);
