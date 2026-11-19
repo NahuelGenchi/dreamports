@@ -278,3 +278,23 @@ test('nested loops: each counter within its own guard, the store within both', (
   assert.deepEqual([...read.stores.get(BASE + 0x10).base], [range(T, T + 15 * 64 + 15 * 4, 4)]);
   assert.equal(read.everywhere, false);
 });
+
+// Only the code a piece's flow reaches is read as instructions (#1553).
+// F, 0x40: ldr r4, =CELL   mov r1, #5   str r1, [r4]   bx lr: its store bounded unless something arrives at 0x44
+const CELL_F = 0x02000090;
+const storer = [halves(0x40, 0x4C01, 0x2105, 0x6021, 0x4770), words(0x48, CELL_F)];
+const storerF = { address: BASE + 0x40, size: 0x0C };
+
+test('a header whose data decodes as a branch no longer splits the code after it', () => {
+  // H, 0x00, ARM: b 0x20, then a header: a word that reads as b F + 4, and mov r0, r0 twice; 0x20: bx lr
+  const rom = cartridge([words(0x00, 0xEA000006, 0xEA00000E, 0xE1A00000, 0xE1A00000), words(0x20, 0xE12FFF1E), ...storer]);
+  const read = pointsTo(rom, [{ address: BASE, size: 0x24 }, storerF], { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x44).base], [`c${CELL_F}`]);
+});
+
+test('a jump through a register the scan can\'t place still reads all of its piece', () => {
+  // J, 0x60: mov r0, #0   bx r0, and after it a halfword that reads as b F + 4, which the jump may reach
+  const rom = cartridge([halves(0x60, 0x2000, 0x4700, 0xE7EE), ...storer]);
+  const read = pointsTo(rom, [{ address: BASE + 0x60, size: 6 }, storerF], { seconds: 10 });
+  assert.equal(read.stores.get(BASE + 0x44).base, ANYWHERE, 'so F may be arrived at mid-way, and is widened there');
+});
