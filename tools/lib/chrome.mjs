@@ -264,10 +264,11 @@ export async function until(page, expression, what, limit = 60000) {
   }
 }
 
-/** Gives a file to the first file input that matches a selector, as if the contributor picked it. */
+/** Gives a file to the first file input that matches a selector, as if the contributor picked it, or several at once
+ *  when `path` is a list, as a .cue is chosen with its tracks. */
 export async function giveFile(page, selector, path) {
   const { root } = await page.send('DOM.getDocument', { depth: -1 });
   const { nodeId } = await page.send('DOM.querySelector', { nodeId: root.nodeId, selector });
   if (!nodeId) throw new Error(`The page has no ${selector}.`);
-  await page.send('DOM.setFileInputFiles', { nodeId, files: [path] });
+  await page.send('DOM.setFileInputFiles', { nodeId, files: [path].flat() });
 }

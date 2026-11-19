@@ -224,6 +224,8 @@ test('a disc is the same disc in every kind of file it comes in', async () => {
   for (const [name, [format, kind, sha1, tracks]] of Object.entries(kinds)) {
     const path = join(folder, name), copy = await readAnyCopy(path);
     assert.deepEqual([copy.console, copy.code, copy.format, copy.sha1, copy.tracks], ['ps2', 'SLUS_999.99', format, sha1, tracks], name);
+    // only an ISO of a CD has lost what its drive reads: each sector's subheader
+    assert.equal(copy.whole, name !== 'cd.iso', `${name} keeps every sector whole`);
     assert.deepEqual(await readDiscFile(path, 'SLUS_999.99'), madeUpProgram(), name);
     const disc = await openDisc(path);
     try {
