@@ -12,6 +12,2295 @@ with dreamports_draw_list. That's what a 3D game is proven by (docs/STANDARD.md)
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
+When DP_VU_DUMP names a file, the vector units' memories go there at each V-blank, vector unit 0's code and data and
+then vector unit 1's, for the tools to compare with a Dreamport's (kit/ps2/c/vu.c, tools/test/ps2-ee-vu.mjs).
+
+Its FPU and its vector units do their float sums by the console's rules, not a computer's: Source/ee/dreamports/floats.h
+and floats.cpp are kit/ps2/c/floats.h and floats.c, word for word (tools/test/ps2-floats.test.mjs checks they are), and
+Glue.cpp is what the recompiled code calls to reach them. With them the FPU keeps its flags, the vector units' MAC and
+status flags have underflow, overflow, invalid and division by zero with their sticky flags, a division's flags land with
+its Q, FSSET and FCSET are seen four cycles on, a division and WAITQ take the cycles they wait, and everything a vector
+unit's program left on its way lands as it ends (kit/ps2/c/README.md says where each rule comes from).
+
+diff --git a/Source/CMakeLists.txt b/Source/CMakeLists.txt
+index 0eb6a2e..1216ff7 100644
+--- a/Source/CMakeLists.txt
++++ b/Source/CMakeLists.txt
+@@ -192,6 +192,10 @@ set(COMMON_SRC_FILES
+ 	ee/EEAssembler.h
+ 	ee/EeExecutor.cpp
+ 	ee/EeExecutor.h
++	ee/dreamports/floats.cpp
++	ee/dreamports/floats.h
++	ee/dreamports/Glue.cpp
++	ee/dreamports/Glue.h
+ 	ee/FpAddTruncate.cpp
+ 	ee/FpAddTruncate.h
+ 	ee/FpMulTruncate.cpp
+diff --git a/Source/COP_FPU.cpp b/Source/COP_FPU.cpp
+index 438943a..04f2901 100644
+--- a/Source/COP_FPU.cpp
++++ b/Source/COP_FPU.cpp
+@@ -8,6 +8,7 @@
+ #include "FpUtils.h"
+ #include "ee/MA_EE.h"
+ #include "ee/FpAddTruncate.h"
++#include "ee/dreamports/Glue.h"
+ 
+ // clang-format off
+ const uint32 CCOP_FPU::m_ccMask[8] =
+@@ -23,6 +24,40 @@ const uint32 CCOP_FPU::m_ccMask[8] =
+ };
+ // clang-format on
+ 
++//Dreamports: an instruction on the console's float rules. The FCSR it leaves is worked out first, from the operands as
++//they are, and then its result, which can be one of them
++static void DpFpu(CMipsJitter* codeGen, uint32 op, size_t a, size_t b, size_t dst)
++{
++	codeGen->PushCst(op);
++	codeGen->PushRel(a);
++	codeGen->PushRel(b);
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1A));
++	codeGen->PushRel(offsetof(CMIPS, m_State.nFCSR));
++	codeGen->Call(reinterpret_cast<void*>(&DpFpuFcsr), 5, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(offsetof(CMIPS, m_State.nFCSR));
++
++	if(op == DP_CLEAR) return;
++	codeGen->PushCst(op);
++	codeGen->PushRel(a);
++	codeGen->PushRel(b);
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1A));
++	codeGen->Call(reinterpret_cast<void*>(&DpFpuResult), 4, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(dst);
++}
++
++static void DpFpuCompareOp(CMipsJitter* codeGen, uint32 op, size_t a, size_t b)
++{
++	codeGen->PushCst(op);
++	codeGen->PushRel(a);
++	codeGen->PushRel(b);
++	codeGen->Call(reinterpret_cast<void*>(&DpFpuCompare), 3, Jitter::CJitter::RETURN_VALUE_32);
++}
++
++#define DP_FS offsetof(CMIPS, m_State.nCOP1[m_fs])
++#define DP_FT offsetof(CMIPS, m_State.nCOP1[m_ft])
++#define DP_FD offsetof(CMIPS, m_State.nCOP1[m_fd])
++#define DP_ACC offsetof(CMIPS, m_State.nCOP1A)
++
+ CCOP_FPU::CCOP_FPU(MIPS_REGSIZE regSize)
+     : CMIPSCoprocessor(regSize)
+ {
+@@ -248,97 +283,40 @@ void CCOP_FPU::BC1TL()
+ //00
+ void CCOP_FPU::ADD_S()
+ {
+-	if(m_compileHints & CMA_EE::COMPILEHINT_FPU_USE_ACCURATE_ADD_SUB)
+-	{
+-		m_codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->Call(reinterpret_cast<void*>(&FpAddTruncate), 2, Jitter::CJitter::RETURN_VALUE_32);
+-		m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	else
+-	{
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_AddS();
+-		m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
++	DpFpu(m_codeGen, DP_ADD, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //01
+ void CCOP_FPU::SUB_S()
+ {
+-	if(m_compileHints & CMA_EE::COMPILEHINT_FPU_USE_ACCURATE_ADD_SUB)
+-	{
+-		m_codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->PushRel(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->PushCst(0x80000000);
+-		m_codeGen->Xor();
+-		m_codeGen->Call(reinterpret_cast<void*>(&FpAddTruncate), 2, Jitter::CJitter::RETURN_VALUE_32);
+-		m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	else
+-	{
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_SubS();
+-		m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
++	DpFpu(m_codeGen, DP_SUB, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //02
+ void CCOP_FPU::MUL_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_MUL, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //03
+ void CCOP_FPU::DIV_S()
+ {
+-	FpUtils::IsZero(m_codeGen, offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->BeginIf(Jitter::CONDITION_EQ);
+-	{
+-		FpUtils::ComputeDivisionByZero(m_codeGen,
+-		                               offsetof(CMIPS, m_State.nCOP1[m_fs]),
+-		                               offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	m_codeGen->Else();
+-	{
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_DivS();
+-		m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	m_codeGen->EndIf();
++	DpFpu(m_codeGen, DP_DIV, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //04
+ void CCOP_FPU::SQRT_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_AbsS();
+-	m_codeGen->FP_SqrtS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_SQRT, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //05
+ void CCOP_FPU::ABS_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
++	m_codeGen->FP_PushRel32(DP_FS);
+ 	m_codeGen->FP_AbsS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	m_codeGen->FP_PullRel32(DP_FD);
++	DpFpu(m_codeGen, DP_CLEAR, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //06
+@@ -351,162 +329,82 @@ void CCOP_FPU::MOV_S()
+ //07
+ void CCOP_FPU::NEG_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
++	m_codeGen->FP_PushRel32(DP_FS);
+ 	m_codeGen->FP_NegS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	m_codeGen->FP_PullRel32(DP_FD);
++	DpFpu(m_codeGen, DP_CLEAR, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //0D
+ void CCOP_FPU::TRUNC_W_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ToInt32TruncateS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_CVTW, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //16
+ void CCOP_FPU::RSQRT_S()
+ {
+-	FpUtils::IsZero(m_codeGen, offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->BeginIf(Jitter::CONDITION_EQ);
+-	{
+-		FpUtils::ComputeDivisionByZero(m_codeGen,
+-		                               offsetof(CMIPS, m_State.nCOP1[m_fs]),
+-		                               offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	m_codeGen->Else();
+-	{
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-		m_codeGen->FP_ClampS();
+-		m_codeGen->FP_RsqrtS();
+-		m_codeGen->FP_MulS();
+-		m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
+-	}
+-	m_codeGen->EndIf();
++	DpFpu(m_codeGen, DP_RSQRT, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //18
+ void CCOP_FPU::ADDA_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1A));
++	DpFpu(m_codeGen, DP_ADD, DP_FS, DP_FT, DP_ACC);
+ }
+ 
+ //19
+ void CCOP_FPU::SUBA_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_SubS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1A));
++	DpFpu(m_codeGen, DP_SUB, DP_FS, DP_FT, DP_ACC);
+ }
+ 
+ //1A
+ void CCOP_FPU::MULA_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1A));
++	DpFpu(m_codeGen, DP_MUL, DP_FS, DP_FT, DP_ACC);
+ }
+ 
+ //1C
+ void CCOP_FPU::MADD_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1A));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_MADD, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //1D
+ void CCOP_FPU::MSUB_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1A));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_SubS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_MSUB, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //1E
+ void CCOP_FPU::MADDA_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1A));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1A));
++	DpFpu(m_codeGen, DP_MADD, DP_FS, DP_FT, DP_ACC);
+ }
+ 
+ //1F
+ void CCOP_FPU::MSUBA_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1A));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_SubS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1A));
++	DpFpu(m_codeGen, DP_MSUB, DP_FS, DP_FT, DP_ACC);
+ }
+ 
+ //24
+ void CCOP_FPU::CVT_W_S()
+ {
+-	//Load the rounding mode from FCSR?
+-	//PS2 only supports truncate rounding mode
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ToInt32TruncateS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_CVTW, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //28
+ void CCOP_FPU::MAX_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MaxS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_MAX, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //29
+ void CCOP_FPU::MIN_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-	m_codeGen->FP_MinS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP1[m_fd]));
++	DpFpu(m_codeGen, DP_MIN, DP_FS, DP_FT, DP_FD);
+ }
+ 
+ //30
+@@ -519,42 +417,21 @@ void CCOP_FPU::C_F_S()
+ //32
+ void CCOP_FPU::C_EQ_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_CmpS(Jitter::CONDITION_EQ);
+-
++	DpFpuCompareOp(m_codeGen, DP_EQ, DP_FS, DP_FT);
+ 	SetCCBit(true, m_ccMask[((m_nOpcode >> 8) & 0x07)]);
+ }
+ 
+ //34
+ void CCOP_FPU::C_LT_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_CmpS(Jitter::CONDITION_BL);
+-
++	DpFpuCompareOp(m_codeGen, DP_LT, DP_FS, DP_FT);
+ 	SetCCBit(true, m_ccMask[((m_nOpcode >> 8) & 0x07)]);
+ }
+ 
+ //36
+ void CCOP_FPU::C_LE_S()
+ {
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_fs]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP1[m_ft]));
+-	m_codeGen->FP_ClampS();
+-
+-	m_codeGen->FP_CmpS(Jitter::CONDITION_BE);
+-
++	DpFpuCompareOp(m_codeGen, DP_LE, DP_FS, DP_FT);
+ 	SetCCBit(true, m_ccMask[((m_nOpcode >> 8) & 0x07)]);
+ }
+ 
+diff --git a/Source/MIPS.h b/Source/MIPS.h
+index fc28a8f..b5db527 100644
+--- a/Source/MIPS.h
++++ b/Source/MIPS.h
+@@ -100,7 +100,10 @@ struct MIPSSTATE
+ 	uint32 nCOP2CF; //Mirror of CLIP flag (computed with values from pipeClip)
+ 	uint32 nCOP2MF; //Mirror of MACflag (computed with values from pipeMac)
+ 	uint32 nCOP2SF; //Sticky values of sign and zero MACflag (ie.: SxSySzSw ZxZyZzZw)
+-	uint32 nCOP2DF; //Division by 0 flag from DIV operations
++	uint32 nCOP2DF; //Dreamports: the status flag's I, D, IS and DS, where the status flag has them
++	uint32 dpDivHeld; //Dreamports: the I and D of the division on its way, which land with its Q
++	uint32 dpStickyHeld; //Dreamports: the IS and DS of the FSSET on its way, and when they land
++	uint32 dpStickyTime;
+ 	uint32 nCOP2T;
+ 
+ 	uint32 nCOP2VI[16];
+diff --git a/Source/ee/COP_VU.cpp b/Source/ee/COP_VU.cpp
+index e6c36f8..ec439c3 100644
+--- a/Source/ee/COP_VU.cpp
++++ b/Source/ee/COP_VU.cpp
+@@ -852,7 +852,7 @@ void CCOP_VU::VMULA()
+ //0B
+ void CCOP_VU::VOPMULA()
+ {
+-	VUShared::OPMULA(m_codeGen, m_nFS, m_nFT);
++	VUShared::OPMULA(m_codeGen, m_nFS, m_nFT, 0, 0);
+ }
+ 
+ //0D
+diff --git a/Source/ee/Ee_SubSystem.cpp b/Source/ee/Ee_SubSystem.cpp
+index ba72195..a23433e 100644
+--- a/Source/ee/Ee_SubSystem.cpp
++++ b/Source/ee/Ee_SubSystem.cpp
+@@ -1,4 +1,5 @@
+ #include "Ee_SubSystem.h"
++#include "dreamports/Glue.h"
+ #include "EeExecutor.h"
+ #include "VuExecutor.h"
+ #include "AppConfig.h"
+@@ -646,12 +647,7 @@ void CSubSystem::Vu0StateChanged(CVpu::VU_STATE newState)
+ {
+ 	auto flushPipelines =
+ 	    [](CMIPS& ctx) {
+-		    ctx.m_State.pipeQ.counter = 0;
+-		    ctx.m_State.nCOP2Q = ctx.m_State.pipeQ.heldValue;
+-
+-		    VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoMac, &ctx, VUShared::LATENCY_MAC);
+-		    VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoSticky, &ctx, VUShared::LATENCY_MAC);
+-		    VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoClip, &ctx, VUShared::LATENCY_MAC);
++		    DpVuLandAll(&ctx);
+ 	    };
+ 
+ 	assert(newState != CVpu::VU_STATE_STOPPED);
+@@ -718,6 +714,9 @@ void CSubSystem::CopyVuState(CMIPS& dst, const CMIPS& src)
+ 	dst.m_State.nCOP2R = src.m_State.nCOP2R;
+ 	dst.m_State.nCOP2MF = src.m_State.nCOP2MF;
+ 	dst.m_State.nCOP2SF = src.m_State.nCOP2SF;
++	dst.m_State.nCOP2DF = src.m_State.nCOP2DF;
++	dst.m_State.dpDivHeld = 0;
++	dst.m_State.dpStickyHeld = 0;
+ 	dst.m_State.nCOP2CF = src.m_State.nCOP2CF;
+ 	dst.m_State.pipeQ.counter = 0;
+ 	dst.m_State.pipeQ.heldValue = src.m_State.nCOP2Q;
+diff --git a/Source/ee/MA_VU_Lower.cpp b/Source/ee/MA_VU_Lower.cpp
+index 62b3f2c..f12245a 100644
+--- a/Source/ee/MA_VU_Lower.cpp
++++ b/Source/ee/MA_VU_Lower.cpp
+@@ -5,6 +5,7 @@
+ #include "Vpu.h"
+ #include "VUShared.h"
+ #include "offsetof_def.h"
++#include "dreamports/Glue.h"
+ 
+ #define LATENCY_EATAN 53
+ #define LATENCY_EEXP 43
+@@ -108,6 +109,20 @@ void CMA_VU::CLower::ApplySumSeries(size_t target, const uint32* seriesConstants
+ 	}
+ }
+ 
++//Dreamports: an EFU sum on the console's float rules (dreamports/floats.h), from the fields of its register
++static void DpEfu(CMipsJitter* codeGen, uint32 which, uint8 is, uint8 fsf, uint32 latency, uint32 relativePipeTime)
++{
++	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, codeGen, latency, relativePipeTime);
++	codeGen->PushCst(which);
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2[is].nV[i]));
++	}
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2[is].nV[fsf]));
++	codeGen->Call(reinterpret_cast<void*>(&fpu_efu), 6, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(VUShared::g_pipeInfoP.heldValue);
++}
++
+ void CMA_VU::CLower::GenerateEATAN()
+ {
+ 	auto destination = VUShared::g_pipeInfoP.heldValue;
+@@ -257,10 +272,7 @@ void CMA_VU::CLower::FCEQ()
+ void CMA_VU::CLower::FCSET()
+ {
+ 	m_codeGen->PushCst(m_nImm24);
+-	m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2CF));
+-
+-	m_codeGen->PushCst(m_nImm24);
+-	ResetFlagPipeline(VUShared::g_pipeInfoClip, m_codeGen);
++	VUShared::QueueInFlagPipeline(VUShared::g_pipeInfoClip, m_codeGen, VUShared::LATENCY_MAC, m_relativePipeTime);
+ }
+ 
+ //12
+@@ -296,9 +308,7 @@ void CMA_VU::CLower::FCOR()
+ //15
+ void CMA_VU::CLower::FSSET()
+ {
+-	m_codeGen->PushCst(m_nImm12);
+-	m_codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2T));
+-	VUShared::SetStatus(m_codeGen, offsetof(CMIPS, m_State.nCOP2T));
++	VUShared::SetStickyLater(m_codeGen, m_nImm12, m_relativePipeTime);
+ }
+ 
+ //16
+@@ -643,88 +653,25 @@ void CMA_VU::CLower::XGKICK()
+ //1C
+ void CMA_VU::CLower::ESADD()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ESADD, m_relativePipeTime);
+-
+-	///////////////////////////////////////////////////
+-	//Raise all components to the power of 2
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	///////////////////////////////////////////////////
+-	//Sum all components
+-
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ESADD, m_nIS, m_nFSF, LATENCY_ESADD, m_relativePipeTime);
+ }
+ 
+ //1D
+ void CMA_VU::CLower::EATANxy()
+ {
+-	//Compute t = (y - x) / (y + x)
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->FP_SubS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->FP_AddS();
+-
+-	m_codeGen->FP_DivS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP2T));
+-
+-	GenerateEATAN();
++	DpEfu(m_codeGen, EFU_EATANXY, m_nIS, m_nFSF, LATENCY_EATAN, m_relativePipeTime);
+ }
+ 
+ //1E
+ void CMA_VU::CLower::ESQRT()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ESQRT, m_relativePipeTime);
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[m_nFSF]));
+-	m_codeGen->FP_SqrtS();
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ESQRT, m_nIS, m_nFSF, LATENCY_ESQRT, m_relativePipeTime);
+ }
+ 
+ //1F
+ void CMA_VU::CLower::ESIN()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ESIN, m_relativePipeTime);
+-
+-	static const unsigned int seriesLength = 5;
+-	static const uint32 seriesConstants[seriesLength] =
+-	    {
+-	        0x3F800000,
+-	        0xBE2AAAA4,
+-	        0x3C08873E,
+-	        0xB94FB21F,
+-	        0x362E9C14};
+-	static const unsigned int seriesExponents[seriesLength] =
+-	    {
+-	        1,
+-	        3,
+-	        5,
+-	        7,
+-	        9};
+-
+-	ApplySumSeries(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[m_nFSF]),
+-	               seriesConstants, seriesExponents, seriesLength);
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ESIN, m_nIS, m_nFSF, LATENCY_ESIN, m_relativePipeTime);
+ }
+ 
+ //////////////////////////////////////////////////
+@@ -779,65 +726,19 @@ void CMA_VU::CLower::XITOP()
+ //1C
+ void CMA_VU::CLower::ERSADD()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ERSADD, m_relativePipeTime);
+-
+-	///////////////////////////////////////////////////
+-	//Raise all components to the power of 2
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	///////////////////////////////////////////////////
+-	//Sum all components
+-
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-
+-	///////////////////////////////////////////////////
+-	//Inverse
+-
+-	m_codeGen->FP_RcplS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ERSADD, m_nIS, m_nFSF, LATENCY_ERSADD, m_relativePipeTime);
+ }
+ 
+ //1D
+ void CMA_VU::CLower::EATANxz()
+ {
+-	//Compute t = (z - x) / (z + x)
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->FP_SubS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->FP_AddS();
+-
+-	m_codeGen->FP_DivS();
+-	m_codeGen->FP_PullRel32(offsetof(CMIPS, m_State.nCOP2T));
+-
+-	GenerateEATAN();
++	DpEfu(m_codeGen, EFU_EATANXZ, m_nIS, m_nFSF, LATENCY_EATAN, m_relativePipeTime);
+ }
+ 
+ //1E
+ void CMA_VU::CLower::ERSQRT()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ERSQRT, m_relativePipeTime);
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[m_nFSF]));
+-	m_codeGen->FP_RsqrtS();
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ERSQRT, m_nIS, m_nFSF, LATENCY_ERSQRT, m_relativePipeTime);
+ }
+ 
+ //////////////////////////////////////////////////
+@@ -871,108 +772,25 @@ void CMA_VU::CLower::RINIT()
+ //1C
+ void CMA_VU::CLower::ELENG()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ELENG, m_relativePipeTime);
+-
+-	///////////////////////////////////////////////////
+-	//Raise all components to the power of 2
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	///////////////////////////////////////////////////
+-	//Sum all components
+-
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-
+-	///////////////////////////////////////////////////
+-	//Extract root
+-
+-	m_codeGen->FP_SqrtS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ELENG, m_nIS, m_nFSF, LATENCY_ELENG, m_relativePipeTime);
+ }
+ 
+ //1D
+ void CMA_VU::CLower::ESUM()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ESUM, m_relativePipeTime);
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[3]));
+-
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ESUM, m_nIS, m_nFSF, LATENCY_ESUM, m_relativePipeTime);
+ }
+ 
+ //1E
+ void CMA_VU::CLower::ERCPR()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ERCPR, m_relativePipeTime);
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[m_nFSF]));
+-	m_codeGen->FP_RcplS();
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ERCPR, m_nIS, m_nFSF, LATENCY_ERCPR, m_relativePipeTime);
+ }
+ 
+ //1F
+ void CMA_VU::CLower::EEXP()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_EEXP, m_relativePipeTime);
+-
+-	const unsigned int seriesLength = 6;
+-	static const uint32 seriesConstants[seriesLength] =
+-	    {
+-	        0x3E7FFFA8,
+-	        0x3D0007F4,
+-	        0x3B29D3FF,
+-	        0x3933E553,
+-	        0x36B63510,
+-	        0x353961AC};
+-	static const unsigned int seriesExponents[seriesLength] =
+-	    {
+-	        1,
+-	        2,
+-	        3,
+-	        4,
+-	        5,
+-	        6};
+-
+-	ApplySumSeries(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[m_nFSF]),
+-	               seriesConstants, seriesExponents, seriesLength);
+-
+-	m_codeGen->FP_PushCst32(1.0f);
+-	m_codeGen->FP_AddS();
+-
+-	//Up to the fourth power
+-	m_codeGen->PushTop();
+-	m_codeGen->PushTop();
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_MulS();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_RcplS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_EEXP, m_nIS, m_nFSF, LATENCY_EEXP, m_relativePipeTime);
+ }
+ 
+ //////////////////////////////////////////////////
+@@ -1006,36 +824,7 @@ void CMA_VU::CLower::RXOR()
+ //1C
+ void CMA_VU::CLower::ERLENG()
+ {
+-	auto destination = VUShared::g_pipeInfoP.heldValue;
+-	VUShared::QueueInPipeline(VUShared::g_pipeInfoP, m_codeGen, LATENCY_ERLENG, m_relativePipeTime);
+-
+-	///////////////////////////////////////////////////
+-	//Raise all components to the power of 2
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[0]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[1]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	m_codeGen->FP_PushRel32(offsetof(CMIPS, m_State.nCOP2[m_nIS].nV[2]));
+-	m_codeGen->PushTop();
+-	m_codeGen->FP_MulS();
+-
+-	///////////////////////////////////////////////////
+-	//Sum all components
+-
+-	m_codeGen->FP_AddS();
+-	m_codeGen->FP_AddS();
+-
+-	///////////////////////////////////////////////////
+-	//Extract root, inverse
+-
+-	m_codeGen->FP_RsqrtS();
+-
+-	m_codeGen->FP_PullRel32(destination);
++	DpEfu(m_codeGen, EFU_ERLENG, m_nIS, m_nFSF, LATENCY_ERLENG, m_relativePipeTime);
+ }
+ 
+ //1E
+diff --git a/Source/ee/MA_VU_Upper.cpp b/Source/ee/MA_VU_Upper.cpp
+index 7200729..2aa1364 100644
+--- a/Source/ee/MA_VU_Upper.cpp
++++ b/Source/ee/MA_VU_Upper.cpp
+@@ -454,7 +454,7 @@ void CMA_VU::CUpper::MULA()
+ //0B
+ void CMA_VU::CUpper::OPMULA()
+ {
+-	VUShared::OPMULA(m_codeGen, m_nFS, m_nFT);
++	VUShared::OPMULA(m_codeGen, m_nFS, m_nFT, m_relativePipeTime, m_compileHints);
+ }
+ 
+ //////////////////////////////////////////////////
+diff --git a/Source/ee/VUShared.cpp b/Source/ee/VUShared.cpp
+index 52360eb..8718abd 100644
+--- a/Source/ee/VUShared.cpp
++++ b/Source/ee/VUShared.cpp
+@@ -5,9 +5,14 @@
+ #include "FpAddTruncate.h"
+ #include "../FpUtils.h"
+ #include "Vpu.h"
++#include "dreamports/Glue.h"
+ 
+ #define STATUS_Z 0x01
+ #define STATUS_S 0x02
++#define STATUS_U 0x04
++#define STATUS_O 0x08
++#define STATUS_US 0x100
++#define STATUS_OS 0x200
+ #define STATUS_I 0x10
+ #define STATUS_D 0x20
+ #define STATUS_ZS 0x40
+@@ -252,6 +257,68 @@ void VUShared::MakeComparableFromFloat(CMipsJitter* codeGen)
+ 	codeGen->PullTop();
+ }
+ 
++//Dreamports: queues the MAC flags on the stack, zero, sign, underflow and overflow for each field, and what they
++//make of the sticky ones, to be seen four cycles on
++static void DpQueueFlags(CMipsJitter* codeGen, uint32 relativePipeTime, uint32 compileHints)
++{
++	//Update sticky flags
++	{
++		codeGen->PushTop();
++
++		//Load previous value
++		{
++			codeGen->PushRelAddrRef(offsetof(CMIPS, m_State.pipeSticky.values));
++
++			codeGen->PushRel(offsetof(CMIPS, m_State.pipeSticky.index));
++			codeGen->PushCst(1);
++			codeGen->Sub();
++			codeGen->PushCst(FLAG_PIPELINE_SLOTS - 1);
++			codeGen->And();
++
++			codeGen->LoadFromRefIdx();
++		}
++
++		codeGen->Or();
++		QueueInFlagPipeline(g_pipeInfoSticky, codeGen, LATENCY_MAC, relativePipeTime);
++	}
++
++	if((compileHints & COMPILEHINT_SKIP_FMAC_UPDATE) == 0)
++	{
++		QueueInFlagPipeline(g_pipeInfoMac, codeGen, LATENCY_MAC, relativePipeTime);
++	}
++	else
++	{
++		codeGen->PullTop();
++	}
++}
++
++//Dreamports: a sum on the console's float rules, a field at a time: its result into fd, and its MAC flags queued.
++//With `expand`, ft is one value every field takes, kept as the sum starts, as its register can be the one written
++static void DpFmac(CMipsJitter* codeGen, uint32 op, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
++{
++	if(expand)
++	{
++		codeGen->PushRel(ft);
++		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2T));
++	}
++	codeGen->PushCst(0);
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		if(!DestinationHasElement(dest, i)) continue;
++		codeGen->PushCst(op | (i << 8));
++		codeGen->PushRel(GetAccumulatorElement(i));
++		codeGen->PushRel(fs + (i * 4));
++		codeGen->PushRel(expand ? offsetof(CMIPS, m_State.nCOP2T) : (ft + (i * 4)));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuLane), 4, Jitter::CJitter::RETURN_VALUE_64);
++		codeGen->PushTop();
++		codeGen->ExtLow64();
++		codeGen->PullRel(fd + (i * 4));
++		codeGen->ExtHigh64();
++		codeGen->Or();
++	}
++	DpQueueFlags(codeGen, relativePipeTime, compileHints);
++}
++
+ void VUShared::TestSZFlags(CMipsJitter* codeGen, uint8 dest, size_t regOffset, uint32 relativePipeTime, uint32 compileHints)
+ {
+ 	codeGen->MD_PushRel(regOffset);
+@@ -362,18 +429,68 @@ void VUShared::GetStatus(CMipsJitter* codeGen, size_t dstOffset, uint32 relative
+ 	}
+ 	codeGen->EndIf();
+ 
+-	//Check D flag
+-	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2DF));
++	//Check U flag
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2MF));
++	codeGen->PushCst(0x0F00);
++	codeGen->And();
+ 	codeGen->PushCst(0);
+ 	codeGen->BeginIf(Jitter::CONDITION_NE);
+ 	{
+ 		codeGen->PushRel(dstOffset);
+-		codeGen->PushCst(STATUS_D);
++		codeGen->PushCst(STATUS_U);
+ 		codeGen->Or();
+ 		codeGen->PullRel(dstOffset);
+ 	}
+ 	codeGen->EndIf();
+ 
++	//Check O flag
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2MF));
++	codeGen->PushCst(0xF000);
++	codeGen->And();
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushRel(dstOffset);
++		codeGen->PushCst(STATUS_O);
++		codeGen->Or();
++		codeGen->PullRel(dstOffset);
++	}
++	codeGen->EndIf();
++
++	//Check US flag
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
++	codeGen->PushCst(0x0F00);
++	codeGen->And();
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushRel(dstOffset);
++		codeGen->PushCst(STATUS_US);
++		codeGen->Or();
++		codeGen->PullRel(dstOffset);
++	}
++	codeGen->EndIf();
++
++	//Check OS flag
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
++	codeGen->PushCst(0xF000);
++	codeGen->And();
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushRel(dstOffset);
++		codeGen->PushCst(STATUS_OS);
++		codeGen->Or();
++		codeGen->PullRel(dstOffset);
++	}
++	codeGen->EndIf();
++
++	//Dreamports: I, D, IS and DS, as the division and the FSSET on their way have made them by now
++	PushDivisionFlags(codeGen, relativePipeTime);
++	codeGen->PushRel(dstOffset);
++	codeGen->Or();
++	codeGen->PullRel(dstOffset);
++
+ 	//TODO: Check other flags
+ }
+ 
+@@ -411,218 +528,96 @@ void VUShared::SetStatus(CMipsJitter* codeGen, size_t srcOffset)
+ 	}
+ 	codeGen->EndIf();
+ 
++	codeGen->PushRel(srcOffset);
++	codeGen->PushCst(STATUS_US);
++	codeGen->And();
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushCst(0x0F00);
++		codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
++		codeGen->Or();
++		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2SF));
++	}
++	codeGen->EndIf();
++
++	codeGen->PushRel(srcOffset);
++	codeGen->PushCst(STATUS_OS);
++	codeGen->And();
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushCst(0xF000);
++		codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
++		codeGen->Or();
++		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2SF));
++	}
++	codeGen->EndIf();
++
++	//Dreamports: IS and DS, with nothing left on its way
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushCst(0x30);
++	codeGen->And();
++	codeGen->PushRel(srcOffset);
++	codeGen->PushCst(0xC00);
++	codeGen->And();
++	codeGen->Or();
++	codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushCst(0);
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpStickyHeld));
++
+ 	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
+ 	ResetFlagPipeline(VUShared::g_pipeInfoSticky, codeGen);
+ }
+ 
+ void VUShared::ADD_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_AddS();
+-	PullVector(codeGen, dest, fd);
+-	TestSZFlags(codeGen, dest, fd, relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_ADD, dest, fd, fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::ADDA_base(CMipsJitter* codeGen, uint8 dest, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_AddS();
+-	PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A));
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A), relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_ADD, dest, offsetof(CMIPS, m_State.nCOP2A), fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MADD_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2A));
+-	codeGen->MD_PushRel(fs);
+-	//Clamping is needed by Baldur's Gate Deadly Alliance here because it multiplies junk values (potentially NaN/INF) by 0
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-		if(UseClamping(compileHints))
+-		{
+-			codeGen->MD_ClampS(); //Fatal Frame 1's door-blocking bug can be fixed by this
+-		}
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_MulS();
+-	codeGen->MD_AddS();
+-	PullVector(codeGen, dest, fd);
+-	TestSZFlags(codeGen, dest, fd, relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MADD, dest, fd, fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MADDA_base(CMipsJitter* codeGen, uint8 dest, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2A));
+-	codeGen->MD_PushRel(fs);
+-	if(UseClamping(compileHints))
+-	{
+-		//Clamping is needed by Dynasty Warriors 2 here because it multiplies junk values (potentially NaN/INF) by some other value
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	codeGen->MD_MulS();
+-	codeGen->MD_AddS();
+-	PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A));
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A), relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MADD, dest, offsetof(CMIPS, m_State.nCOP2A), fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::SUB_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	codeGen->MD_SubS();
+-	PullVector(codeGen, dest, fd);
+-	TestSZFlags(codeGen, dest, fd, relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_SUB, dest, fd, fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::SUBA_base(CMipsJitter* codeGen, uint8 dest, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_SubS();
+-	PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A));
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A), relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_SUB, dest, offsetof(CMIPS, m_State.nCOP2A), fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MSUB_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2A));
+-	codeGen->MD_PushRel(fs);
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_MulS();
+-	codeGen->MD_SubS();
+-	PullVector(codeGen, dest, fd);
+-	TestSZFlags(codeGen, dest, fd, relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MSUB, dest, fd, fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MSUBA_base(CMipsJitter* codeGen, uint8 dest, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2A));
+-	codeGen->MD_PushRel(fs);
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_MulS();
+-	codeGen->MD_SubS();
+-	PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A));
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A), relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MSUB, dest, offsetof(CMIPS, m_State.nCOP2A), fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MUL_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	codeGen->MD_MulS();
+-	PullVector(codeGen, dest, fd);
+-	TestSZFlags(codeGen, dest, fd, relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MUL, dest, fd, fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MULA_base(CMipsJitter* codeGen, uint8 dest, size_t fs, size_t ft, bool expand, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	codeGen->MD_PushRel(fs);
+-	if(UseClamping(compileHints))
+-	{
+-		codeGen->MD_ClampS();
+-	}
+-	if(expand)
+-	{
+-		PushBcElement(codeGen, ft);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(ft);
+-	}
+-	codeGen->MD_MulS();
+-	PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A));
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2A), relativePipeTime, compileHints);
++	DpFmac(codeGen, DP_MUL, dest, offsetof(CMIPS, m_State.nCOP2A), fs, ft, expand, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::MINI_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand)
+@@ -708,59 +703,20 @@ void VUShared::ADD(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 f
+ 
+ void VUShared::ADDbc(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 ft, uint8 bc, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	if((fd != 0) && (ft == 0) && (bc != 3))
+-	{
+-		//Using VF0 (other than W component) as broadcast value, which basically means add with 0.
+-		//Do a simple move to the destination register to avoid clamping which can alter the other addend.
+-		//Piposaru 2001 uses this to move some integer values (0xFFFF8000) between VF regs.
+-		codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[fs]));
+-		PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2[fd]));
+-		TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2[fd]), relativePipeTime, compileHints);
+-	}
+-	else
+-	{
+-		ADD_base(codeGen, dest,
+-		         offsetof(CMIPS, m_State.nCOP2[(fd != 0) ? fd : 32]),
+-		         offsetof(CMIPS, m_State.nCOP2[fs]),
+-		         offsetof(CMIPS, m_State.nCOP2[ft].nV[bc]),
+-		         true, relativePipeTime, compileHints);
+-	}
++	ADD_base(codeGen, dest,
++	         offsetof(CMIPS, m_State.nCOP2[(fd != 0) ? fd : 32]),
++	         offsetof(CMIPS, m_State.nCOP2[fs]),
++	         offsetof(CMIPS, m_State.nCOP2[ft].nV[bc]),
++	         true, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::ADDi(CMipsJitter* codeGen, uint8 nDest, uint8 nFd, uint8 nFs, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	if(nFd == 0)
+-	{
+-		//Use the temporary register to store the result
+-		nFd = 32;
+-	}
+-
+-	//Use FpAddTruncate on all platforms, except JavaScript
+-	//On JavaScript, using it doesn't seem to help Tri-Ace games
+-	//there's probably some other rounding issue on that platform
+-#if !defined(__EMSCRIPTEN__)
+-	if(compileHints & COMPILEHINT_USE_ACCURATE_ADDI)
+-	{
+-		for(unsigned int i = 0; i < 4; i++)
+-		{
+-			if(!VUShared::DestinationHasElement(nDest, i)) continue;
+-
+-			codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2[nFs].nV[i]));
+-			codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2I));
+-			codeGen->Call(reinterpret_cast<void*>(&FpAddTruncate), 2, Jitter::CJitter::RETURN_VALUE_32);
+-			codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2[nFd].nV[i]));
+-		}
+-	}
+-	else
+-#endif
+-	{
+-		codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-		codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2I));
+-		codeGen->MD_ExpandW();
+-		codeGen->MD_AddS();
+-		PullVector(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFd]));
+-	}
+-	TestSZFlags(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFd]), relativePipeTime, compileHints);
++	ADD_base(codeGen, nDest,
++	         offsetof(CMIPS, m_State.nCOP2[(nFd != 0) ? nFd : 32]),
++	         offsetof(CMIPS, m_State.nCOP2[nFs]),
++	         offsetof(CMIPS, m_State.nCOP2I),
++	         true, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::ADDq(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint32 relativePipeTime, uint32 compileHints)
+@@ -822,117 +778,153 @@ void VUShared::CLIP(CMipsJitter* codeGen, uint8 nFs, uint8 nFt, uint32 relativeP
+ 		codeGen->Shl(6);
+ 	}
+ 
+-	//Compute test result (if both fs and ft are 0, result is 0)
+-	if((nFs == 0) && (nFt == 0))
+-	{
+-		codeGen->PushCst(0);
+-	}
+-	else
+-	{
+-		codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-
+-		//Upper bound
+-		if(nFt == 0)
+-		{
+-			codeGen->MD_PushCstExpandS(1.0f);
+-		}
+-		else
+-		{
+-			PushBcElement(codeGen, offsetof(CMIPS, m_State.nCOP2[nFt].nV[3]));
+-			codeGen->MD_AbsS();
+-		}
+-
+-		//Lower bound
+-		if(nFt == 0)
+-		{
+-			codeGen->MD_PushCstExpandS(-1.0f);
+-		}
+-		else
+-		{
+-			PushBcElement(codeGen, offsetof(CMIPS, m_State.nCOP2[nFt].nV[3]));
+-			codeGen->MD_AbsS();
+-			codeGen->MD_NegS();
+-		}
+-
+-		codeGen->MD_MakeClip();
+-	}
++	//Dreamports: the six judgements on the console's float rules
++	codeGen->PushRel(GetVectorElement(nFs, VECTOR_COMPX));
++	codeGen->PushRel(GetVectorElement(nFs, VECTOR_COMPY));
++	codeGen->PushRel(GetVectorElement(nFs, VECTOR_COMPZ));
++	codeGen->PushRel(GetVectorElement(nFt, VECTOR_COMPW));
++	codeGen->Call(reinterpret_cast<void*>(&fpu_clip), 4, Jitter::CJitter::RETURN_VALUE_32);
+ 
+ 	//Combine with previous value
+ 	codeGen->Or();
+-
++	codeGen->PushCst(0xFFFFFF);
++	codeGen->And();
+ 	QueueInFlagPipeline(g_pipeInfoClip, codeGen, LATENCY_MAC, relativePipeTime);
+ }
+ 
+-void VUShared::DIV(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
++//Dreamports: what the division and the FSSET before have made of I, D, IS and DS by now is kept, and what has landed
++//is no longer on its way
++static void DpSettleDivisionFlags(CMipsJitter* codeGen, uint32 relativePipeTime)
+ {
+-	size_t destination = g_pipeInfoQ.heldValue;
+-	QueueInPipeline(g_pipeInfoQ, codeGen, LATENCY_DIV, relativePipeTime);
++	const auto pushNow = [&]() {
++		codeGen->PushRel(offsetof(CMIPS, m_State.pipeTime));
++		codeGen->PushCst(relativePipeTime);
++		codeGen->Add();
++	};
++	VUShared::PushDivisionFlags(codeGen, relativePipeTime);
++	codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpDivHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.pipeQ.counter));
++	pushNow();
++	codeGen->Call(reinterpret_cast<void*>(&DpVuStillHeld), 3, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpDivHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpStickyHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpStickyTime));
++	pushNow();
++	codeGen->Call(reinterpret_cast<void*>(&DpVuStillHeld), 3, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpStickyHeld));
++}
+ 
+-	//Check for zero
+-	FpUtils::IsZero(codeGen, GetVectorElement(nFt, nFtf));
+-	codeGen->BeginIf(Jitter::CONDITION_EQ);
+-	{
+-		FpUtils::ComputeDivisionByZero(codeGen,
+-		                               GetVectorElement(nFs, nFsf),
+-		                               GetVectorElement(nFt, nFtf));
+-		codeGen->PullRel(destination);
++void VUShared::PushDivisionFlags(CMipsJitter* codeGen, uint32 relativePipeTime)
++{
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpDivHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.pipeQ.counter));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpStickyHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpStickyTime));
++	codeGen->PushRel(offsetof(CMIPS, m_State.pipeTime));
++	codeGen->PushCst(relativePipeTime);
++	codeGen->Add();
++	codeGen->Call(reinterpret_cast<void*>(&DpVuDivisionFlags), 6, Jitter::CJitter::RETURN_VALUE_32);
++}
+ 
+-		codeGen->PushCst(1);
+-		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
+-	}
+-	codeGen->Else();
+-	{
+-		codeGen->FP_PushRel32(GetVectorElement(nFs, nFsf));
+-		codeGen->FP_PushRel32(GetVectorElement(nFt, nFtf));
+-		codeGen->FP_DivS();
+-		codeGen->FP_PullRel32(destination);
++//Dreamports: FSSET's sticky flags, seen four cycles on: ZS, SS, US and OS through the sticky flags' pipeline, and IS and
++//DS held until then. An FSSET still on its way lands now
++void VUShared::SetStickyLater(CMipsJitter* codeGen, uint32 status, uint32 relativePipeTime)
++{
++	DpSettleDivisionFlags(codeGen, relativePipeTime);
++	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushCst(0);
++	codeGen->PushCst(0);
++	codeGen->PushRel(offsetof(CMIPS, m_State.dpStickyHeld));
++	codeGen->PushCst(0);
++	codeGen->PushCst(0);
++	codeGen->Call(reinterpret_cast<void*>(&DpVuDivisionFlags), 6, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
++	codeGen->PushCst(0x80000000 | (status & 0xC00));
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpStickyHeld));
++	codeGen->PushRel(offsetof(CMIPS, m_State.pipeTime));
++	codeGen->PushCst(relativePipeTime + LATENCY_MAC);
++	codeGen->Add();
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpStickyTime));
+ 
+-		codeGen->PushCst(0);
+-		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
+-	}
+-	codeGen->EndIf();
++	uint32 sticky = ((status & STATUS_ZS) ? 0x000F : 0) | ((status & STATUS_SS) ? 0x00F0 : 0) | ((status & STATUS_US) ? 0x0F00 : 0) | ((status & STATUS_OS) ? 0xF000 : 0);
++	codeGen->PushCst(sticky);
++	QueueInFlagPipeline(g_pipeInfoSticky, codeGen, LATENCY_MAC, relativePipeTime);
++}
++
++static void DpDivide(CMipsJitter* codeGen, uint32 op, size_t a, size_t b, uint32 latency, uint32 relativePipeTime)
++{
++	//The division before has ended, as this one waited for it
++	DpSettleDivisionFlags(codeGen, relativePipeTime);
++	VUShared::QueueInPipeline(VUShared::g_pipeInfoQ, codeGen, latency, relativePipeTime);
++	codeGen->PushCst(op);
++	codeGen->PushRel(a);
++	codeGen->PushRel(b);
++	codeGen->Call(reinterpret_cast<void*>(&DpVuDivideFlags), 3, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(offsetof(CMIPS, m_State.dpDivHeld));
++	codeGen->PushCst(op);
++	codeGen->PushRel(a);
++	codeGen->PushRel(b);
++	codeGen->Call(reinterpret_cast<void*>(&DpVuDivide), 3, Jitter::CJitter::RETURN_VALUE_32);
++	codeGen->PullRel(VUShared::g_pipeInfoQ.heldValue);
++}
++
++void VUShared::DIV(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
++{
++	DpDivide(codeGen, DP_DIV, GetVectorElement(nFs, nFsf), GetVectorElement(nFt, nFtf), LATENCY_DIV, relativePipeTime);
+ }
+ 
+ void VUShared::FTOI0(CMipsJitter* codeGen, uint8 nDest, uint8 nFt, uint8 nFs)
+ {
+ 	if(nFt == 0) return;
+-
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-	codeGen->MD_ToInt32TruncateS();
+-	PullVector(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFt]));
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		if(!DestinationHasElement(nDest, i)) continue;
++		codeGen->PushCst(0);
++		codeGen->PushRel(GetVectorElement(nFs, i));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuFtoi), 2, Jitter::CJitter::RETURN_VALUE_32);
++		codeGen->PullRel(GetVectorElement(nFt, i));
++	}
+ }
+ 
+ void VUShared::FTOI4(CMipsJitter* codeGen, uint8 nDest, uint8 nFt, uint8 nFs)
+ {
+ 	if(nFt == 0) return;
+-
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-	codeGen->MD_PushCstExpandS(16.0f);
+-	codeGen->MD_MulS();
+-	codeGen->MD_ToInt32TruncateS();
+-	PullVector(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFt]));
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		if(!DestinationHasElement(nDest, i)) continue;
++		codeGen->PushCst(4);
++		codeGen->PushRel(GetVectorElement(nFs, i));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuFtoi), 2, Jitter::CJitter::RETURN_VALUE_32);
++		codeGen->PullRel(GetVectorElement(nFt, i));
++	}
+ }
+ 
+ void VUShared::FTOI12(CMipsJitter* codeGen, uint8 nDest, uint8 nFt, uint8 nFs)
+ {
+ 	if(nFt == 0) return;
+-
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-	codeGen->MD_PushCstExpandS(4096.0f);
+-	codeGen->MD_MulS();
+-	codeGen->MD_ToInt32TruncateS();
+-	PullVector(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFt]));
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		if(!DestinationHasElement(nDest, i)) continue;
++		codeGen->PushCst(12);
++		codeGen->PushRel(GetVectorElement(nFs, i));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuFtoi), 2, Jitter::CJitter::RETURN_VALUE_32);
++		codeGen->PullRel(GetVectorElement(nFt, i));
++	}
+ }
+ 
+ void VUShared::FTOI15(CMipsJitter* codeGen, uint8 nDest, uint8 nFt, uint8 nFs)
+ {
+ 	if(nFt == 0) return;
+-
+-	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[nFs]));
+-	codeGen->MD_PushCstExpandS(32768.0f);
+-	codeGen->MD_MulS();
+-	codeGen->MD_ToInt32TruncateS();
+-	PullVector(codeGen, nDest, offsetof(CMIPS, m_State.nCOP2[nFt]));
++	for(unsigned int i = 0; i < 4; i++)
++	{
++		if(!DestinationHasElement(nDest, i)) continue;
++		codeGen->PushCst(15);
++		codeGen->PushRel(GetVectorElement(nFs, i));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuFtoi), 2, Jitter::CJitter::RETURN_VALUE_32);
++		codeGen->PullRel(GetVectorElement(nFt, i));
++	}
+ }
+ 
+ void VUShared::IADD(CMipsJitter* codeGen, uint8 id, uint8 is, uint8 it)
+@@ -1475,64 +1467,49 @@ void VUShared::MULAq(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint32 relative
+ 	          true, relativePipeTime, compileHints);
+ }
+ 
+-void VUShared::OPMULA(CMipsJitter* codeGen, uint8 nFs, uint8 nFt)
++void VUShared::OPMULA(CMipsJitter* codeGen, uint8 nFs, uint8 nFt, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	//ACCx
+-	codeGen->FP_PushRel32(GetVectorElement(nFs, VECTOR_COMPY));
+-	codeGen->FP_PushRel32(GetVectorElement(nFt, VECTOR_COMPZ));
+-	codeGen->FP_MulS();
+-	codeGen->FP_PullRel32(GetAccumulatorElement(VECTOR_COMPX));
+-
+-	//ACCy
+-	codeGen->FP_PushRel32(GetVectorElement(nFs, VECTOR_COMPZ));
+-	codeGen->FP_PushRel32(GetVectorElement(nFt, VECTOR_COMPX));
+-	codeGen->FP_MulS();
+-	codeGen->FP_PullRel32(GetAccumulatorElement(VECTOR_COMPY));
+-
+-	//ACCz
+-	codeGen->FP_PushRel32(GetVectorElement(nFs, VECTOR_COMPX));
+-	codeGen->FP_PushRel32(GetVectorElement(nFt, VECTOR_COMPY));
+-	codeGen->FP_MulS();
+-	codeGen->FP_PullRel32(GetAccumulatorElement(VECTOR_COMPZ));
++	codeGen->PushCst(0);
++	for(unsigned int i = 0; i < 3; i++)
++	{
++		codeGen->PushCst(DP_MUL | (i << 8));
++		codeGen->PushRel(GetAccumulatorElement(i));
++		codeGen->PushRel(GetVectorElement(nFs, (i + 1) % 3));
++		codeGen->PushRel(GetVectorElement(nFt, (i + 2) % 3));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuLane), 4, Jitter::CJitter::RETURN_VALUE_64);
++		codeGen->PushTop();
++		codeGen->ExtLow64();
++		codeGen->PullRel(GetVectorElement(32, i));
++		codeGen->ExtHigh64();
++		codeGen->Or();
++	}
++	codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[32]));
++	PullVector(codeGen, 0x0E, offsetof(CMIPS, m_State.nCOP2A));
++	DpQueueFlags(codeGen, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::OPMSUB(CMipsJitter* codeGen, uint8 fd, uint8 fs, uint8 ft, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	//We keep the value in a temp register because it's possible to specify a FD which can be used as FT or FS
+-	uint8 tempRegIndex = 32;
+-	uint32 dest = 0x0E;
+-
+-	//X
+-	codeGen->FP_PushRel32(GetAccumulatorElement(VECTOR_COMPX));
+-	codeGen->FP_PushRel32(GetVectorElement(fs, VECTOR_COMPY));
+-	codeGen->FP_PushRel32(GetVectorElement(ft, VECTOR_COMPZ));
+-	codeGen->FP_MulS();
+-	codeGen->FP_SubS();
+-	codeGen->FP_PullRel32(GetVectorElement(tempRegIndex, VECTOR_COMPX));
+-
+-	//Y
+-	codeGen->FP_PushRel32(GetAccumulatorElement(VECTOR_COMPY));
+-	codeGen->FP_PushRel32(GetVectorElement(fs, VECTOR_COMPZ));
+-	codeGen->FP_PushRel32(GetVectorElement(ft, VECTOR_COMPX));
+-	codeGen->FP_MulS();
+-	codeGen->FP_SubS();
+-	codeGen->FP_PullRel32(GetVectorElement(tempRegIndex, VECTOR_COMPY));
+-
+-	//Z
+-	codeGen->FP_PushRel32(GetAccumulatorElement(VECTOR_COMPZ));
+-	codeGen->FP_PushRel32(GetVectorElement(fs, VECTOR_COMPX));
+-	codeGen->FP_PushRel32(GetVectorElement(ft, VECTOR_COMPY));
+-	codeGen->FP_MulS();
+-	codeGen->FP_SubS();
+-	codeGen->FP_PullRel32(GetVectorElement(tempRegIndex, VECTOR_COMPZ));
+-
+-	TestSZFlags(codeGen, dest, offsetof(CMIPS, m_State.nCOP2[tempRegIndex]), relativePipeTime, compileHints);
+-
++	codeGen->PushCst(0);
++	for(unsigned int i = 0; i < 3; i++)
++	{
++		codeGen->PushCst(DP_MSUB | (i << 8));
++		codeGen->PushRel(GetAccumulatorElement(i));
++		codeGen->PushRel(GetVectorElement(fs, (i + 1) % 3));
++		codeGen->PushRel(GetVectorElement(ft, (i + 2) % 3));
++		codeGen->Call(reinterpret_cast<void*>(&DpVuLane), 4, Jitter::CJitter::RETURN_VALUE_64);
++		codeGen->PushTop();
++		codeGen->ExtLow64();
++		codeGen->PullRel(GetVectorElement(32, i));
++		codeGen->ExtHigh64();
++		codeGen->Or();
++	}
+ 	if(fd != 0)
+ 	{
+-		codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[tempRegIndex]));
+-		PullVector(codeGen, dest, offsetof(CMIPS, m_State.nCOP2[fd]));
++		codeGen->MD_PushRel(offsetof(CMIPS, m_State.nCOP2[32]));
++		PullVector(codeGen, 0x0E, offsetof(CMIPS, m_State.nCOP2[fd]));
+ 	}
++	DpQueueFlags(codeGen, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::RINIT(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf)
+@@ -1586,33 +1563,7 @@ void VUShared::RNEXT(CMipsJitter* codeGen, uint8 dest, uint8 ft)
+ 
+ void VUShared::RSQRT(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
+ {
+-	size_t destination = g_pipeInfoQ.heldValue;
+-	QueueInPipeline(g_pipeInfoQ, codeGen, LATENCY_RSQRT, relativePipeTime);
+-
+-	//Check for zero
+-	FpUtils::IsZero(codeGen, GetVectorElement(nFt, nFtf));
+-	codeGen->BeginIf(Jitter::CONDITION_EQ);
+-	{
+-		FpUtils::ComputeDivisionByZero(codeGen,
+-		                               GetVectorElement(nFs, nFsf),
+-		                               GetVectorElement(nFt, nFtf));
+-		codeGen->PullRel(destination);
+-
+-		codeGen->PushCst(1);
+-		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
+-	}
+-	codeGen->Else();
+-	{
+-		codeGen->FP_PushRel32(GetVectorElement(nFs, nFsf));
+-		codeGen->FP_PushRel32(GetVectorElement(nFt, nFtf));
+-		codeGen->FP_RsqrtS();
+-		codeGen->FP_MulS();
+-		codeGen->FP_PullRel32(destination);
+-
+-		codeGen->PushCst(0);
+-		codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
+-	}
+-	codeGen->EndIf();
++	DpDivide(codeGen, DP_RSQRT, GetVectorElement(nFs, nFsf), GetVectorElement(nFt, nFtf), LATENCY_RSQRT, relativePipeTime);
+ }
+ 
+ void VUShared::RXOR(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf)
+@@ -1695,37 +1646,16 @@ void VUShared::SQI(CMipsJitter* codeGen, uint8 dest, uint8 is, uint8 it, uint32
+ 
+ void VUShared::SQRT(CMipsJitter* codeGen, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
+ {
+-	size_t destination = g_pipeInfoQ.heldValue;
+-	QueueInPipeline(g_pipeInfoQ, codeGen, LATENCY_SQRT, relativePipeTime);
+-
+-	codeGen->FP_PushRel32(GetVectorElement(nFt, nFtf));
+-	codeGen->FP_AbsS();
+-	codeGen->FP_SqrtS();
+-	codeGen->FP_PullRel32(destination);
+-
+-	codeGen->PushCst(0);
+-	codeGen->PullRel(offsetof(CMIPS, m_State.nCOP2DF));
++	DpDivide(codeGen, DP_SQRT, GetVectorElement(nFt, nFtf), GetVectorElement(nFt, nFtf), LATENCY_SQRT, relativePipeTime);
+ }
+ 
+ void VUShared::SUB(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 ft, uint32 relativePipeTime, uint32 compileHints)
+ {
+-	auto fdOffset = offsetof(CMIPS, m_State.nCOP2[(fd != 0) ? fd : 32]);
+-	if(fs == ft)
+-	{
+-		//Source and target registers are the same, clear the vector instead of going through a SUB instruction
+-		//SUB might generate NaNs instead of clearing the values like the game intended (ex.: Homura with 0xFFFF8000)
+-		codeGen->MD_PushCstExpandW(0);
+-		PullVector(codeGen, dest, fdOffset);
+-		TestSZFlags(codeGen, dest, fdOffset, relativePipeTime, compileHints);
+-	}
+-	else
+-	{
+-		SUB_base(codeGen, dest,
+-		         fdOffset,
+-		         offsetof(CMIPS, m_State.nCOP2[fs]),
+-		         offsetof(CMIPS, m_State.nCOP2[ft]),
+-		         false, relativePipeTime, compileHints);
+-	}
++	SUB_base(codeGen, dest,
++	         offsetof(CMIPS, m_State.nCOP2[(fd != 0) ? fd : 32]),
++	         offsetof(CMIPS, m_State.nCOP2[fs]),
++	         offsetof(CMIPS, m_State.nCOP2[ft]),
++	         false, relativePipeTime, compileHints);
+ }
+ 
+ void VUShared::SUBbc(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 ft, uint8 bc, uint32 relativePipeTime, uint32 compileHints)
+diff --git a/Source/ee/VUShared.h b/Source/ee/VUShared.h
+index a2991f1..4262b5e 100644
+--- a/Source/ee/VUShared.h
++++ b/Source/ee/VUShared.h
+@@ -129,6 +129,8 @@ namespace VUShared
+ 
+ 	void GetStatus(CMipsJitter*, size_t, uint32);
+ 	void SetStatus(CMipsJitter*, size_t);
++	void SetStickyLater(CMipsJitter*, uint32, uint32);
++	void PushDivisionFlags(CMipsJitter*, uint32);
+ 
+ 	void ADD_base(CMipsJitter*, uint8, size_t, size_t, size_t, bool, uint32, uint32);
+ 	void ADDA_base(CMipsJitter*, uint8, size_t, size_t, bool, uint32, uint32);
+@@ -211,7 +213,7 @@ namespace VUShared
+ 	void MULAi(CMipsJitter*, uint8, uint8, uint32, uint32);
+ 	void MULAq(CMipsJitter*, uint8, uint8, uint32, uint32);
+ 	void OPMSUB(CMipsJitter*, uint8, uint8, uint8, uint32, uint32);
+-	void OPMULA(CMipsJitter*, uint8, uint8);
++	void OPMULA(CMipsJitter*, uint8, uint8, uint32, uint32);
+ 	void RINIT(CMipsJitter*, uint8, uint8);
+ 	void RGET(CMipsJitter*, uint8, uint8);
+ 	void RNEXT(CMipsJitter*, uint8, uint8);
+diff --git a/Source/ee/Vpu.cpp b/Source/ee/Vpu.cpp
+index e21dc8b..9239f40 100644
+--- a/Source/ee/Vpu.cpp
++++ b/Source/ee/Vpu.cpp
+@@ -8,6 +8,7 @@
+ #include "Vif.h"
+ #include "Vif1.h"
+ #include "GIF.h"
++#include "dreamports/Glue.h"
+ 
+ #define LOG_NAME ("ee_vpu")
+ 
+@@ -56,6 +57,7 @@ void CVpu::Execute(int32 quota)
+ 	{
+ 	case MIPS_EXCEPTION_VU_EBIT:
+ 		//E bit encountered
++		DpVuLandAll(m_ctx);
+ 		m_vuState = VU_STATE_READY;
+ 		VuStateChanged(m_vuState);
+ 		break;
+@@ -193,6 +195,7 @@ void CVpu::ExecuteMicroProgram(uint32 nAddress)
+ {
+ 	CLog::GetInstance().Print(LOG_NAME, "Starting microprogram execution at 0x%08X.\r\n", nAddress);
+ 
++	DpVuLandAll(m_ctx);
+ 	m_ctx->m_State.nPC = nAddress;
+ 	m_ctx->m_State.pipeTime = 0;
+ 	m_ctx->m_State.pipeFmacWrite[0] = {};
+diff --git a/Source/ee/VuBasicBlock.cpp b/Source/ee/VuBasicBlock.cpp
+index a1ca3ca..7cee254 100644
+--- a/Source/ee/VuBasicBlock.cpp
++++ b/Source/ee/VuBasicBlock.cpp
+@@ -121,7 +121,8 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
+ 
+ 		if(loOps.syncQ)
+ 		{
+-			VUShared::FlushPipeline(VUShared::g_pipeInfoQ, jitter);
++			//Dreamports: the wait takes its cycles
++			VUShared::SyncPipeline(VUShared::g_pipeInfoQ, jitter, relativePipeTime);
+ 		}
+ 		if(loOps.syncP)
+ 		{
+diff --git a/Source/ee/dreamports/Glue.cpp b/Source/ee/dreamports/Glue.cpp
+new file mode 100644
+index 0000000..914a233
+--- /dev/null
++++ b/Source/ee/dreamports/Glue.cpp
+@@ -0,0 +1,172 @@
++#include "Glue.h"
++#include "../../MIPS.h"
++#include "../VUShared.h"
++
++#define SIGN 0x80000000U
++#define HELD 0x80000000U
++
++enum
++{
++	FCSR_C = 1 << 23,
++	FCSR_I = 1 << 17,
++	FCSR_D = 1 << 16,
++	FCSR_O = 1 << 15,
++	FCSR_U = 1 << 14,
++	FCSR_SI = 1 << 6,
++	FCSR_SD = 1 << 5,
++	FCSR_SO = 1 << 4,
++	FCSR_SU = 1 << 3,
++};
++
++static uint32 Fpu(uint32 op, uint32 a, uint32 b, uint32 acc, uint32* flags)
++{
++	switch(op)
++	{
++	case DP_ADD:
++		return fpu_add(a, b, flags);
++	case DP_SUB:
++		return fpu_add(a, b ^ SIGN, flags);
++	case DP_MUL:
++		return fpu_mul(a, b, flags);
++	case DP_MADD:
++		return fpu_add(acc, fpu_mul(a, b, flags), flags);
++	case DP_MSUB:
++		return fpu_add(acc, fpu_mul(a, b, flags) ^ SIGN, flags);
++	case DP_DIV:
++		return fpu_div(a, b, flags);
++	case DP_SQRT:
++		return fpu_sqrt(b, flags);
++	case DP_RSQRT:
++		return fpu_rsqrt(a, b, flags);
++	case DP_MAX:
++		return (fpu_order(a) >= fpu_order(b)) ? a : b;
++	case DP_MIN:
++		return (fpu_order(a) <= fpu_order(b)) ? a : b;
++	case DP_CVTW:
++		return static_cast<uint32>(fpu_to_int(a));
++	default:
++		return a;
++	}
++}
++
++uint32 DpFpuResult(uint32 op, uint32 a, uint32 b, uint32 acc)
++{
++	uint32 flags = 0;
++	return Fpu(op, a, b, acc, &flags);
++}
++
++uint32 DpFpuFcsr(uint32 op, uint32 a, uint32 b, uint32 acc, uint32 fcsr)
++{
++	uint32 flags = 0;
++	Fpu(op, a, b, acc, &flags);
++	if((op == DP_DIV) || (op == DP_SQRT) || (op == DP_RSQRT))
++	{
++		//A division or a root sets or clears division by zero and invalid, with their sticky flags
++		fcsr &= ~(FCSR_D | FCSR_I);
++		if(flags & FLAG_D) fcsr |= FCSR_D | FCSR_SD;
++		if(flags & FLAG_I) fcsr |= FCSR_I | FCSR_SI;
++	}
++	else if(op != DP_CVTW)
++	{
++		//A sum sets or clears overflow and underflow, with their sticky flags, and ABS, NEG, MAX and MIN clear them
++		fcsr &= ~(FCSR_O | FCSR_U);
++		if(flags & FLAG_O) fcsr |= FCSR_O | FCSR_SO;
++		if(flags & FLAG_U) fcsr |= FCSR_U | FCSR_SU;
++	}
++	return fcsr;
++}
++
++uint32 DpFpuCompare(uint32 op, uint32 a, uint32 b)
++{
++	int32 x = fpu_order(a), y = fpu_order(b);
++	return (op == DP_EQ) ? (x == y) : (op == DP_LT) ? (x < y) : (x <= y);
++}
++
++uint64 DpVuLane(uint32 kindAndLane, uint32 acc, uint32 a, uint32 b)
++{
++	uint32 flags = 0;
++	uint32 result = Fpu(kindAndLane & 0xFF, a, b, acc, &flags);
++	//Zero, sign, underflow and overflow, x the highest of each four
++	uint32 bit = 3 - ((kindAndLane >> 8) & 3);
++	uint32 mac = 0;
++	if((result & 0x7F800000) == 0) mac |= 1 << bit;
++	if(result & SIGN) mac |= 1 << (4 + bit);
++	if(flags & FLAG_U) mac |= 1 << (8 + bit);
++	if(flags & FLAG_O) mac |= 1 << (12 + bit);
++	return result | (static_cast<uint64>(mac) << 32);
++}
++
++uint32 DpVuDivide(uint32 op, uint32 a, uint32 b)
++{
++	uint32 flags = 0;
++	return Fpu(op, a, b, 0, &flags);
++}
++
++uint32 DpVuDivideFlags(uint32 op, uint32 a, uint32 b)
++{
++	//As the status flag has them: I is bit 4 and D bit 5
++	uint32 flags = 0;
++	Fpu(op, a, b, 0, &flags);
++	return HELD | ((flags & FLAG_I) ? 0x10 : 0) | ((flags & FLAG_D) ? 0x20 : 0);
++}
++
++uint32 DpVuFtoi(uint32 shift, uint32 value)
++{
++	uint32 flags = 0;
++	if(shift != 0) value = fpu_mul(value, (127 + shift) << 23, &flags);
++	return static_cast<uint32>(fpu_to_int(value));
++}
++
++uint32 DpVuDivisionFlags(uint32 flags, uint32 divHeld, uint32 divTime, uint32 stickyHeld, uint32 stickyTime, uint32 now)
++{
++	bool div = (divHeld & HELD) && (divTime <= now);
++	bool sticky = (stickyHeld & HELD) && (stickyTime <= now);
++	//A division's I and D take the last one's place and add to the sticky ones, and FSSET's take the sticky ones' place,
++	//in the order they land, the division first when both land together
++	auto applyDiv = [&]() { flags = (flags & 0xC00) | (divHeld & 0x30) | ((divHeld & 0x30) << 6); };
++	auto applySticky = [&]() { flags = (flags & 0x30) | (stickyHeld & 0xC00); };
++	if(div && sticky && (stickyTime < divTime))
++	{
++		applySticky();
++		applyDiv();
++	}
++	else
++	{
++		if(div) applyDiv();
++		if(sticky) applySticky();
++	}
++	return flags;
++}
++
++uint32 DpVuStillHeld(uint32 held, uint32 time, uint32 now)
++{
++	return ((held & HELD) && (time > now)) ? held : 0;
++}
++
++void DpVuLandAll(CMIPS* context)
++{
++	auto& state = context->m_State;
++	static const uint32 always = 0x7FFFFFFF;
++	state.nCOP2DF = DpVuDivisionFlags(state.nCOP2DF, state.dpDivHeld, state.pipeQ.counter, state.dpStickyHeld, state.dpStickyTime, 0xFFFFFFFF);
++	state.dpDivHeld = 0;
++	state.dpStickyHeld = 0;
++	if(state.pipeQ.counter != 0)
++	{
++		state.nCOP2Q = state.pipeQ.heldValue;
++		state.pipeQ.counter = 0;
++	}
++	if(state.pipeP.counter != 0)
++	{
++		state.nCOP2P = state.pipeP.heldValue;
++		state.pipeP.counter = 0;
++	}
++	uint32 pipeTime = state.pipeTime;
++	state.pipeTime = 0;
++	VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoMac, context, always);
++	VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoSticky, context, always);
++	VUShared::CheckFlagPipelineImmediate(VUShared::g_pipeInfoClip, context, always);
++	state.pipeTime = pipeTime;
++	VUShared::ResetFlagPipelineImmediate(VUShared::g_pipeInfoMac, context, state.nCOP2MF);
++	VUShared::ResetFlagPipelineImmediate(VUShared::g_pipeInfoSticky, context, state.nCOP2SF);
++	VUShared::ResetFlagPipelineImmediate(VUShared::g_pipeInfoClip, context, state.nCOP2CF);
++}
+diff --git a/Source/ee/dreamports/Glue.h b/Source/ee/dreamports/Glue.h
+new file mode 100644
+index 0000000..81358e4
+--- /dev/null
++++ b/Source/ee/dreamports/Glue.h
+@@ -0,0 +1,50 @@
++#pragma once
++
++// Dreamports: the console's float rules (floats.h, the same file the kit's EE and vector units use, kit/ps2/c/) as
++// functions the recompiled code calls. Each is given its operands' values and gives its result, and never reads the
++// processor's state itself, as the recompiler keeps that in registers between calls.
++
++#include "Types.h"
++#include "floats.h"
++
++class CMIPS;
++
++extern "C"
++{
++	enum
++	{
++		DP_ADD,
++		DP_SUB,
++		DP_MUL,
++		DP_MADD,
++		DP_MSUB,
++		DP_DIV,
++		DP_SQRT,
++		DP_RSQRT,
++		DP_MAX,
++		DP_MIN,
++		DP_CVTW,
++		DP_CLEAR,
++		DP_EQ,
++		DP_LT,
++		DP_LE,
++	};
++
++	//The FPU: an instruction's result, the FCSR it leaves, and a compare's condition
++	uint32 DpFpuResult(uint32 op, uint32 a, uint32 b, uint32 acc);
++	uint32 DpFpuFcsr(uint32 op, uint32 a, uint32 b, uint32 acc, uint32 fcsr);
++	uint32 DpFpuCompare(uint32 op, uint32 a, uint32 b);
++
++	//The vector units: one field of a sum, its result in the low half and its MAC flag bits in the high half
++	uint64 DpVuLane(uint32 kindAndLane, uint32 acc, uint32 a, uint32 b);
++	uint32 DpVuDivide(uint32 op, uint32 a, uint32 b);
++	uint32 DpVuDivideFlags(uint32 op, uint32 a, uint32 b);
++	uint32 DpVuFtoi(uint32 shift, uint32 value);
++	//The status flag's I, D, IS and DS as of `now`: what the division on its way and the FSSET on its way make of them
++	uint32 DpVuDivisionFlags(uint32 flags, uint32 divHeld, uint32 divTime, uint32 stickyHeld, uint32 stickyTime, uint32 now);
++	//What's left of something on its way: nothing once it has landed
++	uint32 DpVuStillHeld(uint32 held, uint32 time, uint32 now);
++}
++
++//Everything a vector unit's program left on its way lands, as it does when a program ends
++void DpVuLandAll(CMIPS*);
+diff --git a/Source/ee/dreamports/floats.cpp b/Source/ee/dreamports/floats.cpp
+new file mode 100644
+index 0000000..339f25c
+--- /dev/null
++++ b/Source/ee/dreamports/floats.cpp
+@@ -0,0 +1,172 @@
++// The PlayStation 2's floats, on their bits (floats.h). The console's FPU and vector units don't follow the standard a
++// computer's floats do:
++//
++// - there is no infinity and no NaN: a float whose exponent is all ones is an ordinary number, up to twice the largest
++//   a computer has, and a result too large for a float is the largest there is, 0x7FFFFFFF with its sign, which raises
++//   overflow;
++// - a float whose exponent is zero counts as zero going in, and a result that small is zero with its sign, which
++//   raises underflow;
++// - a result is cut towards zero to 24 bits, never rounded;
++// - a sum keeps one bit of the smaller number below the larger's last, and drops the rest before it adds, so 1 minus
++//   something tiny is 1, where cutting the exact answer would give the float below 1;
++// - a division by zero gives the largest float with the sign the two make and raises division by zero, or invalid for
++//   0 / 0; a square root is of the float without its sign, and raises invalid for a negative one.
++//
++// These are as Sony's manuals for the EE and the vector units give them, and where the manuals leave the last bit open,
++// as the emulators that have measured the console agree: the sum's one guard bit is Play!'s (FpAddTruncate) and PCSX2's
++// (FPU_ADD_SUB), and a product, a quotient and a root are the exact ones cut, as both work them out. Everything is in
++// whole numbers, so it's the same on every computer and in WebAssembly, and it's written to build as C or as C++.
++
++#include "floats.h"
++
++#define SIGN 0x80000000u
++#define FMAX 0x7FFFFFFFu
++#define ONE 0x3F800000u
++
++static int is_zero(uint32_t x) { return !(x & 0x7F800000); }
++static int32_t exponent_of(uint32_t x) { return (int32_t)(x >> 23 & 0xFF); }
++static uint64_t significand_of(uint32_t x) { return (x & 0x7FFFFF) | 0x800000; }
++
++// a float from its sign, the exponent of its significand's lowest bit and the significand, of any number of bits: cut
++// to 24 bits, and what's too large or too small for a float as the console makes it
++static uint32_t make(uint32_t sign, int32_t low, uint64_t significand, uint32_t *flags) {
++  if (!significand) return 0;
++  int top = 63 - __builtin_clzll(significand);
++  int32_t exponent = low + top + 127;
++  uint32_t kept = (uint32_t)(top > 23 ? significand >> (top - 23) : significand << (23 - top));
++  if (exponent > 255) {
++    *flags |= FLAG_O;
++    return sign | FMAX;
++  }
++  if (exponent < 1) {
++    *flags |= FLAG_U;
++    return sign;
++  }
++  return sign | (uint32_t)exponent << 23 | (kept & 0x7FFFFF);
++}
++
++uint32_t fpu_add(uint32_t a, uint32_t b, uint32_t *flags) {
++  if (is_zero(a) && is_zero(b)) return a & b & SIGN;
++  if (is_zero(a)) return b;
++  if (is_zero(b)) return a;
++  // the larger first
++  if ((b & ~SIGN) > (a & ~SIGN)) {
++    uint32_t t = a;
++    a = b, b = t;
++  }
++  // both a bit up, and the smaller down to the larger's exponent: one bit of it is kept below the larger's last
++  int32_t shift = exponent_of(a) - exponent_of(b);
++  uint64_t big = significand_of(a) << 1, small = shift > 24 ? 0 : (significand_of(b) << 1) >> shift;
++  uint64_t sum = (a ^ b) & SIGN ? big - small : big + small;
++  if (!sum) return 0;
++  return make(a & SIGN, exponent_of(a) - 127 - 24, sum, flags);
++}
++
++uint32_t fpu_mul(uint32_t a, uint32_t b, uint32_t *flags) {
++  uint32_t sign = (a ^ b) & SIGN;
++  if (is_zero(a) || is_zero(b)) return sign;
++  return make(sign, exponent_of(a) + exponent_of(b) - 254 - 46, significand_of(a) * significand_of(b), flags);
++}
++
++uint32_t fpu_div(uint32_t a, uint32_t b, uint32_t *flags) {
++  uint32_t sign = (a ^ b) & SIGN;
++  if (is_zero(b)) {
++    *flags |= is_zero(a) ? FLAG_I : FLAG_D;
++    return sign | FMAX;
++  }
++  if (is_zero(a)) return sign;
++  // 39 more bits of quotient than the significands have, cut, which cut again to 24 is the exact quotient cut
++  uint64_t quotient = (significand_of(a) << 39) / significand_of(b);
++  return make(sign, exponent_of(a) - exponent_of(b) - 39, quotient, flags);
++}
++
++uint32_t fpu_sqrt(uint32_t a, uint32_t *flags) {
++  if (is_zero(a)) return 0;
++  if (a & SIGN) *flags |= FLAG_I;
++  // the significand with an even power of two, and 36 more bits, so its whole root, found a bit at a time, has 30
++  int32_t power = exponent_of(a) - 127 - 23;
++  uint64_t n = significand_of(a), root = 0;
++  if (power & 1) n <<= 1, power--;
++  n <<= 36;
++  for (int bit = 31; bit >= 0; bit--) {
++    uint64_t trial = root | 1ull << bit;
++    if (trial * trial <= n) root = trial;
++  }
++  return make(0, power / 2 - 18, root, flags);
++}
++
++uint32_t fpu_rsqrt(uint32_t a, uint32_t b, uint32_t *flags) { return fpu_div(a, fpu_sqrt(b, flags), flags); }
++
++int32_t fpu_to_int(uint32_t a) {
++  if (is_zero(a)) return 0;
++  int32_t exponent = exponent_of(a) - 127;
++  if (exponent < 0) return 0;
++  if (exponent > 30) return a & SIGN ? INT32_MIN : INT32_MAX;
++  uint32_t whole = (uint32_t)(exponent > 23 ? significand_of(a) << (exponent - 23) : significand_of(a) >> (23 - exponent));
++  return a & SIGN ? -(int32_t)whole : (int32_t)whole;
++}
++
++uint32_t fpu_from_int(int32_t value) {
++  uint32_t flags = 0;
++  if (!value) return 0;
++  return make(value < 0 ? SIGN : 0, 0, value < 0 ? (uint64_t)-(int64_t)value : (uint64_t)value, &flags);
++}
++
++int32_t fpu_order(uint32_t a) {
++  if (is_zero(a)) return 0;
++  return a & SIGN ? -(int32_t)(a & ~SIGN) : (int32_t)a;
++}
++
++// a run of terms, each a power of x by its constant, added in turn: the power by multiplying by x again
++static uint32_t series(uint32_t x, const uint32_t *constants, const int *powers, int count) {
++  uint32_t flags = 0, total = 0;
++  for (int i = 0; i < count; i++) {
++    uint32_t term = x;
++    for (int k = 1; k < powers[i]; k++) term = fpu_mul(term, x, &flags);
++    term = fpu_mul(term, constants[i], &flags);
++    total = i ? fpu_add(total, term, &flags) : term;
++  }
++  return total;
++}
++
++// The EFU's sums, with the constants Sony's manual gives for ESIN, EATAN and EEXP. Each step is one of the sums above,
++// in the order the manual's formula reads: x squared plus y squared, plus z squared; x plus y, plus z, plus w.
++uint32_t fpu_efu(int which, uint32_t x, uint32_t y, uint32_t z, uint32_t w, uint32_t s) {
++  static const int odd[8] = { 1, 3, 5, 7, 9, 11, 13, 15 }, each[6] = { 1, 2, 3, 4, 5, 6 };
++  static const uint32_t sine[5] = { 0x3F800000, 0xBE2AAAA4, 0x3C08873E, 0xB94FB21F, 0x362E9C14 };
++  static const uint32_t arctangent[8] = { 0x3F7FFFF5, 0xBEAAA61C, 0x3E4C40A6, 0xBE0E6C63, 0x3DC577DF, 0xBD6501C4, 0x3CB31652, 0xBB84D7E7 };
++  static const uint32_t exponential[6] = { 0x3E7FFFA8, 0x3D0007F4, 0x3B29D3FF, 0x3933E553, 0x36B63510, 0x353961AC };
++  uint32_t flags = 0;
++  uint32_t squares = fpu_add(fpu_add(fpu_mul(x, x, &flags), fpu_mul(y, y, &flags), &flags), fpu_mul(z, z, &flags), &flags);
++  switch (which) {
++  case EFU_ESADD: return squares;
++  case EFU_ERSADD: return fpu_div(ONE, squares, &flags);
++  case EFU_ELENG: return fpu_sqrt(squares, &flags);
++  case EFU_ERLENG: return fpu_rsqrt(ONE, squares, &flags);
++  case EFU_ESUM: return fpu_add(fpu_add(fpu_add(x, y, &flags), z, &flags), w, &flags);
++  case EFU_ESQRT: return fpu_sqrt(s, &flags);
++  case EFU_ERSQRT: return fpu_rsqrt(ONE, s, &flags);
++  case EFU_ERCPR: return fpu_div(ONE, s, &flags);
++  case EFU_ESIN: return series(s, sine, odd, 5);
++  case EFU_EEXP: {
++    // 1 over the fourth power of 1 plus the series
++    uint32_t total = fpu_add(series(s, exponential, each, 6), ONE, &flags), square = fpu_mul(total, total, &flags);
++    return fpu_div(ONE, fpu_mul(square, square, &flags), &flags);
++  }
++  default: {
++    // the arctangent of s, of y over x or of z over x: a quarter of pi plus the series of (a - b) / (a + b)
++    uint32_t top = which == EFU_EATAN ? s : which == EFU_EATANXY ? y : z, under = which == EFU_EATAN ? ONE : x;
++    uint32_t t = fpu_div(fpu_add(top, under ^ SIGN, &flags), fpu_add(top, under, &flags), &flags);
++    return fpu_add(series(t, arctangent, odd, 8), 0x3F490FDB, &flags);
++  }
++  }
++}
++
++uint32_t fpu_clip(uint32_t x, uint32_t y, uint32_t z, uint32_t w) {
++  uint32_t fields[3] = { x, y, z }, size = is_zero(w) ? 0 : w & ~SIGN, judged = 0;
++  for (int f = 0; f < 3; f++) {
++    uint32_t own = is_zero(fields[f]) ? 0 : fields[f] & ~SIGN;
++    if (own > size) judged |= (fields[f] & SIGN ? 2u : 1u) << (f * 2);
++  }
++  return judged;
++}
+diff --git a/Source/ee/dreamports/floats.h b/Source/ee/dreamports/floats.h
+new file mode 100644
+index 0000000..4bab65c
+--- /dev/null
++++ b/Source/ee/dreamports/floats.h
+@@ -0,0 +1,43 @@
++// The PlayStation 2's floats, on their bits (floats.c): the rules its FPU and its vector units share, which aren't a
++// computer's. The kit's EE and vector units work their sums out with these (ee.c, vu.c), and so does the console's
++// emulator in the proof tools, which is given this same file (tools/libretro/play.patch), so both sides of a proof
++// follow the console.
++
++#ifndef DREAMPORTS_PS2_FLOATS_H
++#define DREAMPORTS_PS2_FLOATS_H
++
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++// what a sum raises, added to `flags`: overflow, underflow, division by zero and invalid
++enum { FLAG_O = 1, FLAG_U = 2, FLAG_D = 4, FLAG_I = 8 };
++
++uint32_t fpu_add(uint32_t a, uint32_t b, uint32_t *flags);
++uint32_t fpu_mul(uint32_t a, uint32_t b, uint32_t *flags);
++uint32_t fpu_div(uint32_t a, uint32_t b, uint32_t *flags);
++/** The square root of a float without its sign. */
++uint32_t fpu_sqrt(uint32_t a, uint32_t *flags);
++/** a over the square root of b: the root cut, then the division cut. */
++uint32_t fpu_rsqrt(uint32_t a, uint32_t b, uint32_t *flags);
++/** A float as a whole number, what's after its point dropped, the largest there is with its sign for one too large. */
++int32_t fpu_to_int(uint32_t a);
++/** A whole number as a float, cut to 24 bits. */
++uint32_t fpu_from_int(int32_t value);
++/** A float as a whole number that orders as it does, a tiny one as zero, for the FPU's compares, MAX and MIN. */
++int32_t fpu_order(uint32_t a);
++
++// the vector units' EFU sums, by name
++enum { EFU_ESADD, EFU_ERSADD, EFU_ELENG, EFU_ERLENG, EFU_ESUM, EFU_ESQRT, EFU_ERSQRT, EFU_ERCPR, EFU_ESIN, EFU_EEXP, EFU_EATAN, EFU_EATANXY, EFU_EATANXZ };
++/** One EFU sum of a vector's four fields, `s` being the one field the sums of one field take. */
++uint32_t fpu_efu(int which, uint32_t x, uint32_t y, uint32_t z, uint32_t w, uint32_t s);
++/** CLIP's six judgements of x, y and z against the size of w: +x, -x, +y, -y, +z, -z from the lowest bit. */
++uint32_t fpu_clip(uint32_t x, uint32_t y, uint32_t z, uint32_t w);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif
 diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
 index 57e58ba..bd6316f 100644
 --- a/Source/gs/GSHandler.cpp
@@ -196,7 +2485,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..fe66fce 100644
+index 8a07c26..3432982 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,9 @@
@@ -209,7 +2498,7 @@ index 8a07c26..fe66fce 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +40,65 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +40,83 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -243,6 +2532,24 @@ index 8a07c26..fe66fce 100644
 +		}
 +		gs->NoteInDrawListDump('F', 0);
 +		if(gs->m_drawListDump) fflush(gs->m_drawListDump);
++		// the vector units' memories too, when the environment's DP_VU_DUMP names a file: vector unit 0's code and data,
++		// then vector unit 1's, every V-blank, for the tools to compare with a Dreamport's (kit/ps2/c/vu.c)
++		static FILE* vuDump = nullptr;
++		static bool vuAsked = false;
++		if(!vuAsked)
++		{
++			vuAsked = true;
++			if(auto path = getenv("DP_VU_DUMP")) vuDump = fopen(path, "wb");
++		}
++		if(vuDump)
++		{
++			auto& ee = *m_virtualMachine->m_ee;
++			fwrite(ee.m_microMem0, 1, PS2::MICROMEM0SIZE, vuDump);
++			fwrite(ee.m_vuMem0, 1, PS2::VUMEM0SIZE, vuDump);
++			fwrite(ee.m_microMem1, 1, PS2::MICROMEM1SIZE, vuDump);
++			fwrite(ee.m_vuMem1, 1, PS2::VUMEM1SIZE, vuDump);
++			fflush(vuDump);
++		}
 +		gs->m_drawListHash = 0x811C9DC5;
 +		gs->m_drawListCount = 0;
 +	}
@@ -275,7 +2582,7 @@ index 8a07c26..fe66fce 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +508,24 @@ void retro_run()
+@@ -446,15 +526,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -303,7 +2610,7 @@ index 8a07c26..fe66fce 100644
  	}
  }
  
-@@ -554,7 +625,7 @@ void retro_init()
+@@ -554,7 +643,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -312,7 +2619,7 @@ index 8a07c26..fe66fce 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +645,7 @@ void retro_deinit()
+@@ -574,6 +663,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
