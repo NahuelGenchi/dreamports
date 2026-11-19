@@ -556,6 +556,8 @@ Many games of a console have code none of them wrote: the console maker's librar
 
 A twin in a library names no address and nothing of any game. It's named as the library's own function, a version of it that differs is a file of its own, never a game's name in an `#if`, and a stop in it is the words `dp:stop` alone, which holds back the function it's in, in every game that has it. Every function its files define is listed, and the files' names are their own among everything a game of its console is built with. `npm run dp -- libraries --check`, part of `npm run check`, holds every library and every version that takes one to these rules, and asks each library for its notice.
 
+**The PlayStation's.** Sony's PsyQ libraries, which nearly every PlayStation game links, are named in the kit before any of them is written ([#1558](https://github.com/NahuelGenchi/dreamports/issues/1558)): `kit/ps1/c/lib/libapi/`, `libc`, `libcard`, `libcd`, `libetc`, `libgpu`, `libgs`, `libgte`, `libsnd` and `libspu`, 522 functions, each with its name and its size in the program of the game [Xeeynamo/sotn-decomp](https://github.com/Xeeynamo/sotn-decomp) decompiles, from where that project's configuration says each starts, and no file yet. So the PlayStation's map counts them as known and not written, and a function written later goes in as its twin, with the size a new game's code map gives it, a variant of its own where a game's version of the library differs.
+
 **How a version takes one.** Its `proof/libraries.json` names each library it takes, with the variant, and where its copy has each of the library's functions and each value their C names, as the code map's keys, eight capital hexadecimal digits:
 
 ```json
