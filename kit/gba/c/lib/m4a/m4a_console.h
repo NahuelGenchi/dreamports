@@ -54,6 +54,47 @@ void CpuSet(const void *src, void *dest, u32 control);
 /** Copies `size` bytes from `src` to `dest`, 32 bits at a time, through the BIOS's copier. */
 #define CpuCopy32(src, dest, size) CpuSet(src, dest, CPU_SET_32BIT | ((size) / 4 & 0x1FFFFF))
 
+// The console's time (kit/gba/c/clock.h, kit/gba/c/README.md, The console's time), for a game that keeps it: one whose
+// twins.h names this library's functions hears from each, after its C does the work of a run of the original's
+// instructions, which they were. M4A_TIME(function, from, to, next, ...) is a twin's TIME with `from` and `to` as
+// offsets in the library's own `function`, M4A_AT(function, offset) an address in it, in Thumb code, and M4A_BACK the
+// way back from a call, wherever it came from. M4A_DIVIDE is a division by the compiler's own library, whose path the
+// numbers decide. Only the paths a game's power-on takes say so, as the clock is for power-on, and a run that writes a
+// register the C writes again later is timed before the later write, as the clock reads what the register holds. The
+// console's compiler sees none of it.
+#if !defined(MATCHING) && defined(__has_include)
+#if __has_include("twins.h") && __has_include("clock.h")
+#include "twins.h"
+#include "clock.h"
+// a game whose twins.h names the functions power-on runs: the library's, and the compiler's division and indirect call
+#if defined(ADDRESS_m4aSoundInit) && defined(ADDRESS_SoundInit) && defined(ADDRESS_SampleFreqSet) \
+    && defined(ADDRESS_m4aSoundMode) && defined(ADDRESS_m4aSoundVSyncOff) && defined(ADDRESS_m4aSoundVSyncOn) \
+    && defined(ADDRESS_MPlayExtender) && defined(ADDRESS_MPlayOpen) && defined(ADDRESS_Clear64byte) \
+    && defined(ADDRESS_SoundMainBTM) && defined(ADDRESS_MPlayJumpTableCopy) && defined(ADDRESS_chk_adr_r2) \
+    && defined(ADDRESS_CpuSet) && defined(ADDRESS___divsi3) && defined(ADDRESS__call_via_r1)
+#define M4A_TIMED
+#endif
+#endif
+#endif
+#define M4A_EW 0x02000000u
+#define M4A_IW 0x03000000u
+#define M4A_ROM 0x08000000u
+#ifdef M4A_TIMED
+#define M4A_BACK GBA_CLOCK_BACK
+#define M4A_AT(function, offset) ((((uint32_t)ADDRESS_##function) & ~1u) + (offset) + 1u)
+#define M4A_TIME(function, from, to, next, ...)                                                             \
+  do {                                                                                                      \
+    const uint32_t m4a_at_[] = { 0, ##__VA_ARGS__ };                                                        \
+    uint32_t m4a_base_ = ((uint32_t)ADDRESS_##function) & ~1u;                                              \
+    gba_clock_run(m4a_base_ + (from), m4a_base_ + (to), (next), m4a_at_ + 1, (int)(sizeof m4a_at_ / sizeof m4a_at_[0]) - 1); \
+  } while (0)
+#define M4A_DIVIDE(numerator, denominator) \
+  gba_clock_divsi3(((uint32_t)ADDRESS___divsi3) & ~1u, (int32_t)(numerator), (int32_t)(denominator), GBA_CLOCK_BACK)
+#else
+#define M4A_TIME(function, from, to, next, ...)
+#define M4A_DIVIDE(numerator, denominator)
+#endif
+
 // the console's sound and DMA registers the engine writes, each as the C its source names
 #ifdef MATCHING
 #define M4A_REG(bits, offset) (*(vu##bits *)(0x04000000 + (offset)))

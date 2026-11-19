@@ -78,17 +78,35 @@ void MPlayFadeOut(struct MP2KPlayerState *mplayInfo, u16 speed)
 void m4aSoundInit(void)
 {
     s32 i;
+    M4A_TIME(m4aSoundInit, 0x0, 0x10, M4A_AT(CpuSet, 0));
     CpuCopy32((void *)((s32)SoundMainRAM & ~1), SoundMainRAM_Buffer, sizeof(SoundMainRAM_Buffer));
+    M4A_TIME(CpuSet, 0x2, 0x2, M4A_BACK);
 
+    M4A_TIME(m4aSoundInit, 0x12, 0x16, M4A_AT(SoundInit, 0));
     SoundInit(&gSoundInfo);
+    M4A_TIME(m4aSoundInit, 0x18, 0x1C, M4A_AT(MPlayExtender, 0));
     MPlayExtender(gCgbChans);
+    M4A_TIME(m4aSoundInit, 0x1E, 0x22, M4A_AT(m4aSoundMode, 0));
     m4aSoundMode(DEFAULT_SOUND_MODE);
 
     for (i = 0; i < NUM_MUSIC_PLAYERS; i++) {
         struct MP2KPlayerState *mplayInfo = gMPlayTable[i].info;
+#ifdef M4A_TIMED
+        // the first turn has the count's test before it
+        if (i == 0)
+            M4A_TIME(m4aSoundInit, 0x24, 0x3C, M4A_AT(MPlayOpen, 0), M4A_ROM, M4A_ROM, M4A_ROM);
+        else
+            M4A_TIME(m4aSoundInit, 0x32, 0x3C, M4A_AT(MPlayOpen, 0), M4A_ROM, M4A_ROM, M4A_ROM);
+#endif
         MPlayOpen(mplayInfo, gMPlayTable[i].track, gMPlayTable[i].numTracks);
         mplayInfo->checkSongPriority = gMPlayTable[i].unk_A;
         mplayInfo->memAccArea = gMPlayMemAccArea;
+#ifdef M4A_TIMED
+        if (i + 1 < NUM_MUSIC_PLAYERS)
+            M4A_TIME(m4aSoundInit, 0x3E, 0x4C, M4A_AT(m4aSoundInit, 0x32), M4A_ROM, M4A_EW, M4A_EW);
+        else
+            M4A_TIME(m4aSoundInit, 0x3E, 0x52, M4A_BACK, M4A_ROM, M4A_EW, M4A_EW);
+#endif
     }
 }
 
@@ -264,7 +282,11 @@ void MPlayExtender(struct MixerSource *cgbChans)
     soundInfo->MidiKeyToCgbFreq = MidiKeyToCgbFreq;
     soundInfo->maxScanlines = MAX_LINES;
 
+    M4A_TIME(MPlayExtender, 0x0, 0x90, M4A_AT(CpuSet, 0), 0x04000084, 0x04000080, 0x04000063, 0x04000069, 0x04000079,
+             0x04000065, 0x0400006D, 0x0400007D, 0x04000070, 0x04000080, M4A_IW, M4A_EW, M4A_EW, M4A_EW, M4A_EW,
+             M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW);
     CpuFill32(0, cgbChans, sizeof(struct MixerSource) * 4);
+    M4A_TIME(CpuSet, 0x2, 0x2, M4A_BACK);
 
     cgbChans[0].type = 1;
     cgbChans[0].data.cgb.panMask = 0x11;
@@ -276,6 +298,8 @@ void MPlayExtender(struct MixerSource *cgbChans)
     cgbChans[3].data.cgb.panMask = 0x88;
 
     soundInfo->lockStatus = lockStatus;
+    M4A_TIME(MPlayExtender, 0x92, 0xC6, M4A_BACK, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW,
+             M4A_EW);
 }
 
 // The BIOS's copy of its own table of the engine's commands. A Dreamport has no BIOS, so it stops there.
@@ -298,7 +322,11 @@ void ClearChain(struct MixerSource *chan)
 void Clear64byte(void *x)
 {
     void (*func)(void *) = *(&gMPlayJumpTable[35]);
+    // the call goes through the compiler's own bx to the table's 36th command, SoundMainBTM in the engine's table
+    M4A_TIME(Clear64byte, 0x0, 0x8, M4A_AT(_call_via_r1, 0), M4A_EW);
+    M4A_TIME(_call_via_r1, 0x0, 0x0, M4A_AT(SoundMainBTM, 0));
     func(x);
+    M4A_TIME(Clear64byte, 0xA, 0xC, M4A_BACK);
 }
 
 void SoundInit(struct SoundMixerState *soundInfo)
@@ -306,8 +334,12 @@ void SoundInit(struct SoundMixerState *soundInfo)
     soundInfo->lockStatus = 0;
     if (REG_DMA1CNT & (DMA_REPEAT << 16))
         REG_DMA1CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+    else
+        M4A_TIME(SoundInit, 0x0, 0x16, M4A_AT(SoundInit, 0x1C), M4A_EW, 0x040000C4);
     if (REG_DMA2CNT & (DMA_REPEAT << 16))
         REG_DMA2CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+    else
+        M4A_TIME(SoundInit, 0x1C, 0x24, M4A_AT(SoundInit, 0x2A), 0x040000D0);
     REG_DMA1CNT_H = DMA_32BIT;
     REG_DMA2CNT_H = DMA_32BIT;
     REG_SOUNDCNT_X = SOUND_MASTER_ENABLE | SOUND_4_ON | SOUND_3_ON | SOUND_2_ON | SOUND_1_ON;
@@ -320,7 +352,10 @@ void SoundInit(struct SoundMixerState *soundInfo)
     REG_DMA2DAD = (intptr_t)&REG_FIFO_B;
 
     SOUND_INFO_PTR = soundInfo;
+    M4A_TIME(SoundInit, 0x2A, 0x82, M4A_AT(CpuSet, 0), 0x040000C6, 0x040000D2, 0x04000084, 0x04000082, 0x04000089,
+             0x04000089, 0x040000BC, 0x040000C0, 0x040000C8, 0x040000CC, M4A_IW);
     CpuFill32(0, soundInfo, sizeof(struct SoundMixerState));
+    M4A_TIME(CpuSet, 0x2, 0x2, M4A_BACK);
 
     soundInfo->numChans = 8;
     soundInfo->masterVol = 15;
@@ -330,13 +365,17 @@ void SoundInit(struct SoundMixerState *soundInfo)
     soundInfo->MidiKeyToCgbFreq = (MidiKeyToCgbFreqFunc)MP2K_event_null;
     soundInfo->ExtVolPit = (ExtVolPitFunc)MP2K_event_null;
 
+    M4A_TIME(SoundInit, 0x84, 0xA0, M4A_AT(MPlayJumpTableCopy, 0), M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW,
+             M4A_EW);
     MPlayJumpTableCopy((void **)gMPlayJumpTable);
 
     soundInfo->MPlayJumpTable = gMPlayJumpTable;
 
+    M4A_TIME(SoundInit, 0xA2, 0xAA, M4A_AT(SampleFreqSet, 0), M4A_EW);
     SampleFreqSet(SOUND_MODE_FREQ_13379);
 
     soundInfo->lockStatus = ID_NUMBER;
+    M4A_TIME(SoundInit, 0xAC, 0xB6, M4A_BACK, M4A_EW);
 }
 
 void SampleFreqSet(u32 freq)
@@ -347,27 +386,40 @@ void SampleFreqSet(u32 freq)
     soundInfo->freqOption = freq;
 
     soundInfo->samplesPerFrame = gPcmSamplesPerVBlankTable[freq - 1];
+    M4A_TIME(SampleFreqSet, 0x0, 0x28, M4A_AT(__divsi3, 0), M4A_IW, M4A_EW, M4A_ROM, M4A_EW);
+    M4A_DIVIDE(PCM_DMA_BUF_SIZE, soundInfo->samplesPerFrame);
     soundInfo->framesPerDmaCycle = PCM_DMA_BUF_SIZE / soundInfo->samplesPerFrame;
 
     // LCD refresh rate 59.7275Hz
+    M4A_TIME(SampleFreqSet, 0x2A, 0x38, M4A_AT(__divsi3, 0), M4A_EW, 597275);
+    M4A_DIVIDE(597275 * soundInfo->samplesPerFrame + 5000, 10000);
     soundInfo->sampleRate = (597275 * soundInfo->samplesPerFrame + 5000) / 10000;
 
     // CPU freq 16.78Mhz
+    M4A_TIME(SampleFreqSet, 0x3A, 0x44, M4A_AT(__divsi3, 0), M4A_EW);
+    M4A_DIVIDE(0x1000000, soundInfo->sampleRate);
     soundInfo->sampleRateReciprocal = (0x1000000 / soundInfo->sampleRate + 1) >> 1;
 
     // Turn off timer 0.
     REG_TM0CNT_H = 0;
 
     // cycles per LCD fresh 280896
+    M4A_TIME(SampleFreqSet, 0x46, 0x58, M4A_AT(__divsi3, 0), M4A_EW, 0x04000102);
+    M4A_DIVIDE(280896, soundInfo->samplesPerFrame);
     REG_TM0CNT_L = -(280896 / soundInfo->samplesPerFrame);
 
+    M4A_TIME(SampleFreqSet, 0x5A, 0x60, M4A_AT(m4aSoundVSyncOn, 0), 0x04000100);
     m4aSoundVSyncOn();
+    // each look at the line count is at its load's time: the runs before it come first
+    M4A_TIME(SampleFreqSet, 0x62, 0x62, M4A_AT(SampleFreqSet, 0x64));
     while (*(vu8 *)REG_ADDR_VCOUNT == 159)
-        ;
+        M4A_TIME(SampleFreqSet, 0x64, 0x68, M4A_AT(SampleFreqSet, 0x64), 0x04000006);
+    M4A_TIME(SampleFreqSet, 0x64, 0x6A, M4A_AT(SampleFreqSet, 0x6C), 0x04000006);
 
     while (*(vu8 *)REG_ADDR_VCOUNT != 159)
-        ;
+        M4A_TIME(SampleFreqSet, 0x6C, 0x70, M4A_AT(SampleFreqSet, 0x6C), 0x04000006);
     REG_TM0CNT_H = TIMER_ENABLE | TIMER_1CLK;
+    M4A_TIME(SampleFreqSet, 0x6C, 0x7C, M4A_BACK, 0x04000006, 0x04000102);
 }
 
 void m4aSoundMode(u32 mode)
@@ -384,6 +436,8 @@ void m4aSoundMode(u32 mode)
 
     if (temp)
         soundInfo->reverb = temp & SOUND_MODE_REVERB_VAL;
+    else
+        M4A_TIME(m4aSoundMode, 0x0, 0x1A, M4A_AT(m4aSoundMode, 0x22), M4A_IW, M4A_EW, M4A_EW);
 
     temp = mode & SOUND_MODE_MAXCHN;
 
@@ -399,6 +453,13 @@ void m4aSoundMode(u32 mode)
             chan->status = 0;
             temp--;
             chan++;
+            // each turn but the last, which goes on below: the first has the count's store before it
+#ifdef M4A_TIMED
+            if (temp == MAX_DIRECTSOUND_CHANNELS - 1)
+                M4A_TIME(m4aSoundMode, 0x22, 0x40, M4A_AT(m4aSoundMode, 0x38), M4A_EW, M4A_EW);
+            else if (temp != 0)
+                M4A_TIME(m4aSoundMode, 0x38, 0x40, M4A_AT(m4aSoundMode, 0x38), M4A_EW);
+#endif
         }
     }
 
@@ -417,11 +478,15 @@ void m4aSoundMode(u32 mode)
     temp = mode & SOUND_MODE_FREQ;
 
     if (temp) {
+        // on power-on's path, where the mode sets every part of the sound: from the channels' last turn
+        M4A_TIME(m4aSoundMode, 0x38, 0x7A, M4A_AT(m4aSoundVSyncOff, 0), M4A_EW, M4A_EW, 0x04000089, 0x04000089);
         m4aSoundVSyncOff();
+        M4A_TIME(m4aSoundMode, 0x7C, 0x80, M4A_AT(SampleFreqSet, 0));
         SampleFreqSet(temp);
     }
 
     soundInfo->lockStatus = ID_NUMBER;
+    M4A_TIME(m4aSoundMode, 0x82, 0x8A, M4A_BACK, M4A_EW);
 }
 
 void SoundClear(void)
@@ -467,17 +532,29 @@ void m4aSoundVSyncOff(void)
     if (soundInfo->lockStatus >= ID_NUMBER && soundInfo->lockStatus <= ID_NUMBER + 1) {
         soundInfo->lockStatus += 10;
 
-        if (REG_DMA1CNT & (DMA_REPEAT << 16))
+        // each channel's control is timed as it's written, before the write of its top half below
+        if (REG_DMA1CNT & (DMA_REPEAT << 16)) {
+            M4A_TIME(m4aSoundVSyncOff, 0x0, 0x24, M4A_AT(m4aSoundVSyncOff, 0x26), M4A_IW, M4A_EW, M4A_EW, 0x040000C4);
             REG_DMA1CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+            M4A_TIME(m4aSoundVSyncOff, 0x26, 0x28, M4A_AT(m4aSoundVSyncOff, 0x2A), 0x040000C4);
+        } else
+            M4A_TIME(m4aSoundVSyncOff, 0x0, 0x24, M4A_AT(m4aSoundVSyncOff, 0x2A), M4A_IW, M4A_EW, M4A_EW, 0x040000C4);
 
-        if (REG_DMA2CNT & (DMA_REPEAT << 16))
+        if (REG_DMA2CNT & (DMA_REPEAT << 16)) {
+            M4A_TIME(m4aSoundVSyncOff, 0x2A, 0x32, M4A_AT(m4aSoundVSyncOff, 0x34), 0x040000D0);
             REG_DMA2CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+            M4A_TIME(m4aSoundVSyncOff, 0x34, 0x36, M4A_AT(m4aSoundVSyncOff, 0x38), 0x040000D0);
+        } else
+            M4A_TIME(m4aSoundVSyncOff, 0x2A, 0x32, M4A_AT(m4aSoundVSyncOff, 0x38), 0x040000D0);
 
         REG_DMA1CNT_H = DMA_32BIT;
         REG_DMA2CNT_H = DMA_32BIT;
 
+        M4A_TIME(m4aSoundVSyncOff, 0x38, 0x56, M4A_AT(CpuSet, 0), 0x040000C6, 0x040000D2);
         CpuFill32(0, soundInfo->pcmBuffer, sizeof(soundInfo->pcmBuffer));
+        M4A_TIME(CpuSet, 0x2, 0x2, M4A_BACK);
     }
+    M4A_TIME(m4aSoundVSyncOff, 0x58, 0x5C, M4A_BACK);
 }
 
 void m4aSoundVSyncOn(void)
@@ -493,6 +570,7 @@ void m4aSoundVSyncOn(void)
 
     soundInfo->dmaCounter = 0;
     soundInfo->lockStatus = lockStatus - 10;
+    M4A_TIME(m4aSoundVSyncOn, 0x0, 0x2C, M4A_BACK, M4A_IW, M4A_EW, 0x040000C6, 0x040000D2, M4A_EW, M4A_EW, M4A_EW);
 }
 
 void MPlayOpen(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *tracks, u8 trackCount)
@@ -502,8 +580,11 @@ void MPlayOpen(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *tracks, u8 t
     if (trackCount == 0)
         return;
 
-    if (trackCount > MAX_MUSICPLAYER_TRACKS)
+    if (trackCount > MAX_MUSICPLAYER_TRACKS) {
         trackCount = MAX_MUSICPLAYER_TRACKS;
+        M4A_TIME(MPlayOpen, 0x0, 0x12, M4A_AT(MPlayOpen, 0x14));
+    } else
+        M4A_TIME(MPlayOpen, 0x0, 0x10, M4A_AT(MPlayOpen, 0x14));
 
     soundInfo = SOUND_INFO_PTR;
 
@@ -512,16 +593,23 @@ void MPlayOpen(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *tracks, u8 t
 
     soundInfo->lockStatus++;
 
+    M4A_TIME(MPlayOpen, 0x14, 0x28, M4A_AT(Clear64byte, 0), M4A_IW, M4A_EW, M4A_EW);
     Clear64byte(mplayInfo);
 
     mplayInfo->tracks = tracks;
     mplayInfo->trackCount = trackCount;
     mplayInfo->status = MUSICPLAYER_STATUS_PAUSE;
+    M4A_TIME(MPlayOpen, 0x2A, 0x38, M4A_AT(MPlayOpen, 0x3A), M4A_EW, M4A_EW, M4A_EW);
 
     while (trackCount != 0) {
         tracks->status = 0;
         trackCount--;
         tracks++;
+        // each turn but the last, which goes on below
+#ifdef M4A_TIMED
+        if (trackCount != 0)
+            M4A_TIME(MPlayOpen, 0x3A, 0x46, M4A_AT(MPlayOpen, 0x3A), M4A_EW);
+#endif
     }
 
     // append music player and MP2KPlayerMain to linked list
@@ -538,6 +626,16 @@ void MPlayOpen(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *tracks, u8 t
 
     soundInfo->lockStatus = ID_NUMBER;
     mplayInfo->lockStatus = ID_NUMBER;
+#ifdef M4A_TIMED
+    // the chain had a player before, which this one now leads to, or none
+    if (mplayInfo->nextPlayerFunc != NULL)
+        M4A_TIME(MPlayOpen, 0x3A, 0x68, M4A_BACK, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW, M4A_EW,
+                 M4A_EW);
+    else {
+        M4A_TIME(MPlayOpen, 0x3A, 0x4C, M4A_AT(MPlayOpen, 0x58), M4A_EW, M4A_EW);
+        M4A_TIME(MPlayOpen, 0x58, 0x68, M4A_BACK, M4A_EW, M4A_EW, M4A_EW, M4A_EW);
+    }
+#endif
 }
 
 void MPlayStart(struct MP2KPlayerState *mplayInfo, struct MP2KSongHeader *songHeader)
