@@ -151,6 +151,7 @@ static uint32_t* sizes;   // each size the picture had: the frame it started at,
 static size_t sizeCount, sizeRoom;
 
 #include "ran.h"
+#include "ran-ps2.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -641,6 +642,23 @@ int main(int argc, char** argv) {
 	retro_set_input_state(inputState);
 	retro_init();
 
+	// what ran, from a core that tells of every instruction, only when something of it is asked for, told before the game
+	// loads, as the PlayStation 2's core starts the console as it does
+	if (!live && !route) {
+		size_t functionsSize = 0;
+		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
+		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY")))) {
+			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
+			if (watch) ps2Open(watch, functions);
+			else if (tell) tell(ranInstruction);
+			else {
+				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
+				return 2;
+			}
+		}
+	}
+
 	struct system_info info = { 0 };
 	retro_get_system_info(&info);
 	struct game_info game = { .path = argv[2] };
@@ -714,18 +732,6 @@ int main(int argc, char** argv) {
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
 	uint32_t* readValues = calloc(readCount ? readCount : 1, sizeof(uint32_t));
-	// what ran, from a core that tells of every instruction, only when something of it is asked for
-	size_t functionsSize = 0;
-	uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
-	if (ranOpen(functions, functionsSize / 4)) {
-		void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
-		if (!tell) {
-			fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
-			return 2;
-		}
-		tell(ranInstruction);
-	}
-
 	for (long frame = 0; frame < frames; frame++) {
 		held = (size_t) frame < buttonsSize / 4 ? buttons[frame] : 0;
 		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
@@ -770,6 +776,7 @@ int main(int argc, char** argv) {
 	if (soundFile) fclose(soundFile);
 	if (drawsFile) fclose(drawsFile);
 	ranClose();
+	ps2Close();
 	fflush(out);
 	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);

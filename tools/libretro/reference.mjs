@@ -60,7 +60,7 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    seesInstructions: core.ran === true,
+    seesInstructions: !!core.ran,
     seesEntries: core.ran === true,
     ensureOriginal: log => buildReference(machine, log),
     async runOriginal({ copy, ...rest }) {

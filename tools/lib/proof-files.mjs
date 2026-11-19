@@ -15,6 +15,7 @@ import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
 import { nesProgram } from '../nes/functions.mjs';
+import { bootProgram, processorOf, programReader } from '../ps2/ledger.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -153,10 +154,12 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 
 /** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
  *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
- *  (nes/functions.mjs). Its `copy()` gives the whole file. */
+ *  (nes/functions.mjs). Its `copy()` gives the whole file. With 'ps2' the address is where the EE runs the program the
+ *  disc boots, and `disc` is the copy's path, whose sectors are its content (ps2/ledger.mjs). */
 export function cartridgeOf(path, console = 'gba') {
   let bytes = null, program = null;
   const copy = () => (bytes ??= readFileSync(path));
+  if (console === 'ps2') return Object.assign((address, count) => (program ??= programReader(bootProgram(path)))(address, count), { copy, disc: path });
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
@@ -167,7 +170,8 @@ export function cartridgeOf(path, console = 'gba') {
  *  address, those the game makes in RAM only with their bytes there, and each cartridge function a copy holds where the
  *  copy runs, with its bytes, so it counts when the copy is there. `cartridge(address, bytes)` reads the copy's bytes. */
 export function watchesOf(codeMap, cartridge) {
-  const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) }));
+  // a PlayStation 2 function on another processor than the EE says which (ps2/ledger.mjs, libretro/ran-ps2.h)
+  const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}), ...(f.cpu ? { processor: processorOf(f) } : {}) }));
   for (const copy of codeMap.copies ?? []) {
     if (copy.packed) continue;
     codeMap.functions.forEach((f, index) => {

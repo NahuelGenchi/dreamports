@@ -3,8 +3,8 @@
 // this computer and stays here.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
-import { open, readFile, stat } from 'node:fs/promises';
+import { closeSync, createReadStream, existsSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { open, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { CONSOLES } from '../consoles.mjs';
 import { readCopy } from '../gba/header.mjs';
@@ -85,33 +85,55 @@ async function disc(file) {
 }
 
 /**
+ * How a disc's data is laid out: { file, sector, data, sectors }, the file that holds its first track, how many bytes
+ * a sector takes there and where in it the data's 2048 bytes start, and how many sectors it has, or null when it has
+ * no volume. Sector n of the data is 2048 bytes from n * sector + data. For the disc's content (lib/played.mjs).
+ */
+export function discLayout(path) {
+  const file = dataFilesSync(path)[0], fd = openSync(file, 'r');
+  try {
+    for (const [sector, data] of SECTORS) {
+      const volume = Buffer.alloc(2048);
+      readSync(fd, volume, 0, 2048, 16 * sector + data);
+      if (ascii(volume, 1, 5) === 'CD001') return { file, sector, data, sectors: Math.floor(statSync(file).size / sector) };
+    }
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * A whole file on a disc, by its name in the disc's top folder, such as SLUS_205.73, or with the folders it's in before
  * it, as GAME\MAIN.EXE, read a sector at a time from however the disc's sectors are laid out, or null when it has
  * none of that name. For the program a PlayStation or PlayStation 2 game boots, which its code map is made from
- * (ps1/functions.mjs, ps2/functions.mjs).
+ * (ps1/functions.mjs, ps2/functions.mjs). It reads a few sectors, so it reads them at once (readDiscFileSync).
  */
 export async function readDiscFile(path, name) {
-  const files = await dataFiles(path);
-  const file = await open(files[0]);
+  return readDiscFileSync(path, name);
+}
+
+/** readDiscFile, for a tool that reads a disc's program where it can't wait, as gameplay proven does (lib/played.mjs). */
+export function readDiscFileSync(path, name) {
+  const fd = openSync(dataFilesSync(path)[0], 'r');
   try {
-    const read = async (at, length) => {
+    const read = (at, length) => {
       const bytes = Buffer.alloc(length);
-      const { bytesRead } = await file.read(bytes, 0, length, at);
-      return bytes.subarray(0, bytesRead);
+      return bytes.subarray(0, readSync(fd, bytes, 0, length, at));
     };
     for (const [sector, data] of SECTORS) {
-      const volume = await read(16 * sector + data, 2048);
+      const volume = read(16 * sector + data, 2048);
       if (ascii(volume, 1, 5) !== 'CD001') continue;
       // the folder's entries a sector at a time, as each sector holds whole entries and zeros after the last one
-      const whole = async (first, size) => {
+      const whole = (first, size) => {
         const bytes = Buffer.alloc(size);
-        for (let done = 0, n = 0; done < size; n++, done += 2048) (await read((first + n) * sector + data, Math.min(2048, size - done))).copy(bytes, done);
+        for (let done = 0, n = 0; done < size; n++, done += 2048) read((first + n) * sector + data, Math.min(2048, size - done)).copy(bytes, done);
         return bytes;
       };
       let first = volume.readUInt32LE(158), size = Math.min(volume.readUInt32LE(166), 0x10000);
       const parts = name.split(/[\\/]/).filter(Boolean);
       for (const [n, part] of parts.entries()) {
-        const folder = await whole(first, size);
+        const folder = whole(first, size);
         let found = null;
         for (let at = 0; at + 33 < folder.length;) {
           if (!folder[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
@@ -125,26 +147,32 @@ export async function readDiscFile(path, name) {
         ({ first, size } = found);
         if (found.folder) size = Math.min(size, 0x10000);
       }
-      return parts.length ? await whole(first, size) : null;
+      return parts.length ? whole(first, size) : null;
     }
     return null;
   } finally {
-    await file.close();
+    closeSync(fd);
   }
 }
 
 /** The name of the program a PlayStation 2 disc boots, as its SYSTEM.CNF says, such as SLUS_205.73. */
 export async function bootFile(path) {
-  const boot = (await readDiscFile(path, 'SYSTEM.CNF'))?.toString('latin1') ?? '';
+  return bootFileSync(path);
+}
+
+/** bootFile, at once. */
+export function bootFileSync(path) {
+  const boot = readDiscFileSync(path, 'SYSTEM.CNF')?.toString('latin1') ?? '';
   return /BOOT2\s*=\s*[^\\:]*:\\?([^;\s]+)/i.exec(boot)?.[1] ?? null;
 }
 
 // the files a .cue names, in order, which hold the disc
-const dataFiles = async path => {
+const dataFiles = async path => dataFilesSync(path);
+function dataFilesSync(path) {
   if (extname(path).toLowerCase() !== '.cue') return [path];
-  const listed = [...(await readFile(path, 'latin1')).matchAll(/^\s*FILE\s+"([^"]+)"/gim)].map(found => join(dirname(path), found[1]));
+  const listed = [...readFileSync(path, 'latin1').matchAll(/^\s*FILE\s+"([^"]+)"/gim)].map(found => join(dirname(path), found[1]));
   return listed.length ? listed : [path];
-};
+}
 
 // the SHA-1 of all these files together, and of each
 async function sha1Of(files) {

@@ -36,8 +36,8 @@ function soundIn(file, frames) {
 /**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as bits, `functions` where
  * the code map's functions run ({ address, size, index, bytes }, as watchesOf in proof-files.mjs makes them: `index`
- * its place in the code map, by default its place here, and `bytes` its first 8 bytes as two words when it only counts
- * with those there), `ramCode` whether to list the code that runs in the work RAM, `pictures` the frames whose whole picture is wanted, in order, `sets` the values to write to
+ * its place in the code map, by default its place here, `bytes` its first 8 bytes as two words when it only counts
+ * with those there, and on the PlayStation 2 `processor`, which one's it is, as libretro/ran-ps2.h numbers them), `ramCode` whether to list the code that runs in the work RAM, `pictures` the frames whose whole picture is wanted, in order, `sets` the values to write to
  * the work RAM as a frame starts ({ frame, address, bytes, value }), in the order of their frames, and `states` the
  * frames whose state is wanted, in order, and `reads` the values to read from the work RAM as a frame ends
  * ({ frame, address, bytes }), in the order of their frames. `program` and `args(files)` say what to run, and `width`, `height`,
@@ -76,7 +76,7 @@ export async function runReference({ program, args, env, width, height, stateByt
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 6);
-  functions.forEach((f, i) => list.set([f.address, f.size, f.index ?? i, f.bytes ? 1 : 0, f.bytes?.[0] ?? 0, f.bytes?.[1] ?? 0], i * 6));
+  functions.forEach((f, i) => list.set([f.address, f.size, f.index ?? i, (f.bytes ? 1 : 0) | (f.processor ?? 0) << 8, f.bytes?.[0] ?? 0, f.bytes?.[1] ?? 0], i * 6));
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
