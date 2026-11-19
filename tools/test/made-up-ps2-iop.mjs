@@ -15,9 +15,7 @@
 // a sweep, and writes back what it reads of the chip (the voices that reached their end, and whether the interrupt
 // address was played), so what the chip says is in the sound list too.
 
-import { LOAD_AT, forOtherPrograms } from './made-up-ps2.mjs';
-
-const { lw: eeLw, sw: eeSw, addiu: eeAddiu, li: eeLi, here, bne: eeBne, j: eeJ, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET } = forOtherPrograms;
+import { LOAD_AT, lw as eeLw, sw as eeSw, addiu as eeAddiu, li as eeLi, here, bne as eeBne, j as eeJ, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET } from './made-up-ps2.mjs';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The sound

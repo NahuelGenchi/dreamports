@@ -391,5 +391,5 @@ function elfOf(written, packet) {
   return { elf, sha1: createHash('sha1').update(elf).digest('hex') };
 }
 
-/** What the programs of made-up-ps2-iop.mjs, which start the console's second processor, are built with as well. */
-export const forOtherPrograms = { imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET };
+// what the other programs' files build on (made-up-ps2-gs.mjs): the instructions, the screen, the DMA and the ELF file
+export { ZERO, T0, T1, T2, T3, S0, S1, imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, assemble, elfOf, bitsOf, SYSCALL, send, PACKET };

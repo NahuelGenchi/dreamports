@@ -20,13 +20,21 @@ enum {
   GS_FRAME_2 = 0x4D, GS_ZBUF_1 = 0x4E, GS_ZBUF_2 = 0x4F, GS_BITBLTBUF = 0x50, GS_TRXPOS = 0x51, GS_TRXREG = 0x52,
   GS_TRXDIR = 0x53, GS_HWREG = 0x54, GS_SIGNAL = 0x60, GS_FINISH = 0x61, GS_LABEL = 0x62,
 };
-// where the EE sees the GS's privileged registers, which say what the screen shows: each is 64 bits, written as two halves
-enum { GS_PMODE = 0x12000000, GS_SMODE2 = 0x12000020, GS_DISPFB1 = 0x12000070, GS_DISPLAY1 = 0x12000080, GS_DISPFB2 = 0x12000090, GS_DISPLAY2 = 0x120000A0, GS_BGCOLOR = 0x120000E0 };
+// where the EE sees the GS's privileged registers, which say what the screen shows, and its status, interrupts and the
+// way its bus faces: each is 64 bits, written as two halves
+enum {
+  GS_PMODE = 0x12000000, GS_SMODE2 = 0x12000020, GS_DISPFB1 = 0x12000070, GS_DISPLAY1 = 0x12000080, GS_DISPFB2 = 0x12000090,
+  GS_DISPLAY2 = 0x120000A0, GS_BGCOLOR = 0x120000E0, GS_CSR = 0x12001000, GS_IMR = 0x12001010, GS_BUSDIR = 0x12001040,
+  GS_SIGLBLID = 0x12001080,
+};
 
 /** Writes one of the GS's registers, as a GIF packet's address and data does. */
 void gs_write(uint8_t reg, uint64_t value);
 /** Sends the GS a picture's data, `length` bytes, as a GIF packet in IMAGE mode does. */
 void gs_image(const void *data, uint32_t length);
+/** Takes the next `length` bytes of the picture TRXDIR = 1 started moving out of the GS's memory, as a DMA transfer from
+ *  VIF1 does once BUSDIR is 1: each pixel's bits after the last's, as a picture moved in has them, and 0 past its end. */
+void gs_read_image(void *data, uint32_t length);
 /** Writes half of a privileged register: the 32 bits at `address`, the low half at the register's own or the high 4 on. */
 void gs_screen(uint32_t address, uint32_t value);
 /** Paints the page's picture with what the screen shows of the framebuffer, at the console's size. For game_draw. */
