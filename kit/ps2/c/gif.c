@@ -142,7 +142,7 @@ static void drain_fifo(void) {
 }
 
 uint32_t gif_receive(uint32_t address, uint32_t qwc, int tag) {
-  const uint8_t *memory = address & 0x80000000 ? ps2_scratchpad() : ps2_memory();
+  const uint8_t *memory = address & 0x80000000 ? ps2_scratchpad() : ee_memory();
   uint32_t size = address & 0x80000000 ? PS2_SCRATCHPAD_SIZE : PS2_RAM_SIZE;
   uint32_t at = address & (size - 1), start = at, end = at + qwc * 16;
   // a tag sent with TTE is nothing to the GIF

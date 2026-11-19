@@ -11,7 +11,8 @@ name: Check
 # npm run test:ps1-call and test:ps1-twin, which run the functions of a fourth in the PlayStation's emulator's own
 # interpreter and check its twins against them, and npm run test:ps1-gcc, which builds the PlayStation's compiler from
 # GNU's source as WebAssembly and compiles a C file of the project's own with it, and npm run test:ps1-match, which
-# tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself. A pull
+# tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
+# test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
@@ -52,11 +53,13 @@ jobs:
           # program of the project's own as a cartridge and as a Dreamport from the same C, and has prove find every
           # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
           # the project's own, found in a second made-up program by its short hash and proven there; and the GBA kit's
-          # clock, measured against mGBA an instruction at a time on a made-up program's power-on
+          # clock, measured against mGBA an instruction at a time on a made-up program's power-on; and the console's
+          # stack in a Dreamport, which has to leave the same words as mGBA where a later function reads them unset
           - part: functions
             run: |
               npm run test:twin
               npm run test:clock
+              npm run test:stack
               npm run test:match
               npm run test:rebuild
               npm run test:nes-twin
@@ -68,12 +71,16 @@ jobs:
               npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
           # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
-          # under one; and a shared library of the project's own, proven in two made-up games at addresses of their own
+          # under one; a shared library of the project's own, proven in two made-up games at addresses of their own; and
+          # the PlayStation 2's function check, with Play!'s own processors built from its makers' source and a made-up
+          # program's functions run on each of them and checked against their twins
           - part: tasks
             run: |
               npm run test:function-tasks
               npm run test:function-homes
               npm run test:libraries
+              npm run test:ps2-call
+              npm run test:ps2-twin
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

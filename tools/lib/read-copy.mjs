@@ -3,11 +3,18 @@
 // this computer and stays here.
 
 import { createHash } from 'node:crypto';
-import { createReadStream, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { open, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
+import { constants as zlibConstants, inflateRawSync, zstdDecompressSync } from 'node:zlib';
 import { CONSOLES } from '../consoles.mjs';
 import { readCopy } from '../gba/header.mjs';
+import { openDisc as openDiscOf } from '../../kit/copy/disc.js';
+import { isChd } from '../../kit/copy/chd.js';
+import { isCso } from '../../kit/copy/cso.js';
+import { inflateRaw } from '../../kit/copy/inflate.js';
+import { bootOf, readFileOn, volumeOf, whatDisc } from '../../kit/copy/iso9660.js';
+import { chunked } from '../../kit/copy/source.js';
 
 const ascii = (bytes, at, length) => bytes.toString('latin1', at, at + length).replace(/[\0\s]+$/, '').trim();
 const HEAD = 0x10000;
@@ -51,113 +58,173 @@ function cartridge(bytes) {
   return null;
 }
 
-// how a disc's sectors are laid out: how long each is, and where its data starts
-const SECTORS = [[2048, 0], [2352, 24], [2352, 16]];
+// Discs, in any of the files they come in, are read through kit/copy/, the same reader the page uses, a few sectors at a
+// time: kit/copy/disc.js says how each kind of file keeps a disc, and kit/copy/iso9660.js finds a file on one.
 
-// a disc's first volume: where its files start, and how its sectors are laid out
-async function disc(file) {
-  const read = async (at, length) => {
-    const bytes = Buffer.alloc(length);
-    const { bytesRead } = await file.read(bytes, 0, length, at);
-    return bytes.subarray(0, bytesRead);
-  };
-  for (const [sector, data] of SECTORS) {
-    const volume = await read(16 * sector + data, 2048);
-    if (ascii(volume, 1, 5) !== 'CD001') continue;
-    const system = ascii(volume, 8, 32), title = ascii(volume, 40, 32);
-    const files = await read(volume.readUInt32LE(158) * sector + data, 2048);
-    const named = async name => {
-      for (let at = 0; at + 33 < files.length && files[at];) {
-        if (ascii(files, at + 33, files[at + 32]).replace(/;\d+$/, '') === name) return read(files.readUInt32LE(at + 2) * sector + data, Math.min(files.readUInt32LE(at + 10), 2048));
-        at += files[at];
+/** A file on this computer, read a piece at a time (kit/copy/source.js), with `close()` once it's done with. */
+export async function fileSource(path) {
+  const handle = await open(path);
+  const { size } = await handle.stat();
+  const source = chunked({
+    name: basename(path),
+    size,
+    async read(at, length) {
+      const bytes = Buffer.alloc(Math.max(0, Math.min(length, size - at)));
+      let done = 0;
+      while (done < bytes.length) {
+        const { bytesRead } = await handle.read(bytes, done, bytes.length - done, at + done);
+        if (!bytesRead) break;
+        done += bytesRead;
       }
+      return new Uint8Array(bytes.buffer, bytes.byteOffset, done);
+    },
+  });
+  return Object.assign(source, { close: () => handle.close() });
+}
+
+// deflate through Node's own zlib, and the kit's where zlib won't take a stream with bytes after its end; and zstd,
+// which only Node has
+const inflate = (bytes, size, options) => {
+  try {
+    const out = inflateRawSync(bytes, { finishFlush: zlibConstants.Z_SYNC_FLUSH });
+    if (out.length === size) return new Uint8Array(out.buffer, out.byteOffset, out.length);
+  } catch { /* the kit's own reads what zlib won't */ }
+  return inflateRaw(bytes, size, options);
+};
+const zstd = zstdDecompressSync && ((bytes, size) => {
+  const out = zstdDecompressSync(bytes);
+  if (out.length !== size) throw new Error(`A zstd piece of the copy held ${out.length} bytes where ${size} were wanted.`);
+  return new Uint8Array(out.buffer, out.byteOffset, out.length);
+});
+
+/**
+ * The disc in the file at `path`, ISO, BIN, .cue, CHD, CSO or ZSO, read a few sectors at a time, or null when it isn't
+ * one: kit/copy/disc.js's { format, kind, sectors, layerBreak, tracks, read(lba, count), data(lba, count), image(),
+ * files }, with `close()` to let go of its files once it's done with. A .cue's files are the ones beside it.
+ */
+export async function openDisc(path) {
+  const sources = [await fileSource(path)];
+  const close = () => Promise.all(sources.map(each => each.close()));
+  try {
+    const disc = await openDiscOf(sources[0], {
+      zstd, inflate,
+      open: async name => {
+        const beside = join(dirname(path), name);
+        if (!existsSync(beside)) return null;
+        const source = await fileSource(beside);
+        sources.push(source);
+        return source;
+      },
+    });
+    if (!disc) {
+      await close();
       return null;
-    };
-    if (system.startsWith('PSP')) return { console: 'psp', title, code: ascii((await named('UMD_DATA.BIN')) ?? Buffer.alloc(0), 0, 10).split('|')[0] };
-    if (system.startsWith('PLAYSTATION')) {
-      const boot = (await named('SYSTEM.CNF'))?.toString('latin1') ?? '';
-      const found = /BOOT(2?)\s*=\s*[^\\:]*:\\?([^;\s]+)/i.exec(boot);
-      return { console: found?.[1] === '2' ? 'ps2' : 'ps1', title, code: found?.[2].replace('\\', '') ?? '' };
     }
-    return { console: null, title, code: '' };
+    return Object.assign(disc, { close });
+  } catch (error) {
+    await close();
+    throw error;
   }
-  return null;
 }
 
 /**
  * A whole file on a disc, by its name in the disc's top folder, such as SLUS_205.73, or with the folders it's in before
- * it, as GAME\MAIN.EXE, read a sector at a time from however the disc's sectors are laid out, or null when it has
- * none of that name. For the program a PlayStation or PlayStation 2 game boots, which its code map is made from
+ * it, as GAME\MAIN.EXE, read a sector at a time from whatever file the disc is in, or null when it has none of that
+ * name. For the program a PlayStation or PlayStation 2 game boots, which its code map is made from
  * (ps1/functions.mjs, ps2/functions.mjs).
  */
 export async function readDiscFile(path, name) {
-  const files = await dataFiles(path);
-  const file = await open(files[0]);
+  const disc = await openDisc(path);
+  if (!disc) return null;
   try {
-    const read = async (at, length) => {
-      const bytes = Buffer.alloc(length);
-      const { bytesRead } = await file.read(bytes, 0, length, at);
-      return bytes.subarray(0, bytesRead);
-    };
-    for (const [sector, data] of SECTORS) {
-      const volume = await read(16 * sector + data, 2048);
-      if (ascii(volume, 1, 5) !== 'CD001') continue;
-      // the folder's entries a sector at a time, as each sector holds whole entries and zeros after the last one
-      const whole = async (first, size) => {
-        const bytes = Buffer.alloc(size);
-        for (let done = 0, n = 0; done < size; n++, done += 2048) (await read((first + n) * sector + data, Math.min(2048, size - done))).copy(bytes, done);
-        return bytes;
-      };
-      let first = volume.readUInt32LE(158), size = Math.min(volume.readUInt32LE(166), 0x10000);
-      const parts = name.split(/[\\/]/).filter(Boolean);
-      for (const [n, part] of parts.entries()) {
-        const folder = await whole(first, size);
-        let found = null;
-        for (let at = 0; at + 33 < folder.length;) {
-          if (!folder[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
-          if (ascii(folder, at + 33, folder[at + 32]).replace(/;\d+$/, '').toUpperCase() === part.toUpperCase()) {
-            found = { first: folder.readUInt32LE(at + 2), size: folder.readUInt32LE(at + 10), folder: (folder[at + 25] & 2) !== 0 };
-            break;
-          }
-          at += folder[at];
-        }
-        if (!found || found.folder !== (n < parts.length - 1)) return null;
-        ({ first, size } = found);
-        if (found.folder) size = Math.min(size, 0x10000);
-      }
-      return parts.length ? await whole(first, size) : null;
-    }
-    return null;
+    const bytes = await readFileOn(disc, name);
+    return bytes && Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length);
   } finally {
-    await file.close();
+    await disc.close();
   }
+}
+
+/**
+ * Every file on a disc, by its name with the folders it's in, as DATA/MODELS.ARC, and a way to read any stretch of one,
+ * in whatever file the disc is: { files: [{ name, size }], read(name, at, length), close() }, or null when it isn't a
+ * disc. For a PlayStation 2 game's code map, as a game keeps code in many files (ps2/functions.mjs).
+ */
+export async function discFiles(path) {
+  const disc = await openDisc(path);
+  if (!disc) return null;
+  const volume = await volumeOf(disc);
+  if (!volume) {
+    await disc.close();
+    return null;
+  }
+  const files = new Map();
+  const walk = async (lba, size, folder, depth) => {
+    const entries = Buffer.from(await disc.data(lba, Math.ceil(Math.max(2048, Math.min(size, 0x100000)) / 2048)));
+    for (let at = 0; at + 33 < entries.length;) {
+      if (!entries[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
+      const name = ascii(entries, at + 33, entries[at + 32]).replace(/;\d+$/, '');
+      const entry = { lba: entries.readUInt32LE(at + 2), size: entries.readUInt32LE(at + 10) };
+      // past the folder's own entry and its parent's
+      if (!(entries[at + 32] === 1 && entries[at + 33] <= 1)) {
+        if (entries[at + 25] & 2) { if (depth < 8) await walk(entry.lba, entry.size, `${folder}${name}/`, depth + 1); }
+        else files.set(`${folder}${name}`, entry);
+      }
+      at += entries[at];
+    }
+  };
+  await walk(volume.root.lba, volume.root.size, '', 0);
+  const read = async (name, at = 0, length = files.get(name).size - at) => {
+    const file = files.get(name), wanted = Math.max(0, Math.min(length, file.size - at));
+    if (!wanted) return Buffer.alloc(0);
+    const first = Math.floor(at / 2048), count = Math.ceil((at % 2048 + wanted) / 2048);
+    const bytes = await disc.data(file.lba + first, count);
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).subarray(at % 2048, at % 2048 + wanted);
+  };
+  return { files: [...files].map(([name, { size }]) => ({ name, size })), read, close: () => disc.close() };
 }
 
 /** The name of the program a PlayStation 2 disc boots, as its SYSTEM.CNF says, such as SLUS_205.73. */
 export async function bootFile(path) {
-  const boot = (await readDiscFile(path, 'SYSTEM.CNF'))?.toString('latin1') ?? '';
-  return /BOOT2\s*=\s*[^\\:]*:\\?([^;\s]+)/i.exec(boot)?.[1] ?? null;
+  const disc = await openDisc(path);
+  if (!disc) return null;
+  try {
+    return await bootOf(disc);
+  } finally {
+    await disc.close();
+  }
 }
 
-// the files a .cue names, in order, which hold the disc
-const dataFiles = async path => {
+// files that aren't a disc, each a track of an image
+const wholeFiles = paths => ({
+  async* image() {
+    for (const [track, path] of paths.entries()) {
+      const source = await fileSource(path);
+      try {
+        for (let at = 0; at < source.size; at += 0x400000) yield { track, bytes: await source.read(at, 0x400000) };
+      } finally {
+        await source.close();
+      }
+    }
+  },
+});
+
+// the files a .cue names, in order, or the file itself
+async function cueFiles(path) {
   if (extname(path).toLowerCase() !== '.cue') return [path];
   const listed = [...(await readFile(path, 'latin1')).matchAll(/^\s*FILE\s+"([^"]+)"/gim)].map(found => join(dirname(path), found[1]));
   return listed.length ? listed : [path];
-};
+}
 
-// the SHA-1 of all these files together, and of each
-async function sha1Of(files) {
+// the SHA-1 of a disc's bytes, as the image it was made from holds them, and of each of its tracks
+async function sha1Of(disc) {
   const whole = createHash('sha1'), tracks = [];
-  for (const file of files) {
-    const hash = createHash('sha1');
-    for await (const piece of createReadStream(file, { highWaterMark: 0x100000 })) {
-      whole.update(piece);
-      hash.update(piece);
-    }
-    tracks.push(hash.digest('hex'));
+  let size = 0;
+  for await (const { track, bytes } of disc.image()) {
+    (tracks[track] ??= createHash('sha1')).update(bytes);
+    whole.update(bytes);
+    size += bytes.length;
   }
-  return { sha1: whole.digest('hex'), tracks };
+  return { sha1: whole.digest('hex'), tracks: tracks.map(hash => hash.digest('hex')), size };
 }
 
 /**
@@ -166,8 +233,11 @@ async function sha1Of(files) {
  */
 export function looksLikeAnyCopy(bytes) {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return !!cartridge(buffer) || SECTORS.some(([sector, data]) => ascii(buffer, 16 * sector + data + 1, 5) === 'CD001');
+  return !!cartridge(buffer) || isChd(buffer) || isCso(buffer) || SECTORS.some(([sector, data]) => ascii(buffer, 16 * sector + data + 1, 5) === 'CD001');
 }
+
+// the ways a disc's first volume can lie in a file: in sectors of 2048 bytes, or raw, Mode 2 or Mode 1
+const SECTORS = [[2048, 0], [2352, 24], [2352, 16]];
 
 /**
  * Reads a copy: { console, title, code, region, revision, size, sha1 }, and `tracks`, the SHA-1 of each file of a disc
@@ -185,23 +255,30 @@ export async function readAnyCopy(path, said = null) {
     const gba = await gbaIn();
     if (gba) return gba;
   }
-  const files = await dataFiles(path);
-  // a disc whose tracks have moved isn't a copy of anything
+  // a .cue's files, in order, hold the copy: a disc whose tracks have moved isn't a copy of anything
+  const files = await cueFiles(path);
   if (!files.every(existsSync)) return null;
-  const file = await open(files[0]);
-  let found;
+  const file = await fileSource(files[0]);
+  let found = null, disc = null;
   try {
-    const head = Buffer.alloc(HEAD * 2);
-    const { bytesRead } = await file.read(head, 0, head.length, 0);
-    found = cartridge(head.subarray(0, bytesRead)) ?? await disc(file);
+    found = cartridge(Buffer.from(await file.read(0, HEAD * 2)));
   } finally {
     await file.close();
   }
-  const id = said ?? found?.console;
-  // a file with a name of its own can still hold a Game Boy Advance game, whose header says so; another console's file can't
-  if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
-  let size = 0;
-  for (const data of files) size += (await stat(data)).size;
-  const { sha1, tracks } = await sha1Of(files);
-  return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: files.length > 1 ? tracks : undefined };
+  if (!found) {
+    disc = await openDisc(path).catch(error => {
+      // a file that says it's a compressed disc and can't be read says why
+      throw new Error(`${basename(path)} can't be read: ${error.message}`);
+    });
+    if (disc) found = await whatDisc(disc);
+  }
+  try {
+    const id = said ?? found?.console;
+    // a file with a name of its own can still hold a Game Boy Advance game, whose header says so; another console's file can't
+    if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
+    const { sha1, tracks, size } = await sha1Of(disc ?? wholeFiles(files));
+    return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format } : {}) };
+  } finally {
+    await disc?.close();
+  }
 }

@@ -63,6 +63,7 @@ Then open <http://localhost:4321> in your browser. The page updates as you save 
 | `npm run test:real-ps2` | Tries a small PlayStation 2 program of the project's own on Play!, built from its makers' source, twice, on Linux or a Mac. Not run on pull requests, as the emulator takes minutes to build |
 | `npm run test:ps2-3d` | Tries how a 3D game is proven, by its draw list, on a small 3D PlayStation 2 program of the project's own, on Linux or a Mac. Not run on pull requests either |
 | `npm run test:ps2-kit` | Proves two small PlayStation 2 programs' Dreamports in C on the console's kit, one by its draw list and one by its pictures, on Linux or a Mac. Not run on pull requests either |
+| `npm run test:ps2-gs` | Proves small PlayStation 2 programs' Dreamports in C on the kit's GS, what it keeps in its memory and draws, by draw list and by pictures, on Linux or a Mac. Not run on pull requests either |
 | `npm run test:ps2-ee-vu` | Proves a PlayStation 2 program of the project's own against its Dreamport on the kit's EE, vector units, VIFs, DMA controller and GIF, by its draw list and both vector units' memories every frame, on Linux or a Mac. Not run on pull requests either |
 | `npm run preview` | Opens that finished site, to check it before it goes online |
 | `npm run worker` | Makes the finished site and opens it with its profiles, at <http://localhost:8787>, with a database on your computer. Profiles only work here, not with `npm run dev` |

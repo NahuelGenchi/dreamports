@@ -370,7 +370,7 @@ uint32_t vif_receive(int unit, uint32_t address, uint32_t qwc, int tag) {
   struct vif *v = &vifs[unit];
   if ((v->stat & STAT_VEW) && vu_busy(v)) return 0;
   struct stream *s = &v->stream;
-  s->source = address & 0x80000000 ? ps2_scratchpad() : ps2_memory();
+  s->source = address & 0x80000000 ? ps2_scratchpad() : ee_memory();
   s->next = address & (address & 0x80000000 ? PS2_SCRATCHPAD_SIZE - 1 : PS2_RAM_SIZE - 1);
   s->end = s->next + qwc * QWORD;
   s->tag = (uint32_t)tag;

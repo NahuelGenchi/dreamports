@@ -50,7 +50,7 @@ static void finished(int n) {
 static uint8_t *beside_scratchpad(uint32_t address, int to) {
   if (address >= VU0_DATA && address < VU0_DATA + 0x1000) return vu_data(0) + (address & 0xFFF);
   if (!to && address >= VU1_DATA && address < VU1_DATA + 0x4000) return vu_data(1) + (address & 0x3FFF);
-  return ps2_memory() + (address & (PS2_RAM_SIZE - 1));
+  return ee_memory() + (address & (PS2_RAM_SIZE - 1));
 }
 static uint32_t scratchpad_move(int n, uint32_t address, uint32_t qwc) {
   for (uint32_t i = 0; i < qwc; i++, address += 16) {
@@ -68,8 +68,11 @@ static uint32_t scratchpad_move(int n, uint32_t address, uint32_t qwc) {
 static uint32_t send(int n, uint32_t address, uint32_t qwc, int tag) {
   switch (n) {
   case 0: return vif_receive(0, address, qwc, tag);
-  // VIF1 the other way reads the GS's memory back, which the kit doesn't keep in the GS's order yet (gs.c)
-  case 1: return ch[1].chcr & CHCR_DIR ? vif_receive(1, address, qwc, tag) : qwc;
+  // VIF1 the other way reads a picture back from the GS, into where the address points
+  case 1:
+    if (ch[1].chcr & CHCR_DIR) return vif_receive(1, address, qwc, tag);
+    gs_read_image(ps2_dma_memory(address), qwc * 16);
+    return qwc;
   case 2: return gif_receive(address, qwc, tag);
   case FROM_SPR: case TO_SPR: return scratchpad_move(n, address, qwc);
   default: return 0;

@@ -9,17 +9,12 @@
 
 #include "ps2-kit.h"
 
-static uint8_t *ram;
 static uint8_t scratchpad[PS2_SCRATCHPAD_SIZE];
 
-uint8_t *ps2_memory(void) {
-  if (!ram) ram = kit_alloc(PS2_RAM_SIZE);
-  return ram;
-}
 uint8_t *ps2_scratchpad(void) { return scratchpad; }
 
 uint8_t *ps2_dma_memory(uint32_t address) {
-  return address & 0x80000000 ? scratchpad + (address & (PS2_SCRATCHPAD_SIZE - 1)) : ps2_memory() + (address & (PS2_RAM_SIZE - 1));
+  return address & 0x80000000 ? scratchpad + (address & (PS2_SCRATCHPAD_SIZE - 1)) : ee_memory() + (address & (PS2_RAM_SIZE - 1));
 }
 
 // where an address's bytes are, when they're memory, and 0 when it's a register
@@ -27,7 +22,7 @@ static uint8_t *memory_at(uint32_t address) {
   if ((address >> 28) == 7) return scratchpad + (address & (PS2_SCRATCHPAD_SIZE - 1));
   if (address >= 0x80000000) address &= 0x1FFFFFFF;
   else if (address >= 0x20000000 && address < 0x40000000) address &= 0x0FFFFFFF;
-  if (address < 0x10000000) return ps2_memory() + (address & (PS2_RAM_SIZE - 1));
+  if (address < 0x10000000) return ee_memory() + (address & (PS2_RAM_SIZE - 1));
   if (address >= VU0_CODE && address < 0x11010000) {
     int unit = address >= VU1_CODE, data = (address & 0x4000) != 0;
     uint32_t size = data ? vu_data_size(unit) : vu_code_size(unit);

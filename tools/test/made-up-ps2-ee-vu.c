@@ -23,16 +23,16 @@ static uint32_t frame;
 
 static uint32_t word(uint32_t at) {
   uint32_t value;
-  __builtin_memcpy(&value, ps2_memory() + at, 4);
+  __builtin_memcpy(&value, ee_memory() + at, 4);
   return value;
 }
-static void put_word(uint32_t at, uint32_t value) { __builtin_memcpy(ps2_memory() + at, &value, 4); }
+static void put_word(uint32_t at, uint32_t value) { __builtin_memcpy(ee_memory() + at, &value, 4); }
 static float word_float(uint32_t at) {
   float value;
-  __builtin_memcpy(&value, ps2_memory() + at, 4);
+  __builtin_memcpy(&value, ee_memory() + at, 4);
   return value;
 }
-static void put_float(uint32_t at, float value) { __builtin_memcpy(ps2_memory() + at, &value, 4); }
+static void put_float(uint32_t at, float value) { __builtin_memcpy(ee_memory() + at, &value, 4); }
 static uint32_t float_word(float value) {
   uint32_t bits;
   __builtin_memcpy(&bits, &value, 4);
@@ -40,14 +40,14 @@ static uint32_t float_word(float value) {
 }
 static ee_quad quad(uint32_t at) {
   ee_quad value;
-  __builtin_memcpy(&value, ps2_memory() + at, 16);
+  __builtin_memcpy(&value, ee_memory() + at, 16);
   return value;
 }
-static void put_quad(uint32_t at, ee_quad value) { __builtin_memcpy(ps2_memory() + at, &value, 16); }
-static void put_double(uint32_t at, uint64_t value) { __builtin_memcpy(ps2_memory() + at, &value, 8); }
+static void put_quad(uint32_t at, ee_quad value) { __builtin_memcpy(ee_memory() + at, &value, 16); }
+static void put_double(uint32_t at, uint64_t value) { __builtin_memcpy(ee_memory() + at, &value, 8); }
 // vector unit 0's registers, as LQC2 loads one from memory and SQC2 stores one
-static void load_vector(vu_vector *to, uint32_t at) { __builtin_memcpy(to, ps2_memory() + at, 16); }
-static void put_vector(uint32_t at, const vu_vector *from) { __builtin_memcpy(ps2_memory() + at, from, 16); }
+static void load_vector(vu_vector *to, uint32_t at) { __builtin_memcpy(to, ee_memory() + at, 16); }
+static void put_vector(uint32_t at, const vu_vector *from) { __builtin_memcpy(ee_memory() + at, from, 16); }
 // waiting for a DMA channel to end, as the program does, by reading its CHCR until STR is clear
 static void wait_for(uint32_t channel) {
   for (long tries = 0; ps2_read32(channel + DMA_CHCR) & 0x100; tries++) if (tries > 1000) __builtin_trap();
@@ -62,7 +62,7 @@ void game_start(void) {
   gs_screen(GS_DISPFB1 + 4, 0);
   gs_screen(GS_DISPLAY1, 656 | 36 << 12 | 3 << 23);
   gs_screen(GS_DISPLAY1 + 4, (640 * 4 - 1) | (448 - 1) << 12);
-  for (unsigned i = 0; i < sizeof blocks / sizeof blocks[0]; i++) __builtin_memcpy(ps2_memory() + blocks[i].at, blocks[i].words, blocks[i].count * 4);
+  for (unsigned i = 0; i < sizeof blocks / sizeof blocks[0]; i++) __builtin_memcpy(ee_memory() + blocks[i].at, blocks[i].words, blocks[i].count * 4);
   ps2_write32(D_CTRL, 1);
 }
 
