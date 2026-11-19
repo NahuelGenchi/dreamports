@@ -124,8 +124,10 @@ export function chooser(seed) {
   const below = n => next() % n;
   // a number at an edge, a small one, or any
   const number = () => [() => EDGES[below(EDGES.length)], () => below(256), next][below(3)]() >>> 0;
-  // a place in the console's memory, above where a program loads and below its stack, or one a call read
-  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : (0x01000000 + below(0x3C0000) * 4) >>> 0);
+  // a place in the console's memory, above where a program loads and below its stack, or one a call read: mostly where
+  // a quadword starts, as the EE's compiler lines up what it makes, and now and then only a doubleword or a word, as a
+  // place inside something is
+  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : (0x01000000 + below(0xF0000) * 16 + [0, 0, 0, 0, 8, 4][below(6)]) >>> 0);
   return {
     next, below,
     /** An argument of a type, { bits, signed, pointer, float }: a number, or a BigInt for 64 bits. */
