@@ -49,6 +49,7 @@
     "gBackgroundsCopyQueueCursor": "03002384",
     "gBackgroundsCopyQueueIndex": "0300211C",
     "gBgSpritesCount": "03004C30",
+    "gBgSprites": "030045B0",
     "gVramGraphicsCopyCursor": "030045F8",
     "gVramGraphicsCopyQueueIndex": "03002324",
     "gSpriteOffset": "030010B4",
