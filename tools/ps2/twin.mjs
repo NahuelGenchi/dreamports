@@ -21,6 +21,10 @@
 // f20 to f31 for its caller. The original's own saves on the stack, below where the call starts it, aren't compared, as
 // a twin keeps those in its own stack.
 //
+// Every call starts from the program as the console loads it, unless the check is given memories of play
+// (twin-memories.mjs, --memories): the console's memory as it was each time a function started in play, with the
+// registers it started with, so a function is called with what the game really gave it.
+//
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
 // call read, and later calls change a few of those values, mostly to numbers at the edges of what a value holds, and give
 // pointers it read as arguments, but never a word that points back into the function's own code, which is a switch's
