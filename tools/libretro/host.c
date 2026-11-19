@@ -550,10 +550,15 @@ static void* find(void* library, const char* name) {
 
 // what the search needs of the console (lib/explore.h): the one core this program runs
 static size_t searchSize;
+static int searchCounts;                    // whether it counts what hasn't been played (ran-ps2.h)
+static uint64_t (*searchFrames)(void);      // how long the console has played, from a core that says
+#define SEARCH_UNTOUCHED 0xFFFF0000u
+#define SEARCH_FRAMES 0xFFFF0004u
 static void searchFrame(void* console, uint32_t buttons) {
 	(void) console;
 	held = buttons;
 	sampleCount = 0;
+	ps2search.untouched = 0;
 	retro_run();
 }
 static void searchSave(void* console, void* to) {
@@ -572,6 +577,15 @@ static void searchLoad(void* console, const void* from) {
 }
 static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t* value) {
 	(void) console;
+	// the two values no console has: what happened in the last frame that hadn't been played, and how long it has played
+	if (address == SEARCH_UNTOUCHED && searchCounts) {
+		*value = ps2search.untouched;
+		return 1;
+	}
+	if (address == SEARCH_FRAMES && searchFrames) {
+		*value = (uint32_t) searchFrames();
+		return 1;
+	}
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
 	if (!memory || (size_t) address + bytes > retro_get_memory_size(MEMORY_SYSTEM_RAM)) return 0;
 	*value = 0;
@@ -662,6 +676,13 @@ int main(int argc, char** argv) {
 				return 2;
 			}
 		}
+	}
+
+	// a search for what hasn't been played, on a core that tells of what it runs, told before the game loads too
+	if (route) {
+		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		searchCounts = watch && ps2SearchOpen(watch);
+		searchFrames = dlsym(library, "dreamports_frames");
 	}
 
 	// the memory cards the game starts from, before it loads (held.h)

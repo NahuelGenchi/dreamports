@@ -25,6 +25,13 @@
 // followed to where it came from: a load names where it read, LUI, or an ADDIU or ORI from $zero, a number in the code,
 // and anything else worked out from more than one thing. A branch compares its two registers, or zero, and one that
 // tests what SLT, SLTI, SLTU or SLTIU left, against zero, says what those compared.
+//
+// For the route finder's search (host.c's `route`, tools/route.mjs): DP_UNPLAYED, when it's set, names a file of what's
+// left to play of the EE's code, 32 bits each, an instruction's address plus 0 when it has never run, 1 when its branch
+// has never been taken and 2 when it has never not been, and the search can look for any of it: the value at
+// 0xFFFF0000, which no console has, is then how many of those happened in the frame just played. With DP_TARGET,
+// "ADDRESS WHAT" (the address in hexadecimal, and 0, 1 or 2 as above), it counts that one thing alone. The value at
+// 0xFFFF0004 is how many V-blanks the console has passed, which goes back with a saved state.
 
 #ifndef DP_LIBRETRO_RAN_PS2_H
 #define DP_LIBRETRO_RAN_PS2_H
@@ -345,6 +352,59 @@ static void ps2WhyWent(struct dpBlock* block, int way) {
 	}
 	if (!ps2why.more[which][0] && !ps2why.more[which][1]) ps2why.more[which][2] = frame;
 	ps2why.more[which][way == TAKEN ? 0 : 1]++;
+}
+
+// The search for what hasn't been played: which of each word of the EE's memory is wanted, a bit for running and one
+// for each way of a branch, or the one thing aimed at, and how many of them happened in the frame being played
+static struct {
+	uint8_t* wanted;
+	int aimed, what;
+	uint32_t target, untouched;
+} ps2search;
+
+// a block ran: each thing of it that's wanted has happened. A block with nothing wanted is known as one after its first time
+static void ps2SearchRan(struct dpBlock* block, uint32_t taken) {
+	if (block->processor != PS2_EE || block->spare[0] == 1) return;
+	int way = !block->branch ? -1 : taken ? TAKEN : NOT_TAKEN, any = 0;
+	uint32_t count = block->count - (block->branch == 2 && way == NOT_TAKEN ? 1 : 0);
+	if (ps2search.aimed) {
+		uint32_t at = (ps2search.target - block->begin) / 4;
+		if (ps2search.target < block->begin || at >= block->count) { block->spare[0] = 1; return; }
+		if (ps2search.what == RAN ? at < count : at == block->count - 2 && way == ps2search.what) ps2search.untouched++;
+		return;
+	}
+	for (uint32_t i = 0; i < block->count; i++) {
+		uint32_t index = ps2Index(PS2_EE, block->begin + i * 4);
+		uint8_t wanted = index == UINT32_MAX ? 0 : ps2search.wanted[index];
+		if (!wanted) continue;
+		any = 1;
+		if (i < count && wanted & 1 << RAN) ps2search.untouched++;
+		if (i == block->count - 2 && way >= 0 && wanted & 1 << way) ps2search.untouched++;
+	}
+	if (!any) block->spare[0] = 1;
+}
+
+/** Starts the search's count, before the game loads, with the core's `watch`. Whether anything was asked for. */
+static int ps2SearchOpen(void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t))) {
+	const char* unplayed = getenv("DP_UNPLAYED");
+	const char* target = getenv("DP_TARGET");
+	unsigned address, what;
+	if (target && sscanf(target, "%x %u", &address, &what) == 2 && what < HAPPENINGS) {
+		ps2search.aimed = 1;
+		ps2search.target = address & PS2_CODE_MASK[PS2_EE];
+		ps2search.what = (int) what;
+	} else if (unplayed) {
+		size_t size;
+		uint32_t* list = readAll(unplayed, &size);
+		ps2search.wanted = calloc(PS2_CODE_BYTES[PS2_EE] / 4, 1);
+		for (size_t i = 0; list && i < size / 4; i++) {
+			uint32_t index = ps2Index(PS2_EE, list[i] & ~3u);
+			if (index != UINT32_MAX && (list[i] & 3) < HAPPENINGS) ps2search.wanted[index] |= (uint8_t) (1 << (list[i] & 3));
+		}
+		free(list);
+	} else return 0;
+	watch(ps2SearchRan, NULL, NULL);
+	return 1;
 }
 
 static void ps2Ran(struct dpBlock* block, uint32_t taken) {

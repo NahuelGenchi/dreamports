@@ -65,6 +65,10 @@ export function libretroReference(machine) {
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
     // went by (DP_WHY, libretro/ran-ps2.h)
     saysWhy: core.ran === 'blocks',
+    // its search counts what hasn't been played, from a list of what's left to play, as its memory holds other code than
+    // the game's (libretro/ran-ps2.h, DP_UNPLAYED), and how long the console has played
+    searchesWhatRan: core.ran === 'blocks',
+    searchListsUnplayed: core.ran === 'blocks',
     // and one that says where it keeps the console's memory and its memory cards, as the PlayStation 2's does with the
     // tools' patch, has its memory compared after every frame, its cards' files each time they change, and can start from
     // cards a player's report carries (libretro/held.h)

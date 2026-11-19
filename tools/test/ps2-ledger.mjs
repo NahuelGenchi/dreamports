@@ -12,6 +12,9 @@
 // Then the same disc is a game's copy, in a folder of its own that it removes after, with the program's Dreamport in C
 // (made-up-ps2.c), and `prove` writes its played.json, with the program's code and the disc's sectors, and `untouched`
 // says what's left of both, which branches the code decides, and what the branch that waits for the V-blank compares.
+// Before that, with only the game's first frame proven, `route --goal untouched` searches the original for the code
+// that frame never ran, with the console's state saved and brought back as it goes, and writes the recording that gets
+// there: the frame after, where the program first draws.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -51,7 +54,7 @@ const bitsOf = float => new Uint32Array(new Float32Array([float]).buffer)[0];
 const table = rows => `{ ${rows.map(row => `{ ${row.map(hex).join(', ')} }`).join(', ')} }`;
 
 function tidy() {
-  for (const path of [gameFolder(GAME), join(LOCAL, 'results', GAME), join(LOCAL, 'captures', GAME), join(LOCAL, 'untouched', `${GAME}-c.json`), join(REPO, '.github', 'readme', 'progress', `${GAME}.svg`), ...readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file))]) {
+  for (const path of [gameFolder(GAME), join(LOCAL, 'results', GAME), join(LOCAL, 'captures', GAME), join(LOCAL, 'routes', GAME), join(LOCAL, 'untouched', `${GAME}-c.json`), join(REPO, '.github', 'readme', 'progress', `${GAME}.svg`), ...readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file))]) {
     rmSync(path, { recursive: true, force: true });
   }
 }
@@ -82,6 +85,20 @@ function proveAndAsk(copy, disc, { branch, read, sectors }) {
     BACKGROUND_3D: hex(BACKGROUND_3D), BACKGROUND: hex(BACKGROUND), SQUARE: hex(SQUARE), SQUARE_Y, SQUARE_SIZE, STEP,
   };
   writeFileSync(join(gameFolder(IN_C), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'made-up-ps2.c'), 'utf8').replace(/@([A-Z_0-9]+)@/g, (_, key) => numbers[key]));
+
+  // with the first frame alone proven, what the program does from its first V-blank on hasn't been played: a search finds it
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'first.json'), `${JSON.stringify({ about: 'The first frame alone.', frames: 1, held: [[0, []]] }, null, 2)}\n`);
+  writeFileSync(join(proofFolder(GAME), 'route.json'), `${JSON.stringify({ about: 'Where the program starts, which never changes: the search spreads over the frames played.', values: { start: { address: LOAD_AT.toString(16).toUpperCase().padStart(8, '0'), bytes: 4 } }, cells: { start: 1 } }, null, 2)}\n`);
+  run = dp('prove', IN_C, 'first');
+  const early = existsSync(join(proofFolder(IN_C), 'played.json')) ? JSON.parse(readFileSync(join(proofFolder(IN_C), 'played.json'), 'utf8')) : {};
+  check(run.status === 0 && early.units?.played > 0 && early.units.played < early.units.total - 20, `with its first frame alone proven, most of the program is still to play: ${JSON.stringify(early.units)}`);
+  if (run.status) console.log(run.out);
+  run = dp('route', IN_C, 'found', '--from', 'first', '--goal', 'untouched', '--cells', 'frames:120', '--minutes', '2', '--at-once', '1');
+  const foundFile = join(proofFolder(GAME), 'recordings', 'found.json'), found = existsSync(foundFile) ? JSON.parse(readFileSync(foundFile, 'utf8')) : {};
+  check(run.status === 0 && found.frames === 2, `route --goal untouched finds the frame that plays it, the one after, and writes the recording: ${found.frames} frames. ${run.out.trim().split('\n').at(-1)}`);
+  if (run.status) console.log(run.out);
+  for (const name of ['first', 'found']) rmSync(join(proofFolder(GAME), 'recordings', `${name}.json`), { force: true });
+
   run = dp('prove', IN_C, 'still');
   const report = existsSync(join(resultFolder(IN_C, 'still'), 'report.json')) ? JSON.parse(readFileSync(join(resultFolder(IN_C, 'still'), 'report.json'), 'utf8')) : {};
   check(run.status === 0 && report.matched === FRAMES, `prove matches every frame's draw list: ${report.matched} of ${report.frames}`);

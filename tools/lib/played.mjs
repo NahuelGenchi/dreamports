@@ -371,6 +371,33 @@ export function provenUnits(game, codeMap) {
 }
 
 /**
+ * What's left to play of a PlayStation 2 version's EE code, for a search for it (libretro/ran-ps2.h, DP_UNPLAYED): for
+ * each thing, the instruction's address plus what it is, 0 an instruction that never ran in a matching frame, 1 a
+ * branch never taken and 2 one never not taken, a way the game's unreachable.json rules out left out. Where the
+ * Game Boy Advance's search is given what's been played and counts the rest of the cartridge, a PlayStation 2's
+ * memory holds other code than the program's, so its search is given what to look for.
+ */
+export function unplayedUnits(game, codeMap) {
+  const layout = layoutOf(codeMap), played = readPlayed(game), same = played.places === layout.places;
+  const ran = new Uint8Array(layout.bytes), code = unpack(same ? played.code : null, layout.bytes), units = [];
+  const { ways: ruledOut } = readUnreachable(game);
+  for (const text of Object.values(same ? played.recordings ?? {} : {})) {
+    const set = unpack(text, layout.bytes);
+    for (let i = 0; i < set.length; i++) ran[i] |= set[i];
+  }
+  codeMap.functions.forEach((f, index) => {
+    if (f.cpu || f.bytes) return;
+    for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
+      const at = f.address + (place - layout.first[index]) * layout.unit;
+      if (has(code, place * 3 + INSTRUCTION) && !has(ran, place * 3 + RAN)) units.push((at | RAN) >>> 0);
+      if (!has(code, place * 3 + BRANCH)) continue;
+      for (const way of [TAKEN, NOT_TAKEN]) if (!has(ran, place * 3 + way) && ruledOut.get(at) !== way) units.push((at | way) >>> 0);
+    }
+  });
+  return Uint32Array.from(units);
+}
+
+/**
  * What a version's played.json leaves untouched, for people and for tasks: { functions, content }. `functions` has, for
  * each function of the code map with something unplayed, { key, address, size, total, played, never, ways }: its
  * instructions and branch ways, how many were played, whether it never ran at all, and `ways`, the addresses of the

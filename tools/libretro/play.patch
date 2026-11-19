@@ -628,7 +628,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..1bf9587 100644
+index 8a07c26..0c811e6 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,11 @@
@@ -643,7 +643,7 @@ index 8a07c26..1bf9587 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +42,121 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +42,128 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -749,6 +749,13 @@ index 8a07c26..1bf9587 100644
 +	return folders[port & 1].c_str();
 +}
 +
++// How many V-blanks the console has passed, which goes back with a saved state: how long it has played, for a search
++// to spread over (tools/lib/explore.h)
++extern "C" RETRO_API uint64_t dreamports_frames()
++{
++	return Dreamports::g_vblanks;
++}
++
 +static void AllowVBlanks(uint64_t count)
 +{
 +	std::lock_guard<std::mutex> lock(g_vblankMutex);
@@ -765,7 +772,7 @@ index 8a07c26..1bf9587 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -258,6 +378,8 @@ bool retro_serialize(void* data, size_t size)
+@@ -258,6 +385,8 @@ bool retro_serialize(void* data, size_t size)
  		m_virtualMachine->m_ee->SaveState(archive);
  		m_virtualMachine->m_iop->SaveState(archive);
  		m_virtualMachine->m_ee->m_gs->SaveState(archive);
@@ -774,7 +781,7 @@ index 8a07c26..1bf9587 100644
  
  		archive.Write(stateStream);
  		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
-@@ -285,6 +407,7 @@ bool retro_unserialize(const void* data, size_t size)
+@@ -285,6 +414,7 @@ bool retro_unserialize(const void* data, size_t size)
  			m_virtualMachine->m_ee->LoadState(archive);
  			m_virtualMachine->m_iop->LoadState(archive);
  			m_virtualMachine->m_ee->m_gs->LoadState(archive);
@@ -782,7 +789,7 @@ index 8a07c26..1bf9587 100644
  		}
  		catch(...)
  		{
-@@ -446,15 +569,24 @@ void retro_run()
+@@ -446,15 +576,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -810,7 +817,7 @@ index 8a07c26..1bf9587 100644
  	}
  }
  
-@@ -554,7 +686,7 @@ void retro_init()
+@@ -554,7 +693,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -819,7 +826,7 @@ index 8a07c26..1bf9587 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +706,7 @@ void retro_deinit()
+@@ -574,6 +713,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
