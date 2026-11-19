@@ -55,12 +55,16 @@ export const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b
 export const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
 // a PlayStation address in the console's memory, as a number or in a label
 const PS1_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(80[0-7][0-9A-Fa-f]{5})\b/g;
+// a PlayStation 2 address in the console's 32 MB, above the kernel's half megabyte, as a number or in a label, such as
+// func_00123450
+const PS2_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(00(?:[1-9A-Fa-f][0-9A-Fa-f]|0[89A-Fa-f])[0-9A-Fa-f]{4}|01[0-9A-Fa-f]{6})\b/g;
 
 /** How a console's code names an address: `pattern`, whose first group is a label's word and second its digits,
  *  `bases`, the addresses code uses as the base of others and not as names, and `address(digits)`, the address. A
  *  Game Boy Advance address's lowest bit says Thumb code, which a function's start doesn't have. */
 export function namesOf(console) {
   if (console === 'ps1') return { pattern: PS1_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
+  if (console === 'ps2') return { pattern: PS2_NAME, bases: new Set(), address: digits => parseInt(digits, 16) };
   return { pattern: NAME, bases: BASES, address: digits => parseInt(digits, 16) & ~1 };
 }
 // the words that mark a stop, in any language's code
