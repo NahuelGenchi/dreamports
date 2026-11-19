@@ -81,9 +81,10 @@ const leaves = op => (op & 0xFF00) === 0xBD00 || (op & 0xFF87) === 0x4700 || (op
  * The instructions of a function, from its bytes: follows its code from its start and from every place of it known to
  * have run (`seeds`, offsets), through each branch's two ways, to where it returns or leaves, and gives the offsets
  * that hold an instruction and, of those, the conditional branches: { instructions, branches }. A switch's cases are
- * found only from where they ran, as its table isn't read.
+ * found only from where they ran, as its table isn't read. `never` maps a branch's offset to the way it can't go, TAKEN
+ * or NOT_TAKEN, as a game's unreachable.json says, and that way isn't followed (#1536).
  */
-export function instructionsOf(bytes, seeds = []) {
+export function instructionsOf(bytes, seeds = [], never = new Map()) {
   const size = bytes.length, u16 = at => bytes[at] | bytes[at + 1] << 8, u32 = at => (u16(at) | u16(at + 2) << 16) >>> 0;
   const arm = size >= 16 && size % 4 === 0 && looksLikeArm([0, 4, 8, 12].map(u32));
   const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
@@ -97,7 +98,8 @@ export function instructionsOf(bytes, seeds = []) {
           const target = pc + 8 + ((op & 0xFFFFFF) << 8 >> 6);
           if (op >>> 28 < 0xE) {
             branches.add(pc);
-            work.push(target);
+            if (never.get(pc) !== TAKEN) work.push(target);
+            if (never.get(pc) === NOT_TAKEN) break;
           } else if (!(op & 0x01000000)) {
             pc = target;
             continue;
@@ -118,7 +120,8 @@ export function instructionsOf(bytes, seeds = []) {
       instructions.add(pc);
       if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) {
         branches.add(pc);
-        work.push(pc + 4 + ((op & 0xFF) << 24 >> 23));
+        if (never.get(pc) !== TAKEN) work.push(pc + 4 + ((op & 0xFF) << 24 >> 23));
+        if (never.get(pc) === NOT_TAKEN) break;
       } else if ((op & 0xF800) === 0xE000) {
         pc = pc + 4 + ((op & 0x7FF) << 21 >> 20);
         continue;
@@ -206,7 +209,7 @@ export function finderOf(codeMap, cartridge, made) {
   return (address, code, thumb) => {
     if (address >= CARTRIDGE) return inCartridge(address);
     for (const copy of codeMap.copies ?? []) {
-      if (address < copy.ram || address >= copy.ram + copy.size) continue;
+      if (copy.packed || address < copy.ram || address >= copy.ram + copy.size) continue;
       const from = copy.cartridge + address - copy.ram;
       if (same(cartridge(from, 4), 0, code, thumb)) return inCartridge(from);
     }
