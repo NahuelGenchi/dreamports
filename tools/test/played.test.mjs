@@ -25,6 +25,13 @@ test('a place known to have run is followed too, as a switch\'s case is', () => 
   assert.deepEqual([...instructionsOf(code, [2]).instructions].sort((a, b) => a - b), [0, 2, 4]);
 });
 
+test('a BL into the function\'s own code is a long jump, with only data after it, when the check asks', () => {
+  // 0: bl 8, a long jump   4: a word of data   8: mov r0, #1   A: bx lr
+  const code = thumb(0xF000, 0xF802, 0xDEAD, 0xD0D0, 0x2001, 0x4770);
+  assert.deepEqual([...instructionsOf(code, [], new Map(), { longJumps: true }).instructions].sort((a, b) => a - b), [0, 2, 8, 10]);
+  assert.deepEqual([...instructionsOf(code).instructions].sort((a, b) => a - b), [0, 2]);
+});
+
 const codeMap = { functions: [{ key: '08000100', address: 0x08000100, size: 16 }, { key: '08000200', address: 0x08000200, size: 4 }], copies: [] };
 const find = finderOf(codeMap, () => null, new Map());
 const record = (address, code, what, from, to) => [address | 1, code, what, from, to];
