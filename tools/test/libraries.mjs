@@ -24,7 +24,7 @@ import { firstFiles } from '../lib/new-game.mjs';
 import { formatCodeMap, hex } from '../lib/proof-files.mjs';
 import { buildGame, buildWasm, cKit } from '../lib/c.mjs';
 import { sharedCode } from '../libraries.mjs';
-import { libraryIds, readLibrary } from '../lib/libraries.mjs';
+import { libraryIds, namesOnly, readLibrary } from '../lib/libraries.mjs';
 import { sharedMapOf, writeReadme } from '../readme.mjs';
 import { sharedMap } from '../../src/lib/shared-map.mjs';
 import { madeUpGame } from './made-up-game.mjs';
@@ -266,6 +266,11 @@ try {
 console.log('The kit\'s libraries:');
 for (const id of libraryIds()) {
   const library = readLibrary(id);
+  // a library whose functions nobody has written yet has no C, and nothing to build
+  if (namesOnly(library)) {
+    check(library.functions.length > 0, `${id} lists ${library.functions.length} function${library.functions.length === 1 ? '' : 's'} by name, none written, so it has nothing to build yet`);
+    continue;
+  }
   for (const [console_, given] of Object.entries(library.compilers)) {
     if (console_ !== 'gba') continue;
     if (!isCompilerBuilt(given.name)) withBuildTools(console.log, tools => buildCompilers([given.name], console.log, tools));

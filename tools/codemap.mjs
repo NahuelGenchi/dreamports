@@ -1,7 +1,8 @@
 // npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
-// (gba/functions.mjs), an NES game (nes/functions.mjs) or a PlayStation 2 game (ps2/functions.mjs). With --from, it takes them from a list: a decompilation's
+// (gba/functions.mjs), an NES game (nes/functions.mjs), a PlayStation game (ps1/functions.mjs) or a PlayStation 2 game
+// (ps2/functions.mjs). With --from, it takes them from a list: a decompilation's
 // symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
 // a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
 // copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
@@ -31,6 +32,7 @@ import { atOnce } from './lib/at-once.mjs';
 import * as gbaFunctions from './gba/functions.mjs';
 import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
+import * as ps1Functions from './ps1/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -56,7 +58,13 @@ const FINDERS = {
     play: true,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
   },
-  // a PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
+  // a PlayStation or PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
+  ps1: {
+    ...ps1Functions,
+    file: 'tools/ps1/functions.mjs',
+    read: ps1Functions.ps1Program,
+    address: address => address,
+  },
   ps2: {
     ...ps2Functions,
     file: 'tools/ps2/functions.mjs',
