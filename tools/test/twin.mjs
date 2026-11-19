@@ -24,7 +24,7 @@ import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
+import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
 import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
 
@@ -201,6 +201,11 @@ try {
   check(unchecked.by.Count?.kind === 'same', 'a twin that gives back nothing leaves the same memory, which alone would pass it, as it passed 0x08011DBC of the pilot');
   const caught = await checking(join(silent, 'gives.c'), {}, { givesBack });
   check(caught.by.Count?.kind === 'differs' && /gives back nothing/.test(caught.by.Count.line) && new RegExp(`0x0${(GIVES.Keep).toString(16).toUpperCase().slice(0, 5)}`).test(caught.by.Count.line), `and it differs once the check reads what its caller does with r0: ${caught.by.Count?.line ?? caught.error}`);
+
+  // a flag among others, read as a halfword and masked: aimed at, only its bit changes, where the nearest number,
+  // 0xFFFF below 0x0001, sets the others too (#1570)
+  const flag = sourceFor(0x0001, 2, 0, [[5, 0x100]], value => value !== 0, 0);
+  check(flag === 0x0101, `a flag aimed at changes only its own bit: 0x${flag?.toString(16)}`);
 
   console.log('A branch made-up calls almost never take:');
   const unaimed = await checking(join(HERE, 'aim.c'), { aim: false });
