@@ -137,7 +137,7 @@ try {
   console.log('Two games that have it, each at its own addresses:');
   for (const game of GAMES) makeGame(game, assembly, sizes);
   let run = dp('libraries', '--check');
-  check(run.status === 0 && /\d+ shared librar(y|ies) and the 2 versions that take them keep their rules/.test(run.out), `libraries --check passes: ${last(run)}`);
+  check(run.status === 0 && /\d+ shared librar(y|ies) and the \d+ versions that take them keep their rules/.test(run.out), `libraries --check passes: ${last(run)}`);
   for (const game of GAMES) {
     run = dp('portmap', version(game));
     check(run.status === 0 && /2 functions named, 0 names inside a function but not at its start, 0 stops/.test(run.out), `${game.name}'s port map names both of the library's functions: ${last(run)}`);
@@ -198,12 +198,12 @@ try {
   check(/0x08000900 +\d+ bytes  LibPick, kit\/gba\/c\/lib\/test-made-up\/test-made-up\.c:\d+: proven by the same bytes/.test(run.out), 'proofs names the twin by its place in the kit');
   run = dp('libraries');
   // the kit's own libraries count too, so the test's is looked at by itself, as libraries lists each
-  check(run.status === 0 && /Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, \d+ of [\d,]+ bytes and \d+ of \d+ functions, in \d+ librar(y|ies), taken by \d+ games/.test(run.out) && /gba\/test-made-up  2 of 2 functions proven, taken by /.test(run.out), `libraries says how much of the console's shared code is proven, and of each library: ${run.out.trim().split('\n')[0]}`);
+  check(run.status === 0 && /Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, [\d,]+ of [\d,]+ bytes and \d+ of \d+ functions, in \d+ librar(y|ies), taken by \d+ games/.test(run.out) && /gba\/test-made-up  2 of 2 functions proven, taken by /.test(run.out), `libraries says how much of the console's shared code is proven, and of each library: ${run.out.trim().split('\n')[0]}`);
   run = dp('libraries', version(GAMES[0]));
   check(/0x08000800  LibAdd: proven by the same bytes/.test(run.out), 'and with a version, where each function it takes stands');
   const gba = sharedCode().find(each => each.id === 'gba'), drawn = writeReadme({ check: true }).files;
   check(drawn.includes(sharedMapOf('gba')) && drawn.includes('docs/STATUS.md'), `readme draws the console's map, ${sharedMapOf('gba')}, and puts it in docs/STATUS.md`);
-  check((sharedMap(gba).svg.match(/<path class="bytes" d="[^"]*/)?.[0].match(/M/g) ?? []).length === 2, 'with a green cell for each function proven by the same bytes');
+  check((sharedMap({ ...gba, libraries: gba.libraries.filter(library => library.id === LIBRARY) }).svg.match(/<path class="bytes" d="[^"]*/)?.[0].match(/M/g) ?? []).length === 2, 'with a green cell for each function proven by the same bytes');
   const listed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8'));
   writeFileSync(join(FOLDER, 'library.json'), JSON.stringify({ ...listed, functions: [...listed.functions, ['LibLater', 40, null]] }));
   run = dp('libraries');
