@@ -332,13 +332,16 @@ const ASKS_FOR_TWINS = /^[ \t]*#[ \t]*include[ \t]*"twins\.h"/m;
  * static ones, which no table in another file can name. A function of the cartridge is Thumb code, whose address is
  * kept odd, unless the game's own names say otherwise.
  */
-export function twinsHeader(twins, named = new Map()) {
+export function twinsHeader(twins, named = new Map(), sizeOf = () => null) {
   const addresses = new Map(named);
-  const listed = [];
+  const listed = [], code = [];
   for (const { name, address, own } of twins) {
     if (address === null) continue;
     if (!addresses.has(name)) addresses.set(name, address >= 0x08000000 ? address | 1 : address);
     if (!own && !listed.includes(name)) listed.push(name);
+    // a twin of the cartridge's code, with how long the original's is, for a copy of it the game runs elsewhere
+    const size = sizeOf(address & ~1);
+    if (!own && address >= 0x08000000 && size && !code.some(each => each.name === name)) code.push({ name, address: address & ~1, size: Math.min(size, 512) });
   }
   const hex = value => `0x${(value >>> 0).toString(16).toUpperCase().padStart(8, '0')}u`;
   return `// The game's twins, by their addresses in the original. The build writes this from the comment above each function of
@@ -356,20 +359,38 @@ ${[...addresses].map(([name, address]) => `#define ADDRESS_${name} ${hex(address
 // every twin the table has
 #define TWINS(TWIN_OF) ${listed.map(name => `TWIN_OF(${name})`).join(' ')}
 
+// every twin of the cartridge's code, where the original has it and how long it is, to know a copy of it the game runs
+// from elsewhere, as one that can't run from the cartridge while it reads the flash
+#define TWIN_CODE(CODE_OF) ${code.map(({ name, address, size }) => `CODE_OF(${name}, ${hex(address)}, ${size}u)`).join(' ')}
+
 /** The twin of the function the original has at \`address\`, as memory keeps it. It stops the game if there's none. */
 void *kit_twin(uint32_t address);
 /** The address the original has \`function\` at, as a pointer of the function's own kind, for a value kept in memory. */
 #define TWIN_ADDRESS(function) ((__typeof__(&function))(uintptr_t)ADDRESS_##function)
 /** The twin that a pointer kept in memory names, to call. */
 #define TWIN(pointer) ((__typeof__(pointer))kit_twin((uint32_t)(uintptr_t)(pointer)))
-/** Defines kit_twin: write it once, in a file that declares every twin. */
+/** Whether the \`size\` bytes at \`at\` are the original's code at \`from\`, a copy of it, and all in the module's memory. */
+#define TWIN_SAME_CODE \\
+  static int kit_twin_copy_of(uint32_t at, uint32_t from, uint32_t size) { \\
+    if (at + size < at || at + size > __builtin_wasm_memory_size(0) * 65536u) return 0; \\
+    for (uint32_t i = 0; i < size; i++) \\
+      if (((const volatile uint8_t *)(uintptr_t)at)[i] != ((const volatile uint8_t *)(uintptr_t)from)[i]) return 0; \\
+    return 1; \\
+  }
+/** Defines kit_twin: write it once, in a file that declares every twin. A small number is a function of the module's
+ *  own, as C keeps its pointers. An address with no twin, where the game copied one of the cartridge's functions, is
+ *  that function's twin, as the console runs the copy as it would the original. */
 #define TWIN_TABLE \\
+  TWIN_SAME_CODE \\
   void *kit_twin(uint32_t address) { \\
-    if (address < 0x02000000u) return (void *)(uintptr_t)address; \\
+    if (address < 0x10000u) return (void *)(uintptr_t)address; \\
     switch (address) { TWINS(TWIN_CASE) } \\
+    TWIN_CODE(TWIN_COPY) \\
+    if (address < 0x02000000u) return (void *)(uintptr_t)address; \\
     __builtin_trap(); \\
   }
 #define TWIN_CASE(name) case ADDRESS_##name: return (void *)name;
+#define TWIN_COPY(name, from, size) if (kit_twin_copy_of(address & ~1u, from, size)) return (void *)name;
 
 #endif
 `;
@@ -389,7 +410,10 @@ export async function twinsFolder(folder) {
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
   const { twinsOf, named, twins, shifts, libraries } = versionTwins(game);
   const { addressFinder } = await import('../gba/match.mjs');
-  const text = twinsHeader([...own.filter(file => file.endsWith('.c')), ...libraries.flatMap(library => library.files)].flatMap(file => twinsOf.get(file) ?? []), named);
+  // how long each of the original's functions is, from the game's code map, to know a copy of one
+  const { readCodeMap } = await import('./proof-files.mjs');
+  const sizes = new Map((readCodeMap(game)?.functions ?? []).filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const text = twinsHeader([...own.filter(file => file.endsWith('.c')), ...libraries.flatMap(library => library.files)].flatMap(file => twinsOf.get(file) ?? []), named, address => sizes.get(address) ?? null);
   const made = join(LOCAL, 'c', 'twins', ...game.split('/'));
   const header = join(made, 'twins.h');
   if (!existsSync(header) || readFileSync(header, 'utf8') !== text) {
