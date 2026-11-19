@@ -14,8 +14,11 @@
 //     load's own register holds the upper half when it can, and $at does otherwise.
 //
 // It doesn't move an instruction into a delay slot, which GNU's assembler does only past -O1, and it doesn't know the
-// ways Sony's assembler, ASPSX, did things differently, which maspsx describes; those come with `match` itself. What
-// it gives is each section's bytes, the places a linker fills in, and the names it defines.
+// ways Sony's assembler, ASPSX, did things differently: maspsx.mjs turns GCC's assembly into theirs first. It reads
+// what maspsx writes too: a small value reached through $gp, %gp_rel(name), the halves of a number, %hi(40000), a trap
+// such as tge, and addi, addiu, slti and sltiu given 0x8000 to 0xFFFF, which GNU's assembler takes as the 16 bits
+// they're written as. What it gives is each section's bytes, the places a linker fills in, and the names it defines,
+// with how many bytes of values follow each name outside the code.
 
 import { COP0, GTE, PRIMARY, REGIMM, REGISTERS, SPECIAL } from './mips.mjs';
 
@@ -24,6 +27,11 @@ const OP = byName(PRIMARY), FUNCT = byName(SPECIAL), RT = byName(REGIMM), COMMAN
 const LOADS = new Set(['lb', 'lbu', 'lh', 'lhu', 'lw', 'lwl', 'lwr']), STORES = new Set(['sb', 'sh', 'sw', 'swl', 'swr']);
 const IMMEDIATE_OF = { add: 'addi', addu: 'addiu', slt: 'slti', sltu: 'sltiu', and: 'andi', or: 'ori', xor: 'xori' };
 const UNSIGNED_IMMEDIATE = new Set(['andi', 'ori', 'xori']);
+// signed immediates GNU's assembler also takes as 0x8000 to 0xFFFF, written as their 16 bits, as these instructions
+// have no other form to give a larger number to
+const SIGNED_AS_WRITTEN = new Set(['addi', 'addiu', 'slti', 'sltiu']);
+// the traps, a register compared with another and a code of ten bits
+const TRAPS = { tge: 0x30, tgeu: 0x31, tlt: 0x32, tltu: 0x33, teq: 0x34, tne: 0x36 };
 const AT = 1;
 
 /** A register by its number or its name, as $4, $a0, $sp or $31, or null. */
@@ -41,11 +49,18 @@ const number = text => {
   return t.startsWith('-') ? -Number(t.slice(1)) : Number(t);
 };
 
-// a value: a number, a name with or without a number added, or the upper or lower half of one, %hi(name) or %lo(name)
+// a value: a number, a name with or without a number added, the upper or lower half of either, %hi(name) or %lo(name),
+// or a name's distance from where $gp points, %gp_rel(name). A number's halves are the numbers a linker would make:
+// the upper one carried when the lower is negative, and the lower one signed.
 function valueOf(text) {
   const t = text.trim();
-  const half = /^%(hi|lo)\((.*)\)$/.exec(t);
-  if (half) return { ...valueOf(half[2]), half: half[1] };
+  const half = /^%(hi|lo|gp_rel)\((.*)\)$/.exec(t);
+  if (half) {
+    const inner = valueOf(half[2]);
+    if (inner.number === undefined) return { ...inner, half: half[1] };
+    if (half[1] === 'gp_rel') throw new Error(`%gp_rel takes a name, and ${half[2]} is a number.`);
+    return { number: half[1] === 'hi' ? ((inner.number + 0x8000) >>> 16) & 0xFFFF : ((inner.number & 0xFFFF) ^ 0x8000) - 0x8000, sixteen: true };
+  }
   const n = number(t);
   if (n !== null) return { number: n };
   const named = /^([A-Za-z_.$][\w.$]*)\s*(?:([+-])\s*(0x[0-9a-f]+|\d+))?$/i.exec(t);
@@ -87,11 +102,20 @@ const iType = (op, rs, rt, imm) => ((op << 26) | (rs << 21) | (rt << 16) | (imm 
 /**
  * Assembles `text`, assembly as GCC writes it: { sections, symbols, functions }. `sections` is a Map of each
  * section's name to { bytes, relocations }, each relocation { at, kind, symbol, addend }, `kind` being 'hi16', 'lo16',
- * 'jump26' or 'word32', for the linker to fill; `symbols` a Map of each name defined to { section, at, global };
+ * 'gprel16', 'jump26' or 'word32', for the linker to fill; `symbols` a Map of each name defined to { section, at,
+ * global }, and outside the code `size`, how many bytes of values follow the name before the next, without the zeros
+ * that only line the next one up;
  * `functions` each .ent and .end pair, { name, section, at, size }.
  */
 export function assemble(text) {
   const sections = new Map(), symbols = new Map(), globals = new Set(), functions = [], opened = new Map();
+  // the last name outside the code in each section, which the values written next belong to
+  const lastName = new Map();
+  const values = (...bytes) => {
+    current().bytes.push(...bytes);
+    const name = lastName.get(section);
+    if (name) name.end = here();
+  };
   let section = '.text', reorder = true;
   // what the last instructions in reorder mode were, for the nops the processor needs: the register a load gave,
   // and how many instructions ago hi or lo was read
@@ -169,6 +193,7 @@ export function assemble(text) {
       return instruction(iType(op, place.base ?? 0, rt, place.number));
     }
     if (place.half === 'lo') return instruction(iType(op, place.base ?? 0, rt, 0), { kind: 'lo16', value: place });
+    if (place.half === 'gp_rel') return instruction(iType(op, place.base ?? 28, rt, 0), { kind: 'gprel16', value: place });
     // the load's own register holds the upper half, unless it's the register added or $zero, and a store's is $at
     const temp = LOADS.has(name) && rt !== 0 && rt !== place.base ? rt : AT;
     instruction(iType(OP.lui, 0, temp, 0), { kind: 'hi16', value: place });
@@ -215,7 +240,9 @@ export function assemble(text) {
       let rest = line;
       for (let label; (label = /^([A-Za-z_.$][\w.$]*):\s*/.exec(rest));) {
         if (symbols.has(label[1])) throw new Error(`${label[1]} is defined twice.`);
-        symbols.set(label[1], { section, at: here() });
+        const symbol = { section, at: here() };
+        symbols.set(label[1], symbol);
+        if (section !== '.text') lastName.set(section, symbol);
         rest = rest.slice(label[0].length);
         loaded = null;
         hiloRead = Infinity;
@@ -252,23 +279,24 @@ export function assemble(text) {
           relocate('word32', value);
         }
         const n = value.number ?? 0;
-        for (let i = 0; i < bytes; i++) current().bytes.push((n >>> (8 * i)) & 0xFF);
+        values(...Array.from({ length: bytes }, (_, i) => (n >>> (8 * i)) & 0xFF));
       }
     } else if (name === '.ascii' || name === '.asciiz') {
       for (const [, quoted] of args.matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
         const unescaped = quoted.replace(/\\([0-7]{1,3}|.)/g, (_, c) => (/^[0-7]+$/.test(c) ? String.fromCharCode(parseInt(c, 8)) : { n: '\n', t: '\t', r: '\r', '"': '"', '\\': '\\' }[c] ?? c));
-        for (const c of Buffer.from(unescaped, 'latin1')) current().bytes.push(c);
-        if (name === '.asciiz') current().bytes.push(0);
+        values(...Buffer.from(unescaped, 'latin1'), ...(name === '.asciiz' ? [0] : []));
       }
-    } else if (name === '.space' || name === '.skip') for (let n = Number(args.split(',')[0]); n > 0; n--) current().bytes.push(0);
+    } else if (name === '.space' || name === '.skip') values(...new Array(Math.max(0, Number(args.split(',')[0]))).fill(0));
     else if (name === '.comm' || name === '.lcomm') {
       const [symbol, size] = operandsOf(args);
       const saved = section;
       section = '.bss';
       while (here() % 4 && Number(size) >= 4) current().bytes.push(0);
-      symbols.set(symbol, { section, at: here() });
+      const defined = { section, at: here() };
+      symbols.set(symbol, defined);
+      lastName.set(section, defined);
       if (name === '.comm') globals.add(symbol);
-      for (let n = Number(size); n > 0; n--) current().bytes.push(0);
+      values(...new Array(Math.max(0, Number(size))).fill(0));
       section = saved;
     }
     // .file, .frame, .mask, .fmask, .loc and the rest say nothing of the bytes
@@ -285,6 +313,7 @@ export function assemble(text) {
     if (name === 'la') {
       const place = placeOf(ops[1]);
       const rt = reg(0);
+      if (place.half === 'gp_rel') return instruction(iType(OP.addiu, place.base ?? 28, rt, 0), { kind: 'gprel16', value: place });
       instruction(iType(OP.lui, 0, rt, 0), { kind: 'hi16', value: place });
       instruction(iType(OP.addiu, rt, rt, 0), { kind: 'lo16', value: place });
       if (place.base) instruction(rType(rt, place.base, rt, 0, FUNCT.addu));
@@ -340,6 +369,7 @@ export function assemble(text) {
       return instruction(((op << 26) | (rs << 21) | (reg(0) << 16) | (rd << 11)) >>> 0);
     }
     if (name === 'rfe') return instruction(0x42000010);
+    if (TRAPS[name] !== undefined) return instruction((rType(reg(0), reg(1), 0, 0, TRAPS[name]) | ((ops[2] ? valueOf(ops[2]).number & 0x3FF : 0) << 6)) >>> 0);
     // a command of the geometry processor: its whole number, as read.mjs writes it first and games give it, or else
     // its fields alone, as sf=1 lm=0
     if (COMMAND[name] !== undefined || name === 'cop2') {
@@ -356,9 +386,11 @@ export function assemble(text) {
     if (immediateName && ops.length >= 2) {
       const [rt, rs] = ops.length === 2 ? [reg(0), reg(0)] : [reg(0), reg(1)];
       const value = valueOf(ops[ops.length - 1]);
-      if (value.symbol !== undefined) return instruction(iType(OP[immediateName], rs, rt, 0), { kind: value.half === 'hi' ? 'hi16' : 'lo16', value });
+      if (value.symbol !== undefined) return instruction(iType(OP[immediateName], rs, rt, 0), { kind: { hi: 'hi16', gp_rel: 'gprel16' }[value.half] ?? 'lo16', value });
       const n = (name === 'sub' || name === 'subu') ? -value.number : value.number;
-      if (UNSIGNED_IMMEDIATE.has(immediateName) ? fitsU16(n) : fits16(n)) return instruction(iType(OP[immediateName], rs, rt, n));
+      // a half of a number is its sixteen bits, whatever the instruction makes of them
+      if (value.sixteen || (UNSIGNED_IMMEDIATE.has(immediateName) ? fitsU16(n) : fits16(n))) return instruction(iType(OP[immediateName], rs, rt, n));
+      if (name === immediateName && SIGNED_AS_WRITTEN.has(name) && fitsU16(n)) return instruction(iType(OP[immediateName], rs, rt, n));
       // a number too large for the instruction goes through $at
       loadImmediate(AT, value.number);
       return instruction(rType(rs, AT, rt, 0, FUNCT[name === 'sub' ? 'sub' : name === 'subu' ? 'subu' : name]));
@@ -374,6 +406,10 @@ export function assemble(text) {
     bytes[at] = offset & 0xFF;
     bytes[at + 1] = offset >> 8;
   }
-  for (const [name, symbol] of symbols) symbol.global = globals.has(name);
+  for (const [name, symbol] of symbols) {
+    symbol.global = globals.has(name);
+    if (symbol.section !== '.text') symbol.size = (symbol.end ?? symbol.at) - symbol.at;
+    delete symbol.end;
+  }
   return { sections: new Map([...sections].map(([name, { bytes, relocations }]) => [name, { bytes: Uint8Array.from(bytes), relocations }])), symbols, functions };
 }

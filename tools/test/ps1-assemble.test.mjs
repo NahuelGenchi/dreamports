@@ -63,12 +63,28 @@ test('a name is reached through the halves of its address, which a linker fills 
   assert.deepEqual(made.symbols.get('$L3'), { section: '.text', at: 56, global: false });
 });
 
+test('what maspsx writes: $gp, the halves of a number, traps and 16 bits as written', () => {
+  const made = assemble('.set noreorder\nlui $at,%hi(40000)\nlhu $2,%lo(40000)($at)\nlui $at,%hi(-40000)\nsw $5,%lo(-40000)($at)\n'
+    + 'tge $zero,$zero,93\nteq $4,$5\naddiu $6,$zero,-32768 & 0xFFFF\naddiu $2,$3,0xFFFF\nori $2,$2,%lo(0x18000)\n'
+    + 'lw $2,%gp_rel(counter)($gp)\nsw $3,%gp_rel(flag+4)($gp)\nla $4,%gp_rel(counter)($gp)\naddu $2,$3,0x8000');
+  const text_ = made.sections.get('.text');
+  assert.deepEqual(hex(wordsOf(text_.bytes)), ['3c010001', '94229c40', '3c01ffff', 'ac2563c0', '00001770', '00850034', '24068000', '2462ffff',
+    '34428000', '8f820000', 'af830000', '27840000', '34018000', '00611021']);
+  assert.deepEqual(text_.relocations.map(r => `${r.at} ${r.kind} ${r.symbol}${r.addend ? `+${r.addend}` : ''}`), ['36 gprel16 counter', '40 gprel16 flag+4', '44 gprel16 counter']);
+  assert.throws(() => assemble('lw $2,%gp_rel(16)($gp)'), /%gp_rel takes a name/);
+});
+
+test('a name outside the code has the size of its values, without the zeros that line up the next', () => {
+  const made = assemble('.rdata\n$LC0:\n.ascii "ab\\000"\n.align 2\n$LC1:\n.ascii "cdef"\n.word 1\nempty:\n.section .bss\nkept:\n.space 12');
+  assert.deepEqual(['$LC0', '$LC1', 'empty', 'kept'].map(name => made.symbols.get(name).size), [3, 8, 0, 12]);
+});
+
 test('functions, values and what can\'t be assembled', () => {
   const made = assemble('.globl sum\n.ent sum\nsum:\naddu $2,$4,$5\nj $31\n.end sum\n.data\nname: .asciiz "a\\n"\n.align 2\nhalf: .half 0x1234\n.comm big,8');
   assert.deepEqual(made.functions, [{ name: 'sum', section: '.text', at: 0, size: 12 }]);
   assert.equal(made.symbols.get('sum').global, true);
   assert.deepEqual([...made.sections.get('.data').bytes], [0x61, 0x0A, 0, 0, 0x34, 0x12]);
-  assert.deepEqual(made.symbols.get('big'), { section: '.bss', at: 0, global: true });
+  assert.deepEqual(made.symbols.get('big'), { section: '.bss', at: 0, global: true, size: 8 });
   assert.throws(() => assemble('frobnicate $2'), /Line 1, "frobnicate \$2": "frobnicate" isn't an instruction the assembler knows/);
   assert.throws(() => assemble('b nowhere'), /goes to nowhere, which this file doesn't define/);
   assert.equal(registerOf('$sp'), 29);
