@@ -17,6 +17,11 @@
 // buttons change is found by playing or by `route`, and one they don't, such as the character or a setting, by a
 // recording that starts differently. `npm run dp -- route <version> <name> --from <recording> --goal untouched` then finds presses that reach code
 // not played yet, and `npm run dp -- read <game> <address>` prints the code at an address.
+//
+// On the PlayStation 2 the data is the disc's: it lists the stretches of sectors never read, and those that hold one
+// value throughout, which don't count, so every sector is accounted for. `--why` and `--sort` read the EE's branches,
+// and `--decided` works out from the program the disc boots alone (ps2/decided.mjs). `--never-written` is the Game Boy
+// Advance's alone so far.
 
 import { readCodeMap, readOriginal, readRecordings, cartridgeOf, hex, proofVersions } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
@@ -24,6 +29,8 @@ import { referenceOf } from './lib/reference.mjs';
 import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
+import { decidedMipsBranches, decidedMipsWhy } from './ps2/decided.mjs';
+import { bootProgram, programReader } from './ps2/ledger.mjs';
 import { neverWrittenBranch, neverWrittenWhy, writesOf } from './lib/never-written.mjs';
 import { pointsTo } from './lib/points-to.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
@@ -42,7 +49,8 @@ export async function run(args) {
   if (!codeMap) throw new Error(`games/${game.split('/')[0]}/proof/ has no code map yet: npm run dp -- codemap ${game.split('/')[0]} makes one.`);
   const reference = await referenceOf(original);
   if (reference.seesInstructions !== true) throw new Error("The tools don't see this console's instructions run yet, so they can't say what's untouched.");
-  if (reference.saysWhy !== true && ['--decided', '--sort', '--why', '--never-written'].some(flag => args.includes(flag))) throw new Error("The tools say what a branch went by, and work out which can only go one way, on the Game Boy Advance so far.");
+  if (reference.saysWhy !== true && ['--decided', '--sort', '--why', '--never-written'].some(flag => args.includes(flag))) throw new Error("The tools say what a branch went by, and work out which can only go one way, on the Game Boy Advance and the PlayStation 2 so far.");
+  if (args.includes('--never-written') && original.console !== 'gba') throw new Error('--never-written follows what the game writes on the Game Boy Advance alone so far.');
   if (flagged('--never-written') !== null) {
     const copy = copyWith(original.sha1);
     if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
@@ -54,7 +62,7 @@ export async function run(args) {
   if (args.includes('--decided')) return decided(game, { original, codeMap, copy, write: args.includes('--write') });
   if (args.includes('--sort')) return sort(game, { original, codeMap, copy, all, atOnce: Number(flagged('--at-once') ?? 0) });
   if (flagged('--why') !== null) return why(game, { original, codeMap, copy, address: flagged('--why'), asked: flagged('--in') });
-  const { functions, content } = untouchedOf(game, codeMap, cartridgeOf(copy.path, original.console));
+  const untouched = untouchedOf(game, codeMap, cartridgeOf(copy.path, original.console)), { functions, content } = untouched;
   const never = functions.filter(f => f.never), partly = functions.filter(f => !f.never);
   const most = list => (all ? list : list.slice(0, 20));
   const more = list => (!all && list.length > 20 ? [`  and ${count(list.length - 20)} more: --all prints them.`] : []);
@@ -73,9 +81,26 @@ export async function run(args) {
   for (const line of more(partly)) console.log(line);
 
   if (!followsContent(codeMap)) return 0;
+  if (original.console === 'ps2') return discNeverRead(untouched, { most, more });
   console.log(`\nStretches of the cartridge's data never used: ${count(content.length)}, ${count(content.reduce((sum, [from, to]) => sum + to - from + 1, 0))} bytes.`);
   for (const [from, to] of most(content)) console.log(`  ${hex(from)} to ${hex(to)}, ${count(to - from + 1)} bytes`);
   for (const line of more(content)) console.log(line);
+  return 0;
+}
+
+// a PlayStation 2 disc's sectors never read: those that hold data, which gameplay proven counts, then those of one value
+// throughout, which it doesn't, so every sector is accounted for
+function discNeverRead({ content, plain, sectors, sectorBytes }, { most, more }) {
+  const total = list => list.reduce((sum, [from, to]) => sum + to - from + 1, 0);
+  const line = ([from, to]) => `  ${from === to ? `sector ${count(from)}` : `sectors ${count(from)} to ${count(to)}`}, ${count((to - from + 1) * sectorBytes)} bytes from ${count(from * sectorBytes)}`;
+  const read = sectors - total(content) - total(plain);
+  console.log(`\nThe disc's ${count(sectors)} sectors of ${count(sectorBytes)} bytes: ${count(read)} read in a frame that matched.`);
+  console.log(`Stretches of sectors that hold data and were never read: ${count(content.length)}, ${count(total(content))} sectors.`);
+  for (const stretch of most(content)) console.log(line(stretch));
+  for (const text of more(content)) console.log(text);
+  console.log(`Stretches never read that hold one value throughout, which don't count: ${count(plain.length)}, ${count(total(plain))} sectors.`);
+  for (const stretch of most(plain)) console.log(line(stretch));
+  for (const text of more(plain)) console.log(text);
   return 0;
 }
 
@@ -142,15 +167,19 @@ export async function whyOf(game, { original, codeMap, copy, address, asked = nu
   return { name, ran, records };
 }
 
+// where a side read from memory is in the console's work memory, which a search can read and a recording can change, or
+// null: a Game Boy Advance's two work RAMs, or the PlayStation 2's main memory, however the EE names it
+const inWorkMemory = (address, console) => (console === 'ps2' ? ((address & 0x1FFFFFFF) < 0x02000000 && address >>> 29 !== 4 ? address & 0x1FFFFFFF : null) : [2, 3].includes(address >>> 24) ? address : null);
+
 /**
  * The values of the original's memory a branch tests, for a search to spread over (route.mjs): from what it went by
  * most often, each side that came from the work memory, as { address, bytes, held, against }, `against` being what
- * the other side held.
+ * the other side held. `console` is the original's.
  */
-export function testedValues(records) {
+export function testedValues(records, console = 'gba') {
   const [most] = records.filter(r => !r.more);
   if (!most) return [];
-  const side = (value, address, kind, against) => ((kind & 3) === 1 && [2, 3].includes(address >>> 24) ? [{ address, bytes: kind >> 8 & 0xFF, held: value, against }] : []);
+  const side = (value, address, kind, against) => ((kind & 3) === 1 && inWorkMemory(address, console) !== null ? [{ address: inWorkMemory(address, console), bytes: kind >> 8 & 0xFF, held: value, against }] : []);
   return [...side(most.a, most.fromA, most.kindA, most.b), ...side(most.b, most.fromB, most.kindB, most.a)];
 }
 
@@ -166,7 +195,8 @@ async function why(game, { original, codeMap, copy, address: text, asked }) {
     return 1;
   }
   const count = went => records.filter(r => r.went === went).reduce((sum, r) => sum + r.times, 0);
-  console.log(`The branch at ${hex(address)} in ${name}: taken ${times(count(TAKEN))}, not taken ${times(count(NOT_TAKEN))}. It went by what the instruction before it left, each time one of these:`);
+  const by = original.console === 'ps2' ? 'It compared, or tested what SLT or its kin compared, each time one of these' : 'It went by what the instruction before it left, each time one of these';
+  console.log(`The branch at ${hex(address)} in ${name}: taken ${times(count(TAKEN))}, not taken ${times(count(NOT_TAKEN))}. ${by}:`);
   const kept = records.filter(r => !r.more), past = records.filter(r => r.more).reduce((sum, r) => sum + r.times, 0);
   for (const r of kept.slice(0, 12)) {
     console.log(`  ${r.went === TAKEN ? 'Taken' : 'Not taken'} ${times(r.times)}, first in frame ${r.frame}: at ${hex(r.pc)}, ${sideText(r.a, r.fromA, r.kindA)}, against ${sideText(r.b, r.fromB, r.kindB)}.`);
@@ -179,10 +209,11 @@ async function why(game, { original, codeMap, copy, address: text, asked }) {
 
 /** What a branch's records say of each side that came from the work memory: a Map from the side's address to
  *  { bytes, held: Set, against: Set }, what it held and what the other side held. */
-function sidesOf(records) {
+function sidesOf(records, console = 'gba') {
   const sides = new Map();
-  const add = (address, kind, value, other) => {
-    if ((kind & 3) !== 1 || ![2, 3].includes(address >>> 24)) return;
+  const add = (at, kind, value, other) => {
+    const address = inWorkMemory(at, console);
+    if ((kind & 3) !== 1 || address === null) return;
     if (!sides.has(address)) sides.set(address, { bytes: kind >> 8 & 0xFF, held: new Set(), against: new Set() });
     sides.get(address).held.add(value);
     sides.get(address).against.add(other);
@@ -207,7 +238,7 @@ function sidesOf(records) {
  * the work memory a side came straight from, with its address, bytes, and what it held and was against anywhere, and
  * `held` the pairs seen, as [a, b].
  */
-export function sortBranch(byRecording) {
+export function sortBranch(byRecording, console = 'gba') {
   const all = new Map(), pairs = new Map();
   let moves = false, ran = false, code = true;
   for (const records of byRecording.values()) {
@@ -220,7 +251,7 @@ export function sortBranch(byRecording) {
       if ((r.kindA & 3) !== 2 || (r.kindB & 3) !== 2) code = false;
     }
     if (own.size > 1) moves = true;
-    for (const [address, side] of sidesOf(records)) {
+    for (const [address, side] of sidesOf(records, console)) {
       if (!all.has(address)) all.set(address, { bytes: side.bytes, held: new Set(), against: new Set() });
       for (const v of side.held) all.get(address).held.add(v);
       for (const v of side.against) all.get(address).against.add(v);
@@ -235,7 +266,7 @@ const some = (values, most = 6) => `${values.slice(0, most).map(number).join(', 
 
 // every branch still to play, sorted by what it tests: each recording played once for all the branches it ran
 async function sort(game, { original, codeMap, copy, all, atOnce }) {
-  const { functions } = untouchedOf(game, codeMap, cartridgeOf(copy.path));
+  const { functions } = untouchedOf(game, codeMap, cartridgeOf(copy.path, original.console));
   const branches = functions.filter(f => !f.never).flatMap(f => f.ways.map(([address, way]) => ({ address, way, key: f.key })));
   const never = functions.filter(f => f.never);
   const by = ranBy(game, codeMap, branches.map(b => b.address));
@@ -255,7 +286,7 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
       if (++done % 10 === 0 || done === names.length) console.log(`  ${done} of ${names.length} recordings played.`);
     }
   }));
-  const sorted = branches.map(b => ({ ...b, ...sortBranch(went.get(b.address)), recordings: [...went.get(b.address).keys()] }));
+  const sorted = branches.map(b => ({ ...b, ...sortBranch(went.get(b.address), original.console), recordings: [...went.get(b.address).keys()] }));
   const of = kind => sorted.filter(b => b.kind === kind);
   const words = {
     moves: 'compare something that changed while the branch ran in one recording, so playing differently, or a search, can reach the other way',
@@ -302,6 +333,19 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
   return 0;
 }
 
+// the PlayStation 2's: from the program the disc boots, every word of whose segments may point into its code
+function decidedPs2(path, codeMap) {
+  const program = bootProgram(path), read = programReader(program), words = [];
+  const segments = program.readUInt16LE(44);
+  for (let i = 0; i < segments; i++) {
+    const o = program.readUInt32LE(28) + i * 32;
+    if (program.readUInt32LE(o) !== 1) continue;
+    const offset = program.readUInt32LE(o + 4), size = program.readUInt32LE(o + 16);
+    for (let at = offset; at + 4 <= offset + size; at += 4) words.push(program.readUInt32LE(at));
+  }
+  return decidedMipsBranches(codeMap.functions, read, words);
+}
+
 /** Why a branch the code decides can't go its other way, for the game's unreachable.json. */
 export function decidedWhy({ address, way, from, by }) {
   return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code alone, in the run of instructions from ${hex(from)}, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never ${way}.`;
@@ -309,14 +353,15 @@ export function decidedWhy({ address, way, from, by }) {
 
 // the branches the code itself decides, worked out from the cartridge alone, and with `write` put in the game's list
 async function decided(game, { original, codeMap, copy, write }) {
-  const base = versionOf(game).game;
-  const found = decidedBranches(new Uint8Array(readFileSync(copy.path)), codeMap.functions);
+  const base = versionOf(game).game, ps2 = original.console === 'ps2';
+  const found = ps2 ? decidedPs2(copy.path, codeMap) : decidedBranches(new Uint8Array(readFileSync(copy.path)), codeMap.functions);
+  const whyOfIt = ps2 ? decidedMipsWhy : decidedWhy, what = ps2 ? 'the program its disc boots' : 'the cartridge';
   // nothing of it may ever have been played: a way that happened in any version's recordings can't be one that can't
   const versions = proofVersions().filter(version => versionOf(version).game === base && readCodeMap(version));
   const played = found.filter(d => versions.some(version => ranIn(version, readCodeMap(version), d.address).some(each => (d.way === 'taken' ? each.taken : each.notTaken))));
   if (played.length) throw new Error(`The tools worked out that ${played.map(d => `${hex(d.address)} is never ${d.way}`).join(', ')}, and a recording has played it so: that's the tools' fault, so nothing was written. Say so in an issue, with this line.`);
-  console.log(`${count(found.length)} conditional branches of ${base} are decided by the code itself, worked out from the cartridge alone, and none has gone its other way in any recording of ${versions.join(', ')}:`);
-  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: the flags come from ${hex(d.by)}, in the run from ${hex(d.from)}.`);
+  console.log(`${count(found.length)} conditional branches of ${base} are decided by the code itself, worked out from ${what} alone, and none has gone its other way in any recording of ${versions.join(', ')}:`);
+  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: ${ps2 ? 'what it compares is set' : `the flags come from ${hex(d.by)},`} in the run from ${hex(d.from)}.`);
   if (!write) {
     console.log(`--write puts them in games/${base}/proof/unreachable.json, where a person reads each before it goes in.`);
     return 0;
@@ -326,7 +371,7 @@ async function decided(game, { original, codeMap, copy, write }) {
   const others = (listed.ways ?? []).filter(([address]) => !found.some(d => hex(d.address) === address));
   listed.code ??= [];
   listed.content ??= [];
-  listed.ways = [...others, ...found.map(d => [hex(d.address), d.way, decidedWhy(d)])].sort((a, b) => a[0].localeCompare(b[0]));
+  listed.ways = [...others, ...found.map(d => [hex(d.address), d.way, whyOfIt(d)])].sort((a, b) => a[0].localeCompare(b[0]));
   writeFileSync(file, `${JSON.stringify(listed, null, 2)}\n`);
   console.log(`Written: games/${base}/proof/unreachable.json, ${listed.ways.length} ways. npm run dp -- prove <version> counts them out of gameplay proven.`);
   return 0;

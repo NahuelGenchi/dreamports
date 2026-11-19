@@ -62,13 +62,16 @@ export function libretroReference(machine) {
     // as each function started
     seesInstructions: !!core.ran,
     seesEntries: core.ran === true,
+    // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
+    // went by (DP_WHY, libretro/ran-ps2.h)
+    saysWhy: core.ran === 'blocks',
     ensureOriginal: log => buildReference(machine, log),
     async runOriginal({ copy, ...rest }) {
       const named = forRun(copy);
       let result;
       try {
         result = await runReference({
-          ...rest, program: HOST, env: named.env, width, height, buttonBytes: 4,
+          ...rest, program: HOST, env: { ...named.env, ...rest.env }, width, height, buttonBytes: 4,
           args: names => [coreFile(core), named.path, String(rest.frames), names.buttons, core.ran ? names.functions : '-', names.pictures, names.sound, names.sets, '-', String(width), String(height), ...options],
         });
       } finally {

@@ -11,6 +11,13 @@ with dreamports_draw_list. That's what a 3D game is proven by (docs/STANDARD.md)
 
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
+
+And it tells the tools what the console does, when they ask before a game loads (dreamports_watch, Source/DreamportsWatch.h,
+tools/libretro/ran-ps2.h): each block of instructions the EE, the IOP or a vector unit runs, as the block ends, with which
+way its branch went and the words it was compiled from, on the EE and the IOP each instruction with what the registers
+hold before it runs, and every sector of the disc read. A block that runs only says so, so the console does the same
+with it or without; while the tools watch, the processors compile each block for itself rather than reuse the code of
+another block of the same bytes, which would name that one.
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
 index 4c460e6..1c27549 100644
 --- a/Source/BasicBlock.cpp

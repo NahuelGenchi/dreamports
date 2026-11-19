@@ -8,21 +8,29 @@
 // to boot the disc. The same play twice tells the same, and the pictures are the same as with nothing told. Like the
 // other checks on the real emulator, it isn't run on every pull request, as the emulator takes minutes to build, and runs
 // on Linux and macOS alone (docs/CONSOLES.md).
+//
+// Then the same disc is a game's copy, in a folder of its own that it removes after, with the program's Dreamport in C
+// (made-up-ps2.c), and `prove` writes its played.json, with the program's code and the disc's sectors, and `untouched`
+// says what's left of both, which branches the code decides, and what the branch that waits for the V-blank compares.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
+import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { cartridgeOf, bytesText, watchesOf } from '../lib/proof-files.mjs';
 import { RAN, TAKEN, NOT_TAKEN, layoutOf, finderOf, playedIn, contentIn, cellsOf } from '../lib/played.mjs';
 import { mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { findFunctions } from '../ps2/functions.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
-import { LOAD_AT, VU1_PROGRAM, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
+import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
 import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-disc.mjs';
 
 const FRAMES = 120;
 const WORK = join(LOCAL, 'test-ps2-ledger');
+const GAME = 'test-ps2-ledger', IN_C = `${GAME}/c`, MEDIA = join(REPO, 'public', 'media');
 
 const failures = [];
 const check = (ok, what) => {
@@ -33,6 +41,68 @@ const check = (ok, what) => {
 // the records the program that runs the original wrote (libretro/ran-ps2.h): { address, word, what, processor, from, to }
 const recordsOf = words => Array.from({ length: words.length / 5 }, (_, i) => ({ address: words[i * 5], word: words[i * 5 + 1], what: words[i * 5 + 2] & 0xFF, processor: words[i * 5 + 2] >>> 8, from: words[i * 5 + 3], to: words[i * 5 + 4] }));
 const sameWords = (a, b) => a.length === b.length && a.every((word, i) => word === b[i]);
+
+const dp = (...args) => {
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 26 });
+  return { status, out: stdout + stderr };
+};
+const hex = number => `0x${(number >>> 0).toString(16).toUpperCase()}`;
+const bitsOf = float => new Uint32Array(new Float32Array([float]).buffer)[0];
+const table = rows => `{ ${rows.map(row => `{ ${row.map(hex).join(', ')} }`).join(', ')} }`;
+
+function tidy() {
+  for (const path of [gameFolder(GAME), join(LOCAL, 'results', GAME), join(LOCAL, 'captures', GAME), join(LOCAL, 'untouched', `${GAME}-c.json`), join(REPO, '.github', 'readme', 'progress', `${GAME}.svg`), ...readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file))]) {
+    rmSync(path, { recursive: true, force: true });
+  }
+}
+
+// the program on vector unit 1 as a game of its own, as npm run test:ps2-kit makes one, but from its disc: proven, then asked
+function proveAndAsk(copy, disc, { branch, read, sectors }) {
+  tidy();
+  const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: 'MADE_UP.ELF', sha1: createHash('sha1').update(disc).digest('hex'), provenBy: 'draw lists' };
+  mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
+  let run = dp('rom', copy);
+  check(run.status === 0 && run.out.includes(GAME), `rom knows the disc: ${run.out.trim().split('\n')[1]?.trim()}`);
+  run = dp('codemap', GAME);
+  check(run.status === 0, `codemap finds the functions of the program the disc boots: ${run.out.trim().split('\n').at(-1)}`);
+  for (const [game, language] of [[GAME, undefined], [IN_C, 'c']]) {
+    const files = { ...startingFiles(GAME, original, language ? { language } : undefined), ...(language ? {} : { 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) }) };
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(join(gameFolder(game), file, '..'), { recursive: true });
+      writeFileSync(join(gameFolder(game), file), text);
+    }
+  }
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'still.json'), `${JSON.stringify({ about: 'Nothing held.', frames: FRAMES, held: [[0, []]] }, null, 2)}\n`);
+  const numbers = {
+    PROGRAM: 'ON_VU1', SHOWN_FORMAT: '0', UPLOAD: `{ ${UPLOAD.map(hex).join(', ')} }`, FRAME_PACKET: `{ ${FRAME_PACKET.map(hex).join(', ')} }`, MOVING_AT, MOVING_Y, PLAIN_SUMS: 0, RADIUS,
+    COS_BITS: hex(bitsOf(COS)), SIN_BITS: hex(bitsOf(SIN)), MIDDLE_X: MIDDLE[0], MIDDLE_Y: MIDDLE[1], CORNER_COUNT: CORNERS.length,
+    PLACES: `{ ${CORNERS.map(([x, y]) => `{ ${x}, ${y}, ${CORNER_DEPTH}, 1 }`).join(', ')} }`, COLOURS: table(CORNERS.map(([, , ...colour]) => [...colour, 0x80])),
+    DEPTH_ACROSS: `${DEPTH_ACROSS}f`, VU1_TAG: `{ ${VU1_TAG.map(hex).join(', ')} }`, STILL: table(STILL), TURNING: table(TURNING),
+    BACKGROUND_3D: hex(BACKGROUND_3D), BACKGROUND: hex(BACKGROUND), SQUARE: hex(SQUARE), SQUARE_Y, SQUARE_SIZE, STEP,
+  };
+  writeFileSync(join(gameFolder(IN_C), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'made-up-ps2.c'), 'utf8').replace(/@([A-Z_0-9]+)@/g, (_, key) => numbers[key]));
+  run = dp('prove', IN_C, 'still');
+  const report = existsSync(join(resultFolder(IN_C, 'still'), 'report.json')) ? JSON.parse(readFileSync(join(resultFolder(IN_C, 'still'), 'report.json'), 'utf8')) : {};
+  check(run.status === 0 && report.matched === FRAMES, `prove matches every frame's draw list: ${report.matched} of ${report.frames}`);
+  if (run.status) console.log(run.out);
+  const played = existsSync(join(proofFolder(IN_C), 'played.json')) ? JSON.parse(readFileSync(join(proofFolder(IN_C), 'played.json'), 'utf8')) : {};
+  check(played.units?.played > 0 && played.units.played <= played.units.total, `prove writes played.json with the program's code played in matching frames: ${JSON.stringify(played.units)}, ${played.percent}%`);
+  // the sectors that hold anything: all but those of one value throughout, which NEVER.BIN's middle one is, and ZEROS.BIN's
+  const plain = new Set([sectors['NEVER.BIN'].at + 1, ...Array.from({ length: sectors['ZEROS.BIN'].count }, (_, i) => sectors['ZEROS.BIN'].at + i)]);
+  const holding = Array.from({ length: disc.length / SECTOR }, (_, sector) => sector).filter(sector => sector >= 16 && !plain.has(sector));
+  check(played.cells?.total === holding.length && played.cells.read === read.length, `and the disc's sectors that hold anything, those read to boot it used: ${JSON.stringify(played.cells)}`);
+  run = dp('untouched', IN_C);
+  if (process.env.DP_SHOW) console.log(run.out);
+  check(run.status === 0 && run.out.includes(`sector ${sectors['NEVER.BIN'].at},`) && run.out.includes(`sectors ${sectors['ZEROS.BIN'].at} to ${sectors['ZEROS.BIN'].at + sectors['ZEROS.BIN'].count - 1}`), 'untouched lists the sectors never read, those that hold data apart from those of one value throughout');
+  if (run.status) console.log(run.out);
+  run = dp('untouched', IN_C, '--decided');
+  check(run.status === 0 && /conditional branches of test-ps2-ledger are decided by the code itself, worked out from the program its disc boots alone/.test(run.out), `--decided reads the program the disc boots: ${run.out.trim().split('\n')[0]}`);
+  if (run.status) console.log(run.out);
+  run = dp('untouched', IN_C, '--why', branch.toString(16).padStart(8, '0'));
+  check(run.status === 0 && run.out.includes('from the word at 12001000, changed on the way') && run.out.includes('0, a number in the code'), `--why says the branch that waits for the V-blank compares the GS's status, read and changed, against zero: ${run.out.trim().split('\n')[1]?.trim()}`);
+  if (run.status) console.log(run.out);
+}
 
 async function main() {
   rmSync(WORK, { recursive: true, force: true });
@@ -95,6 +165,14 @@ async function main() {
   check(cells === disc.length / SECTOR && elfSectors.every(sector => used[sector >> 3] >> (sector & 7) & 1), `the disc's ${cells} sectors are its content, and those read count as used`);
 
   first.sound?.close();
+
+  console.log('\nThe disc as a game\'s copy, proven with its Dreamport in C, and what untouched says of it');
+  const branch = LOAD_AT + both[0];
+  try {
+    proveAndAsk(copy, disc, { branch, read: [...read], sectors });
+  } finally {
+    tidy();
+  }
   rmSync(WORK, { recursive: true, force: true });
   if (failures.length) {
     console.log(`\n${failures.length} failed.`);

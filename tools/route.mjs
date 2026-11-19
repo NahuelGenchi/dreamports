@@ -126,7 +126,7 @@ async function search({ args, value, game, name, goalText, from, minutes, then, 
           ownLost = `frames>${after}`;
           console.log(`The branch ran only at set moments in ${sourceName}, the last in frame ${after - 120}, so play past frame ${after} doesn't count: --lost says otherwise.`);
         }
-        testedValues(records).forEach((tested, i) => {
+        testedValues(records, original.console).forEach((tested, i) => {
           const key = `tested${i + 1}`;
           route.values[key] = { address: hex(tested.address), bytes: tested.bytes };
           steering[key] = Math.max(1, Math.ceil(Math.abs(tested.held - tested.against) / 16));

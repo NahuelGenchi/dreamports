@@ -51,10 +51,12 @@ const signed16 = word => (word & 0xFFFF) << 16 >> 16;
  */
 export function mipsInstructionsOf(bytes, seeds = [], never = new Map(), address = 0) {
   const size = bytes.length - bytes.length % 4, word = at => (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0;
-  const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
+  // from the start first, then from each place known to have run, lowest first, so a delay slot is known for one before
+  // it's taken for where something starts
+  const instructions = new Set(), branches = new Set(), work = [0], later = [...seeds].sort((a, b) => b - a);
   const inside = at => at >= 0 && at < size;
-  while (work.length) {
-    let pc = work.pop();
+  while (work.length || later.length) {
+    let pc = work.length ? work.pop() : later.pop();
     while (inside(pc) && !instructions.has(pc)) {
       const w = word(pc), op = w >>> 26, funct = w & 63, rs = w >>> 21 & 31, rt = w >>> 16 & 31;
       instructions.add(pc);
@@ -104,10 +106,10 @@ export function mipsInstructionsOf(bytes, seeds = [], never = new Map(), address
  */
 export function vuInstructionsOf(bytes, seeds = [], never = new Map()) {
   const size = bytes.length - bytes.length % 8, word = at => (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0;
-  const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
+  const instructions = new Set(), branches = new Set(), work = [0], later = [...seeds].sort((a, b) => b - a);
   const inside = at => at >= 0 && at < size;
-  while (work.length) {
-    let pc = work.pop();
+  while (work.length || later.length) {
+    let pc = work.length ? work.pop() : later.pop();
     while (inside(pc) && !instructions.has(pc)) {
       const lower = word(pc), upper = word(pc + 4), op = lower >>> 25;
       instructions.add(pc);
