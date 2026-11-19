@@ -28,6 +28,8 @@
     "test:ps1-twin": "node tools/test/ps1-twin.mjs",
     "test:ps1-gcc": "node tools/test/ps1-gcc.mjs",
     "test:ps2-gcc": "node tools/test/ps2-gcc.mjs",
+    "test:ps2-call": "node tools/test/ps2-call.mjs",
+    "test:ps2-twin": "node tools/test/ps2-twin.mjs",
     "test:ps1-match": "node tools/test/ps1-match.mjs",
     "test:ps1-kit": "node tools/test/ps1-kit.mjs",
     "test:same-memory": "node tools/test/same-memory.mjs",
