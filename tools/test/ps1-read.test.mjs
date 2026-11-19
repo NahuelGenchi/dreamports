@@ -22,7 +22,7 @@ test('reads each kind of instruction as GNU\'s tools write it', () => {
     0x24020005: 'li      $v0, 5', 0x27BDFFE8: 'addiu   $sp, $sp, -24', 0x308200FF: 'andi    $v0, $a0, 0xFF', 0x3C018002: 'lui     $at, 0x8002',
     0x8082FFFF: 'lb      $v0, -1($a0)', 0x8FBF0010: 'lw      $ra, 16($sp)', 0xA5041C00: 'sh      $a0, 7168($t0)', 0xAFBF0010: 'sw      $ra, 16($sp)',
     0x40086000: 'mfc0    $t0, SR', 0x42000010: 'rfe', 0x4802C800: 'mfc2    $v0, $25', 0x4884C800: 'mtc2    $a0, $25', 0xC8800000: 'lwc2    $0, 0($a0)',
-    0x4A180001: 'rtps    sf=1 lm=0', 0x4A486012: 'mvmva   sf=1 lm=0 mx=0 v=0 cv=3',
+    0x4A180001: 'rtps    0x180001 sf=1 lm=0', 0x4A486012: 'mvmva   0x486012 sf=1 lm=0 mx=0 v=0 cv=3',
   };
   for (const [word, text] of Object.entries(words)) assert.equal(decode(Number(word), 0x80010000)?.text, text, `0x${Number(word).toString(16)}`);
   assert.equal(decode(0x1085000F, 0x80010000).text, 'beq     $a0, $a1, 0x80010040');
