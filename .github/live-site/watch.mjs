@@ -41,8 +41,13 @@ export async function watch({ problems, ask, committed, last = false, now = Date
 
 const short = commit => (commit ? commit.slice(0, 7) : null);
 
-/** What's wrong with the live site, from its address: nothing to say when it's up to date with `head`. */
-export async function liveProblems(site, head, list) {
+/**
+ * What's wrong with the live site, from its address: nothing to say when it's up to date with `head`, or when it was
+ * built from a later commit of main's, as when a bot's commit, which starts no run of its own, lands after the one this
+ * run looks at (#1530). `newer(commit)` says whether a commit comes after `head`, and this run then leaves the site to
+ * the run that looks at main next, as its cards show that later commit's numbers.
+ */
+export async function liveProblems(site, head, list, newer = async () => false) {
   const read = async (path) => {
     try {
       const response = await fetch(new URL(path, site), { headers: { 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(30_000) });
@@ -56,7 +61,10 @@ export async function liveProblems(site, head, list) {
   try {
     from = JSON.parse(built ?? '{}').commit ?? null;
   } catch { /* a page that isn't the build's says nothing about it */ }
-  if (from !== head) return [`The site was built from ${short(from) ?? 'a commit it doesn\'t name'}, and main is at ${short(head)}.`];
+  if (from !== head) {
+    if (from && await newer(from)) return [];
+    return [`The site was built from ${short(from) ?? 'a commit it doesn\'t name'}, and main is at ${short(head)}.`];
+  }
   return problemsWith(list, read);
 }
 
@@ -74,6 +82,14 @@ function alerts({ repository = process.env.GITHUB_REPOSITORY, api = process.env.
   };
   const open = async () => (await github('/issues?state=open&labels=bug&per_page=100')).find(issue => issue.title === TITLE);
   return {
+    // whether `later` is a commit that comes after `head` on main; a commit GitHub can't compare isn't
+    newer: async (head, later) => {
+      try {
+        return (await github(`/compare/${head}...${later}`)).status === 'ahead';
+      } catch {
+        return false;
+      }
+    },
     // whether this is what first says so
     raise: async (found) => {
       if (await open()) return false;
@@ -126,9 +142,9 @@ export async function run({
   log = console.log,
   behind = () => appendFileSync(process.env.GITHUB_OUTPUT, 'behind=true\n'),
 } = {}) {
-  const { raise, clear } = alerts(github);
+  const { raise, clear, newer } = alerts(github);
   const found = await watch({
-    problems: () => liveProblems(site, head, list),
+    problems: () => liveProblems(site, head, list, later => newer(head, later)),
     minute,
     committed,
     last,

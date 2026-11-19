@@ -27,7 +27,7 @@ The same check runs at the end of every build, on `dist/`, by `src/integrations/
 
 A run every half hour does the same in a shorter time, in case the run after a merge was lost: it asks for a build at once, and after 10 minutes goes on to the next step. Later runs that find the issue open add nothing to it and don't fail, so there's one issue and one failure to read about, however long it lasts. The first run that finds the site up to date closes the issue with a comment.
 
-A newer merge takes over from a run still looking at the commit before it, as only the latest commit matters.
+A newer merge takes over from a run still looking at the commit before it, as only the latest commit matters. A site built from a later commit of `main`'s than the one a run looks at counts as up to date, as when the Readme workflow's own commit, which starts no run, goes live first: GitHub's compare says which comes first, and the next run looks at the cards (#1530).
 
 ## When its issue opens
 

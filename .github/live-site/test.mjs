@@ -208,6 +208,13 @@ async function standIn({ head, stale = 'old', buildsThatFail = 0 }) {
         return send({});
       }
       if (pathname === '/build.json') return send({ commit: state.commit });
+      // main's commits in order, oldest first, as GitHub's compare answers for two of them
+      const compare = /^\/repos\/x\/y\/compare\/([^.]+)\.\.\.([^.]+)$/.exec(pathname);
+      if (compare) {
+        const [base, later] = [state.main?.indexOf(compare[1]) ?? -1, state.main?.indexOf(compare[2]) ?? -1];
+        if (base < 0 || later < 0) return send({ message: 'Not Found' }, 404);
+        return send({ status: later > base ? 'ahead' : later < base ? 'behind' : 'identical' });
+      }
       if (pathname === '/repos/x/y/issues' && request.method === 'GET') return send(state.issues.filter(issue => issue.state === 'open'));
       if (pathname === '/repos/x/y/issues') {
         assert.equal(request.headers.authorization, 'Bearer made-up');
@@ -264,6 +271,28 @@ test('a site behind main gets a build from the hook, and then shows nothing wron
     assert.equal(stand.state.behind, undefined);
     assert.deepEqual(stand.state.issues, []);
     assert.deepEqual(await liveProblems(stand.url, 'new', [one]), []);
+  } finally {
+    stand.close();
+  }
+});
+
+test('a site built from a later commit of main\'s is up to date, and closes the issue a run for an earlier one opened', async () => {
+  // a run looks at a merge, and a bot's commit, which starts no run, lands after it and goes live first (#1530)
+  const stand = await standIn({ head: 'merge', stale: 'bot-commit', buildsThatFail: 99 });
+  stand.state.main = ['older', 'merge', 'bot-commit'];
+  stand.state.issues.push({ number: 1, state: 'open', title: TITLE, labels: ['bug'] });
+  try {
+    assert.equal(await run(options(stand, 'merge', { last: true })), true);
+    assert.equal(stand.state.hooks, 0);
+    assert.equal(stand.state.behind, undefined);
+    assert.equal(stand.state.issues[0].state, 'closed');
+
+    // one built from an earlier commit, or one GitHub can't place on main, is still behind
+    stand.state.commit = 'older';
+    assert.match((await liveProblems(stand.url, 'merge', [one], later => Promise.resolve(stand.state.main.indexOf(later) > 1)))[0], /built from older.*main is at merge/);
+    stand.state.commit = 'elsewhere';
+    assert.equal(await run(options(stand, 'merge', { last: true })), false);
+    assert.match(stand.state.issues.at(-1).body, /built from elsewhe/);
   } finally {
     stand.close();
   }
