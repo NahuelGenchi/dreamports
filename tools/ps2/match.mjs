@@ -18,12 +18,13 @@
 // (../ps1/match.mjs, matchGameOn): only the console's own is here.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { basename, dirname, relative, sep } from 'node:path';
 import { hex } from '../lib/proof-files.mjs';
 import { twinsIn } from '../gba/match.mjs';
 import { matchGameOn } from '../ps1/match.mjs';
 import { EE_GCC, ensureEeGcc } from './gcc.mjs';
+import { SN_GCC, runSnGcc } from './sn.mjs';
 import { decode } from './ee.mjs';
 import { ps2Program } from './functions.mjs';
 import { ps2Resolve } from './read.mjs';
@@ -40,13 +41,17 @@ const LABEL = /^[A-Za-z][A-Za-z0-9]*_0[01][0-9A-Fa-f]{6}$/;
 const KINDS = { 2: 'word32', 4: 'jump26', 5: 'hi16', 6: 'lo16', 7: 'gprel16' };
 const signed16 = word => ((word & 0xFFFF) ^ 0x8000) - 0x8000;
 
+// the compilers a game can name: Sony's own EE-GCC, built from its source, and SN Systems' builds of GCC (sn.mjs)
+const COMPILERS = { 'ee-gcc': { versions: EE_GCC, called: 'EE-GCC' }, 'sn-gcc': { versions: SN_GCC, called: 'SN Systems\' GCC' } };
+
 function compilerOf(given, where, what) {
-  if (given.name !== 'ee-gcc') throw new Error(`${where} names the compiler "${given.name}"${what}, and on the PlayStation 2 the tools have ee-gcc, Sony's own.`);
-  if (!Object.hasOwn(EE_GCC, given.version)) throw new Error(`${where} names EE-GCC ${given.version ?? 'with no "version"'}${what}, and the tools build ${Object.keys(EE_GCC).join(' and ')}.`);
+  const known = COMPILERS[given.name];
+  if (!known) throw new Error(`${where} names the compiler "${given.name}"${what}, and on the PlayStation 2 the tools have ee-gcc, Sony's own, and sn-gcc, SN Systems' builds.`);
+  if (!Object.hasOwn(known.versions, given.version)) throw new Error(`${where} names ${known.called} ${given.version ?? 'with no "version"'}${what}, and the tools have ${Object.keys(known.versions).join(', ')}.`);
   if (!Array.isArray(given.flags) || !given.flags.every(flag => typeof flag === 'string' && FLAG.test(flag))) {
     throw new Error(`${where} needs the compiler's "flags"${what} as a list of those that say how the code is made, such as "-O2" and "-G0".`);
   }
-  return { name: 'ee-gcc', version: given.version, flags: given.flags };
+  return { name: given.name, version: given.version, flags: given.flags };
 }
 
 /**
@@ -77,7 +82,7 @@ export function wayAt(compiler, address) {
 }
 
 /** What a compiler's way is called, to tell two apart. */
-export const wayText = way => `EE-GCC ${way.version} ${way.flags.join(' ')}`;
+export const wayText = way => `${COMPILERS[way.name]?.called ?? way.name} ${way.version} ${way.flags.join(' ')}`;
 
 /**
  * An object file as match takes it: { sections, functions, names }. `sections` is a Map of each loaded section's name
@@ -162,18 +167,26 @@ export function objectOf(object) {
  * { object }, the object's bytes, or { error }, what the compiler said.
  */
 export async function compileFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, log = () => {} }) {
-  const { gcc } = await ensureEeGcc(compiler.version, log);
+  const sn = compiler.name === 'sn-gcc';
+  const gcc = sn ? null : (await ensureEeGcc(compiler.version, log)).gcc;
   mkdirSync(dirname(work), { recursive: true });
   const temporary = `${work}.tmp`;
   mkdirSync(temporary, { recursive: true });
   try {
     const inRoot = path => relative(root, path).split(sep).join('/') || '.';
     const common = [...compiler.flags, '-nostdinc', `-D${DEFINE}`, ...includes.flatMap(folder => ['-I', inRoot(folder)]), inRoot(file)];
-    const run = more => spawnSync(gcc, [...common, ...more], { cwd: root, env: { ...process.env, LC_ALL: 'C', TMPDIR: temporary }, encoding: 'utf8' });
+    // SN's driver is a program for Windows, run through wibo, which takes the same words but writes inside its folder
+    const run = async more => {
+      if (!sn) {
+        const made = spawnSync(gcc, [...common, ...more], { cwd: root, env: { ...process.env, LC_ALL: 'C', TMPDIR: temporary }, encoding: 'utf8' });
+        return { ok: !made.error && made.status === 0, said: `${made.stdout ?? ''}${made.stderr ?? ''}`.trim() || made.error?.message || '' };
+      }
+      return runSnGcc(compiler.version, [...common, ...more.map(word => (word.startsWith(work) ? inRoot(word) : word))], { cwd: root, temporary, log });
+    };
     for (const output of [`${work}.o`, `${work}.s`]) rmSync(output, { force: true });
-    const built = run(['-c', '-o', `${work}.o`]);
-    if (built.error || built.status !== 0) return { error: `${built.stdout ?? ''}${built.stderr ?? ''}`.trim() || built.error?.message || `the compiler ended with ${built.status}` };
-    run(['-S', '-o', `${work}.s`]);
+    const built = await run(['-c', '-o', `${work}.o`]);
+    if (!built.ok || !existsSync(`${work}.o`)) return { error: built.said || 'the compiler made nothing' };
+    await run(['-S', '-o', `${work}.s`]);
     return { object: readFileSync(`${work}.o`) };
   } finally {
     rmSync(temporary, { recursive: true, force: true });
@@ -401,7 +414,7 @@ export function loadedOf(elf) {
 
 // what match needs to know of the PlayStation 2, as the PlayStation's has it (../ps1/match.mjs)
 const PLAYSTATION_2 = {
-  console: 'ps2', place: 'the PlayStation 2', compiler: 'Sony\'s EE-GCC', label: LABEL, labelExample: 'D_003A1234', readCompiler, wayAt, wayText, matchFile,
+  console: 'ps2', place: 'the PlayStation 2', compiler: 'the original\'s compiler', label: LABEL, labelExample: 'D_003A1234', readCompiler, wayAt, wayText, matchFile,
   programOf: async path => {
     const elf = await ps2Program(path);
     return { program: loadedOf(elf), gp: gpOf(elf) ?? 0 };

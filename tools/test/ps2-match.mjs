@@ -6,7 +6,8 @@
 // same, with the pieces of the file's values it reaches where the original's instructions point; one whose C was
 // changed, or whose text was, differs and the rest don't; a name with no address can't be the same; and a small value
 // is reached through $gp. Last, `npm run dp -- match` on a made-up game with that program as its copy, which the test
-// removes after.
+// removes after. Then the same program built by each of SN Systems' builds of GCC (../ps2/sn.mjs), which many studios
+// used, fetched and run through wibo: match with that build finds every function the same.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -14,7 +15,9 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
+import { arch, platform } from 'node:os';
 import { assembleEe, linkEe } from '../ps2/gcc.mjs';
+import { SN_GCC, WIBO, hasRosetta } from '../ps2/sn.mjs';
 import { compileFile, loadedOf, matchFile, objectOf } from '../ps2/match.mjs';
 import { sectionsOf } from '../ps2/functions.mjs';
 import { gpOf } from '../ps2/twin.mjs';
@@ -158,6 +161,47 @@ async function main() {
 
   console.log('npm run dp -- match on a made-up game with the program as its copy:');
   await wholeGame(elf, where, sources);
+  await withSn(sources, start, log);
+}
+
+// The same program built by each of SN Systems' builds of GCC, which the tools fetch and run through wibo, and linked
+// by Sony's linker: match with that build finds every function the same, and with Sony's own compiler doesn't, as the
+// two save a function's registers differently.
+async function withSn(sources, start, log) {
+  console.log('The same program, built by SN Systems\' builds of GCC:');
+  const here = WIBO[`${platform()}-${arch()}`];
+  if (!here || (here.rosetta && !hasRosetta())) {
+    console.log(`  (not tried: wibo, which runs them, isn't for ${platform()} ${arch()}${here?.rosetta ? ' without Rosetta 2' : ''})`);
+    return;
+  }
+  for (const version of Object.keys(SN_GCC)) {
+    const sn = { name: 'sn-gcc', version, flags: ['-O2', '-G0'] }, small = { ...sn, flags: ['-O2', '-G8'] };
+    const folder = join(WORK, `sn-${version}`);
+    mkdirSync(folder, { recursive: true });
+    for (const [name, text] of Object.entries(sources)) writeFileSync(join(folder, name), text);
+    const objects = [];
+    for (const [name, compiler] of [['program', sn], ['small', small]]) {
+      const built = await compileFile({ file: join(folder, `${name}.c`), compiler, work: join(folder, 'original', name), log });
+      if (built.error) {
+        check(false, `${name}.c builds with SN Systems' GCC ${version}: ${built.error}`);
+        return;
+      }
+      objects.push({ name: `${name}.o`, bytes: built.object });
+    }
+    const linked = await linkEe([{ name: 'start.o', bytes: start.object }, ...objects], { args: ['-Ttext', `0x${hex8(LOAD)}`, '-e', '_start'], log });
+    if (linked.error) {
+      check(false, `Sony's linker makes a program of SN's objects: ${linked.error}`);
+      return;
+    }
+    const elf = linked.program, where = symbolsOf(elf);
+    for (const name of ['program.c', 'small.c']) writeFileSync(join(folder, name), withAddresses(sources[name], where));
+    const against = { program: loadedOf(elf), gp: gpOf(elf), addressOf: name => where.get(name)?.address ?? null, sizeOf: address => [...where.values()].find(each => each.address === address && each.size)?.size ?? null };
+    const matching = (name, compiler) => matchFile({ file: join(folder, name), compiler, work: join(folder, 'built', name.replace(/\.c$/, '')), log, ...against });
+    const same = byName(await matching('program.c', sn)), bump = byName(await matching('small.c', small));
+    check(['Weigh', 'Tell', 'Blend'].every(name => same[name]?.same === true) && bump.Bump?.same === true, `SN Systems' GCC ${version}, through wibo: every twin is the same as the program it built`);
+    const sony = byName(await matching('program.c', COMPILER));
+    check(sony.Tell?.same === false && sony.Blend?.same === false, 'and built with Sony\'s own compiler they differ, as the two save a function\'s registers another way');
+  }
 }
 
 // the program as a game's copy, its C as the game's version in C, and match run on it as a person runs it
