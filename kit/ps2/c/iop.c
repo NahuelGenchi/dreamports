@@ -7,8 +7,8 @@
 // of each slice mixes 45 samples when their time has come, then starts the V-blank when its time has come. A frame of
 // the tools runs from one V-blank's start to the next, so it mixes 16 or 17 blocks, and what the IOP writes to the chip
 // as the frame starts comes before the frame's first block. The IOP's DMA to the sound chip goes on every 10,000 of its
-// ticks once a transfer has started. A game's IOP code runs as its frame starts, unless it says that time passes first
-// (ps2_time_pass).
+// ticks once a transfer has started, and the SIF's packets reach the EE as the EE's ticks pass (sif.c). A game's IOP
+// code runs as its frame starts, unless it says that time passes first (ps2_time_pass).
 
 #include "ps2-kit.h"
 
@@ -108,6 +108,7 @@ static int64_t spu_ticks, spu_total;
 static int32_t vblank_ticks, on_screen, in_blank;
 static int in_vblank, at_vblank;
 static uint32_t into_slice, dma_ticks, irq_ticks, irq_line;
+static uint64_t ee_now;
 
 void ps2_clock_power(void) {
   uint32_t frame = EE_HZ / (CONSOLE_CLOCK / CONSOLE_FRAME_TICKS);
@@ -120,7 +121,9 @@ void ps2_clock_power(void) {
   vblank_ticks = on_screen;
   in_vblank = at_vblank = 0;
   into_slice = dma_ticks = irq_ticks = 0;
+  ee_now = 0;
 }
+uint64_t ps2_ee_time(void) { return ee_now; }
 
 // the IOP's own ticks in a slice: its DMA goes on, and the sound chip's interrupt line follows the chip
 static void iop_ticks(uint32_t ticks) {
@@ -136,10 +139,19 @@ static void iop_ticks(uint32_t ticks) {
     irq_ticks -= IRQ_EVERY;
   }
 }
-static void slice_run(void) {
+// the EE's ticks passing within a slice, which the SIF follows
+static void ee_ticks(uint32_t ticks) {
+  ee_now += ticks;
+  into_slice += ticks;
+  sif_ticks(ticks);
+}
+// the end of a slice's work: the EE's ticks counted down, then the IOP's slice
+static void slice_end(void) {
   spu_ticks -= (int64_t)SLICE << 32;
   vblank_ticks -= SLICE;
+  iop_threads();
   iop_ticks(IOP_SLICE);
+  into_slice = 0;
 }
 // the top of a slice: a block of samples when one is due, then the V-blank, and 1 when the V-blank starts
 static int slice_top(void) {
@@ -158,21 +170,28 @@ static int slice_top(void) {
   return 0;
 }
 
-void ps2_time_pass(uint32_t ee_ticks) {
-  into_slice += ee_ticks;
-  while (into_slice >= SLICE && !at_vblank) {
-    into_slice -= SLICE;
-    slice_run();
-    at_vblank = slice_top();
+void ps2_time_pass(uint32_t ee_ticks_passing) {
+  while (ee_ticks_passing && !at_vblank) {
+    uint32_t take = SLICE - into_slice;
+    if (take > ee_ticks_passing) take = ee_ticks_passing;
+    ee_ticks(take);
+    ee_ticks_passing -= take;
+    if (into_slice == SLICE) {
+      slice_end();
+      at_vblank = slice_top();
+    }
   }
 }
+void ps2_time_to_slice(void) {
+  if (!at_vblank) ps2_time_pass(SLICE - into_slice);
+}
 void ps2_clock_to_vblank(void) {
-  if (!at_vblank) {
-    slice_run();
-    while (!slice_top()) slice_run();
+  while (!at_vblank) {
+    ee_ticks(SLICE - into_slice);
+    slice_end();
+    at_vblank = slice_top();
   }
   at_vblank = 0;
-  into_slice = 0;
 }
 
 uint32_t iop_lines(void) { return (irq_line ? 1u : 0) | dma_ended << 1; }

@@ -35,6 +35,7 @@ static void heard(void) {
 EXPORT("dp_start") void dp_start(void) {
   ps2_clock_power();
   gs_power();
+  iop_bios_power();
   spu2_list_start();
   game_start();
   ps2_clock_to_vblank();
@@ -44,6 +45,7 @@ EXPORT("dp_start") void dp_start(void) {
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
   gs_list_start();
   spu2_list_start();
+  iop_vblank();
   game_step(buttons);
   ps2_clock_to_vblank();
   frame_hash = gs_list_hash();
