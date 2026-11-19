@@ -148,12 +148,13 @@ static size_t ranCount;
 
 // Where each register's value came from, so the check can aim a call at a branch no call took yet (twin.mjs): a
 // value read from the image, at `where`, `bytes` long, or the argument `where`, and the steps since that made the
-// register's value of it: a number added, a shift, or a mask. A load sets it, a move carries it, adding or taking away
-// a number, a shift or an and with a value from nowhere adds a step, and anything else that changes the register
-// forgets it, as does a seventh step. At
+// register's value of it: a number added, a shift, a mask, or turning it round. A load sets it, a move carries it,
+// adding or taking away a number or another register, which counts as the number it holds, a shift, an and with a
+// value from nowhere or a neg adds a step, and anything else that changes the register forgets it, as does a seventh
+// step. At
 // each comparison of the function's own, the two values and where each came from are kept.
 enum { CAME_FROM_NOWHERE = 0, CAME_FROM_MEMORY = 1, CAME_FROM_ARGUMENT = 2 };
-enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5 };
+enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5, STEP_NEG = 6 };
 #define STEPS 6
 struct origin { uint32_t kind, bytes, where, steps, step[STEPS], by[STEPS]; };
 // a step more for where a register's value came from: two numbers added in a row are one
@@ -192,6 +193,33 @@ static void carry(uint32_t op, const uint32_t* was) {
 		int rd = op & 7, rs = op >> 3 & 7, n = op >> 6 & 7;
 		from[rd] = from[rs];
 		if (n) stepped(&from[rd], STEP_ADD, (op & 0x200) ? (uint32_t) -n : (uint32_t) n);
+		handled = rd;
+	} else if ((op & 0xFC00) == 0x1800) {
+		// add or take away another register: one of the two from somewhere and the other as the number it holds now,
+		// a number less a value being the value turned round and the number added (#1570)
+		int rd = op & 7, rs = op >> 3 & 7, rn = op >> 6 & 7, sub = (op & 0x200) != 0;
+		struct origin o = { 0 };
+		if (from[rs].kind) {
+			o = from[rs];
+			stepped(&o, STEP_ADD, sub ? (uint32_t) -was[rn] : was[rn]);
+		} else if (from[rn].kind) {
+			o = from[rn];
+			if (sub) stepped(&o, STEP_NEG, 0);
+			stepped(&o, STEP_ADD, was[rs]);
+		}
+		from[rd] = o;
+		handled = rd;
+	} else if ((op & 0xFF00) == 0x4400) {
+		// add a high register: the same, as the number the other holds now
+		int rd = (op & 7) | (op >> 4 & 8), rs = op >> 3 & 15;
+		if (from[rd].kind) stepped(&from[rd], STEP_ADD, was[rs]);
+		else if (from[rs].kind) { from[rd] = from[rs]; stepped(&from[rd], STEP_ADD, was[rd]); }
+		handled = rd;
+	} else if ((op & 0xFFC0) == 0x4240) {
+		// a value turned round, 0 less it
+		int rd = op & 7, rs = op >> 3 & 7;
+		from[rd] = from[rs];
+		stepped(&from[rd], STEP_NEG, 0);
 		handled = rd;
 	} else if ((op & 0xF000) == 0x3000) {
 		int rd = op >> 8 & 7, n = op & 0xFF;
