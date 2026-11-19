@@ -18,6 +18,13 @@ const uint8_t *gs_list_bytes(uint32_t *size);
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);
 void ps2_clock_to_vblank(void);
+/** The SIF as the EE's ticks pass (sif.c), the IOP's kernel set up as the console starts, and its threads woken by the
+ *  V-blank (iop-bios.c). */
+void sif_ticks(uint32_t ticks);
+void sif_iop_run(void);
+void iop_bios_power(void);
+void iop_vblank(void);
+void iop_threads(void);
 /** The IOP's interrupt lines the kit keeps: the sound chip's, then the two sound DMA channels' ended transfers. */
 uint32_t iop_lines(void);
 /** The sound chip (spu2.c): a register written or read, at its IOP address, a DMA transfer to or from a core, giving
