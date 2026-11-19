@@ -91,6 +91,8 @@
     "MultiSioInit": "08006C60",
     "gMultiSioArea": "03004D80",
     "MultiSioRecvBufChange": "080001CC",
+    "MultiSioRecvBufChangeCode": "080001CC",
+    "MultiSioIntrCode": "0800020C",
     "MultiSioIntr": "0800020C",
     "gMultiSioRecvFuncBuf": "03004F70",
     "gMultiSioIntrFuncBuf": "03004C60",

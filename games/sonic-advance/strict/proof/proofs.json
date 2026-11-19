@@ -2,6 +2,7 @@
   "original": "d842afa7dd1e84de08addb94a51506f1bcafd551",
   "from": "Each function's proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one",
   "functions": [
+    ["080001CC","memory","645e689ccf5f92b6","f793f75ebab7ea1f",2000],
     ["080003EC","bytes","3ba4f1b9e48037df","eb2575b768e61be5"],
     ["0800089C","bytes","63964d6272d15429","0510280b93d99420"],
     ["08000980","bytes","2f388a5e03728446","a26279d2fa6c4b88"],
@@ -50,7 +51,7 @@
     ["08006B54","bytes","dd8610eeac2bd68e","e21acc79556f1bcc"],
     ["08006C0C","bytes","9b5b7febe281b835","102fdd7a6175b41e"],
     ["08006C34","bytes","c70624b31b314819","fa814cd95a781007"],
-    ["08006C60","bytes","b7820828436a015c","8e50e2dc8611b2cf"],
+    ["08006C60","bytes","c338c54c97b664df","8e50e2dc8611b2cf"],
     ["0800CFB8","bytes","6ab401e64ebe90b2","b0b758772178c5b1"],
     ["0800D098","bytes","650a96ddcdf6293b","f7120c7b45e4ff4d"],
     ["0800D11C","bytes","e225e928f5a15f71","230e7f4db5b1caf1"],
