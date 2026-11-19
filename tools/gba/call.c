@@ -718,6 +718,11 @@ int main(int argc, char** argv) {
 			out32(stackTop(state));
 			out32(romSize);
 			send();
+		} else if (command == 'r') {
+			// the hardware's registers as the console has them now, as the calls start from them: each halfword at its
+			// distance from 0x04000000, as a version that keeps them itself has them (#1527)
+			out(gba->memory.io, sizeof gba->memory.io);
+			send();
 		} else if (command == 'm') {
 			takeImage(after);
 			out(after, IMAGE);
