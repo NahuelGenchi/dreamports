@@ -173,6 +173,14 @@ try {
   const hashed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8')).functions;
   check(run.status === 0 && /2 short hashes written/.test(run.out) && hashed.every(entry => /^[0-9a-f]{16}$/.test(entry[3] ?? '')), `--hash keeps a short hash of each function proven by the same memory and by no compiler yet: ${last(run)}`);
   check(dp('libraries', '--check').status === 0, 'which the rules allow');
+  // a function with a short hash is found by it, though the library's compiler no longer gives the copy's bytes (#1521)
+  const takenA = join(proofFolder(version(GAMES[0])), 'libraries.json'), wasA = readFileSync(takenA, 'utf8');
+  writeLibrary(TEXT.replace('gLibCount++;', 'gLibCount += 2;'));
+  run = dp('libraries', version(GAMES[0]), '--find');
+  const foundA = JSON.parse(readFileSync(takenA, 'utf8')).libraries[LIBRARY]?.at ?? {};
+  check(run.status === 0 && foundA.LibAdd === hex(GAMES[0].functions.LibAdd) && foundA.LibPick === hex(GAMES[0].functions.LibPick), `--find finds each function by its short hash, though the library's compiler no longer gives its bytes: ${last(run)}`);
+  writeFileSync(takenA, wasA);
+  writeLibrary();
   run = dp('match', version(GAMES[0]));
   check(run.status === 0 && /2 of 2 functions the same/.test(run.out) && /2 functions kept as proven by the same bytes/.test(run.out) && kept(GAMES[0]).length === 2, `match proves the library on the first copy: ${last(run)}`);
   run = dp('libraries', '--check');
