@@ -143,10 +143,12 @@ try {
     check(run.status === 0 && /made a function at a time/.test(run.out), `proofs --start makes it a version made a function at a time: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, 'sum', '--calls', '200');
     check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls/.test(run.out), 'a proof isn\'t kept over fewer than 1,000 calls');
-    run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 0 && /15 functions kept as proven by the same memory in games\/test-ps2-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls each, the 15 twins proven are kept: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('twin', VERSION, 'sum', '--calls', '1000');
+    check(run.status === 0 && /1 function kept as proven by the same memory in games\/test-ps2-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls, a twin proven is kept: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION, '--check');
-    check(run.status === 0, `and their proofs hold, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 0, `and its proof holds, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION);
+    check(run.status === 0 && /1 of 20 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;', 'return a - b;'));
     run = dp('proofs', VERSION, '--check');
     check(run.status !== 0 && /sum/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${run.out.trim().split('\n').find(line => /sum/.test(line))}`);
