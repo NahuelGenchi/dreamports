@@ -4,6 +4,10 @@
 // emulator, and its Dreamport in C (made-up-ps2-sound.c) on the kit, in a folder of its own that it removes after, so
 // no game's copy is needed:
 //
+// - every frame's draw list carries what the SIF gave the EE, in LABEL writes: what SifGetReg says of its registers,
+//   the ids SifSetDma gives and what SifDmaStat says, every word of the IOP's replies to a bind and to a call of its
+//   loader, which starts the Dreamport's twin of the module, and to a bind of the module's own RPC server, and the
+//   server's answer to the call the EE makes every frame, so the kit's SIF answers as the emulator's does;
 // - every frame's sound list is the module's, and every sample the kit's SPU2 mixes is the emulator's: both cores, the
 //   tone written through the data port and the click by DMA, the envelopes, a pitch that moves every frame, a volume
 //   sweep up and one down, keys let go of and keyed on again, the reverb, core 0 mixed into core 1, and what the chip
@@ -45,14 +49,19 @@ const report = () => {
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 };
 const hex = number => `0x${(number >>> 0).toString(16).toUpperCase()}`;
-const bytes = list => `{ ${list.map(hex).join(', ')} }`;
 const pairs = list => `{ ${list.map(([register, value]) => `{ ${hex(register)}, ${hex(value)} }`).join(', ')} }`;
 
 // the Dreamport in C: made-up-ps2-sound.c with the program's numbers filled in, or with its pitch a step out on one frame
-function writeGame({ broken = false } = {}) {
-  const { R } = sound;
+function writeGame({ broken = false, early = false } = {}) {
+  const { R } = sound, { places } = sound.madeUpPs2Sound(), module = sound.moduleData();
   const numbers = {
-    CORE1: hex(sound.CORE1), TONE: bytes(sound.TONE), CLICK: bytes(sound.CLICK), REVERB: pairs(sound.REVERB), VOICES: pairs(sound.VOICES),
+    CORE1: hex(sound.CORE1), REVERB: pairs(sound.REVERB), VOICES: pairs(sound.VOICES),
+    IRX_IN_IOP: hex(sound.IRX_IN_IOP), IRX_BODY: hex(sound.IRX_BODY), TONE_IN_MODULE: hex(module.tone), CLICK_IN_MODULE: hex(module.click), TONE_SIZE: sound.TONE.length, CLICK_SIZE: sound.CLICK.length,
+    LOAD_AT: hex(LOAD_AT), REPLY: hex(places.reply), RECEIVED: hex(places.received), SIF_REND: hex(sound.SIF_REND),
+    SERVER: hex(sound.SERVER), RPC_BUFFER_IN_MODULE: hex(module.rpcBuffer), SERVER_ARGUMENTS: hex(places.serverArguments), ANSWERED: hex(places.answered),
+    SERVER_BIND_TRANSFERS: hex(places.serverBindTransfers), SERVER_CALL_TRANSFERS: hex(places.serverCallTransfers),
+    INIT_TRANSFERS: hex(places.initTransfers), IRX_TRANSFERS: hex(places.irxTransfers), BIND_TRANSFERS: hex(places.bindTransfers), CALL_TRANSFERS: hex(places.callTransfers),
+    LABEL_ENUM: sound.LABEL_NAMES.map(name => name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')).join(', '),
     ATTR: hex(R.ATTR), TSA_HI: hex(R.TSA_HI), TSA_LO: hex(R.TSA_LO), STD: hex(R.STD), IRQA_HI: hex(R.IRQA_HI), IRQA_LO: hex(R.IRQA_LO),
     KON_HI: hex(R.KON_HI), KOFF_HI: hex(R.KOFF_HI), MMIX: hex(R.MMIX), ENDX_HI: hex(R.ENDX_HI), IRQINFO: hex(R.IRQINFO),
     VOICE0_VOLR: hex(sound.voice(0, R.VOLR)), VOICE0_PITCH: hex(sound.voice(0, R.PITCH)), VOICE1_VOLL: hex(sound.voice(1, R.VOLL)),
@@ -68,6 +77,8 @@ function writeGame({ broken = false } = {}) {
   });
   // the module's frame BROKEN_AT is the Dreamport's, as both count from the thread's first frame, the Dreamport's 0
   if (broken) code = code.replace(/W\(([^,]+), (0x[0-9A-F]+ \+ \(frame \* [^;]+)\);/, `W($1, $2 + (frame == ${BROKEN_AT}));`);
+  // or asking SifDmaStat of its call before it has waited for the IOP to answer it
+  if (early) code = code.replace('  wait_for_reply(CALL_REPLY_0);\n  labels[CALL_STATUS] = sif_dma_stat(id);', '  labels[CALL_STATUS] = sif_dma_stat(id);\n  wait_for_reply(CALL_REPLY_0);');
   writeFileSync(join(gameFolder(inC(GAME)), 'src', 'main.c'), code);
 }
 
@@ -82,7 +93,7 @@ function tidy() {
 function setUp({ elf, sha1 }) {
   const copy = join(WORK, `${GAME}.elf`);
   writeFileSync(copy, elf);
-  const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: '', sha1, provenBy: 'pictures' };
+  const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: '', sha1, provenBy: 'draw lists' };
   mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
@@ -113,7 +124,7 @@ function main() {
   let run = dp('prove', inC(GAME), 'still');
   let found = report();
   check(run.status === 0 && found.matched === FRAMES && !found.sound?.differs?.length,
-    `the Dreamport gives the sound chip what the module does, and the kit mixes every sample as the emulator does, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}, sound ${JSON.stringify(found.sound?.firstDifference ?? null)}`);
+    `the EE gets from the SIF what the emulator gives it, the Dreamport gives the sound chip what the module does, and the kit mixes every sample as the emulator does, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}, sound ${JSON.stringify(found.sound?.firstDifference ?? null)}`);
   check(found.sound?.heard === true, 'and the Dreamport is heard');
   if (run.status) console.log(run.out);
 
@@ -123,6 +134,13 @@ function main() {
   const first = found.sound?.firstDifference;
   check(run.status !== 0 && first?.frame === BROKEN_AT && first?.by === 'list', `one write a step out is found on its frame, by the sound list: ${JSON.stringify(first)}`);
   check(run.out.includes(`The first is frame ${BROKEN_AT}: what it gave the sound chip differs`), 'and prove says so');
+
+  writeGame({ early: true });
+  run = dp('prove', inC(GAME), 'still');
+  found = report();
+  const apart = found.drawListApart ?? {};
+  check(run.status !== 0 && found.firstDifference?.frame === 0 && /^LABEL = /.test(apart.original ?? ''),
+    `a Dreamport that asks SifDmaStat before the IOP has answered is found at once, by the LABEL write that carries it: ${apart.original} in the original, ${apart.dreamport} in the Dreamport`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
