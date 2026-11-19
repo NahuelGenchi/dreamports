@@ -153,8 +153,9 @@ const OPERANDS = {
   vitDec: { print: word => `(--$vi${field(word, 16, 5)})`, parse: text => { const f = /^\(--\$?vi(\d+)\)$/.exec(text.trim()); return f && Number(f[1]) < 32 ? Number(f[1]) << 16 : null; } },
   visPlace: { print: word => `($vi${field(word, 11, 5)})`, parse: text => { const f = /^\(\$?vi(\d+)\)$/.exec(text.trim()); return f && Number(f[1]) < 32 ? Number(f[1]) << 11 : null; } },
   imm5: number(6, 5, { signed: true }),
-  // where VCALLMS starts vector unit 0's program, in bytes of its memory, a multiple of 8
-  imm15: number(6, 15, { hex: true, scale: 8 }),
+  // where VCALLMS starts vector unit 0's program, in bytes of its memory, a multiple of 8, in 12 bits as Sony's
+  // assembler keeps it
+  imm12: number(6, 12, { hex: true, scale: 8 }),
   // the accumulator, with the fields the instruction names, as GNU's tools write it
   zero: { print: () => '$zero', parse: text => (gprOf(text) === 0 ? 0 : null) },
   ACC: { print: word => `ACC${destFields(word)}`, parse: (text, address, entry, word) => { const f = /^\$?ACC([xyzw]*)$/i.exec(text.trim()); return f && (!f[1] || f[1] === destFields(word)) ? 0 : null; } },
@@ -355,7 +356,7 @@ vu('isub', 49, 'vid,vis,vit', { dest: false, upper: false });
 vu('iaddi', 50, 'vit,vis,imm5', { dest: false, upper: false });
 vu('iand', 52, 'vid,vis,vit', { dest: false, upper: false });
 vu('ior', 53, 'vid,vis,vit', { dest: false, upper: false });
-vu('callms', 56, 'imm15', { dest: false, upper: false, kind: 'call' });
+vu('callms', 56, 'imm12', { dest: false, upper: false, kind: 'call' });
 // VCALLMSR starts the program at the address in vi27, which its fs field names
 vu('callmsr', 57, 'vi27', { dest: false, upper: false, kind: 'call', macroBits: 27 << 11 });
 // the second table: 64 + index
@@ -398,7 +399,7 @@ two('rxor', 67, 'R,vfsf', { dest: false, upper: false });
 // the bits each operand takes in an operation's word, so those it doesn't use are held at zero
 const USES = { vfd: 0x7C0, vid: 0x7C0, imm5: 0x7C0, vfs: 0xF800, vfsPlain: 0xF800, vis: 0xF800, visInc: 0xF800, visDec: 0xF800, visPlace: 0xF800,
   vft: 0x1F0000, vftPlain: 0x1F0000, vit: 0x1F0000, vitInc: 0x1F0000, vitDec: 0x1F0000, vftbc: 0x1F0000, vftw: 0x1F0000,
-  vfsf: 0x60F800, vftf: 0x19F0000, imm15: 0x1FFFC0 };
+  vfsf: 0x60F800, vftf: 0x19F0000, imm12: 0x3FFC0 };
 /** An operation's bits in its 25 low bits, and the mask that holds at zero what it doesn't use: the FMAC table's code
  *  in bits 5 to 0, or the second table's index in bits 10 to 6 and 1 to 0, with 1111 between. */
 export function vuBits(operation) {
