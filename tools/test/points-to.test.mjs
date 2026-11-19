@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pointsTo } from '../lib/points-to.mjs';
+import { ANYWHERE, pointsTo } from '../lib/points-to.mjs';
 import { neverWrittenBranch, writesOf } from '../lib/never-written.mjs';
 
 const BASE = 0x08000000, FIELD = 0x02000010, OTHER = 0x02000080;
@@ -189,4 +189,48 @@ test('two copies at one address: a call from inside one reaches only its own pie
 test('two copies at one address: a call from outside both reaches either, both joined', () => {
   const value = shared().stores.get(0x03000088).value;
   assert.deepEqual([...value].sort(), ['c1', 'c2'], 'E can find either helper at 0x03000020');
+});
+
+// Words stored on every way before, returns by pop and jump, and literal pools (#1549).
+test('a word stored on every way before a load isn\'t its power-on 0 there, unless a way skips the store or a reset may clear it', () => {
+  // ldr r0, =CELL   ldr r1, =OTHER   [beq over the store]   str r1, [r0]   ldr r2, [r0]   mov r3, #5   strb r3, [r2]   bx lr
+  const CELL = 0x02000060;
+  const surely = cartridge([halves(0x00, 0x4803, 0x4904, 0x6001, 0x6802, 0x2305, 0x7013, 0x4770), words(0x10, CELL, OTHER)]);
+  const one = [{ address: BASE, size: 0x18 }];
+  assert.deepEqual([...pointsTo(surely, one, { seconds: 10 }).stores.get(BASE + 0x0A).base], [`c${OTHER}`]);
+  const maybe = cartridge([halves(0x00, 0x4803, 0x4904, 0xD000, 0x6001, 0x6802, 0x2305, 0x7013, 0x4770), words(0x10, CELL, OTHER)]);
+  assert.deepEqual([...pointsTo(maybe, one, { seconds: 10 }).stores.get(BASE + 0x0C).base].sort(), ['c0', `c${OTHER}`].sort(), 'a way that skips the store still reads 0');
+  // and RegisterRamReset of the slow work memory somewhere in the game: mov r0, #1   swi 1   bx lr
+  const reset = cartridge([halves(0x00, 0x4803, 0x4904, 0x6001, 0x6802, 0x2305, 0x7013, 0x4770), words(0x10, CELL, OTHER), halves(0x20, 0x2001, 0xDF01, 0x4770)]);
+  assert.deepEqual([...pointsTo(reset, [...one, { address: BASE + 0x20, size: 6 }], { seconds: 10 }).stores.get(BASE + 0x0A).base].sort(), ['c0', `c${OTHER}`].sort(), 'a reset may put the 0 back');
+});
+
+// a caller that keeps CELL in r4 across a call to `to`, then stores through it: push {r4, lr}   ldr r4, =CELL   bl to
+// mov r1, #5   str r1, [r4]   pop {r4, pc}
+const keeping = (at, to, cell) => [halves(at, 0xB510, 0x4C03, ...bl(BASE + at + 4, BASE + to), 0x2105, 0x6021, 0xBD10), words(at + 0x10, cell)];
+
+test('a function that returns by popping its return address and jumping to it keeps what it doesn\'t write', () => {
+  const CELL = 0x02000070;
+  // Ret, 0x40: push {lr}   mov r0, #1   pop {r0}   bx r0       Ret2, 0x48: push {r4, lr}   mov r4, #9   pop {r4, pc}
+  const rom = cartridge([...keeping(0x00, 0x40, CELL), ...keeping(0x20, 0x48, CELL), halves(0x40, 0xB500, 0x2001, 0xBC01, 0x4700), halves(0x48, 0xB510, 0x2409, 0xBD10)]);
+  const functions = [{ address: BASE, size: 0x14 }, { address: BASE + 0x20, size: 0x14 }, { address: BASE + 0x40, size: 8 }, { address: BASE + 0x48, size: 6 }];
+  const read = pointsTo(rom, functions, { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x0A).base], [`c${CELL}`], 'pop {r0}; bx r0 returns');
+  assert.deepEqual([...read.stores.get(BASE + 0x2A).base], [`c${CELL}`], 'pop {r4, pc} returns, with r4 as it was');
+});
+
+test('a pop and jump that goes on elsewhere isn\'t a return: what it reaches may write anything', () => {
+  const CELL = 0x02000070;
+  // On, 0x40: ldr r0, =Clobber   push {r0}   pop {r0}   bx r0   .word Clobber       Clobber, 0x50: mov r4, #0   bx lr
+  const rom = cartridge([...keeping(0x00, 0x40, CELL), halves(0x40, 0x4801, 0xB401, 0xBC01, 0x4700), words(0x48, BASE + 0x51), halves(0x50, 0x2400, 0x4770)]);
+  const functions = [{ address: BASE, size: 0x14 }, { address: BASE + 0x40, size: 0x0C }, { address: BASE + 0x50, size: 4 }];
+  assert.equal(pointsTo(rom, functions, { seconds: 10 }).stores.get(BASE + 0x0A).base, ANYWHERE);
+});
+
+test('a literal pool is data, not instructions that write registers', () => {
+  const CELL = 0x02000070;
+  // Pooled, 0x40: ldr r1, =0x0000FFFF   mov r0, #0   bx lr   .hword 0   .word 0x0000FFFF
+  const rom = cartridge([...keeping(0x00, 0x40, CELL), halves(0x40, 0x4901, 0x2000, 0x4770, 0x0000), words(0x48, 0x0000FFFF)]);
+  const functions = [{ address: BASE, size: 0x14 }, { address: BASE + 0x40, size: 0x0C }];
+  assert.deepEqual([...pointsTo(rom, functions, { seconds: 10 }).stores.get(BASE + 0x0A).base], [`c${CELL}`]);
 });
