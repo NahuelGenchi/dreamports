@@ -26,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -85,7 +85,7 @@ const rare = await matchFile({
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8')));
+writeFileSync(copy, withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -156,6 +156,21 @@ try {
   check(shifted.by.Shift?.kind === 'same' && shifted.by.Shift.compared === CALLS, `each call of the twin starts from the hardware the original's does, as the kit's registers are put back${shifted.by.Shift?.kind === 'same' ? '' : `: ${shifted.by.Shift?.line ?? shifted.error}`}`);
   check(shifted.by.Bias?.kind === 'same' && shifted.by.Bias.compared === CALLS, `a twin that keeps the console's registers itself, in console_io, starts each call from the original's${shifted.by.Bias?.kind === 'same' ? '' : `: ${shifted.by.Bias?.line ?? shifted.error}`}`);
   check(shifted.by.Await?.kind === 'unchecked' && /a DMA the console's clock started wrote memory/.test(shifted.by.Await.line), `and a call in which a DMA the V-blank started writes memory is set aside, as a twin has no clock: ${shifted.by.Await?.line ?? shifted.error}`);
+
+  console.log('A word read where none starts, in ARM code:');
+  const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
+  const turned = await checking(join(HERE, 'turn.c'), {}, arm);
+  check(turned.by.Turn?.kind === 'same' && turned.by.Turn.compared === CALLS && turned.by.Turn.whole === true, `a twin that says dp:unaligned, and turns the word as the processor does, has every call compared, and leaves the same memory${turned.by.Turn?.kind === 'same' ? '' : `: ${turned.by.Turn?.line ?? turned.error}`}`);
+  const plainRead = join(work, `changed-${++variants}`);
+  cpSync(HERE, plainRead, { recursive: true });
+  writeFileSync(join(plainRead, 'turn.c'), readFileSync(join(HERE, 'turn.c'), 'utf8').replace('u32 word = *(volatile u32 *)0x03000020;\n  *(volatile u32 *)0x03000024 = word >> 16 | word << 16;', '*(volatile u32 *)0x03000024 = *(volatile u32 *)0x03000022;'));
+  const misread = await checking(join(plainRead, 'turn.c'), {}, arm);
+  check(misread.by.Turn?.kind === 'differs', `one that reads it as C would differs: ${misread.by.Turn?.line ?? misread.error}`);
+  const unmarked = join(work, `changed-${++variants}`);
+  cpSync(HERE, unmarked, { recursive: true });
+  writeFileSync(join(unmarked, 'turn.c'), readFileSync(join(HERE, 'turn.c'), 'utf8').replace(', dp:unaligned:', ':'));
+  const aside = await checking(join(unmarked, 'turn.c'), {}, arm);
+  check(aside.by.Turn?.kind !== 'same' && /where a twin can't follow/.test(aside.by.Turn?.line ?? ''), `and without the mark its calls are set aside, as before: ${aside.by.Turn?.line ?? aside.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));

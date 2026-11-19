@@ -30,6 +30,10 @@ export const PLAYED = { Shine: 0x08000400, Play: 0x08000440, Glow: 0x08000800 };
 NAMED.set('gStage', 0x03000060);
 // a function that gives back what its caller keeps, and that caller, in a file of their own (gives.c)
 export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
+// a function of ARM code written by hand, which reads a word where none starts (withTurn, turn.c): 16 bytes of code
+// and the number it loads beside them
+export const TURN = { Turn: 0x08000900 };
+export const TURN_LENGTH = 16;
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -46,6 +50,14 @@ export function cartridge(assembly) {
 }
 
 // The same cartridge with the function of twin/video.c, which reads video memory.
+// The same cartridge with Turn, in ARM: ldr r1, =gFrame + 2   ldr r2, [r1]   str r2, [r1, #2]   bx lr. The word at
+// gFrame + 2 doesn't start a word, so the processor reads the one at gFrame, turned by half, and keeps it at gFrame + 4.
+export function withTurn(rom) {
+  const turned = Buffer.from(rom);
+  [0xE59F1008, 0xE5912000, 0xE5812002, 0xE12FFF1E, NAMED.get('gFrame') + 2].forEach((word, i) => turned.writeUInt32LE(word, TURN.Turn - CARTRIDGE + 4 * i));
+  return turned;
+}
+
 export function withVideo(rom, assembly) {
   const looked = Buffer.from(rom);
   place(looked, assembly, VIDEO);
