@@ -10,7 +10,8 @@
 // function left in the registers and in the image, what it read, which of its instructions ran and which way each
 // branch went, the packets a microprogram sent the GS, or why it didn't come back.
 
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { arch } from 'node:os';
 import { basename, join } from 'node:path';
@@ -148,20 +149,36 @@ function compileOne(compiler, args) {
   });
 }
 
+// How the emulator's files are built: as its own build does, and with no float sum joined to a product in one
+// rounding, which a compiler for Apple's chip does unless told, as the tools build the emulator itself
+// (../libretro/build.mjs), so a function gives the same floats here as in `prove`, on every computer.
+const FLAGS = ['-std=c++20', '-O2', '-ffp-contract=off', '-w', '-DNDEBUG', '-DXXH_INLINE_ALL'];
+
+// whether the emulator's source on this computer is at the commit the tools fix
+function sourceIsAt(source, commit) {
+  if (!existsSync(join(source, 'Source', 'MIPS.cpp'))) return false;
+  const found = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: source, encoding: 'utf8' });
+  return found.status === 0 && found.stdout.trim() === commit;
+}
+
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export async function buildCaller(log = console.log) {
   const { core } = consoleOf('ps2');
-  const folder = join(FOLDER, core.commit.slice(0, 12));
+  // built once for this commit of the emulator and these flags, and call.cpp again whenever it changes
+  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(FLAGS.join(' ')).digest('hex').slice(0, 8)}`);
   const program = join(folder, `call${process.platform === 'win32' ? '.exe' : ''}`), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('ps2');
   const objects = join(folder, 'objects');
-  const source = join(LOCAL, 'libretro', `${core.built}-source`);
-  // the emulator's files are built once for its commit; only call.cpp again when it changes
-  const files = existsSync(join(source, 'Source', 'MIPS.cpp')) ? sourcesOf(source) : (log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`), sourcesOf(fetchSource(machine)));
+  let source = join(LOCAL, 'libretro', `${core.built}-source`);
+  if (!sourceIsAt(source, core.commit)) {
+    log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
+    source = fetchSource(machine);
+  }
+  const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
   const compiler = process.env.CXX || 'c++';
-  const flags = ['-std=c++20', '-O2', '-w', '-DNDEBUG', '-DXXH_INLINE_ALL', ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash'].flatMap(folder => ['-I', join(source, folder)])];
+  const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash'].flatMap(folder => ['-I', join(source, folder)])];
   const objectOf = file => join(objects, `${basename(file, '.cpp')}.o`);
   const waiting = [...files.filter(file => !existsSync(objectOf(file))).map(file => [file, objectOf(file)]), [CALL, join(folder, 'call.o')]];
   if (waiting.length > 1) log('Building the PlayStation 2\'s processors from Play!\'s source, once…');
