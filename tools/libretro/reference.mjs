@@ -50,8 +50,9 @@ export function libretroReference(machine) {
     mkdirSync(saves, { recursive: true });
     mkdirSync(system, { recursive: true });
     // a core that keeps its settings and memory cards in the person's home folder, as Play! does, finds them in that empty
-    // one instead, so nothing carries from one run to the next
-    const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves };
+    // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
+    // Documents folder, which CFFIXED_USER_HOME moves there too
+    const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
     const env = { DP_SYSTEM: system, DP_SAVES: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };

@@ -13,7 +13,7 @@ import { openDisc as openDiscOf } from '../../kit/copy/disc.js';
 import { isChd } from '../../kit/copy/chd.js';
 import { isCso } from '../../kit/copy/cso.js';
 import { inflateRaw } from '../../kit/copy/inflate.js';
-import { bootOf, readFileOn, whatDisc } from '../../kit/copy/iso9660.js';
+import { bootOf, readFileOn, volumeOf, whatDisc } from '../../kit/copy/iso9660.js';
 import { chunked } from '../../kit/copy/source.js';
 
 const ascii = (bytes, at, length) => bytes.toString('latin1', at, at + length).replace(/[\0\s]+$/, '').trim();
@@ -142,6 +142,45 @@ export async function readDiscFile(path, name) {
   } finally {
     await disc.close();
   }
+}
+
+/**
+ * Every file on a disc, by its name with the folders it's in, as DATA/MODELS.ARC, and a way to read any stretch of one,
+ * in whatever file the disc is: { files: [{ name, size }], read(name, at, length), close() }, or null when it isn't a
+ * disc. For a PlayStation 2 game's code map, as a game keeps code in many files (ps2/functions.mjs).
+ */
+export async function discFiles(path) {
+  const disc = await openDisc(path);
+  if (!disc) return null;
+  const volume = await volumeOf(disc);
+  if (!volume) {
+    await disc.close();
+    return null;
+  }
+  const files = new Map();
+  const walk = async (lba, size, folder, depth) => {
+    const entries = Buffer.from(await disc.data(lba, Math.ceil(Math.max(2048, Math.min(size, 0x100000)) / 2048)));
+    for (let at = 0; at + 33 < entries.length;) {
+      if (!entries[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
+      const name = ascii(entries, at + 33, entries[at + 32]).replace(/;\d+$/, '');
+      const entry = { lba: entries.readUInt32LE(at + 2), size: entries.readUInt32LE(at + 10) };
+      // past the folder's own entry and its parent's
+      if (!(entries[at + 32] === 1 && entries[at + 33] <= 1)) {
+        if (entries[at + 25] & 2) { if (depth < 8) await walk(entry.lba, entry.size, `${folder}${name}/`, depth + 1); }
+        else files.set(`${folder}${name}`, entry);
+      }
+      at += entries[at];
+    }
+  };
+  await walk(volume.root.lba, volume.root.size, '', 0);
+  const read = async (name, at = 0, length = files.get(name).size - at) => {
+    const file = files.get(name), wanted = Math.max(0, Math.min(length, file.size - at));
+    if (!wanted) return Buffer.alloc(0);
+    const first = Math.floor(at / 2048), count = Math.ceil((at % 2048 + wanted) / 2048);
+    const bytes = await disc.data(file.lba + first, count);
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.length).subarray(at % 2048, at % 2048 + wanted);
+  };
+  return { files: [...files].map(([name, { size }]) => ({ name, size })), read, close: () => disc.close() };
 }
 
 /** The name of the program a PlayStation 2 disc boots, as its SYSTEM.CNF says, such as SLUS_205.73. */
