@@ -4,7 +4,8 @@
 //
 // Every one of the console's memories is hashed as each frame ends: the EE's main memory, its scratchpad and the vector
 // units' code and data, the IOP's memory and scratchpad, and the SPU2's, the same in two runs, and their bytes where the
-// program is and where the vector unit's program went are what the program put there. The console's clock is the same in
+// program is and where the vector unit's program went are what the program put there, with a value a recording set on
+// the way, as one that starts at a start point does. The console's clock is the same in
 // every run. Memory cards a recording starts from go where the emulator keeps them, as kit/ps2/card.js writes them.
 //
 // Then the program is a game of its own, in a folder of its own that it removes after, whose Dreamport in C keeps a
@@ -104,7 +105,9 @@ async function main() {
   console.log(`What ${machine.name}'s real emulator holds of a small program, ${FRAMES} frames`);
   const stretches = workMemoryOf({ console: 'ps2', workMemory: EVERYTHING }, 'the test');
   const total = stretches.reduce((sum, { bytes }) => sum + bytes, 0);
-  const run = () => reference.runOriginal({ copy, frames: FRAMES, buttons: new Array(FRAMES).fill(0), memory: { spec: memorySpec(stretches, LOOKED_AT) } });
+  // with a value set in main memory on the way, as a recording that starts at a start point sets one (tools/README.md#start-points)
+  const SET = { frame: 10, address: 0x001F0000, bytes: 4, value: 0x12345678 };
+  const run = () => reference.runOriginal({ copy, frames: FRAMES, buttons: new Array(FRAMES).fill(0), sets: [SET], memory: { spec: memorySpec(stretches, LOOKED_AT) } });
   const first = await run(), second = await run();
   check(first.memory.hashes.length === FRAMES && same(first.memory.hashes, second.memory.hashes), `all ${total.toLocaleString('en')} bytes of the console's memories are the same in two runs, as every frame ends`);
   check(new Set(first.memory.hashes).size > FRAMES / 2, `and change as the program plays: ${new Set(first.memory.hashes).size} different in ${FRAMES} frames`);
@@ -118,6 +121,7 @@ async function main() {
   };
   const code = programReader(elf)(LOAD_AT, 256);
   check(bytes?.length === total && same(bytes.subarray(at(0, LOAD_AT), at(0, LOAD_AT) + 256), code), `at frame ${LOOKED_AT} main memory holds the program where it's loaded`);
+  check(Buffer.from(bytes.subarray(at(0, SET.address), at(0, SET.address) + 4)).readUInt32LE() === SET.value, `a value a recording sets in main memory at frame ${SET.frame}, as one that starts at a start point does, is there after`);
   const vu = new Uint8Array(Uint32Array.from(VU1_PROGRAM).buffer);
   check(same(bytes.subarray(at(0, 0x11008000), at(0, 0x11008000) + vu.length), vu), "and vector unit 1's code memory the program it was given");
 
