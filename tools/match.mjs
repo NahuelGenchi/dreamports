@@ -36,7 +36,8 @@
 // totals and stretches, by address, and keeps no proof: it changes nothing.
 //
 // A PlayStation game's file is built and compared by ps1/match.mjs, with GCC 2.x and what Sony's assembler made of its
-// assembly, and the same names and proofs.
+// assembly, and the same names and proofs. A PlayStation 2 game's is by ps2/match.mjs, with Sony's own compiler and
+// assembler for the EE, built from Sony's source.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
