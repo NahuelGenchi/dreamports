@@ -435,17 +435,23 @@ export function signatureOf(text, name) {
   return { params, returns: /^void$/.test(gives) ? null : typeOf(gives) };
 }
 
+// Where a module's own values and stack go, how much memory it has, and how the original keeps a function's address,
+// on the Game Boy Advance: above everything the console has, as much as the linker says, and odd for Thumb code.
+const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 };
+
 /**
  * A version's C, ready to be built for the check a file at a time, each file once however many checks link it.
  *   root: the folder the C is in, and includes: the folders it includes from, besides the kit's
  *   files: every .c file of the version, where what a file names and doesn't define is looked for
- *   console: whose kit it's built on
+ *   console: whose kit it's built on, and whose names its comments use
+ *   layout: { base, memory, code }, where the module's own values start, how many bytes of memory it has, or null for
+ *     as many as the linker says, and how the original keeps a function's address: another console's (../ps1/twin.mjs)
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
  *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
  *     twinsIn takes it, or null (../lib/twins.mjs)
  * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
   const source = treeOf(root), elsewhere = {}, placed = new Map();
@@ -472,7 +478,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       units.set(file, (async () => {
         const kit = await kitBuilt(id);
         const text = readFileSync(file, 'utf8');
-        const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file)), calls = [], unknown = [];
+        const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
           const signature = signatureOf(text, twin.name);
@@ -565,16 +571,17 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
     ].join('\n');
     const calls = first.calls.filter(call => only === null || call.address === only);
     const objects = Object.fromEntries(linked.map(each => [`__twin_unit${each.n}.o`, each.object]));
-    const built = await compile([...kit.flags, '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs', `-Wl,--global-base=${OWN_BASE}`, '-Wl,-z,stack-size=1048576',
+    const built = await compile([...kit.flags, '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs', `-Wl,--global-base=${layout.base}`, '-Wl,-z,stack-size=1048576',
+      ...(layout.memory ? [`-Wl,--initial-memory=${layout.memory}`] : []),
       ...[CODE, '__stack_pointer', ...calls.map(({ call }) => call)].map(name => `-Wl,--export=${name}`), ...KIT_NAMES.map(name => `-Wl,--export-if-defined=${name}`),
       '__twin_code.c', ...Object.keys(objects), ...Object.keys(kit.objects)], { '__twin_code.c': Buffer.from(code), ...objects, ...kit.objects }, 'twins.wasm');
     if (built.error) return { error: built.error };
-    // a Thumb function's address is kept odd, as the original keeps it
+    // a function's address as the original keeps it, odd for Thumb on the Game Boy Advance
     return {
       unit: first, calls,
       ...placeAddresses({
         module: built.made, addressOf, translate: CODE, own: name => name.startsWith(CODE),
-        codeOf: name => (addresses.has(name) ? addresses.get(name) | 1 : null),
+        codeOf: name => (addresses.has(name) ? layout.code(addresses.get(name)) : null),
       }),
     };
   };

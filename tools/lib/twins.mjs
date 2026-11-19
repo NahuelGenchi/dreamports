@@ -4,7 +4,7 @@
 // libraries a version takes (libraries.mjs) are read here too, so each tool takes their twins as the version's own.
 
 import { existsSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { gameFolder, proofFolder, REPO, sharedProofFolder } from './paths.mjs';
 import { readOriginal } from './proof-files.mjs';
 import { librariesFile, versionLibraries } from './libraries.mjs';
@@ -26,6 +26,17 @@ export function readAddresses(file) {
     throw new Error(`${where} needs "addresses": { "<name>": "<address>" }, with each address as eight capital hexadecimal digits.`);
   }
   return new Map(entries.map(([name, address]) => [name, parseInt(address, 16)]));
+}
+
+// The console a version's code names addresses of (../portmap.mjs), as its proof/original.json or its game's says: the
+// Game Boy Advance's when neither says, as every twin was before another console's.
+function consoleOfVersion(folder) {
+  for (const place of [folder, dirname(folder)]) {
+    const file = join(place, 'proof', 'original.json');
+    const console = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')).console : undefined;
+    if (console) return console;
+  }
+  return 'gba';
 }
 
 /**
@@ -55,7 +66,8 @@ export function versionTwins(game, more = null) {
   const given = new Map(libraries.flatMap(library => library.files.map(file => [file, library.functions])));
   const givenOf = file => given.get(file) ?? null;
   const files = [...codeFiles(folder, 'c').filter(file => file.endsWith('.c')), ...given.keys()];
-  const twinsOf = new Map(files.map(file => [file, twinsIn(readFileSync(file, 'utf8'), givenOf(file) ? [] : shifts, givenOf(file))]));
+  const console = consoleOfVersion(folder);
+  const twinsOf = new Map(files.map(file => [file, twinsIn(readFileSync(file, 'utf8'), givenOf(file) ? [] : shifts, givenOf(file), console)]));
   const twins = new Map(), definedIn = new Map();
   for (const [file, defined] of twinsOf) {
     for (const { name, address } of defined) {

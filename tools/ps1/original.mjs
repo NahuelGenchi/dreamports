@@ -36,16 +36,24 @@ export const REGISTERS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0'
   's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra', 'hi', 'lo'];
 
 /** How a call ended, in words. */
-export const ENDS = ['came back', 'ran out of instructions', 'met an exception', 'went where the check can\'t follow', 'isolated the cache, as the BIOS does to clear it'];
-export const CAME_BACK = 0, OUT_OF_STEPS = 1, EXCEPTION = 2, ELSEWHERE = 3, CACHE = 4;
+export const ENDS = ['came back', 'ran out of instructions', 'met an exception', 'went where the check can\'t follow', 'isolated the cache, as the BIOS does to clear it', 'went through a mirror of the console\'s memory'];
+export const CAME_BACK = 0, OUT_OF_STEPS = 1, EXCEPTION = 2, ELSEWHERE = 3, CACHE = 4, MIRROR = 5;
 // the console's exceptions, by the number in their cause
 const CAUSES = { 4: 'an address error, reading where no halfword or word starts', 5: 'an address error, writing where no halfword or word starts', 6: 'a bus error, running where nothing is', 7: 'a bus error, reading or writing where nothing is', 8: 'a syscall', 9: 'a break', 10: 'an instruction the processor doesn\'t have', 11: 'a coprocessor that isn\'t usable', 12: 'an overflow' };
+
+/** Whether an address is the BIOS's: its calls and its own values in the lowest 64 KB of the console's memory, as
+ *  each of the three ways of seeing it has them, or its program, at 0x1FC00000. */
+export function inBios(address) {
+  const physical = (address >>> 0) & 0x1FFFFFFF;
+  return ((address >>> 0) < 0x20000000 || (address >>> 0) >= 0x80000000) && (address >>> 0) < 0xC0000000 && (physical < 0x10000 || (physical >= 0x1FC00000 && physical < 0x1FC80000));
+}
 
 /** What a call that didn't come back met, in words. */
 export function endText({ end, detail, pc }) {
   const at = `0x${hex(pc)}`;
   if (end === EXCEPTION) return `met ${CAUSES[(detail >>> 2) & 31] ?? `exception ${(detail >>> 2) & 31}`} at ${at}`;
-  if (end === ELSEWHERE) return (detail & 0x1FFFFF) < 0x10000 && (detail < 0x20000000 || (detail >= 0x80000000 && detail < 0xC0000000)) ? `went into the BIOS, at 0x${hex(detail)}` : `went where the check can't follow, to 0x${hex(detail)}`;
+  if (end === MIRROR) return `went through a mirror of the console's memory, to 0x${hex(detail)}, which a twin's module doesn't have`;
+  if (end === ELSEWHERE) return inBios(detail) ? `went into the BIOS, at 0x${hex(detail)}` : `went where the check can't follow, to 0x${hex(detail)}`;
   return `${ENDS[end] ?? `ended in a way the tools don't know (${end})`}${end === OUT_OF_STEPS ? `, at ${at}` : ''}`;
 }
 
