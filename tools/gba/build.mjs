@@ -55,6 +55,26 @@ export function isCallerBuilt() {
   }
 }
 
+// The program that runs a cartridge in the reference emulator and the GBA kit's clock beside it, an instruction at a
+// time, to measure every cycle the clock counts against the emulator's (clock-check.c, kit/gba/c/clock.c): built when
+// its test asks, with a stamp of its own.
+const CLOCK_SOURCE = fileURLToPath(new URL('./clock-check.c', import.meta.url));
+const KIT_CLOCK = fileURLToPath(new URL('../../kit/gba/c/clock.c', import.meta.url));
+const KIT_CLOCK_HEADER = fileURLToPath(new URL('../../kit/gba/c/clock.h', import.meta.url));
+const KIT_C = fileURLToPath(new URL('../../kit/c/', import.meta.url));
+export const CLOCK = join(FOLDER, process.platform === 'win32' ? 'clock-check.exe' : 'clock-check');
+const CLOCK_STAMP = join(FOLDER, 'built-clock.json');
+const clock = () => sha1(CLOCK_SOURCE, KIT_CLOCK, KIT_CLOCK_HEADER, ON_WINDOWS);
+/** Whether the program that checks the kit's clock is built, from this version of mGBA and of the clock. */
+export function isClockBuilt() {
+  try {
+    const stamp = JSON.parse(readFileSync(CLOCK_STAMP, 'utf8'));
+    return existsSync(CLOCK) && stamp.mgba === MGBA_VERSION && stamp.clock === clock();
+  } catch {
+    return false;
+  }
+}
+
 const sha1 = (...files) => files.reduce((hash, file) => hash.update(readFileSync(file)), createHash('sha1')).digest('hex');
 const harness = () => sha1(HARNESS, ON_WINDOWS, EXPLORE, RAN, USED);
 const reader = () => sha1(READER_SOURCE, ON_WINDOWS);
@@ -153,6 +173,10 @@ function buildHere(log, windows) {
   run(compiler, ['-O2', '-o', made(CALLER), beside(CALLER_SOURCE), ...headers, ...library], 'Building the program that calls the original\'s functions', windows?.env);
   if (windows) copyFileSync(made(CALLER), CALLER);
   writeFileSync(CALLER_STAMP, JSON.stringify({ mgba, caller: caller() }) + '\n');
+  log('Building the program that checks the kit\'s clock…');
+  run(compiler, ['-O2', '-o', made(CLOCK), beside(CLOCK_SOURCE), beside(KIT_CLOCK), '-DGBA_CLOCK_CODE=check_code', '-I', dirname(KIT_CLOCK), '-I', KIT_C, ...headers, ...library], 'Building the program that checks the kit\'s clock', windows?.env);
+  if (windows) copyFileSync(made(CLOCK), CLOCK);
+  writeFileSync(CLOCK_STAMP, JSON.stringify({ mgba, clock: clock() }) + '\n');
   if (windows) {
     copyFileSync(made(ORIGINAL), ORIGINAL);
     copyFileSync(made(READER), READER);
