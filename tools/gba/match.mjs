@@ -299,9 +299,10 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  *     reader says of each halfword
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
  *   given: for a file of a shared library, where the copy has each of its twins, as twinsIn takes it
- * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs }], unknown },
- * where `missing` is the names in a function with no address and `unknown` every such name; or { error } when the file
- * didn't build, with what the compiler said.
+ * Answers { functions: [{ name, address, line, same, bytes, differing, first, longer, missing, ours, theirs, made, calls }],
+ * unknown }, where `missing` is the names in a function with no address and `unknown` every such name, `made` the
+ * function's bytes as built, with every address filled in, and `calls` the addresses its calls go to; or { error } when
+ * the file didn't build, with what the compiler said.
  */
 export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
   const built = await compileFile({ file, root, includes, compiler, work });
@@ -312,7 +313,7 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
-    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set() }))
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
     .sort((a, b) => a.at - b.at);
   functions.forEach((f, i) => {
     f.until = functions[i + 1]?.at ?? code.length;
@@ -344,6 +345,7 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
       // a call: how far it is from the instruction after next, in the two halves of the instruction
       const offset = (target & ~1) - (inside.address + (at - inside.at) + 4);
       if (offset < -0x400000 || offset >= 0x400000) inside.missing.add(name);
+      else inside.calls.push(target & ~1);
       code.writeUInt16LE(0xF000 | ((offset >> 12) & 0x7FF), at);
       code.writeUInt16LE(0xF800 | ((offset >> 1) & 0x7FF), at + 2);
     }
@@ -351,6 +353,8 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
 
   for (const f of functions) {
     f.missing = [...f.missing];
+    // its bytes, with every address filled in, for the whole cartridge rebuilt (../lib/rebuild.mjs)
+    f.made = Buffer.from(code.subarray(f.at, f.at + f.length));
     if (f.address === null) continue;
     if (f.address < CARTRIDGE) {
       f.elsewhere = true;
