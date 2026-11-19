@@ -61,5 +61,6 @@ struct Background {
 };
 
 void DrawBackground(struct Background *background);
+u32 sub_8004010(void);
 
 #endif

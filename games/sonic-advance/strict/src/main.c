@@ -24,13 +24,19 @@
 #include "flash.h"
 #include "m4a_internal.h"
 #include "save.h"
+#include "spotlight.h"
 #include "sprite.h"
 #include "task.h"
 
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
-void CreateTask_8011DBC(void);
 void MP2K_event_null(void);
+void sub_8063E8C(u16 arg0);
+void Task_80640C8(void);
+void sub_8064244(void);
+void Task_8065058(void);
+void Task_806515C(void);
+void Task_IntroChaosEmeraldUpdate(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) { gba_console_memory(1); }

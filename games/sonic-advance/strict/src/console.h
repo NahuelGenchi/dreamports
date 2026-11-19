@@ -118,15 +118,19 @@ u16 console_read16(u32 at);
 
 /** DMA channel 3 given the three words the console's is: done at once, as the console does one that starts now. */
 void console_dma3(u32 src, u32 dest, u32 control);
+/** The same, from a value of the Dreamport's own, as a fill's is: read where it is, as the console reads its stack. */
+void console_dma3_own(const void *src, u32 dest, u32 control);
+/** At the V-blank: DMA channel 3, if it waits for it. */
+void console_vblank_dma3(void);
 #define DMA3_FILL32(value, dest, size)                                        \
   {                                                                           \
     vu32 filler = (vu32)(value);                                              \
-    console_dma3((u32)&filler, (u32)(dest), 0x85000000 | ((size) / 4));       \
+    console_dma3_own((const void *)&filler, (u32)(dest), 0x85000000 | ((size) / 4)); \
   }
 #define DMA3_FILL16(value, dest, size)                                        \
   {                                                                           \
     vu16 filler = (vu16)(value);                                              \
-    console_dma3((u32)&filler, (u32)(dest), 0x81000000 | ((size) / 2));       \
+    console_dma3_own((const void *)&filler, (u32)(dest), 0x81000000 | ((size) / 2)); \
   }
 #define DMA3_COPY16(src, dest, size) console_dma3((u32)(src), (u32)(dest), 0x80000000 | ((u32)(size) / 2));
 #define DMA3_COPY32(src, dest, size) console_dma3((u32)(src), (u32)(dest), 0x84000000 | ((u32)(size) / 4));
