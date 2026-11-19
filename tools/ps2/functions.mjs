@@ -25,7 +25,7 @@
 
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
-import { bootFile, openDisc, readDiscFile } from '../lib/read-copy.mjs';
+import { bootFile, discFiles, readDiscFile } from '../lib/read-copy.mjs';
 import { fillFunctions } from '../gba/functions.mjs';
 import { findFunctionsIn as findIopFunctions } from '../ps1/functions.mjs';
 import { isPair } from './vu.mjs';
@@ -244,7 +244,7 @@ export async function ps2Disc(path, { progress = () => {} } = {}) {
     for (const u of findVuUploads(boot.subarray(s.offset, s.offset + s.size), { least })) code.uploads.push({ path: null, ...u, at: s.address + u.at });
   }
   if (extname(path).toLowerCase() === '.elf') return code;
-  const disc = await openDisc(path);
+  const disc = await discFiles(path);
   if (!disc) return code;
   try {
     const total = disc.files.reduce((sum, f) => sum + f.size, 0);
@@ -330,7 +330,7 @@ export function discFunctions(code, listed = []) {
 export async function programOf(path, program) {
   if (!program) return ps2Program(path);
   if (extname(path).toLowerCase() === '.elf') return null;
-  const disc = await openDisc(path);
+  const disc = await discFiles(path);
   if (!disc) return null;
   try {
     const [name, inside] = program.split(/:(?=[^:]+$)/);
