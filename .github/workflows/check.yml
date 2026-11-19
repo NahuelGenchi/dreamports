@@ -54,12 +54,14 @@ jobs:
           # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
           # the project's own, found in a second made-up program by its short hash and proven there; and the GBA kit's
           # clock, measured against mGBA an instruction at a time on a made-up program's power-on; and the console's
-          # stack in a Dreamport, which has to leave the same words as mGBA where a later function reads them unset
+          # stack in a Dreamport, which has to leave the same words as mGBA where a later function reads them unset;
+          # and the kit as the sound hardware of a game that runs the sound engine itself
           - part: functions
             run: |
               npm run test:twin
               npm run test:clock
               npm run test:stack
+              npm run test:sound-console
               npm run test:match
               npm run test:rebuild
               npm run test:nes-twin

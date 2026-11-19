@@ -245,16 +245,16 @@ void MPlayExtender(struct MixerSource *cgbChans)
     struct SoundMixerState *soundInfo;
     u32 lockStatus;
 
-    REG_SOUNDCNT_X = SOUND_MASTER_ENABLE | SOUND_4_ON | SOUND_3_ON | SOUND_2_ON | SOUND_1_ON;
-    REG_SOUNDCNT_L = 0; // set master volume to zero
-    REG_NR12 = 0x8;
-    REG_NR22 = 0x8;
-    REG_NR42 = 0x8;
-    REG_NR14 = 0x80;
-    REG_NR24 = 0x80;
-    REG_NR44 = 0x80;
-    REG_NR30 = 0;
-    REG_NR50 = 0x77;
+    M4A_SET(REG_SOUNDCNT_X, SOUND_MASTER_ENABLE | SOUND_4_ON | SOUND_3_ON | SOUND_2_ON | SOUND_1_ON);
+    M4A_SET(REG_SOUNDCNT_L, 0); // set master volume to zero
+    M4A_SET(REG_NR12, 0x8);
+    M4A_SET(REG_NR22, 0x8);
+    M4A_SET(REG_NR42, 0x8);
+    M4A_SET(REG_NR14, 0x80);
+    M4A_SET(REG_NR24, 0x80);
+    M4A_SET(REG_NR44, 0x80);
+    M4A_SET(REG_NR30, 0);
+    M4A_SET(REG_NR50, 0x77);
 
 
     soundInfo = SOUND_INFO_PTR;
@@ -333,23 +333,23 @@ void SoundInit(struct SoundMixerState *soundInfo)
 {
     soundInfo->lockStatus = 0;
     if (REG_DMA1CNT & (DMA_REPEAT << 16))
-        REG_DMA1CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+        M4A_SET(REG_DMA1CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
     else
         M4A_TIME(SoundInit, 0x0, 0x16, M4A_AT(SoundInit, 0x1C), M4A_EW, 0x040000C4);
     if (REG_DMA2CNT & (DMA_REPEAT << 16))
-        REG_DMA2CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+        M4A_SET(REG_DMA2CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
     else
         M4A_TIME(SoundInit, 0x1C, 0x24, M4A_AT(SoundInit, 0x2A), 0x040000D0);
-    REG_DMA1CNT_H = DMA_32BIT;
-    REG_DMA2CNT_H = DMA_32BIT;
-    REG_SOUNDCNT_X = SOUND_MASTER_ENABLE | SOUND_4_ON | SOUND_3_ON | SOUND_2_ON | SOUND_1_ON;
-    REG_SOUNDCNT_H = SOUND_B_FIFO_RESET | SOUND_B_TIMER_0 | SOUND_B_LEFT_OUTPUT | SOUND_A_FIFO_RESET | SOUND_A_TIMER_0
-        | SOUND_A_RIGHT_OUTPUT | SOUND_ALL_MIX_FULL;
-    REG_SOUNDBIAS_H = (REG_SOUNDBIAS_H & 0x3F) | 0x40;
-    REG_DMA1SAD = (intptr_t)soundInfo->pcmBuffer;
-    REG_DMA1DAD = (intptr_t)&REG_FIFO_A;
-    REG_DMA2SAD = (intptr_t)soundInfo->pcmBuffer + PCM_DMA_BUF_SIZE;
-    REG_DMA2DAD = (intptr_t)&REG_FIFO_B;
+    M4A_SET(REG_DMA1CNT_H, DMA_32BIT);
+    M4A_SET(REG_DMA2CNT_H, DMA_32BIT);
+    M4A_SET(REG_SOUNDCNT_X, SOUND_MASTER_ENABLE | SOUND_4_ON | SOUND_3_ON | SOUND_2_ON | SOUND_1_ON);
+    M4A_SET(REG_SOUNDCNT_H, SOUND_B_FIFO_RESET | SOUND_B_TIMER_0 | SOUND_B_LEFT_OUTPUT | SOUND_A_FIFO_RESET | SOUND_A_TIMER_0
+        | SOUND_A_RIGHT_OUTPUT | SOUND_ALL_MIX_FULL);
+    M4A_SET(REG_SOUNDBIAS_H, (REG_SOUNDBIAS_H & 0x3F) | 0x40);
+    M4A_SET(REG_DMA1SAD, (intptr_t)soundInfo->pcmBuffer);
+    M4A_SET(REG_DMA1DAD, (intptr_t)&REG_FIFO_A);
+    M4A_SET(REG_DMA2SAD, (intptr_t)soundInfo->pcmBuffer + PCM_DMA_BUF_SIZE);
+    M4A_SET(REG_DMA2DAD, (intptr_t)&REG_FIFO_B);
 
     SOUND_INFO_PTR = soundInfo;
     M4A_TIME(SoundInit, 0x2A, 0x82, M4A_AT(CpuSet, 0), 0x040000C6, 0x040000D2, 0x04000084, 0x04000082, 0x04000089,
@@ -401,12 +401,12 @@ void SampleFreqSet(u32 freq)
     soundInfo->sampleRateReciprocal = (0x1000000 / soundInfo->sampleRate + 1) >> 1;
 
     // Turn off timer 0.
-    REG_TM0CNT_H = 0;
+    M4A_SET(REG_TM0CNT_H, 0);
 
     // cycles per LCD fresh 280896
     M4A_TIME(SampleFreqSet, 0x46, 0x58, M4A_AT(__divsi3, 0), M4A_EW, 0x04000102);
     M4A_DIVIDE(280896, soundInfo->samplesPerFrame);
-    REG_TM0CNT_L = -(280896 / soundInfo->samplesPerFrame);
+    M4A_SET(REG_TM0CNT_L, -(280896 / soundInfo->samplesPerFrame));
 
     M4A_TIME(SampleFreqSet, 0x5A, 0x60, M4A_AT(m4aSoundVSyncOn, 0), 0x04000100);
     m4aSoundVSyncOn();
@@ -418,7 +418,7 @@ void SampleFreqSet(u32 freq)
 
     while (*(vu8 *)REG_ADDR_VCOUNT != 159)
         M4A_TIME(SampleFreqSet, 0x6C, 0x70, M4A_AT(SampleFreqSet, 0x6C), 0x04000006);
-    REG_TM0CNT_H = TIMER_ENABLE | TIMER_1CLK;
+    M4A_SET(REG_TM0CNT_H, TIMER_ENABLE | TIMER_1CLK);
     M4A_TIME(SampleFreqSet, 0x6C, 0x7C, M4A_BACK, 0x04000006, 0x04000102);
 }
 
@@ -472,7 +472,7 @@ void m4aSoundMode(u32 mode)
 
     if (temp) {
         temp = (temp & 0x300000) >> 14;
-        REG_SOUNDBIAS_H = (REG_SOUNDBIAS_H & 0x3F) | temp;
+        M4A_SET(REG_SOUNDBIAS_H, (REG_SOUNDBIAS_H & 0x3F) | temp);
     }
 
     temp = mode & SOUND_MODE_FREQ;
@@ -535,20 +535,20 @@ void m4aSoundVSyncOff(void)
         // each channel's control is timed as it's written, before the write of its top half below
         if (REG_DMA1CNT & (DMA_REPEAT << 16)) {
             M4A_TIME(m4aSoundVSyncOff, 0x0, 0x24, M4A_AT(m4aSoundVSyncOff, 0x26), M4A_IW, M4A_EW, M4A_EW, 0x040000C4);
-            REG_DMA1CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+            M4A_SET(REG_DMA1CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
             M4A_TIME(m4aSoundVSyncOff, 0x26, 0x28, M4A_AT(m4aSoundVSyncOff, 0x2A), 0x040000C4);
         } else
             M4A_TIME(m4aSoundVSyncOff, 0x0, 0x24, M4A_AT(m4aSoundVSyncOff, 0x2A), M4A_IW, M4A_EW, M4A_EW, 0x040000C4);
 
         if (REG_DMA2CNT & (DMA_REPEAT << 16)) {
             M4A_TIME(m4aSoundVSyncOff, 0x2A, 0x32, M4A_AT(m4aSoundVSyncOff, 0x34), 0x040000D0);
-            REG_DMA2CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+            M4A_SET(REG_DMA2CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
             M4A_TIME(m4aSoundVSyncOff, 0x34, 0x36, M4A_AT(m4aSoundVSyncOff, 0x38), 0x040000D0);
         } else
             M4A_TIME(m4aSoundVSyncOff, 0x2A, 0x32, M4A_AT(m4aSoundVSyncOff, 0x38), 0x040000D0);
 
-        REG_DMA1CNT_H = DMA_32BIT;
-        REG_DMA2CNT_H = DMA_32BIT;
+        M4A_SET(REG_DMA1CNT_H, DMA_32BIT);
+        M4A_SET(REG_DMA2CNT_H, DMA_32BIT);
 
         M4A_TIME(m4aSoundVSyncOff, 0x38, 0x56, M4A_AT(CpuSet, 0), 0x040000C6, 0x040000D2);
         CpuFill32(0, soundInfo->pcmBuffer, sizeof(soundInfo->pcmBuffer));
@@ -565,8 +565,8 @@ void m4aSoundVSyncOn(void)
     if (lockStatus == ID_NUMBER)
         return;
 
-    REG_DMA1CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
-    REG_DMA2CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
+    M4A_SET(REG_DMA1CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
+    M4A_SET(REG_DMA2CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
 
     soundInfo->dmaCounter = 0;
     soundInfo->lockStatus = lockStatus - 10;
@@ -859,19 +859,19 @@ void CgbOscOff(u8 chanNum)
 {
     switch (chanNum) {
         case 1:
-            REG_NR12 = 8;
-            REG_NR14 = 0x80;
+            M4A_SET(REG_NR12, 8);
+            M4A_SET(REG_NR14, 0x80);
             break;
         case 2:
-            REG_NR22 = 8;
-            REG_NR24 = 0x80;
+            M4A_SET(REG_NR22, 8);
+            M4A_SET(REG_NR24, 0x80);
             break;
         case 3:
-            REG_NR30 = 0;
+            M4A_SET(REG_NR30, 0);
             break;
         default:
-            REG_NR42 = 8;
-            REG_NR44 = 0x80;
+            M4A_SET(REG_NR42, 8);
+            M4A_SET(REG_NR44, 0x80);
     }
 }
 
@@ -976,30 +976,30 @@ void CgbSound(void)
                 CgbModVol(channels);
                 switch (ch) {
                     case 1:
-                        *nrx0ptr = channels->data.cgb.sweep;
+                        M4A_SET(*nrx0ptr, channels->data.cgb.sweep);
                         // fallthrough
                     case 2:
-                        *nrx1ptr = ((intptr_t)channels->wav << 6) + channels->data.cgb.length;
+                        M4A_SET(*nrx1ptr, ((intptr_t)channels->wav << 6) + channels->data.cgb.length);
                         goto init_env_step_time_dir;
                     case 3:
                         if (channels->wav != channels->current) {
-                            *nrx0ptr = 0x40;
-                            REG_WAVE_RAM0 = ((u32 *)channels->wav)[0];
-                            REG_WAVE_RAM1 = ((u32 *)channels->wav)[1];
-                            REG_WAVE_RAM2 = ((u32 *)channels->wav)[2];
-                            REG_WAVE_RAM3 = ((u32 *)channels->wav)[3];
+                            M4A_SET(*nrx0ptr, 0x40);
+                            M4A_SET(REG_WAVE_RAM0, ((u32 *)channels->wav)[0]);
+                            M4A_SET(REG_WAVE_RAM1, ((u32 *)channels->wav)[1]);
+                            M4A_SET(REG_WAVE_RAM2, ((u32 *)channels->wav)[2]);
+                            M4A_SET(REG_WAVE_RAM3, ((u32 *)channels->wav)[3]);
                             channels->current = channels->wav;
                         }
-                        *nrx0ptr = 0;
-                        *nrx1ptr = channels->data.cgb.length;
+                        M4A_SET(*nrx0ptr, 0);
+                        M4A_SET(*nrx1ptr, channels->data.cgb.length);
                         if (channels->data.cgb.length)
                             channels->data.cgb.nrx4 = 0xC0;
                         else
                             channels->data.cgb.nrx4 = 0x80;
                         break;
                     default:
-                        *nrx1ptr = channels->data.cgb.length;
-                        *nrx3ptr = (intptr_t)channels->wav << 3;
+                        M4A_SET(*nrx1ptr, channels->data.cgb.length);
+                        M4A_SET(*nrx3ptr, (intptr_t)channels->wav << 3);
                     init_env_step_time_dir:
                         envelopeStepTimeAndDir = channels->data.cgb.attack + CGB_NRx2_ENV_DIR_INC;
                         if (channels->data.cgb.length)
@@ -1131,29 +1131,29 @@ void CgbSound(void)
             }
 
             if (ch != 4)
-                *nrx3ptr = channels->data.cgb.freq;
+                M4A_SET(*nrx3ptr, channels->data.cgb.freq);
             else
-                *nrx3ptr = (*nrx3ptr & 0x08) | channels->data.cgb.freq;
+                M4A_SET(*nrx3ptr, (*nrx3ptr & 0x08) | channels->data.cgb.freq);
             channels->data.cgb.nrx4 = (channels->data.cgb.nrx4 & 0xC0) + (*((u8 *)(&channels->data.cgb.freq) + 1));
-            *nrx4ptr = (s8)(channels->data.cgb.nrx4 & mask);
+            M4A_SET(*nrx4ptr, (s8)(channels->data.cgb.nrx4 & mask));
         }
 
         /* 4. apply envelope & volume to HW registers */
         if (channels->data.cgb.cgbStatus & CGB_CHANNEL_MO_VOL) {
-            REG_NR51 = (REG_NR51 & ~channels->data.cgb.panMask) | channels->data.cgb.pan;
+            M4A_SET(REG_NR51, (REG_NR51 & ~channels->data.cgb.panMask) | channels->data.cgb.pan);
             if (ch == 3) {
-                *nrx2ptr = gCgb3Vol[channels->data.cgb.envelopeVol];
+                M4A_SET(*nrx2ptr, gCgb3Vol[channels->data.cgb.envelopeVol]);
                 if (channels->data.cgb.nrx4 & 0x80) {
-                    *nrx0ptr = 0x80;
-                    *nrx4ptr = channels->data.cgb.nrx4;
+                    M4A_SET(*nrx0ptr, 0x80);
+                    M4A_SET(*nrx4ptr, channels->data.cgb.nrx4);
                     channels->data.cgb.nrx4 &= 0x7f;
                 }
             } else {
                 u32 envMask = 0xF;
-                *nrx2ptr = (envelopeStepTimeAndDir & envMask) + (channels->data.cgb.envelopeVol << 4);
-                *nrx4ptr = channels->data.cgb.nrx4 | 0x80;
+                M4A_SET(*nrx2ptr, (envelopeStepTimeAndDir & envMask) + (channels->data.cgb.envelopeVol << 4));
+                M4A_SET(*nrx4ptr, channels->data.cgb.nrx4 | 0x80);
                 if (ch == 1 && !(*nrx0ptr & 0x08))
-                    *nrx4ptr = channels->data.cgb.nrx4 | 0x80;
+                    M4A_SET(*nrx4ptr, channels->data.cgb.nrx4 | 0x80);
             }
         }
 

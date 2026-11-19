@@ -26,6 +26,7 @@
     "test:twin": "node tools/test/twin.mjs",
     "test:clock": "node tools/test/clock.mjs",
     "test:stack": "node tools/test/stack.mjs",
+    "test:sound-console": "node tools/test/sound-console.mjs",
     "test:match": "node tools/test/match.mjs",
     "test:rebuild": "node tools/test/rebuild.mjs",
     "test:nes-twin": "node tools/test/nes-twin.mjs",
