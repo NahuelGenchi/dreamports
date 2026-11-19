@@ -36,9 +36,7 @@
     ["02001338/0149002008707047","src/garden.c:475"],
     ["02001344/F0B5041C0D1C0598","src/garden.c:477"],
     ["020013C0/F0B54F464646C0B4","src/garden.c:497"],
-    ["0200145C/0000000000000000","src/garden.c:384"],
     ["0200145C/00060349C00D4018","src/garden.c:384"],
-    ["02001470/0000000000000000","src/garden.c:384"],
     ["02001470/0006000E044AC030","src/garden.c:384"],
     ["0200148C/70B5041C0A1C0D4B","src/garden.c:175"],
     ["020014F8/F0B5474680B482B0","src/garden.c:2401"],
@@ -694,10 +692,7 @@
     ["08095B98","src/pipes.c:83"],
     ["08096274","src/pipes.c:179"],
     ["0809642C","src/pipes.c:179"],
-    ["08096AB0","src/soundlate.c:5"],
-    ["080B8CAB","src/garden.c:175"],
-    ["080C9020","src/garden.c:1164"],
-    ["081243CB","src/garden.c:182"]
+    ["08096AB0","src/soundlate.c:5"]
   ],
   "unmatched": [
     ["0x02000008","src/garden.c:2561"],

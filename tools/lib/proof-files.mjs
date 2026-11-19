@@ -4,7 +4,7 @@
 //   that chooses its own screen, `screen` (lib/screens.mjs)
 // - code-map.json: every function in that copy, its address and size, and nothing of its code: those in the cartridge,
 //   those the game makes in its work RAM, by their address there and their first bytes, and where the game copies
-//   the cartridge's code to run it
+//   the cartridge's code to run it, or has the BIOS unpack it there from the cartridge
 // - recordings/<name>.json: recorded play (recording.mjs)
 // - progress.json: what prove found, recording by recording, and the % it makes
 // - parts.json: the game's parts, each with the recording and frames that prove it once there are some, and its
@@ -107,10 +107,13 @@ export function readPartsFile(game) {
 export const readParts = game => readPartsFile(game).parts ?? [];
 
 /** The code map, with each function as { key, address, size, name, bytes }, sorted by address, and `copies` [{ ram,
- *  cartridge, size }]; or null when there's none yet. A function's key is how the proof files count it: its address,
+ *  cartridge, size, packed, from }]; or null when there's none yet. A function's key is how the proof files count it: its address,
  *  as eight hexadecimal digits, and for one the game makes in its work RAM, a slash and its first 8 bytes, as 16 more,
  *  `bytes`, since a game can put other code at the same address at another time. A copy is a stretch of the
- *  cartridge's code the game copies into its work RAM to run there, which counts as the cartridge's functions. */
+ *  cartridge's code the game copies into its work RAM to run there, which counts as the cartridge's functions. One
+ *  with `packed` is code the game has the BIOS unpack from the cartridge, 'lz77' or 'rl' (gba/unpack.mjs): the bytes
+ *  it makes from `cartridge`, `from` bytes in (0 when it's left out), which the game may copy on to run elsewhere. Its
+ *  functions are the game's own, made in its work RAM, and the copy says where their bytes come from. */
 export function readCodeMap(game) {
   const file = join(sharedProofFolder(game), 'code-map.json');
   if (!existsSync(file)) return null;
@@ -123,7 +126,7 @@ export function readCodeMap(game) {
 export function parseCodeMap(map) {
   const functions = map.functions.map(([key, size, name]) => ({ key, address: parseInt(key, 16), size, name, ...(key.includes('/') ? { bytes: key.split('/')[1] } : {}) }));
   functions.sort((a, b) => a.address - b.address || a.key.localeCompare(b.key));
-  const copies = (map.copies ?? []).map(([ram, cartridge, size]) => ({ ram: parseInt(ram, 16), cartridge: parseInt(cartridge, 16), size }));
+  const copies = (map.copies ?? []).map(([ram, cartridge, size, packed, from]) => ({ ram: parseInt(ram, 16), cartridge: parseInt(cartridge, 16), size, ...(packed ? { packed } : {}), ...(from ? { from } : {}) }));
   return { ...map, functions, copies };
 }
 
@@ -139,7 +142,7 @@ export function writeCodeMap(game, map) {
 /** A code map's text, as writeCodeMap writes it. */
 export function formatCodeMap({ original, from, functions, copies = [] }) {
   const lines = functions.map(f => '    ' + JSON.stringify([functionKey(f), f.size, ...(f.name ? [f.name] : [])]));
-  const copied = copies.map(c => '    ' + JSON.stringify([hex(c.ram), hex(c.cartridge), c.size]));
+  const copied = copies.map(c => '    ' + JSON.stringify([hex(c.ram), hex(c.cartridge), c.size, ...(c.packed ? [c.packed, ...(c.from ? [c.from] : [])] : [])]));
   return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}\n}\n`;
 }
 
@@ -166,6 +169,7 @@ export function cartridgeOf(path, console = 'gba') {
 export function watchesOf(codeMap, cartridge) {
   const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) }));
   for (const copy of codeMap.copies ?? []) {
+    if (copy.packed) continue;
     codeMap.functions.forEach((f, index) => {
       if (f.bytes || f.address < copy.cartridge || f.address >= copy.cartridge + copy.size) return;
       const at = f.address - copy.cartridge;
