@@ -14,6 +14,10 @@
 // On an NES game it prints the function's 6502 instructions, which the tools' own decoder reads (nes/6502.mjs,
 // nes/read.mjs): <function> is a bank and an address, such as 04:923F, a label as a game's code names it, such as
 // sub_04_923F or sub_C39C, or an offset in the program as the code map numbers it, and --bytes is its only option.
+//
+// On a PlayStation game it prints the function's MIPS instructions, from the program the copy boots, which the tools'
+// own decoder reads (ps1/mips.mjs, ps1/read.mjs): <function> is an address, such as 0x800C1234, a name in the code map
+// or a label with an address, such as func_800C1234, and --bytes is its only option.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -29,6 +33,7 @@ import { ensureOriginal } from './gba/original.mjs';
 import { readShifts } from './portmap.mjs';
 import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
 import { readNes } from './nes/read.mjs';
+import { readPs1 } from './ps1/read.mjs';
 
 const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>]';
 const CARTRIDGE = 0x08000000;
@@ -40,8 +45,10 @@ const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
 // the consoles whose instructions read knows, and what reads each
-const READERS = { gba: readGba, nes: readNes };
-const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(' and ');
+const READERS = { gba: readGba, nes: readNes, ps1: readPs1 };
+// the consoles whose reader reads the program a disc boots itself, rather than the whole copy
+const OFF_DISC = new Set(['ps1']);
+const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(', ').replace(/, ([^,]+)$/, ' and $1');
 
 export async function run(args) {
   const { rest, flags } = options(args);
@@ -55,8 +62,8 @@ export async function run(args) {
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`read reads ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  const bytes = readFileSync(copy.path);
-  const { key, text, has } = reader({ game, what, original, codeMap, copy, bytes, flags });
+  const bytes = OFF_DISC.has(original.console) ? null : readFileSync(copy.path);
+  const { key, text, has } = await reader({ game, what, original, codeMap, copy, bytes, flags });
   const folder = join(LOCAL, 'read', game);
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, `${key}.txt`), text);

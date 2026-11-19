@@ -9,7 +9,7 @@ import { twinsIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { parseCodeMap } from '../lib/proof-files.mjs';
 import { marksIn } from '../lib/proofs.mjs';
-import { libraryFolder } from '../lib/libraries.mjs';
+import { libraryFolder, libraryIds, namesOnly, readLibrary } from '../lib/libraries.mjs';
 import { REPO } from '../lib/paths.mjs';
 
 const LIBRARY = [
@@ -54,6 +54,18 @@ test('a library\'s twin is marked as the kit has it, the same in every version',
   assert.deepEqual([...first.values()].map(twin => twin.file), ['kit/gba/c/lib/test-unit/unit.c', 'kit/gba/c/lib/test-unit/unit.c']);
   assert.deepEqual([...first.values()].map(twin => twin.mark), [...second.values()].map(twin => twin.mark));
   assert.deepEqual([...second.keys()], ['08000A00', '08000A40']);
+});
+
+test('a library can be its functions\' names alone, before any is written, with nothing to build', () => {
+  const libraries = libraryIds().map(readLibrary);
+  for (const library of libraries) {
+    // a library with no C lists only functions nobody has written, and one with C isn't names alone
+    if (!library.files.length) assert.ok(namesOnly(library), library.id);
+    else assert.ok(!namesOnly(library), library.id);
+  }
+  const libgpu = readLibrary('ps1/libgpu');
+  assert.ok(namesOnly(libgpu) && libgpu.functions.length > 0 && libgpu.functions.every(f => f.size > 0));
+  assert.ok(!namesOnly({ files: [], functions: [{ name: 'Written', size: 4, file: '/kit/x.c' }] }));
 });
 
 test('a library is named by its console, or c for kit/c/lib/, and nothing else', () => {

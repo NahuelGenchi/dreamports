@@ -375,3 +375,53 @@ export function fillFunctions(listed, found) {
   }
   return [...functions, ...added].sort((a, b) => a.address - b.address);
 }
+
+/** The bytes each of a code map's Thumb functions takes with the pieces it goes on into by a BL used as a long jump,
+ *  as agbcc writes a branch too far for B in a long function: a map keeps each piece a BL leads to as a function of
+ *  its own, though it's the end of the one before it. A piece is such an end when it starts where the function's
+ *  bytes so far end, a BL or a branch in them leads to it, and it neither starts as a function does, saving registers with PUSH
+ *  or returning at once, nor ever returns through the link register, which the BL took. `functions` are the code
+ *  map's, as { address, size }; ARM code is left as it is. Gives back each function's address and its bytes so. */
+export function withLongJumps(bytes, functions, { base: BASE = CARTRIDGE, isArm = () => false } = {}) {
+  const inRom = address => address >= BASE && address + 2 <= BASE + bytes.length;
+  const u16 = address => bytes[address - BASE] | bytes[address - BASE + 1] << 8;
+  const sorted = functions.filter(f => inRom(f.address)).sort((a, b) => a.address - b.address);
+  const at = new Map(sorted.map(f => [f.address, f]));
+  // where a stretch of Thumb code goes by BL, B or a conditional branch, and whether a piece ever returns through the
+  // link register
+  const jumps = (from, to) => {
+    const targets = new Set();
+    for (let pc = from; pc + 2 <= to && inRom(pc); pc += 2) {
+      const op = u16(pc), next = pc + 4 <= to ? u16(pc + 2) : 0;
+      if ((op & 0xF800) === 0xF000 && (next & 0xF800) === 0xF800) {
+        targets.add(pc + 4 + ((op & 0x7FF) << 21 >> 9 | (next & 0x7FF) << 1));
+        pc += 2;
+      } else if ((op & 0xF000) === 0xD000 && (op & 0xFF00) < 0xDE00) targets.add(pc + 4 + ((op & 0xFF) << 24 >> 23));
+      else if ((op & 0xF800) === 0xE000) targets.add(pc + 4 + ((op & 0x7FF) << 21 >> 20));
+    }
+    return targets;
+  };
+  const usesLink = (from, to) => {
+    for (let pc = from; pc + 2 <= to && inRom(pc); pc += 2) {
+      const op = u16(pc);
+      if (op === 0x4770 || op === 0x46F7) return true;   // BX lr, MOV pc, lr
+    }
+    return false;
+  };
+  const sizes = new Map();
+  for (const f of sorted) {
+    let end = f.address + f.size;
+    if (!isArm(f.address)) {
+      const targets = jumps(f.address, end);
+      for (let piece = at.get(end); piece && !isArm(piece.address); piece = at.get(end)) {
+        const first = u16(piece.address);
+        if (!targets.has(piece.address) || (first & 0xFE00) === 0xB400 || first === 0x4770) break;
+        if (usesLink(piece.address, piece.address + piece.size)) break;
+        for (const target of jumps(piece.address, piece.address + piece.size)) targets.add(target);
+        end = piece.address + piece.size;
+      }
+    }
+    sizes.set(f.address, end - f.address);
+  }
+  return sizes;
+}
