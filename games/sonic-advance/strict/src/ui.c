@@ -1,18 +1,12 @@
 // The screens of menus' graphics.
 #include "ui.h"
 
-/** 0x080535C8, sub_80535FC: once, a free list of ten entries and the stack's task, with its stack emptied. No
- *  wording found gives the original's bytes (the decompilation's comes to 94%), so its proof is the same memory. */
+/** 0x080535C8, sub_80535FC: once, a free list of ten entries and the stack's task, with its stack emptied. */
 void sub_80535FC(void) {
-  struct Strc_3006250 *curr, *next;
+  s32 i;
 
   if (gTask_03006240 == NULL) {
-    curr = &gUnknown_03006250[8];
-    next = &gUnknown_03006250[9];
-    do {
-      curr->next = next;
-      next--, curr--;
-    } while ((s32)curr >= (s32)&gUnknown_03006250[0]);
+    for (i = 0; i < 9; i++) gUnknown_03006250[i].next = &gUnknown_03006250[i + 1];
     gUnknown_03006250[9].next = NULL;
     gUnknown_030063F0 = gUnknown_03006250;
     gUnknown_030063C0 = NULL;

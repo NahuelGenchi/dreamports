@@ -31,13 +31,7 @@
  *  the flash can't be read while the cartridge's code runs from it. */
 u16 ReadFlashId(void) {
   u16 flashId;
-#ifdef MATCHING
   u16 readFlash1Buffer[0x20];
-#else
-  // where the console's function has it, on its stack, which the C keeps elsewhere: the copy's address is kept in the
-  // work memory, and the kit finds the twin of the code there by the code itself
-  u16 *readFlash1Buffer = (u16 *)0x03007E7C;
-#endif
   u8 (*readFlash1)(u8 *);
 
   TIME(0x08098C54, 0x08098C5C, 0x08098ECD);

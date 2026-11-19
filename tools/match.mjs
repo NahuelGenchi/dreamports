@@ -34,6 +34,9 @@
 // built as above, each twin's bytes laid over the copy at its address, in memory only, and every byte of the code
 // map's code compared, which finds what a function's own proof can't, as a function the code map missed. It prints
 // totals and stretches, by address, and keeps no proof: it changes nothing.
+//
+// A PlayStation game's file is built and compared by ps1/match.mjs, with GCC 2.x and what Sony's assembler made of its
+// assembly, and the same names and proofs.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -101,7 +104,8 @@ export async function run(args) {
   if (every && !whole) throw new Error(`--all is for --whole, to list every stretch. ${USAGE}`);
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
-  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's compiler and no other console's yet (docs/CONSOLES.md).`);
+  if (original.console === 'ps1') return (await import('./ps1/match.mjs')).matchGame({ game, what, more, whole, original });
+  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's and the PlayStation's compilers and no other console's yet (docs/CONSOLES.md).`);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
   const compiler = readCompiler(original, `games/${base}/proof/original.json`);
   const codeMap = readCodeMap(game);
