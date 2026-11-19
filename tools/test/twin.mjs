@@ -24,7 +24,7 @@ import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal } from '../gba/twin.mjs';
+import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
 import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
 
@@ -156,6 +156,8 @@ try {
   check(shifted.by.Shift?.kind === 'same' && shifted.by.Shift.compared === CALLS, `each call of the twin starts from the hardware the original's does, as the kit's registers are put back${shifted.by.Shift?.kind === 'same' ? '' : `: ${shifted.by.Shift?.line ?? shifted.error}`}`);
   check(shifted.by.Bias?.kind === 'same' && shifted.by.Bias.compared === CALLS, `a twin that keeps the console's registers itself, in console_io, starts each call from the original's${shifted.by.Bias?.kind === 'same' ? '' : `: ${shifted.by.Bias?.line ?? shifted.error}`}`);
   check(shifted.by.Await?.kind === 'unchecked' && /a DMA the console's clock started wrote memory/.test(shifted.by.Await.line), `and a call in which a DMA the V-blank started writes memory is set aside, as a twin has no clock: ${shifted.by.Await?.line ?? shifted.error}`);
+  check(shifted.by.Fetch?.kind !== 'same' && /left for 0x00000100, where a twin can't follow/.test(shifted.by.Fetch?.line ?? ''), `and so is one whose DMA copies from the BIOS, which a DMA can't read: ${shifted.by.Fetch?.line ?? shifted.error}`);
+  check(shifted.by.Ready?.kind === 'same' && shifted.by.Ready.whole === true, `a call reads the line count and the V-blank as it started, as a twin with no clock does, and some calls start outside the V-blank, so every path is taken: ${shifted.by.Ready?.line ?? shifted.error}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
@@ -200,6 +202,11 @@ try {
   check(unchecked.by.Count?.kind === 'same', 'a twin that gives back nothing leaves the same memory, which alone would pass it, as it passed 0x08011DBC of the pilot');
   const caught = await checking(join(silent, 'gives.c'), {}, { givesBack });
   check(caught.by.Count?.kind === 'differs' && /gives back nothing/.test(caught.by.Count.line) && new RegExp(`0x0${(GIVES.Keep).toString(16).toUpperCase().slice(0, 5)}`).test(caught.by.Count.line), `and it differs once the check reads what its caller does with r0: ${caught.by.Count?.line ?? caught.error}`);
+
+  // a flag among others, read as a halfword and masked: aimed at, only its bit changes, where the nearest number,
+  // 0xFFFF below 0x0001, sets the others too (#1570)
+  const flag = sourceFor(0x0001, 2, 0, [[5, 0x100]], value => value !== 0, 0);
+  check(flag === 0x0101, `a flag aimed at changes only its own bit: 0x${flag?.toString(16)}`);
 
   console.log('A branch made-up calls almost never take:');
   const unaimed = await checking(join(HERE, 'aim.c'), { aim: false });

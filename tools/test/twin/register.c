@@ -4,6 +4,9 @@
 // V-blank and waits past it, which a twin, with no clock, can't do: the check has to set such calls aside. A third
 // reads a register the console set at power-on, through a register file of its twin's own, as a version that keeps
 // the console's registers itself does: the check gives that file the original's registers before each call (#1527).
+// A fourth has DMA channel 3 copy from the BIOS, which a DMA can't read: the check sets such a call aside (#1559). A
+// fifth reads the line count, waits and reads it again, and whether the display is in the V-blank: a twin has no clock,
+// so the check holds both as each call starts, and starts some calls outside the V-blank (#1569).
 #include "program.h"
 
 #ifdef MATCHING
@@ -48,4 +51,32 @@ u16 console_io[0x210];
 /** Bias, 0x08000680: the frame the sound's bias, as the console has it. */
 void Bias(void) {
   gFrame = SOUNDBIAS;
+}
+
+/** Fetch, 0x08000940: a halfword copied to the frame by DMA channel 3, from the BIOS, which a DMA can't read. */
+void Fetch(void) {
+#ifdef MATCHING
+  *(volatile u32 *)0x040000D4 = 0x00000100;
+  *(volatile u32 *)0x040000D8 = (u32)&gFrame;
+  *(volatile u32 *)0x040000DC = 0x80000001;
+#endif
+}
+
+#ifdef MATCHING
+#define DISPSTAT (*(volatile u16 *)0x04000004)
+#define VCOUNT (*(volatile u16 *)0x04000006)
+#else
+#define DISPSTAT console_io[0x04 >> 1]
+#define VCOUNT console_io[0x06 >> 1]
+#endif
+
+/** Ready, 0x08000980: how many lines went by in a wait, and 0x100 more outside the V-blank, in the frame. */
+void Ready(void) {
+  volatile u32 n;
+  u16 line = VCOUNT;
+  n = 0;
+  do n++;
+  while (n < 2000);
+  if (DISPSTAT & 1) gFrame = (u16)(VCOUNT - line);
+  else gFrame = 0x100 + (u16)(VCOUNT - line);
 }

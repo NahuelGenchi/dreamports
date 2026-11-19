@@ -7,7 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
-import { BASES, NAME } from '../portmap.mjs';
+import { namesOf } from '../portmap.mjs';
 import { assemble } from './thumb.mjs';
 import { compilerPath, COMPILERS } from './agbcc.mjs';
 
@@ -57,11 +57,13 @@ export function compilerAt(compiler, address) {
 }
 
 /** The address the first name in `text` means, as portmap reads names, or null: a number is an address in the copy, and
- *  a label one in the release the game's labels come from, moved by the game's `shifts` (portmap.mjs). */
-export function addressIn(text, shifts = []) {
-  for (const [, label, digits] of text.matchAll(NAME)) {
-    const address = parseInt(digits, 16) & ~1;
-    if (BASES.has(address)) continue;
+ *  a label one in the release the game's labels come from, moved by the game's `shifts` (portmap.mjs). Names are as
+ *  the code of a game on `console` writes them, the Game Boy Advance's unless it says. */
+export function addressIn(text, shifts = [], console = 'gba') {
+  const { pattern, bases, address: of } = namesOf(console);
+  for (const [, label, digits] of text.matchAll(pattern)) {
+    const address = of(digits);
+    if (bases.has(address)) continue;
     return label ? address - (shifts.find(s => address >= s.from && address <= s.to)?.by ?? 0) : address;
   }
   return null;
@@ -70,12 +72,12 @@ export function addressIn(text, shifts = []) {
 /** The last function of a run a twin's comment names, as in `0x08001AA4 to 0x0800258E`, or null: a twin of one
  *  routine the code map holds as several functions, each running on into the next, is a twin of each of them, from the
  *  first address to the second, and its bytes are compared with all of theirs together. */
-export function throughIn(text, shifts = []) {
-  const found = [...text.matchAll(NAME)];
+export function throughIn(text, shifts = [], console = 'gba') {
+  const found = [...text.matchAll(namesOf(console).pattern)];
   for (let i = 0; i + 1 < found.length; i++) {
     const [first, second] = [found[i], found[i + 1]];
     if (!/^\s+to\s+$/.test(text.slice(first.index + first[0].length, second.index))) continue;
-    const from = addressIn(first[0], shifts), to = addressIn(second[0], shifts);
+    const from = addressIn(first[0], shifts, console), to = addressIn(second[0], shifts, console);
     return from !== null && to !== null && to > from ? to : null;
   }
   return null;
@@ -143,14 +145,14 @@ export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
  *  it is a proof of (../lib/proofs.mjs). A file of a shared library names no address: `given`, a Map of its twins'
  *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. */
-export const twinsIn = (text, shifts = [], given = null) => piecesIn(text, shifts, given).functions;
+export const twinsIn = (text, shifts = [], given = null, console = 'gba') => piecesIn(text, shifts, given, console).functions;
 
 /** A file of C in pieces: the `functions` it defines, as twinsIn gives them, and the `rest`, everything it holds
  *  outside them, in order, each { text, pre }: a line for the preprocessor, with `pre`, or a declaration up to its ;,
  *  without its comments and with each run of spaces as one. It's what every function of the file is built with
  *  beside its own code, so a proof is of it too (../lib/proofs.mjs), and a step that changes it changes more than
  *  the functions it names (../lib/proven-step.mjs). */
-export function piecesIn(text, shifts = [], given = null) {
+export function piecesIn(text, shifts = [], given = null, console = 'gba') {
   const { code, kept, comments } = lex(text);
   const twins = [], rest = [];
   // where what's outside every function, and not yet kept, starts
@@ -204,8 +206,8 @@ export function piecesIn(text, shifts = [], given = null) {
         if (!comment.text.startsWith('//')) break;
         at = comment.from;
       }
-      const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts);
-      const address = given ? given.get(name) ?? null : addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts);
+      const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts, console);
+      const address = given ? given.get(name) ?? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console);
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
