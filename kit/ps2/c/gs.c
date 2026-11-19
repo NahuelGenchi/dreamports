@@ -5,22 +5,13 @@
 // What it draws: sprites and triangles, in lists, strips and fans, in one colour or shaded between their corners, with
 // or without a texture, into a framebuffer of 32, 24 or 16 bits, inside the scissor, with the depth test, the alpha
 // test, the test of the framebuffer's alpha, and blending. Textures are 32, 24 or 16-bit, or 8 or 4-bit with a palette,
-// sampled by whole texels or by floats over Q, nearest or linear, and pictures move into its memory and within it as a
-// game moves them. Not yet: fog, dithering, smaller copies of a texture (mipmaps), points and lines, and pictures read
-// back. Its memory keeps each buffer a line after another, where the chip's is in blocks, which only a game that reads
-// a buffer in another format than it was written in would show (kit/ps2/c/README.md).
+// sampled by whole texels or by floats over Q, nearest or linear. Its memory, pictures moved in and out of it and the
+// palette buffer are in gs-memory.c, laid out as the chip's are. Not yet: fog, dithering, smaller copies of a texture
+// (mipmaps), points and lines (kit/ps2/c/README.md).
 
-#include "ps2-kit.h"
+#include "gs-kit.h"
 
-#define GS_MEMORY_WORDS (1024 * 1024)   // 4 MB, in 32-bit words
-#define PAGE_WORDS 2048                 // what a framebuffer's or a depth buffer's place is counted in
-#define BLOCK_WORDS 64                  // what a texture's, a palette's or a picture's place is counted in
-
-// the pixel formats, as a register gives them
-enum { PSMCT32 = 0x00, PSMCT24 = 0x01, PSMCT16 = 0x02, PSMCT16S = 0x0A, PSMT8 = 0x13, PSMT4 = 0x14, PSMT8H = 0x1B, PSMT4HL = 0x24, PSMT4HH = 0x2C, PSMZ32 = 0x30, PSMZ24 = 0x31, PSMZ16 = 0x32, PSMZ16S = 0x3A };
-
-static uint32_t *memory;
-static uint64_t registers[0x63];
+uint64_t gs_registers[0x63];
 static uint64_t shown[7];   // PMODE, SMODE2, DISPFB1, DISPLAY1, DISPFB2, DISPLAY2, BGCOLOR
 static uint32_t list_hash = 0x811C9DC5, list_count;
 // the frame's whole list, as the proof tools write the original's (tools/lib/draw-lists.mjs), for them to say which
@@ -59,7 +50,7 @@ static void add_to_list(char kind, const void *data, size_t length) {
 }
 
 void gs_power(void) {
-  memory = kit_alloc(GS_MEMORY_WORDS * 4);
+  gs_memory_power();
   list_bytes = kit_alloc(LIST_ROOM);
   gs_list_start();
 }
@@ -84,54 +75,8 @@ static float float_of(uint32_t bits) {
   return value;
 }
 
-// ---- Memory: a buffer at `base` words, `width` pixels across, a line after another
-
-// how many bits a pixel takes, and for the formats kept in a 32-bit word's top byte, where in it
-static int bits_per_pixel(int psm) {
-  switch (psm) {
-  case PSMCT16: case PSMCT16S: case PSMZ16: case PSMZ16S: return 16;
-  case PSMT8: return 8;
-  case PSMT4: return 4;
-  default: return 32;
-  }
-}
-
-static uint32_t read_pixel(uint32_t base, int width, int psm, int x, int y) {
-  if (x < 0 || y < 0 || width <= 0) return 0;
-  uint64_t n = (uint64_t)y * (uint64_t)width + (uint64_t)x, word = base + n * (uint64_t)bits_per_pixel(psm) / 32;
-  if (word >= GS_MEMORY_WORDS) return 0;
-  uint32_t held = memory[word];
-  switch (psm) {
-  case PSMCT16: case PSMCT16S: case PSMZ16: case PSMZ16S: return held >> (n & 1) * 16 & 0xFFFF;
-  case PSMT8: return held >> (n & 3) * 8 & 0xFF;
-  case PSMT4: return held >> (n & 7) * 4 & 0xF;
-  case PSMT8H: return held >> 24;
-  case PSMT4HL: return held >> 24 & 0xF;
-  case PSMT4HH: return held >> 28;
-  case PSMCT24: case PSMZ24: return held & 0xFFFFFF;
-  default: return held;
-  }
-}
-
-// writes a pixel's bits, those of `keep` staying as they were
-static void write_pixel(uint32_t base, int width, int psm, int x, int y, uint32_t value, uint32_t keep) {
-  if (x < 0 || y < 0 || width <= 0) return;
-  uint64_t n = (uint64_t)y * (uint64_t)width + (uint64_t)x, word = base + n * (uint64_t)bits_per_pixel(psm) / 32;
-  if (word >= GS_MEMORY_WORDS) return;
-  uint32_t shift = 0, bits = 0xFFFFFFFF;
-  switch (psm) {
-  case PSMCT16: case PSMCT16S: case PSMZ16: case PSMZ16S: shift = (uint32_t)(n & 1) * 16; bits = 0xFFFF; break;
-  case PSMT8: shift = (uint32_t)(n & 3) * 8; bits = 0xFF; break;
-  case PSMT4: shift = (uint32_t)(n & 7) * 4; bits = 0xF; break;
-  case PSMT8H: shift = 24; bits = 0xFF; break;
-  case PSMT4HL: shift = 24; bits = 0xF; break;
-  case PSMT4HH: shift = 28; bits = 0xF; break;
-  case PSMCT24: case PSMZ24: bits = 0xFFFFFF; break;
-  default: break;
-  }
-  uint32_t written = (bits & ~keep) << shift;
-  memory[word] = (memory[word] & ~written) | (value << shift & written);
-}
+static int is_16(int psm) { return psm == PSMCT16 || psm == PSMCT16S || psm == PSMZ16 || psm == PSMZ16S; }
+static int is_24(int psm) { return psm == PSMCT24 || psm == PSMZ24; }
 
 // a 16-bit colour as a 32-bit one: five bits a channel, and its top bit as the alpha `one` or `zero` says
 static uint32_t from_16(uint32_t colour, uint32_t one, uint32_t zero) {
@@ -142,113 +87,16 @@ static uint32_t to_16(uint32_t colour) {
   return (colour >> 3 & 31) | (colour >> 11 & 31) << 5 | (colour >> 19 & 31) << 10 | (colour >> 31) << 15;
 }
 
-// ---- Pictures moved into memory, and within it (BITBLTBUF, TRXPOS, TRXREG, TRXDIR, and IMAGE data)
-
-static struct { int active, psm, x, y, left, top, w, h; uint32_t base; int width; uint8_t partial[3]; int partials; } transfer;
-
-static void transfer_start(uint64_t direction) {
-  uint64_t buffers = registers[GS_BITBLTBUF], place = registers[GS_TRXPOS], size = registers[GS_TRXREG];
-  int dir = (int)(direction & 3);
-  transfer.active = 0;
-  if (dir == 0) {
-    transfer = (__typeof__(transfer)){
-      .active = 1, .psm = (int)field(buffers, 56, 6), .base = field(buffers, 32, 14) * BLOCK_WORDS, .width = (int)field(buffers, 48, 6) * 64,
-      .left = (int)field(place, 32, 11), .top = (int)field(place, 48, 11), .w = (int)field(size, 0, 12), .h = (int)field(size, 32, 12),
-    };
-  } else if (dir == 2) {
-    // from one place in memory to another, a line at a time from the top left
-    int psm = (int)field(buffers, 0 + 24, 6);
-    uint32_t from = field(buffers, 0, 14) * BLOCK_WORDS, to = field(buffers, 32, 14) * BLOCK_WORDS;
-    int from_width = (int)field(buffers, 16, 6) * 64, to_width = (int)field(buffers, 48, 6) * 64, to_psm = (int)field(buffers, 56, 6);
-    int sx = (int)field(place, 0, 11), sy = (int)field(place, 16, 11), dx = (int)field(place, 32, 11), dy = (int)field(place, 48, 11);
-    for (int y = 0; y < (int)field(size, 32, 12); y++) {
-      for (int x = 0; x < (int)field(size, 0, 12); x++) write_pixel(to, to_width, to_psm, dx + x, dy + y, read_pixel(from, from_width, psm, sx + x, sy + y), 0);
-    }
-  }
-}
-
-// the next pixel of a picture moved into memory
-static void transfer_pixel(uint32_t value) {
-  if (!transfer.active || transfer.y >= transfer.h) return;
-  write_pixel(transfer.base, transfer.width, transfer.psm, transfer.left + transfer.x, transfer.top + transfer.y, value, 0);
-  if (++transfer.x >= transfer.w) {
-    transfer.x = 0;
-    if (++transfer.y >= transfer.h) transfer.active = 0;
-  }
-}
-
-static void transfer_data(const uint8_t *bytes, uint32_t length) {
-  int bits = transfer.psm == PSMCT24 || transfer.psm == PSMZ24 ? 24 : bits_per_pixel(transfer.psm);
-  for (uint32_t i = 0; i < length && transfer.active; i++) {
-    if (bits == 24) {
-      transfer.partial[transfer.partials++] = bytes[i];
-      if (transfer.partials == 3) {
-        transfer_pixel(transfer.partial[0] | (uint32_t)transfer.partial[1] << 8 | (uint32_t)transfer.partial[2] << 16);
-        transfer.partials = 0;
-      }
-    } else if (bits == 4) {
-      transfer_pixel(bytes[i] & 0xF);
-      transfer_pixel(bytes[i] >> 4);
-    } else if (bits == 8) {
-      transfer_pixel(bytes[i]);
-    } else if (bits == 16) {
-      if (i + 1 < length) transfer_pixel(bytes[i] | (uint32_t)bytes[i + 1] << 8);
-      i++;
-    } else {
-      if (i + 3 < length) transfer_pixel(bytes[i] | (uint32_t)bytes[i + 1] << 8 | (uint32_t)bytes[i + 2] << 16 | (uint32_t)bytes[i + 3] << 24);
-      i += 3;
-    }
-  }
-}
-
-// ---- The palette, loaded from memory as TEX0's CLD says, and kept until the next load
-
-static uint32_t palette[256];
-static uint32_t palette_base[2];   // CBP0 and CBP1, for the loads that only happen when the palette has moved
-
-static void palette_load(uint64_t tex0) {
-  int cld = (int)field(tex0, 61, 3), psm = (int)field(tex0, 20, 6), cpsm = (int)field(tex0, 51, 4), csm = (int)field(tex0, 55, 1);
-  uint32_t cbp = field(tex0, 37, 14);
-  if (cld == 0 || cld > 5) return;
-  if (cld >= 4) {
-    if (palette_base[cld - 4] == cbp) return;
-    palette_base[cld - 4] = cbp;
-  } else if (cld >= 2) {
-    palette_base[cld - 2] = cbp;
-  }
-  int eight = psm == PSMT8 || psm == PSMT8H, count = eight ? 256 : 16, start = eight ? 0 : (int)field(tex0, 56, 5) * 16 & 255;
-  uint64_t layout = registers[GS_TEXCLUT];
-  for (int i = 0; i < count; i++) {
-    int x, y, width = 64;
-    if (csm) {
-      // in a row, where TEXCLUT says
-      x = (int)field(layout, 6, 6) * 16 + i;
-      y = (int)field(layout, 12, 10);
-      width = (int)field(layout, 0, 6) * 64;
-    } else if (eight) {
-      // in a block of 16 by 16, with the 8 entries from 8 and those from 16 changing places in every 32
-      int j = (i & ~0x18) | (i & 8) << 1 | (i & 16) >> 1;
-      x = j & 15;
-      y = j >> 4;
-    } else {
-      x = i & 7;
-      y = i >> 3;
-    }
-    palette[(start + i) & 255] = read_pixel(cbp * BLOCK_WORDS, width, cpsm == 0 ? PSMCT32 : PSMCT16, x, y);
-  }
-}
-
 // ---- Textures
 
-struct texture { uint32_t base; int width, psm, w, h, tcc, tfx, cpsm, csa; uint64_t clamp, tex1, texa; };
+struct texture { uint32_t block, width; int psm, w, h, tcc, tfx; uint64_t tex0, clamp, tex1, texa; };
 
 static struct texture texture_of(int context) {
-  uint64_t tex0 = registers[GS_TEX0_1 + context];
+  uint64_t tex0 = gs_registers[GS_TEX0_1 + context];
   return (struct texture){
-    .base = field(tex0, 0, 14) * BLOCK_WORDS, .width = (int)field(tex0, 14, 6) * 64, .psm = (int)field(tex0, 20, 6),
+    .block = field(tex0, 0, 14), .width = field(tex0, 14, 6), .psm = (int)field(tex0, 20, 6),
     .w = 1 << field(tex0, 26, 4), .h = 1 << field(tex0, 30, 4), .tcc = (int)field(tex0, 34, 1), .tfx = (int)field(tex0, 35, 2),
-    .cpsm = (int)field(tex0, 51, 4), .csa = (int)field(tex0, 56, 5), .clamp = registers[GS_CLAMP_1 + context], .tex1 = registers[GS_TEX1_1 + context],
-    .texa = registers[GS_TEXA],
+    .tex0 = tex0, .clamp = gs_registers[GS_CLAMP_1 + context], .tex1 = gs_registers[GS_TEX1_1 + context], .texa = gs_registers[GS_TEXA],
   };
 }
 
@@ -265,17 +113,16 @@ static int wrapped(int place, int size, int mode, int min, int max) {
 static uint32_t texel(const struct texture *t, int u, int v) {
   u = wrapped(u, t->w, (int)field(t->clamp, 0, 2), (int)field(t->clamp, 4, 10), (int)field(t->clamp, 14, 10));
   v = wrapped(v, t->h, (int)field(t->clamp, 2, 2), (int)field(t->clamp, 24, 10), (int)field(t->clamp, 34, 10));
-  uint32_t raw = read_pixel(t->base, t->width, t->psm, u, v);
+  uint32_t raw = gs_pixel(t->block, t->width, t->psm, (uint32_t)u, (uint32_t)v);
   uint32_t ta0 = field(t->texa, 0, 8), ta1 = field(t->texa, 32, 8), aem = field(t->texa, 15, 1);
   switch (t->psm) {
-  case PSMCT32: return raw;
-  case PSMCT24: return raw | (aem && !raw ? 0 : ta0) << 24;
-  case PSMCT16: case PSMCT16S: return from_16(raw, ta1, aem && !(raw & 0x7FFF) ? 0 : ta0);
-  default: {
-    int eight = t->psm == PSMT8 || t->psm == PSMT8H;
-    uint32_t entry = palette[eight ? raw : (t->csa * 16 + raw) & 255];
-    return t->cpsm == 0 ? entry : from_16(entry & 0xFFFF, ta1, aem && !(entry & 0x7FFF) ? 0 : ta0);
+  case PSMCT24: case PSMZ24: return raw | (aem && !raw ? 0 : ta0) << 24;
+  case PSMCT16: case PSMCT16S: case PSMZ16: case PSMZ16S: return from_16(raw, ta1, aem && !(raw & 0x7FFF) ? 0 : ta0);
+  case PSMT8: case PSMT8H: case PSMT4: case PSMT4HL: case PSMT4HH: {
+    uint32_t entry = gs_palette_entry(t->tex0, raw);
+    return field(t->tex0, 51, 4) == 0 ? entry : from_16(entry, ta1, aem && !(entry & 0x7FFF) ? 0 : ta0);
   }
+  default: return raw;
   }
 }
 
@@ -326,12 +173,12 @@ static uint32_t textured(const struct texture *t, uint32_t shape, uint32_t tex) 
 
 // ---- Where a shape lands, and each of its pixels
 
-static int context(void) { return (int)(((registers[GS_PRMODECONT] & 1 ? registers[GS_PRIM] : registers[GS_PRMODE]) >> 9) & 1); }
-static uint64_t prim(void) { return registers[GS_PRMODECONT] & 1 ? registers[GS_PRIM] : (registers[GS_PRIM] & 7) | (registers[GS_PRMODE] & ~7ull); }
+static int context(void) { return (int)(((gs_registers[GS_PRMODECONT] & 1 ? gs_registers[GS_PRIM] : gs_registers[GS_PRMODE]) >> 9) & 1); }
+static uint64_t prim(void) { return gs_registers[GS_PRMODECONT] & 1 ? gs_registers[GS_PRIM] : (gs_registers[GS_PRIM] & 7) | (gs_registers[GS_PRMODE] & ~7ull); }
 
 struct target {
-  uint32_t colour_at, depth_at, mask, depth_most;
-  int width, psm, depth_psm, left, right, top, bottom, test, write_depth, blend, pabe, clamp_colour, fba;
+  uint32_t colour_at, depth_at, width, mask, depth_most;
+  int psm, depth_psm, left, right, top, bottom, test, write_depth, blend, pabe, clamp_colour, fba;
   int alpha_test, alpha_ref, alpha_fail, date, datm, textured, linear_hint, uv;
   uint64_t alpha;
   struct texture texture;
@@ -339,20 +186,19 @@ struct target {
 
 static int target_of(struct target *t) {
   int c = context();
-  uint64_t frame = registers[GS_FRAME_1 + c], zbuf = registers[GS_ZBUF_1 + c], scissor = registers[GS_SCISSOR_1 + c], test = registers[GS_TEST_1 + c], p = prim();
-  t->width = (int)field(frame, 16, 6) * 64;
+  uint64_t frame = gs_registers[GS_FRAME_1 + c], zbuf = gs_registers[GS_ZBUF_1 + c], scissor = gs_registers[GS_SCISSOR_1 + c], test = gs_registers[GS_TEST_1 + c], p = prim();
+  t->width = field(frame, 16, 6);
   t->psm = (int)field(frame, 24, 6);
-  t->colour_at = field(frame, 0, 9) * PAGE_WORDS;
+  t->colour_at = field(frame, 0, 9) * GS_PAGE_BLOCKS;
   t->mask = (uint32_t)(frame >> 32);
-  t->depth_at = field(zbuf, 0, 9) * PAGE_WORDS;
+  t->depth_at = field(zbuf, 0, 9) * GS_PAGE_BLOCKS;
   t->depth_psm = 0x30 | (int)field(zbuf, 24, 4);
   t->depth_most = t->depth_psm == PSMZ32 ? 0xFFFFFFFF : t->depth_psm == PSMZ24 ? 0xFFFFFF : 0xFFFF;
   t->left = (int)field(scissor, 0, 11);
   t->right = (int)field(scissor, 16, 11);
   t->top = (int)field(scissor, 32, 11);
   t->bottom = (int)field(scissor, 48, 11);
-  if (!t->width || t->colour_at >= GS_MEMORY_WORDS) return 0;
-  if (t->right >= t->width) t->right = t->width - 1;
+  if (!t->width) return 0;
   // the depth test: off or always, never, as near or nearer, nearer
   t->test = field(test, 16, 1) ? (int)field(test, 17, 2) : 1;
   t->write_depth = !field(zbuf, 32, 1);
@@ -362,10 +208,10 @@ static int target_of(struct target *t) {
   t->date = (int)field(test, 14, 1);
   t->datm = (int)field(test, 15, 1);
   t->blend = (int)field(p, 6, 1) || (int)field(p, 7, 1);
-  t->alpha = registers[GS_ALPHA_1 + c];
-  t->pabe = (int)(registers[GS_PABE] & 1);
-  t->clamp_colour = (int)(registers[GS_COLCLAMP] & 1);
-  t->fba = (int)(registers[GS_FBA_1 + c] & 1);
+  t->alpha = gs_registers[GS_ALPHA_1 + c];
+  t->pabe = (int)(gs_registers[GS_PABE] & 1);
+  t->clamp_colour = (int)(gs_registers[GS_COLCLAMP] & 1);
+  t->fba = (int)(gs_registers[GS_FBA_1 + c] & 1);
   t->textured = (int)field(p, 4, 1);
   t->uv = (int)field(p, 8, 1);
   if (t->textured) t->texture = texture_of(c);
@@ -374,9 +220,9 @@ static int target_of(struct target *t) {
 
 // a framebuffer pixel as a 32-bit colour, its alpha as the format keeps it
 static uint32_t framebuffer_colour(const struct target *t, int x, int y) {
-  uint32_t held = read_pixel(t->colour_at, t->width, t->psm, x, y);
-  if (t->psm == PSMCT16 || t->psm == PSMCT16S) return from_16(held, 0x80, 0);
-  if (t->psm == PSMCT24) return held | 0x80u << 24;
+  uint32_t held = gs_pixel(t->colour_at, t->width, t->psm, (uint32_t)x, (uint32_t)y);
+  if (is_16(t->psm)) return from_16(held, 0x80, 0);
+  if (is_24(t->psm)) return held | 0x80u << 24;
   return held;
 }
 
@@ -396,7 +242,7 @@ static int alpha_passes(int test, uint32_t alpha, int ref) {
 // one pixel of a shape, with its colour already textured
 static void plot(const struct target *t, int x, int y, uint32_t z, uint32_t colour) {
   if (z > t->depth_most) z = t->depth_most;
-  uint32_t depth = read_pixel(t->depth_at, t->width, t->depth_psm, x, y);
+  uint32_t depth = gs_pixel(t->depth_at, t->width, t->depth_psm, (uint32_t)x, (uint32_t)y);
   if (t->test == 0 || (t->test == 2 && z < depth) || (t->test == 3 && z <= depth)) return;
   uint32_t under = framebuffer_colour(t, x, y);
   if (t->date && (under >> 31) != (uint32_t)t->datm) return;
@@ -423,14 +269,14 @@ static void plot(const struct target *t, int x, int y, uint32_t z, uint32_t colo
   if (t->fba) colour |= 0x80000000u;
   if (write_colour) {
     uint32_t keep = t->mask | (write_alpha ? 0 : 0xFF000000u);
-    if (t->psm == PSMCT16 || t->psm == PSMCT16S) {
+    if (is_16(t->psm)) {
       uint32_t merged = (under & keep) | (colour & ~keep);
-      write_pixel(t->colour_at, t->width, t->psm, x, y, to_16(merged), 0);
+      gs_pixel_set(t->colour_at, t->width, t->psm, (uint32_t)x, (uint32_t)y, to_16(merged), 0);
     } else {
-      write_pixel(t->colour_at, t->width, t->psm, x, y, colour, keep);
+      gs_pixel_set(t->colour_at, t->width, t->psm, (uint32_t)x, (uint32_t)y, colour, keep);
     }
   }
-  if (write_depth) write_pixel(t->depth_at, t->width, t->depth_psm, x, y, z, 0);
+  if (write_depth) gs_pixel_set(t->depth_at, t->width, t->depth_psm, (uint32_t)x, (uint32_t)y, z, 0);
 }
 
 // a shape's colour at a pixel, textured where it is, from where it is in its texture
@@ -533,7 +379,7 @@ static void triangle(const struct corner *a, const struct corner *b, const struc
 
 // a corner that draws: the shape PRIM names, once it has enough corners
 static void corner_written(uint64_t value, int with_fog, int draws) {
-  uint64_t offset = registers[GS_XYOFFSET_1 + context()], rgbaq = registers[GS_RGBAQ], st = registers[GS_ST], uv = registers[GS_UV];
+  uint64_t offset = gs_registers[GS_XYOFFSET_1 + context()], rgbaq = gs_registers[GS_RGBAQ], st = gs_registers[GS_ST], uv = gs_registers[GS_UV];
   struct corner now = {
     .x = (int32_t)(value & 0xFFFF) - (int32_t)(offset & 0xFFFF), .y = (int32_t)((value >> 16) & 0xFFFF) - (int32_t)((offset >> 32) & 0xFFFF),
     .z = with_fog ? (uint32_t)((value >> 32) & 0xFFFFFF) : (uint32_t)(value >> 32), .colour = (uint32_t)rgbaq,
@@ -560,23 +406,24 @@ void gs_write(uint8_t reg, uint64_t value) {
   written[0] = reg;
   __builtin_memcpy(written + 1, &value, 8);
   add_to_list('R', written, sizeof written);
-  if (reg >= sizeof registers / sizeof registers[0]) return;
-  registers[reg] = value;
+  if (reg >= sizeof gs_registers / sizeof gs_registers[0]) return;
+  gs_registers[reg] = value;
   if (reg == GS_PRIM) corner_count = 0;
   else if (reg == GS_XYZ2 || reg == GS_XYZF2) corner_written(value, reg == GS_XYZF2, 1);
   else if (reg == GS_XYZ3 || reg == GS_XYZF3) corner_written(value, reg == GS_XYZF3, 0);
-  else if (reg == GS_TEX0_1 || reg == GS_TEX0_2) palette_load(value);
+  else if (reg == GS_TEX0_1 || reg == GS_TEX0_2) gs_palette_load(value);
   else if (reg == GS_TEX2_1 || reg == GS_TEX2_2) {
     // TEX2 changes only TEX0's format and palette fields
-    uint64_t fields = 0x3Full << 20 | 0x7FFFFFFull << 37, tex0 = (registers[reg - 0x10] & ~fields) | (value & fields);
-    registers[reg - 0x10] = tex0;
-    palette_load(tex0);
-  } else if (reg == GS_TRXDIR) transfer_start(value);
+    uint64_t fields = 0x3Full << 20 | 0x7FFFFFFull << 37, tex0 = (gs_registers[reg - 0x10] & ~fields) | (value & fields);
+    gs_registers[reg - 0x10] = tex0;
+    gs_palette_load(tex0);
+  } else if (reg == GS_TRXDIR) gs_transfer_start(value);
+  else if (reg == GS_HWREG) gs_transfer_in((const uint8_t *)&value, 8);
 }
 
 void gs_image(const void *data, uint32_t length) {
   add_to_list('I', data, length);
-  transfer_data(data, length);
+  gs_transfer_in(data, length);
 }
 
 void gs_screen(uint32_t address, uint32_t value) {
@@ -596,15 +443,14 @@ void gs_show(void) {
   uint32_t *out = kit_screen(SCREEN_W, SCREEN_H);
   // the second circuit's buffer when only that one is on
   uint64_t buffer = (shown[0] & 3) == 2 ? shown[4] : shown[2];
-  int width = (int)field(buffer, 9, 6) * 64, psm = (int)field(buffer, 15, 5), from_x = (int)field(buffer, 32, 11), from_y = (int)field(buffer, 43, 11);
-  uint32_t at = field(buffer, 0, 9) * PAGE_WORDS;
-  int on = (shown[0] & 3) != 0 && width > 0;
-  for (int y = 0; y < SCREEN_H; y++) {
-    for (int x = 0; x < SCREEN_W; x++) {
+  uint32_t width = field(buffer, 9, 6), at = field(buffer, 0, 9) * GS_PAGE_BLOCKS, from_x = field(buffer, 32, 11), from_y = field(buffer, 43, 11);
+  int psm = (int)field(buffer, 15, 5), on = (shown[0] & 3) != 0 && width > 0;
+  for (uint32_t y = 0; y < SCREEN_H; y++) {
+    for (uint32_t x = 0; x < SCREEN_W; x++) {
       uint32_t colour = 0;
-      if (on && x + from_x < width) {
-        uint32_t held = read_pixel(at, width, psm, x + from_x, y + from_y);
-        colour = psm == PSMCT16 || psm == PSMCT16S ? from_16(held, 0, 0) : held;
+      if (on && x + from_x < width * 64) {
+        uint32_t held = gs_pixel(at, width, psm, x + from_x, y + from_y);
+        colour = is_16(psm) ? from_16(held, 0, 0) : held;
       }
       out[y * SCREEN_W + x] = 0xFF000000u | (colour & 0xFFFFFF);
     }
