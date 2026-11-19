@@ -1,0 +1,51 @@
+// The console's stack, for a game that keeps the console's memory at the console's addresses and has to leave in it
+// what the original leaves: the return addresses and saved registers its functions push, and the locals they keep
+// there, which a later function can read without setting, as a struct whose fields it never fills (kit/gba/c/README.md,
+// The console's stack).
+//
+// A game's twins say what they push and where they keep their locals, as the console's compiler lays out the same C,
+// and the values come from that C: a function's entry writes its pushes where the console's stack pointer is, its
+// return leaves them there, and a call says where it comes back to and what its saved registers hold. A value the
+// game's C can't give is left out: the byte stays as it was, and gba_stack_gaps() counts it.
+
+#ifndef DREAMPORTS_GBA_STACK_H
+#define DREAMPORTS_GBA_STACK_H
+
+#include <stdint.h>
+
+/** A register a function's start pushes (0 to 12, 14 for lr), and where, from the stack pointer as it was called. */
+typedef struct { int8_t reg; int16_t slot; } gba_push;
+
+/** What a function's start does to the stack: its pushes, and how many bytes more it takes for its locals. */
+typedef struct { uint8_t count; const gba_push *pushes; uint16_t frame; } gba_frame;
+
+/** The stack from `sp`, as the console's start leaves it for the game, with no register's value known. */
+void gba_stack_start(uint32_t sp);
+
+/** From here on in the function running, register `reg` holds `value`, or nothing the game's C can give. */
+void gba_stack_reg(int reg, uint32_t value);
+void gba_stack_unknown(int reg);
+
+/** The next function entered is called from the instruction before `return_address`, odd in Thumb code. */
+void gba_stack_call(uint32_t return_address);
+
+/** A function's start: its pushes written below the stack pointer, which goes down past them and its locals. Gives
+ *  what gba_stack_leave takes back, for a variable with __attribute__((cleanup)). */
+uint32_t gba_stack_enter(const gba_frame *frame);
+
+/** The function's return: the stack pointer and the saved registers as they were before it, its pushes left behind. */
+void gba_stack_leave(uint32_t *entered);
+
+/** Where the running function's frame starts, the stack pointer after its start. */
+uint32_t gba_stack_sp(void);
+
+/** The console's address of a local the function keeps at `at` from its frame's start. */
+void *gba_stack_local(int32_t at);
+
+/** A store of `bytes` of `value` at `at` from the frame's start, as the function's own code stores a register there. */
+void gba_stack_store(int32_t at, uint32_t value, int bytes);
+
+/** How many bytes the stack left out, as nothing gave their value. */
+uint32_t gba_stack_gaps(void);
+
+#endif
