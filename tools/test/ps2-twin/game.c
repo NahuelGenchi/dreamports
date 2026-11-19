@@ -5,6 +5,12 @@
 
 #include "ps2.h"
 
+// the game's own names for its types, which the check asks the compiler about
+typedef unsigned char u8;
+typedef float f32;
+typedef long long s64;
+enum which { FIRST, SECOND, THIRD };
+
 extern const unsigned values[];
 extern unsigned char buffer[];
 extern int (*const functions[])(int);
@@ -15,7 +21,7 @@ int sum(int a, int b) {
 }
 
 /** 0x0010009C: count bytes of value from to */
-void fill(unsigned char *to, int count, int value) {
+void fill(u8 *to, int count, int value) {
   while (count != 0) {
     *to++ = value;
     count--;
@@ -33,7 +39,7 @@ int twice(int a) {
 }
 
 /** 0x001000F0: a sum of two 64-bit numbers */
-long long wide(long long a, long long b) {
+s64 wide(s64 a, s64 b) {
   return a + b;
 }
 
@@ -47,7 +53,7 @@ static float clamped(float value) {
 }
 
 /** 0x001000F8: a product of two floats, cut towards zero */
-float scale(float a, float b) {
+f32 scale(f32 a, f32 b) {
   return ee_mul(clamped(a), clamped(b));
 }
 
@@ -72,11 +78,11 @@ int likely(int a) {
 }
 
 /** 0x00100158: a switch */
-int pick(unsigned n) {
+int pick(enum which n) {
   switch (n) {
-  case 0: return 10;
-  case 1: return 20;
-  case 2: return 30;
+  case FIRST: return 10;
+  case SECOND: return 20;
+  case THIRD: return 30;
   }
   return 0;
 }

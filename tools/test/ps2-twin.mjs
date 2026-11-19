@@ -6,7 +6,8 @@
 // line of the twins is changed at a time, and the check has to find each: a wrong sum, a byte too many, a value one
 // along, a 64-bit sum cut to 32, a product rounded as a computer rounds, one that doesn't clamp what the FPU clamps, a
 // quadword copied from where the console doesn't, an argument in t3 left out, one on the stack left out, a switch with a case too many, a GS
-// register four bytes off, a twin that never comes back, and one that calls what nothing built is. Last, the same
+// register four bytes off, a twin that never comes back, one that takes a struct as it is, and one that calls what
+// nothing built is. Last, the same
 // program as a game of its own, through the tool everyone runs, npm run dp -- twin.
 
 import { spawnSync } from 'node:child_process';
@@ -95,9 +96,10 @@ try {
   await wrong('copy16', [['*(unsigned __int128 *)((unsigned)to & ~15u) = *(const unsigned __int128 *)((unsigned)from & ~15u);', '*to = *from;']], 'differs', 'a quadword copied from where the address says, where LQ and SQ leave its low bits out');
   await wrong('eight', [['+ g + h;', '+ g;']], 'differs', 'the eighth argument, in t3, left out');
   await wrong('ten', [['+ i + j;', '+ i;']], 'differs', 'the tenth argument, the second on the stack, left out');
-  await wrong('pick', [['case 2: return 30;', 'case 2: return 30;\n  case 3: return 40;']], 'differs', 'a case too many, which only 3, at the edge of what the original takes, meets', /pick\(0x00000003\)/);
+  await wrong('pick', [['case THIRD: return 30;', 'case THIRD: return 30;\n  case 3: return 40;']], 'differs', 'a case too many, which only 3, at the edge of what the original takes, meets', /pick\(0x00000003\)/);
   await wrong('hardware', [['0x12000070', '0x12000074']], 'differs', 'a register of the GS four bytes off', /in the GS's registers/);
   await wrong('shine', [['  return 1;\n}\n\n/** 0x001001F0', '  for (;;) {}\n  return 1;\n}\n\n/** 0x001001F0']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);
+  await wrong('shine', [['/** 0x001001E8', 'struct pair { int a, b; };\n\n/** 0x001001E8'], ['int shine(int a) {', 'int shine(struct pair a) {']], 'unchecked', 'a twin that takes a struct as it is isn\'t called, and says so', /no register carries/);
   await wrong('twice', [['return sum(a, a);', 'extern int nowhere(int);\n  return nowhere(a);']], 'unchecked', 'a twin that calls what nothing built is the twin of', /nowhere, which nothing built is the twin of/);
 } finally {
   original.close();
