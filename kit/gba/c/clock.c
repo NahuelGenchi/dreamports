@@ -1,0 +1,759 @@
+// The Game Boy Advance's time, as mGBA 0.10.5 keeps it (clock.h). Every number of cycles here is the reference
+// emulator's own rule for the console, and the kit's test measures them against it (tools/test/clock.mjs).
+
+#include "clock.h"
+#include "kit.h"
+
+// the kit's own (kit/c/libc.c), as the WebAssembly build has no C library
+void *memset(void *to, int value, size_t n);
+void *memcpy(void *restrict to, const void *restrict from, size_t n);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The memory's wait states, by the top byte of an address: each region's for a halfword and for a word, the first
+// access of a run (nonsequential) and the rest (sequential). The cartridge's come from WAITCNT, as the game sets it.
+
+enum { BIOS = 0x0, EWRAM = 0x2, IWRAM = 0x3, IO = 0x4, CARTRIDGE = 0x8, SRAM = 0xE };
+static const uint8_t RESET_N16[16] = { 0, 0, 2, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 4, 4 };
+static const uint8_t RESET_N32[16] = { 0, 0, 5, 0, 0, 1, 1, 0, 7, 7, 9, 9, 13, 13, 9 };
+static const uint8_t RESET_S16[16] = { 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 4, 4, 8, 8, 4 };
+static const uint8_t RESET_S32[16] = { 0, 0, 5, 0, 0, 1, 1, 0, 5, 5, 9, 9, 17, 17, 9 };
+// WAITCNT's choices: a first access's waits, and a sequential one's for each of the three cartridge windows
+static const uint8_t CART_N[4] = { 4, 3, 2, 8 };
+static const uint8_t CART_S[6] = { 2, 1, 4, 1, 8, 1 };
+
+static struct {
+  uint8_t n16[16], s16[16], n32[16], s32[16];
+  int prefetch;              // whether the cartridge fetches ahead while the bus is idle
+  uint32_t prefetched;       // how far it has, by the program counter (0 after a jump)
+  int region;                // where the code runs from
+} wait;
+
+static void set_waitcnt(uint16_t value) {
+  int windows[3] = { (value >> 2) & 3, (value >> 5) & 3, (value >> 8) & 3 };
+  int sequential[3] = { (value >> 4) & 1, ((value >> 7) & 1) + 2, ((value >> 10) & 1) + 4 };
+  int sram = value & 3;
+  wait.n16[SRAM] = wait.n16[SRAM + 1] = wait.s16[SRAM] = wait.s16[SRAM + 1] = CART_N[sram];
+  wait.n32[SRAM] = wait.n32[SRAM + 1] = wait.s32[SRAM] = wait.s32[SRAM + 1] = 2 * CART_N[sram] + 1;
+  for (int w = 0; w < 3; w++) {
+    int r = CARTRIDGE + 2 * w;
+    wait.n16[r] = wait.n16[r + 1] = CART_N[windows[w]];
+    wait.s16[r] = wait.s16[r + 1] = CART_S[sequential[w]];
+    wait.n32[r] = wait.n32[r + 1] = wait.n16[r] + 1 + wait.s16[r];
+    wait.s32[r] = wait.s32[r + 1] = 2 * wait.s16[r] + 1;
+  }
+  wait.prefetch = (value & 0x4000) != 0;
+}
+
+// With the prefetch on and the code in the cartridge, the cartridge reads ahead, up to 8 halfwords, while an access
+// elsewhere keeps the bus busy, and an access's wait shrinks by what that saved (mGBA's GBAMemoryStall).
+static int stall(uint32_t pc_register, int cycles) {
+  if (wait.region < CARTRIDGE || !wait.prefetch) return cycles;
+  int previous = 0, most = 8;
+  uint32_t ahead = wait.prefetched - pc_register;
+  if (ahead < 16) {
+    previous = (int)(ahead >> 1);
+    most -= previous;
+  }
+  int s = wait.s16[wait.region], first_to_sequential = wait.n16[wait.region] - wait.s16[wait.region] + 1;
+  int taken = s + 1, loads = 1;
+  while (taken < cycles && loads < most) {
+    taken += s;
+    ++loads;
+  }
+  wait.prefetched = pc_register + 2 * (uint32_t)(loads + previous - 1);
+  if (taken > cycles) cycles = taken;
+  return cycles - first_to_sequential - (taken - 1);
+}
+
+// one load or store of `bytes` at `address`: its region's first-access wait, and the processor's own cycle or two
+static int access_time(uint32_t pc_register, uint32_t address, int bytes, int writes) {
+  int region = (address >> 24) & 15;
+  int cycles = (bytes == 4 && region < SRAM) ? wait.n32[region] : wait.n16[region];
+  cycles += writes ? 1 : 2;
+  if (address < 0x08000000) cycles = stall(pc_register, cycles);
+  return cycles;
+}
+
+// a block move of `words` words from `address`
+static int block_time(uint32_t pc_register, uint32_t address, int words, int writes) {
+  int region = (address >> 24) & 15;
+  int cycles = wait.s32[region] - wait.n32[region];
+  for (int i = 0; i < words; i++) cycles += wait.s32[region] + 1;
+  if (!words) cycles += wait.s32[region] + 16;
+  if (!writes) ++cycles;
+  if (address < 0x08000000) cycles = stall(pc_register, cycles);
+  return cycles;
+}
+
+// the pipeline filled again after a jump, from where it lands
+static int jump_time(uint32_t to, int thumb) {
+  wait.prefetched = 0;
+  wait.region = (to >> 24) & 15;
+  return thumb ? 2 + wait.n16[wait.region] + wait.s16[wait.region] : 2 + wait.n32[wait.region] + wait.s32[wait.region];
+}
+
+// a multiply's extra cycles, by how many of its first register's bytes aren't all 0 or all 1
+static int multiply_time(uint32_t pc_register, uint32_t r) {
+  int cycles = (r & 0xFFFFFF00u) == 0xFFFFFF00u || !(r & 0xFFFFFF00u) ? 1
+             : (r & 0xFFFF0000u) == 0xFFFF0000u || !(r & 0xFFFF0000u) ? 2
+             : (r & 0xFF000000u) == 0xFF000000u || !(r & 0xFF000000u) ? 3 : 4;
+  return stall(pc_register, cycles);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The events between instructions, on the emulator's own rules (its mTiming): the DMA channels, which hold the
+// processor while they run, the timers, and the sound's two FIFOs, which a timer's overflow takes a sample from and
+// which ask their DMA for more when half empty. `master` is the time events have run to, `cycles` the processor's
+// beyond it.
+
+static int64_t master, cycles;
+#define NOW (master + cycles)
+
+static struct dma {
+  uint32_t source, dest, count, next_source, next_dest, next_count;
+  uint16_t control;
+  int64_t when;
+} dma[4];
+static int active_dma = -1, blocked;
+static int64_t dma_event = -1;
+static const int STEP[4] = { 1, -1, 0, 1 };   // a DMA address's step for each of its settings, in units
+
+static struct timer {
+  int enabled, counts_up, prescale;
+  uint16_t reload, counter;
+  int64_t last, when;
+} timers[4];
+
+static struct fifo { int written, read, left, dma; } fifos[2];
+static uint16_t soundcnt_high, soundcnt_x;
+
+static void dma_update(void) {
+  int64_t least = 0;
+  active_dma = -1;
+  for (int i = 0; i < 4; i++) {
+    if (!(dma[i].control & 0x8000) || !dma[i].next_count) continue;
+    int64_t time = dma[i].when - NOW;
+    if (active_dma < 0 || time < least) {
+      least = time;
+      active_dma = i;
+    }
+  }
+  if (active_dma >= 0) dma_event = dma[active_dma].when;
+  else {
+    dma_event = -1;
+    blocked = 0;
+  }
+}
+
+static void dma_schedule(int n) {
+  int timing = (dma[n].control >> 12) & 3;
+  if (timing == 0) {
+    dma[n].when = NOW + 3;
+    dma[n].next_count = dma[n].count;
+  } else if (timing != 3) return;
+  dma_update();
+}
+
+static void fifo_written(int which) { fifos[which].written = (fifos[which].written + 1) & 7; }
+
+// one unit of a DMA: a first one's waits, then sequential ones'
+static void dma_unit(int n) {
+  struct dma *d = &dma[n];
+  uint32_t width = 2u << ((d->control >> 10) & 1);
+  int from = (d->next_source >> 24) & 15, to = (d->next_dest >> 24) & 15;
+  int time = 2;
+  if (d->count == d->next_count) time += width == 4 ? wait.n32[from] + wait.n32[to] : wait.n16[from] + wait.n16[to];
+  else time += width == 4 ? wait.s32[from] + wait.s32[to] : wait.s16[from] + wait.s16[to];
+  d->when += time;
+  blocked = 1;
+  if ((d->next_dest & ~3u) == 0x040000A0) fifo_written(0);
+  if ((d->next_dest & ~3u) == 0x040000A4) fifo_written(1);
+  int source_step = d->next_source >= 0x08000000 && d->next_source < 0x0E000000 && ((d->control >> 7) & 3) < 3
+    ? (int)width : STEP[(d->control >> 7) & 3] * (int)width;
+  if (d->next_source) d->next_source += (uint32_t)source_step;
+  d->next_dest += (uint32_t)(STEP[(d->control >> 5) & 3] * (int)width);
+  d->next_count--;
+  for (int i = 0; i < 4; i++)
+    if (dma[i].when < d->when && (dma[i].control & 0x8000) && dma[i].next_count) dma[i].when = d->when;
+  if (!d->next_count) {
+    d->next_count = 0x80000000u;
+    if (from < CARTRIDGE || to < CARTRIDGE) d->when += 2;
+  }
+  dma_update();
+}
+
+static void dma_due(void) {
+  struct dma *d = &dma[active_dma];
+  if (d->next_count == d->count) d->when = NOW;
+  if (d->next_count & 0xFFFFF) dma_unit(active_dma);
+  else {
+    int timing = (d->control >> 12) & 3;
+    d->next_count = 0;
+    if (!(d->control & 0x0200) || timing == 0) d->control &= (uint16_t)~0x8000;
+    if (((d->control >> 5) & 3) == 3) d->next_dest = d->dest;
+    dma_update();
+  }
+}
+
+static void timer_count(int n, int64_t late) {
+  struct timer *t = &timers[n];
+  if (!t->enabled || t->counts_up) return;
+  int64_t mask = (1 << t->prescale) - 1, now = (NOW - late) & ~mask;
+  int64_t ticks = ((now - t->last) >> t->prescale) + t->counter;
+  t->last = now;
+  while (ticks >= 0x10000) ticks -= 0x10000 - t->reload;
+  t->counter = (uint16_t)ticks;
+  t->when = (now + ((0x10000 - ticks) << t->prescale)) & ~mask;
+}
+
+static void fifo_sample(int which, int64_t late) {
+  struct fifo *f = &fifos[which];
+  int size = f->written >= f->read ? f->written - f->read : 8 - f->read + f->written;
+  if (8 - size > 4 && f->dma > 0) {
+    struct dma *d = &dma[f->dma];
+    if (((d->control >> 12) & 3) == 3) {
+      d->when = NOW - late;
+      d->next_count = 4;
+      dma_schedule(f->dma);
+    }
+  }
+  if (!f->left && size) {
+    f->left = 4;
+    f->read = (f->read + 1) & 7;
+  }
+  if (f->left) f->left--;
+}
+
+static void timer_overflows(int n, int64_t late) {
+  struct timer *t = &timers[n];
+  if (t->counts_up) t->counter = t->reload;
+  else timer_count(n, late);
+  if ((soundcnt_x & 0x80) && n < 2) {
+    if ((soundcnt_high & 0x0300) && ((soundcnt_high >> 10) & 1) == n) fifo_sample(0, late);
+    if ((soundcnt_high & 0x3000) && ((soundcnt_high >> 14) & 1) == n) fifo_sample(1, late);
+  }
+}
+
+static int64_t next_event(void) {
+  int64_t best = INT64_MAX;
+  for (int i = 0; i < 4; i++)
+    if (timers[i].enabled && !timers[i].counts_up && timers[i].when < best) best = timers[i].when;
+  if (dma_event >= 0 && dma_event < best) best = dma_event;
+  return best;
+}
+
+// time to `master + by`, each event due on the way run in turn, the timers before a DMA at the same time
+static void tick(int64_t by) {
+  master += by;
+  for (;;) {
+    int64_t when = INT64_MAX;
+    int which = -1;
+    for (int i = 0; i < 4; i++)
+      if (timers[i].enabled && !timers[i].counts_up && timers[i].when <= master && timers[i].when < when) {
+        when = timers[i].when;
+        which = i;
+      }
+    if (dma_event >= 0 && dma_event <= master && dma_event < when) {
+      when = dma_event;
+      which = 4;
+    }
+    if (which < 0) return;
+    int64_t kept = cycles;
+    cycles = 0;
+    if (which == 4) {
+      dma_event = -1;
+      dma_due();
+    } else {
+      timers[which].when = INT64_MAX;
+      timer_overflows(which, master - when);
+    }
+    cycles = kept;
+  }
+}
+
+// the events due before the processor goes on, a DMA holding it until it's done
+static void run_events(void) {
+  int64_t next = next_event() - master;
+  while (cycles >= next) {
+    next = 0;
+    do {
+      int64_t ran = cycles;
+      cycles = 0;
+      tick(ran < next ? next : ran);
+      next = next_event() - master;
+    } while (blocked);
+  }
+  if (blocked) cycles = next;
+}
+
+static uint64_t started;
+
+void gba_clock_write16(uint32_t address, uint16_t value) {
+  // the instruction storing it runs from its start's time, as the emulator's store does
+  int64_t kept = cycles;
+  cycles = (int64_t)started - master;
+  uint32_t at = address & 0x3FE;
+  if (at == 0x204) set_waitcnt(value);
+  if (at >= 0xB0 && at < 0xE0) {
+    int n = (int)(at - 0xB0) / 12, part = (int)(at - 0xB0) % 12;
+    struct dma *d = &dma[n];
+    if (part == 0) d->source = (d->source & 0xFFFF0000u) | value;
+    if (part == 2) d->source = (d->source & 0xFFFFu) | (uint32_t)value << 16;
+    if (part == 4) d->dest = (d->dest & 0xFFFF0000u) | value;
+    if (part == 6) d->dest = (d->dest & 0xFFFFu) | (uint32_t)value << 16;
+    if (part == 8) d->count = value ? value : (n == 3 ? 0x10000u : 0x4000u);
+    if (part == 10) {
+      int was = d->control & 0x8000;
+      d->control = value & (n < 3 ? 0xF7E0 : 0xFFE0);
+      if (!was && (d->control & 0x8000)) {
+        uint32_t width = 2u << ((d->control >> 10) & 1);
+        d->next_source = d->source & -width;
+        d->next_dest = d->dest & -width;
+        if (((d->control >> 12) & 3) == 3 && (n == 1 || n == 2)) {
+          // a sound FIFO's: a word at a time to a fixed address
+          d->control = (uint16_t)((d->control & ~0x0460) | 0x0440);
+          if (d->dest == 0x040000A0) fifos[0].dma = n;
+          if (d->dest == 0x040000A4) fifos[1].dma = n;
+        }
+        dma_schedule(n);
+      }
+    }
+  }
+  if (at >= 0x100 && at < 0x110) {
+    int n = (int)(at - 0x100) / 4;
+    struct timer *t = &timers[n];
+    if (!(at & 2)) t->reload = value;
+    else {
+      static const int PRESCALE[4] = { 0, 6, 8, 10 };
+      timer_count(n, 0);
+      int was = t->enabled, was_up = t->counts_up, was_prescale = t->prescale;
+      t->prescale = PRESCALE[value & 3];
+      t->counts_up = n > 0 && (value & 4);
+      t->enabled = (value & 0x80) != 0;
+      int again = was != t->enabled || was_up != t->counts_up || was_prescale != t->prescale;
+      if (was != t->enabled && t->enabled) t->counter = t->reload;
+      if (again) {
+        t->when = INT64_MAX;
+        if (t->enabled && !t->counts_up) {
+          t->last = NOW & ~(int64_t)((1 << t->prescale) - 1);
+          timer_count(n, 0);
+        }
+      }
+    }
+  }
+  if (at == 0x82) {
+    soundcnt_high = value;
+    if (value & 0x0800) fifos[0].written = fifos[0].read = 0;
+    if (value & 0x8000) fifos[1].written = fifos[1].read = 0;
+  }
+  if (at == 0x84) soundcnt_x = value;
+  if (at == 0xA0) fifo_written(0);
+  if (at == 0xA4) fifo_written(1);
+  cycles = kept;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The instructions. The emulator gives each the fetch of the next, one cycle and the code's sequential wait, then what
+// it does: a load or store its access and the code's first-access wait over its sequential one, a jump the pipeline
+// filled again, a shift by a register one cycle more, a multiply its own.
+
+// The first frame ends where the emulator's display reaches the V-blank: it starts on line 126 with 117 cycles to the
+// line's H-blank, which takes 224, and 33 lines of 1,232 more reach line 160. Each one after ends a frame later: 228
+// lines of 1,232.
+enum { LINE = 1232, HBLANK = 224, FRAME = 228 * LINE, FIRST_FRAME_END = 117 + HBLANK + (160 - 127) * LINE };
+static uint32_t frame;
+static int frame_ended;
+
+uint64_t gba_clock_frame_end(uint32_t f) { return (uint64_t)FIRST_FRAME_END + (uint64_t)f * FRAME; }
+uint64_t gba_clock_now(void) { return (uint64_t)NOW; }
+uint64_t gba_clock_started(void) { return started; }
+uint32_t gba_clock_frame(void) { return frame; }
+int gba_clock_frame_ended(void) { return frame_ended; }
+
+// before an instruction: the events due, and whether it's the first of a new frame's to start after its end
+static void begin(void) {
+  frame_ended = 0;
+  run_events();
+  started = (uint64_t)NOW;
+}
+static void end(int time) {
+  cycles += time;
+  if (started >= gba_clock_frame_end(frame)) {
+    frame_ended = 1;
+    frame++;
+  }
+}
+
+void gba_clock_thumb(uint32_t pc, uint16_t op, uint32_t next, uint32_t value, const gba_access *access, int count) {
+  begin();
+  wait.region = (pc >> 24) & 15;
+  int time = 1 + wait.s16[wait.region];
+  uint32_t pc_register = pc + 4;
+  // a write of WAITCNT changes the waits as the instruction stores it, after the fetch was counted
+  for (int i = 0; i < count; i++)
+    if (access[i].writes && (access[i].address & ~1u) == 0x04000204 && access[i].bytes == 2) set_waitcnt((uint16_t)access[i].value);
+  int first_over_sequential = wait.n16[wait.region] - wait.s16[wait.region];
+  uint32_t to = next & ~1u;   // odd when it stays in Thumb code, as a bx's target says
+  if ((op & 0xFC00) == 0x4000) {
+    int alu = (op >> 6) & 15;
+    if (alu == 2 || alu == 3 || alu == 4 || alu == 7) time += 1;                 // shifts by a register
+    if (alu == 13) time += multiply_time(pc_register, value) + first_over_sequential;
+  } else if ((op & 0xFC00) == 0x4400) {
+    int kind = (op >> 8) & 3, rd = (op & 7) | ((op >> 4) & 8);
+    if (kind == 3) time += jump_time(to, next & 1);                              // bx
+    else if (rd == 15 && kind != 1) time += jump_time(to, 1);
+  } else if ((op & 0xF600) == 0xB400 || (op & 0xF000) == 0xC000) {
+    int writes = !(op & 0x0800), words = __builtin_popcount(op & ((op & 0xF000) == 0xC000 ? 0xFF : 0x1FF));
+    time += block_time(pc_register, count ? access[0].address : 0, words, writes) + first_over_sequential;
+    if (!writes && (((op & 0xF000) == 0xB000 && (op & 0x100)) || ((op & 0xF000) == 0xC000 && !(op & 0xFF)))) time += jump_time(to, 1);
+  } else if ((op & 0xF800) == 0x4800 || (op & 0xF000) == 0x5000 || (op & 0xE000) == 0x6000 || (op & 0xF000) == 0x8000 || (op & 0xF000) == 0x9000) {
+    for (int i = 0; i < count; i++) time += access_time(pc_register, access[i].address, (int)access[i].bytes, (int)access[i].writes) + first_over_sequential;
+  } else if ((op & 0xF000) == 0xD000 && (op & 0x0F00) < 0x0E00) {
+    if (to != pc + 2) time += jump_time(to, 1);                                  // a branch taken
+  } else if ((op & 0xF800) == 0xE000 || (op & 0xF800) == 0xF800) time += jump_time(to, 1);
+  end(time);
+}
+
+static int condition_holds(uint32_t cpsr, int condition) {
+  int n = cpsr >> 31 & 1, z = cpsr >> 30 & 1, c = cpsr >> 29 & 1, v = cpsr >> 28 & 1;
+  switch (condition) {
+    case 0: return z;
+    case 1: return !z;
+    case 2: return c;
+    case 3: return !c;
+    case 4: return n;
+    case 5: return !n;
+    case 6: return v;
+    case 7: return !v;
+    case 8: return c && !z;
+    case 9: return !c || z;
+    case 10: return n == v;
+    case 11: return n != v;
+    case 12: return !z && n == v;
+    case 13: return z || n != v;
+    default: return 1;
+  }
+}
+
+static int arm_time(uint32_t pc, uint32_t op, uint32_t next, int next_thumb, uint32_t cpsr, uint32_t value, const gba_access *access, int count) {
+  wait.region = (pc >> 24) & 15;
+  int time = 1 + wait.s32[wait.region], first_over_sequential = wait.n32[wait.region] - wait.s32[wait.region];
+  uint32_t pc_register = pc + 8;
+  if (!condition_holds(cpsr, (int)(op >> 28))) return time;
+  if ((op & 0x0FFFFFF0) == 0x012FFF10) return time + jump_time(next, next_thumb);                         // bx
+  if ((op & 0x0FC000F0) == 0x00000090) return time + multiply_time(pc_register, value) + first_over_sequential + (int)((op >> 21) & 1);
+  if (((op & 0x0E000090) == 0x00000090 && (op & 0x60)) || (op & 0x0C000000) == 0x04000000) {
+    for (int i = 0; i < count; i++) time += access_time(pc_register, access[i].address, (int)access[i].bytes, (int)access[i].writes) + first_over_sequential;
+    if ((op & 0x00100000) && ((op >> 12) & 15) == 15) time += jump_time(next, next_thumb);                 // a load of pc
+    return time;
+  }
+  if ((op & 0x0C000000) == 0) {
+    if ((op & 0x0FB000F0) == 0x01000000 || (op & 0x0DB0F000) == 0x0120F000) return time;                  // mrs, msr
+    if ((op & 0x02000010) == 0x00000010) time += 1;                                                         // shift by a register
+    int kind = (int)((op >> 21) & 15);
+    if (((op >> 12) & 15) == 15 && (kind < 8 || kind > 11)) time += jump_time(next, next_thumb);
+    return time;
+  }
+  if ((op & 0x0E000000) == 0x08000000) {
+    int writes = !(op & 0x00100000);
+    time += block_time(pc_register, count ? access[0].address : 0, __builtin_popcount(op & 0xFFFF), writes) + first_over_sequential;
+    if (!writes && (op & 0x8000)) time += jump_time(next, next_thumb);
+    return time;
+  }
+  if ((op & 0x0E000000) == 0x0A000000) return time + jump_time(next, 0);                                 // b, bl
+  return time;
+}
+
+void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint32_t value, const gba_access *access, int count) {
+  begin();
+  end(arm_time(pc, op, next & ~1u, (int)(next & 1), cpsr, value, access, count));
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The BIOS's own code, as the emulator's runs it, a step at a time, each with the events due before it: all of it
+// from the BIOS, which has no wait states, so a step is a cycle, and what it reaches of the rest of memory.
+
+static void (*frame_wait)(void);
+static int pending;   // a frame ended with an instruction whose work the game hasn't done yet
+
+void gba_clock_on_frame_end(void (*wait)(void)) { frame_wait = wait; }
+
+// the frame over, if it ended: the game's wait ends the Dreamport's frame here
+static void wait_if_ended(void) {
+  if (frame_ended && frame_wait) frame_wait();
+}
+static void wait_if_pending(void) {
+  if (pending) {
+    pending = 0;
+    if (frame_wait) frame_wait();
+  }
+}
+
+// a step of the BIOS's code taking `extra` cycles beyond its own, from the BIOS
+static void bios(int extra) {
+  begin();
+  wait.region = BIOS;
+  end(1 + extra);
+  wait_if_ended();
+}
+#define BIOS_CODE 0x00000000u    // the BIOS's code, all of which jumps keep in the BIOS
+#define BIOS_STACK 0x03007F00u   // where the BIOS's stacks are: the fast work memory, no wait states
+static int bios_block(int words, int writes) { return block_time(0, BIOS_STACK, words, writes); }
+static int bios_load(uint32_t address, int bytes) { return access_time(0, address, bytes, 0); }
+static int bios_store(uint32_t address, int bytes) { return access_time(0, address, bytes, 1); }
+
+void gba_clock_start(void) {
+  memset(&wait, 0, sizeof wait);
+  memcpy(wait.n16, RESET_N16, 16);
+  memcpy(wait.n32, RESET_N32, 16);
+  memcpy(wait.s16, RESET_S16, 16);
+  memcpy(wait.s32, RESET_S32, 16);
+  memset(dma, 0, sizeof dma);
+  memset(timers, 0, sizeof timers);
+  for (int i = 0; i < 4; i++) timers[i].when = INT64_MAX;
+  fifos[0] = (struct fifo){ 0, 0, 0, 1 };
+  fifos[1] = (struct fifo){ 0, 0, 0, 2 };
+  master = cycles = 0;
+  active_dma = -1;
+  blocked = 0;
+  dma_event = -1;
+  soundcnt_high = soundcnt_x = 0;
+  frame = 0;
+  frame_ended = pending = 0;
+  // the BIOS from its reset: a branch to its start, which reads the cartridge's first instruction's top byte and,
+  // with one there, goes on to the cartridge's start in ARM code
+  bios(jump_time(BIOS_CODE, 0));
+  bios(0);
+  bios(bios_load(0x08000003, 1));
+  bios(0);
+  bios(0);
+  bios(jump_time(0x08000000, 0));
+}
+
+// A swi from the Thumb instruction at `pc`: into the BIOS, its dispatcher to the call's code, and back. CpuSet copies or
+// fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs, `index` from 0.
+int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
+  if (number != 0x0B) return -1;
+  wait_if_pending();
+  // the swi itself: its fetch, and the jump to the BIOS's vector
+  begin();
+  wait.region = (pc >> 24) & 15;
+  end(1 + wait.s16[wait.region] + jump_time(BIOS_CODE, 0));
+  wait_if_ended();
+  // the vector's branch to the dispatcher; which saves r11, r12 and lr, reads the call's number from the swi, looks
+  // its code up, keeps the mode, goes to the system mode, saves r2 and lr there and goes to the call's code
+  bios(jump_time(BIOS_CODE, 0));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(bios_block(3, 1));
+  bios(bios_load(pc, 1));
+  bios(0);
+  bios(bios_load(0x00000100, 4));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(bios_block(1, 1));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(bios_block(2, 1));
+  bios(0);
+  for (int i = 0; i < 6; i++) bios(0);
+  bios(0);
+  bios(jump_time(BIOS_CODE, 0));
+  // CpuSet: saves r4, r5 and lr, takes its arguments, and fills or copies by words or halfwords
+  int fill = (r2 & 0x01000000) != 0, words = (r2 & 0x04000000) != 0;
+  uint32_t count = r2 & 0x1FFFFF, source = r0, dest = r1;
+  bios(bios_block(3, 1));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(fill ? 0 : jump_time(BIOS_CODE, 0));
+  if (fill) {
+    bios(0);
+    bios(words ? 0 : jump_time(BIOS_CODE, 0));
+    if (words) {
+      bios(0);
+      bios(block_time(0, source, 1, 0));
+      for (uint32_t i = 0; i < count; i++) {
+        bios(0);
+        begin();
+        wait.region = BIOS;
+        end(1 + block_time(0, dest + 4 * i, 1, 1));
+        if (unit) unit(i);
+        wait_if_ended();
+        bios(jump_time(BIOS_CODE, 0));
+      }
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(jump_time(BIOS_CODE, 0));
+    } else {
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(bios_load(source & ~1u, 2));
+      for (uint32_t i = 0; i < count; i++) {
+        bios(0);
+        begin();
+        wait.region = BIOS;
+        end(1 + bios_store((dest & ~1u) + 2 * i, 2));
+        if (unit) unit(i);
+        wait_if_ended();
+        bios(jump_time(BIOS_CODE, 0));
+      }
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(jump_time(BIOS_CODE, 0));
+    }
+  } else {
+    bios(0);
+    bios(words ? 0 : jump_time(BIOS_CODE, 0));
+    if (words) {
+      bios(0);
+      for (uint32_t i = 0; i < count; i++) {
+        bios(0);
+        bios(block_time(0, source + 4 * i, 1, 0));
+        begin();
+        wait.region = BIOS;
+        end(1 + block_time(0, dest + 4 * i, 1, 1));
+        if (unit) unit(i);
+        wait_if_ended();
+        bios(jump_time(BIOS_CODE, 0));
+      }
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(jump_time(BIOS_CODE, 0));
+    } else {
+      bios(0);
+      for (uint32_t i = 0; i < count; i++) {
+        bios(0);
+        bios(bios_load(source + 2 * i, 2));
+        begin();
+        wait.region = BIOS;
+        end(1 + bios_store(dest + 2 * i, 2));
+        if (unit) unit(i);
+        wait_if_ended();
+        bios(jump_time(BIOS_CODE, 0));
+      }
+      bios(0);
+      bios(0);
+      bios(0);
+      bios(0);
+    }
+  }
+  // the end: r3 as the console's BIOS leaves it, and back to the dispatcher, which puts the mode and the registers
+  // back and returns to the Thumb code after the swi
+  bios(0);
+  bios(bios_block(3, 0) + jump_time(BIOS_CODE, 0));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(bios_block(2, 0));
+  bios(0);
+  bios(bios_block(1, 0));
+  bios(0);
+  bios(bios_block(3, 0));
+  bios(jump_time(pc + 2, 1));
+  return 0;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// A run of the original's Thumb instructions, read from the player's copy.
+
+// the code at `at`: the player's copy in the cartridge, or what the game copied to the console's memory, where the
+// same-memory build keeps it (gba_console_memory)
+#ifndef GBA_CLOCK_CODE
+static uint16_t code16(uint32_t at) {
+  if (at < 0x08000000u) return *(const volatile uint16_t *)(uintptr_t)at;
+  uint32_t offset = at - 0x08000000u;
+  if (offset + 2 > kit_copy_size) return 0;
+  return (uint16_t)(kit_copy[offset] | kit_copy[offset + 1] << 8);
+}
+#else
+uint16_t GBA_CLOCK_CODE(uint32_t at);
+#define code16 GBA_CLOCK_CODE
+#endif
+
+// whether a Thumb instruction writes memory: a store, a push, a block store
+static int thumb_writes(uint16_t op) {
+  if ((op & 0xF000) == 0x5000) return ((op >> 9) & 7) <= 2;
+  if ((op & 0xE000) == 0x6000 || (op & 0xF000) == 0x8000 || (op & 0xF000) == 0x9000 || (op & 0xF000) == 0xC000) return !(op & 0x0800);
+  return (op & 0xF600) == 0xB400;
+}
+
+void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
+  int k = 0;
+  wait_if_pending();
+  for (uint32_t pc = from; pc <= to; pc += 2) {
+    uint16_t op = code16(pc);
+    gba_access a[1] = { { 0, 0, 0, 0 } };
+    int n = 0;
+    uint32_t value = 0;
+    if ((op & 0xF800) == 0x4800) {
+      a[0] = (gba_access){ ((pc + 4) & ~3u) + (op & 0xFF) * 4u, 4, 0, 0 };   // a load from the code's pool
+      n = 1;
+    } else if ((op & 0xF000) == 0x9000) {
+      a[0] = (gba_access){ BIOS_STACK, 4, !(op & 0x0800), 0 };              // the stack
+      n = 1;
+    } else if ((op & 0xF600) == 0xB400) {
+      a[0] = (gba_access){ BIOS_STACK, 0x100u | (uint32_t)__builtin_popcount(op & 0x1FF), !(op & 0x0800), 0 };
+      n = 1;
+    } else if ((op & 0xF000) == 0xC000) {
+      a[0] = (gba_access){ k < count ? at[k++] : 0, 0x100u | (uint32_t)__builtin_popcount(op & 0xFF), !(op & 0x0800), 0 };
+      n = 1;
+    } else if ((op & 0xF000) == 0x5000 || (op & 0xE000) == 0x6000 || (op & 0xF000) == 0x8000) {
+      int writes, bytes;
+      if ((op & 0xF000) == 0x5000) {
+        static const int BYTES[8] = { 4, 2, 1, 1, 4, 2, 1, 2 };
+        static const int WRITES[8] = { 1, 1, 1, 0, 0, 0, 0, 0 };
+        bytes = BYTES[(op >> 9) & 7];
+        writes = WRITES[(op >> 9) & 7];
+      } else if ((op & 0xE000) == 0x6000) {
+        bytes = op & 0x1000 ? 1 : 4;
+        writes = !(op & 0x0800);
+      } else {
+        bytes = 2;
+        writes = !(op & 0x0800);
+      }
+      a[0] = (gba_access){ k < count ? at[k++] : 0, (uint32_t)bytes, (uint32_t)writes, 0 };
+      if (writes && (a[0].address & ~1u) == 0x04000204 && k < count) a[0].value = at[k++];   // WAITCNT's new value
+      n = 1;
+    } else if ((op & 0xFFC0) == 0x4340) value = k < count ? at[k++] : 0;   // mul: what it multiplies by
+    gba_clock_thumb(pc, op, pc == to ? next : pc + 2, value, a, n);
+    if (frame_ended) {
+      // the frame ends after this instruction's work: now, unless its work is the store the game does after the run
+      if (pc == to && thumb_writes(op)) pending = 1;
+      else if (frame_wait) frame_wait();
+    }
+  }
+}
+
+static uint32_t code32(uint32_t at) { return (uint32_t)code16(at) | (uint32_t)code16(at + 2) << 16; }
+
+void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
+  int k = 0;
+  wait_if_pending();
+  for (uint32_t pc = from; pc <= to; pc += 4) {
+    uint32_t op = code32(pc);
+    gba_access a[1] = { { 0, 0, 0, 0 } };
+    int n = 0;
+    if ((op & 0x0C000000) == 0x04000000) {
+      int writes = !(op & 0x00100000), bytes = op & 0x00400000 ? 1 : 4;
+      uint32_t address = ((op >> 16) & 15) == 15 ? pc + 8 + ((op & 0x00800000) ? 1 : -1) * (op & 0xFFF) : (k < count ? at[k++] : 0);
+      a[0] = (gba_access){ address, (uint32_t)bytes, (uint32_t)writes, 0 };
+      n = 1;
+    }
+    gba_clock_arm(pc, op, pc == to ? next : pc + 4, 0, 0, a, n);
+    if (frame_ended) {
+      if (pc == to && n && a[0].writes) pending = 1;
+      else if (frame_wait) frame_wait();
+    }
+  }
+}
