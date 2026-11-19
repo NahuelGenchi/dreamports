@@ -11,7 +11,7 @@ const BASE = 0x08000000, FIELD = 0x02000010, OTHER = 0x02000080;
 
 // a made-up cartridge: halfwords and words at offsets
 function cartridge(parts) {
-  const rom = new Uint8Array(0x60);
+  const rom = new Uint8Array(0x100);
   for (const [at, kind, ...values] of parts) {
     values.forEach((v, i) => {
       if (kind === 'h') { rom[at + 2 * i] = v & 0xFF; rom[at + 2 * i + 1] = v >> 8; } else for (let b = 0; b < 4; b++) rom[at + 4 * i + b] = v >>> (8 * b) & 0xFF;
@@ -93,4 +93,57 @@ test('an address made from data it can\'t know stays "can\'t decide"', () => {
   assert.equal(found.with.decided, undefined);
   assert.match(found.with.cannot, /writes through a pointer the check can't follow/);
   assert.ok(found.followed.unbounded >= 1 && found.followed.bounded >= 1, 'and the pass counts what it bounded and what it couldn\'t');
+});
+
+test('ARM code calls Thumb code through bx, and goes on when it gives back', () => {
+  // Arm, 0x10, in ARM: ldr r4, =x   ldr r1, =Thumb + 1   mov lr, pc   bx r1   mov r1, #5   strb r1, [r4]   bx lr
+  // Thumb, 0x40: bx lr, which keeps r4
+  const program = x => cartridge([...CHECK, [0x10, 'w', 0xE59F4014, 0xE59F1014, 0xE1A0E00F, 0xE12FFF11, 0xE3A01005, 0xE5C41000, 0xE12FFF1E, x, BASE + 0x41], [0x40, 'h', 0x4770]]);
+  const functions = [check, { address: BASE + 0x10, size: 0x34 }, { address: BASE + 0x40, size: 2 }];
+  const apart = decide(program(OTHER), functions);
+  assert.equal(apart.without.decided, undefined);
+  assert.deepEqual([...apart.followed.stores.get(BASE + 0x24).base], [`c${OTHER}`], 'the ARM store after the call goes through r4, which the Thumb function kept');
+  assert.equal(apart.with.decided?.way, 'not taken');
+  assert.match(decide(program(FIELD), functions).with.cannot, /can hold 0x0, 0x5/);
+});
+
+test('an ARM store through a pointer kept at a fixed address', () => {
+  // Arm, 0x10: ldr r0, =CELL   ldr r0, [r0]   mov r1, #5   strb r1, [r0]   bx lr       Init, 0x40, in Thumb: CELL = x
+  const CELL = 0x02000040;
+  const program = x => cartridge([...CHECK, [0x10, 'w', 0xE59F000C, 0xE5900000, 0xE3A01005, 0xE5C01000, 0xE12FFF1E, CELL],
+    [0x40, 'h', 0x4801, 0x4902, 0x6001, 0x4770], [0x48, 'w', CELL, x]]);
+  const functions = [check, { address: BASE + 0x10, size: 0x18 }, { address: BASE + 0x40, size: 0x10 }];
+  assert.equal(decide(program(OTHER), functions).with.decided?.way, 'not taken');
+  assert.match(decide(program(FIELD), functions).with.cannot, /can hold 0x0, 0x5/);
+});
+
+// Use, 0x40: ldr r0, =OTHER   mov r1, #5   strb r1, [r0]   bx lr, and a word of data, at 0x60, holding 0x08000043, an
+// address in Use's middle
+const USE = [[0x40, 'h', 0x4801, 0x2105, 0x7001, 0x4770], [0x48, 'w', OTHER], [0x60, 'w', BASE + 0x43]];
+const use = { address: BASE + 0x40, size: 0x0C };
+
+test('a word of data that holds an address in a function\'s middle, which no code jumps through, is data', () => {
+  const found = decide(cartridge([...CHECK, ...USE]), [check, use]);
+  assert.equal(found.with.decided?.way, 'not taken', 'Use\'s store stays where its pointer is');
+  const word = found.followed.words.find(w => w.at === BASE + 0x60);
+  assert.deepEqual(word, { at: BASE + 0x60, to: BASE + 0x42, verdict: 'data', why: 'no code the pass reads can carry it to the program counter' });
+});
+
+test('one a jump table carries to the program counter is a way in', () => {
+  // Jumper, 0x70: ldr r0, =0x08000060   ldr r0, [r0]   mov pc, r0
+  const found = decide(cartridge([...CHECK, ...USE, [0x70, 'h', 0x4801, 0x6800, 0x4687], [0x78, 'w', BASE + 0x60]]), [check, use, { address: BASE + 0x70, size: 0x0C }]);
+  const word = found.followed.words.find(w => w.at === BASE + 0x60);
+  assert.equal(word.verdict, 'target');
+  assert.match(word.why, /the jump at 0x08000074 can carry it to the program counter/);
+  assert.match(found.with.cannot, /writes through a pointer the check can't follow/, 'arriving there, the pass knows nothing of r0');
+});
+
+test('one code the pass can\'t read may load stays a possible way in', () => {
+  const unreadable = { address: 0x03000000, size: 8, bytes: '00000000' };
+  const found = decide(cartridge([...CHECK, ...USE]), [check, use, unreadable]);
+  const word = found.followed.words.find(w => w.at === BASE + 0x60);
+  assert.equal(word.verdict, 'open');
+  assert.match(word.why, /code the pass can't read, such as 0x03000000, may load it/);
+  assert.deepEqual(found.followed.unread, [0x03000000]);
+  assert.equal(found.with.decided, undefined);
 });

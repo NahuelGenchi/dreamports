@@ -56,6 +56,22 @@ export function writesOf(rom, functions, copies = [], followed = null) {
   const word = address => (address >= CARTRIDGE && address + 4 <= CARTRIDGE + rom.length ? view.getUint32(address - CARTRIDGE, true) : null);
   const inRom = functions.filter(f => !f.bytes && f.address >= CARTRIDGE && f.address + f.size <= CARTRIDGE + rom.length);
   const targets = arrivals(rom, inRom);
+  if (followed?.complete) {
+    // with the pass that follows pointers: the code it couldn't read, and the stores and BIOS calls of the ARM code
+    // and of the copies in the work memory it did, as it recorded them
+    for (const at of followed.unread) writes.push({ at, kind: 'unknown', why: `the code at ${hex(at)} runs from the work memory and isn't a copy of the cartridge's the code map knows, so its writes can't be read` });
+    const thumbs = inRom.filter(f => !isArm(rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size)));
+    const inThumb = at => thumbs.some(f => at >= f.address && at < f.address + f.size);
+    for (const [at, store] of followed.stores) if (!inThumb(at)) recorded(writes, followed, at, store.size);
+    const one = v => { const n = numbers(v ?? ANYWHERE); return n && n.length === 1 ? n[0] : null; };
+    for (const [at, given] of followed.swis) {
+      if (inThumb(at)) continue;
+      const call = at >= CARTRIDGE && at < CARTRIDGE + rom.length && !isArmAt(rom, functions, at) ? rom[at - CARTRIDGE] : null;
+      biosWrites(call ?? swiOfArm(rom, followed, at), [one(given.r0), one(given.r1), one(given.r2)], at, (pc, from, size, value) => writes.push({ at: pc, kind: 'known', from: u32(from), to: u32(from + size), bytes: value === null ? null : Array.from({ length: Math.min(size, 4) }, (_, i) => value >>> (8 * i) & 0xFF) }), (pc, why) => writes.push({ at: pc, kind: 'unknown', why }));
+    }
+    for (const f of thumbs) thumbWrites(rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size), f.address, word, targets, writes, followed);
+    return writes;
+  }
   for (const f of functions) {
     if (inRom.includes(f)) continue;
     // code the game runs from the work memory: a copy of the cartridge's, which is read there, or code it can't read
@@ -69,6 +85,29 @@ export function writesOf(rom, functions, copies = [], followed = null) {
     else thumbWrites(bytes, f.address, word, targets, writes, followed?.complete ? followed : null);
   }
   return writes;
+}
+
+// the writes a store makes, as the pass that follows pointers recorded it (points-to.mjs): to each place its base can
+// be, an allocator's arena for one of its objects, or the stack; or else where the check can't follow
+function recorded(writes, followed, at, size, extra = 0) {
+  const known = (from, bytes, value) => writes.push({ at, kind: 'known', from: u32(from), to: u32(from + bytes), bytes: value === null ? null : Array.from({ length: Math.min(bytes, 4) }, (_, i) => value >>> (8 * i) & 0xFF) });
+  const found = followed?.stores.get(at);
+  const where = found ? moved(found.base, found.offset + extra) : ANYWHERE;
+  if (where === ANYWHERE) return writes.push({ at, kind: 'unknown', why: `the store at ${hex(at)} writes through a pointer the check can't follow` });
+  const values = numbers(found.value);
+  for (const e of where) {
+    if (e[0] === 's') { writes.push({ at, kind: 'stack' }); continue; }
+    if (e[0] === 'h') {
+      const arena = followed.sites.get(Number(e.slice(1, e.lastIndexOf(':'))));
+      if (!arena) return writes.push({ at, kind: 'unknown', why: `the store at ${hex(at)} writes into an object the check can't place` });
+      known(arena.from, arena.to - arena.from, null);
+      continue;
+    }
+    const a = Number(e.slice(1));
+    if (a >= 0x04000000 && a < 0x04000400) { if (a >= 0x040000B0 && a < 0x040000E0) writes.push({ at, kind: 'unknown', why: `the store at ${hex(at)} starts a DMA through a pointer` }); continue; }
+    if (values && values.length <= 16) for (const v of values) known(a, size, v & (size === 4 ? 0xFFFFFFFF : size === 2 ? 0xFFFF : 0xFF));
+    else known(a, size, null);
+  }
 }
 
 // the stores of an ARM function: to the stack, or through a register the check doesn't follow in ARM code
@@ -96,27 +135,7 @@ function thumbWrites(bytes, address, word, targets, writes, followed) {
   let state = fresh(), dma = [{}, {}, {}, {}];
   const known = (at, from, size, value) => writes.push({ at, kind: 'known', from: u32(from), to: u32(from + size), bytes: value === null ? null : Array.from({ length: Math.min(size, 4) }, (_, i) => value >>> (8 * i) & 0xFF) });
   const unknown = (at, why) => writes.push({ at, kind: 'unknown', why });
-  // a store whose base the run doesn't know, where the pass that follows pointers bounds it (points-to.mjs): to each
-  // place it can be, an allocator's arena for one of its objects, or the stack; or else where the check can't follow
-  const pointed = (at, size, extra = 0) => {
-    const found = followed?.stores.get(at);
-    const where = found ? moved(found.base, found.offset + extra) : ANYWHERE;
-    if (where === ANYWHERE) return unknown(at, `the store at ${hex(at)} writes through a pointer the check can't follow`);
-    const values = numbers(found.value);
-    for (const e of where) {
-      if (e[0] === 's') { writes.push({ at, kind: 'stack' }); continue; }
-      if (e[0] === 'h') {
-        const arena = followed.sites.get(Number(e.slice(1, e.lastIndexOf(':'))));
-        if (!arena) return unknown(at, `the store at ${hex(at)} writes into an object the check can't place`);
-        known(at, arena.from, arena.to - arena.from, null);
-        continue;
-      }
-      const a = Number(e.slice(1));
-      if (a >= 0x04000000 && a < 0x04000400) { if (a >= 0x040000B0 && a < 0x040000E0) unknown(at, `the store at ${hex(at)} starts a DMA through a pointer`); continue; }
-      if (values && values.length <= 16) for (const v of values) known(at, a, size, v & (size === 4 ? 0xFFFFFFFF : size === 2 ? 0xFFFF : 0xFF));
-      else known(at, a, size, null);
-    }
-  };
+  const pointed = (at, size, extra = 0) => recorded(writes, followed, at, size, extra);
   // a store to a DMA channel's registers: its destination and length are kept, and a start writes where they say
   const dmaStore = (at, where, size, value) => {
     if (where < 0x040000B0 || where >= 0x040000E0) return;
@@ -347,4 +366,16 @@ export function neverWrittenBranch(rom, functions, branch, writes, followed = nu
 export function neverWrittenWhy({ address, way, from, fields }) {
   const held = fields.map(field => `the ${sized(field.bytes)} at ${hex(field.address)}, which no store, BIOS call or DMA of the game's code can set to anything but ${field.values.map(v => `0x${v.toString(16).toUpperCase()}`).join(' or ')}`).join(', and ');
   return `The branch at ${hex(address)} goes by ${held}, read in the run from ${hex(from)}, so it's never ${way} in this game: never written.`;
+}
+
+// whether `at` is in an ARM function of the code map in the cartridge
+function isArmAt(rom, functions, at) {
+  const f = functions.find(each => !each.bytes && at >= each.address && at < each.address + each.size);
+  return f ? isArm(rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size)) : false;
+}
+
+// the BIOS call an ARM swi asks for, from its instruction where the cartridge has it, or a copy of it: bits 16 to 23
+function swiOfArm(rom, followed, at) {
+  if (at >= CARTRIDGE && at + 4 <= CARTRIDGE + rom.length) return rom[at - CARTRIDGE + 2];
+  return 0xFF;
 }
