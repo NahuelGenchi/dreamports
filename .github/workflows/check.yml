@@ -10,7 +10,8 @@ name: Check
 # npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third, and
 # npm run test:ps1-call and test:ps1-twin, which run the functions of a fourth in the PlayStation's emulator's own
 # interpreter and check its twins against them, and npm run test:ps1-gcc, which builds the PlayStation's compiler from
-# GNU's source as WebAssembly and compiles a C file of the project's own with it. A pull
+# GNU's source as WebAssembly and compiles a C file of the project's own with it, and npm run test:ps1-match, which
+# tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
@@ -62,6 +63,7 @@ jobs:
               npm run test:ps1-call
               npm run test:ps1-twin
               npm run test:ps1-gcc
+              npm run test:ps1-match
               npm run test:same-memory
               npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
