@@ -25,7 +25,7 @@ const FOLDER = join(LOCAL, 'binaryen', BINARYEN_VERSION);
 export const hasBinaryen = () => KEPT.every(name => existsSync(join(FOLDER, name)));
 
 // the files of a .tar by name: each has a block of 512 bytes that names it and gives its length, then its bytes
-function filesIn(tar) {
+export function filesIn(tar) {
   const files = new Map();
   for (let at = 0; at + 512 <= tar.length && tar[at];) {
     const text = (from, length) => tar.toString('latin1', at + from, at + from + length).replace(/\0.*$/s, '');

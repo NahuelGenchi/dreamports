@@ -1,0 +1,33 @@
+// @TITLE_C@: the game's own code, in C, on the PlayStation's kit in C (kit/ps1/c/ps1.h), with the console's screen,
+// frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page,
+// built to WebAssembly as src/game.wasm (kit/ps1/c/README.md).
+
+#include "ps1.h"
+
+// once, with the player's copy in kit_copy: the screen, 320 by 240 lines of video memory from its corner, shown, and
+// drawing kept to it
+void game_start(void) {
+  gpu_gp1(0x00000000);
+  gpu_gp1(0x08000001);
+  gpu_gp1(0x06C60260);
+  gpu_gp1(0x07040010);
+  gpu_gp1(0x05000000);
+  gpu_gp1(0x03000000);
+  gpu_gp0(0xE3000000);
+  gpu_gp0(0xE4000000 | (SCREEN_H - 1) << 10 | (SCREEN_W - 1));
+  gpu_gp0(0xE5000000);
+}
+
+// what the original does each frame, writing the GPU as it does. To begin with, the whole screen filled: blue, and
+// green while a button is held
+void game_step(uint32_t buttons) {
+  gpu_gp0(buttons ? 0x0200FF00 : 0x02FF0000);
+  gpu_gp0(0);
+  gpu_gp0((uint32_t)SCREEN_H << 16 | SCREEN_W);
+}
+
+// its picture: what the screen shows of video memory
+void game_draw(void) { gpu_show(); }
+
+// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
+void game_sound(float *left, float *right, int count) {}

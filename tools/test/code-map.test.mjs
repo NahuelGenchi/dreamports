@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { formatCodeMap, parseCodeMap, watchesOf } from '../lib/proof-files.mjs';
-import { findInMemory } from '../gba/functions.mjs';
+import { findInMemory, withLongJumps } from '../gba/functions.mjs';
 import { splitAt, startsFromPlay } from '../codemap.mjs';
 
 const halfwords = list => Buffer.from(Uint16Array.from(list).buffer);
@@ -72,4 +72,19 @@ test('what play sends an NES game\'s processor to starts a function where the ma
     { address: 0x38, way: 'returned' },   // an address a routine pushed, outside every function
   ];
   assert.deepEqual(startsFromPlay(prg, functions, sent), [0x0C, 0x30, 0x38]);
+});
+
+test('a function takes the pieces a BL used as a long jump or a branch leads it on into, not a function it calls', () => {
+  const halfwords = [
+    0xB510, 0xD101, 0xF000, 0xF800,   // 0x00: PUSH {r4, lr}; BNE on to 0x08; BL 0x08, a long jump
+    0x2001, 0xBC10, 0xBC02, 0x4708,   // 0x08: its end: MOV r0, #1; POP {r4}; POP {r1}; BX r1
+    0xB500, 0xBD00,                   // 0x10: a function: PUSH {lr}; POP {pc}
+    0xF000, 0xF800,                   // 0x14: BL 0x18, a call
+    0x2000, 0x4770,                   // 0x18: a function it calls that returns through the link register
+  ];
+  const bytes = Buffer.alloc(halfwords.length * 2);
+  halfwords.forEach((op, i) => bytes.writeUInt16LE(op, i * 2));
+  const base = 0x08000000;
+  const sizes = withLongJumps(bytes, [[0, 8], [8, 8], [0x10, 4], [0x14, 4], [0x18, 4]].map(([at, size]) => ({ address: base + at, size })));
+  assert.deepEqual([...sizes].map(([address, size]) => [address - base, size]), [[0, 16], [8, 8], [0x10, 4], [0x14, 4], [0x18, 4]]);
 });
