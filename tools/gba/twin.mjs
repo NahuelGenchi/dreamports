@@ -39,7 +39,7 @@ import { copyWith } from '../lib/copies.mjs';
 import { cKit, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
-import { instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
+import { NOT_TAKEN, TAKEN, WENT_ELSEWHERE, WENT_ON, instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { resolve } from '../read.mjs';
@@ -760,14 +760,14 @@ const write = (image, where, bytes, value) => {
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map() }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0, impossible: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
   let since = 0, lost = 0;
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
@@ -922,6 +922,14 @@ export async function compareCalls({ original, twins, start, functions, options,
       aside();
       continue;
     }
+    // a call that went a way the game never takes, as its unreachable.json says, started from what the game never has:
+    // it's taken back, and isn't compared (#1536)
+    if (ruledOut.size && theirs.ran.some(([where, ways]) => (ruledOut.get(where) === TAKEN && ways & WENT_ELSEWHERE) || (ruledOut.get(where) === NOT_TAKEN && ways & WENT_ON))) {
+      f.aside.impossible++;
+      await original.undo();
+      aside();
+      continue;
+    }
     for (const run of theirs.runs) run.bytes.copy(expected, run.at);
     const ours = await twins.call(f.call, args, changed);
     const call = { number: f.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
@@ -986,9 +994,11 @@ export async function compareCalls({ original, twins, start, functions, options,
  */
 export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
   const seeds = new Set([...ran.keys()].map(where => where - address).filter(offset => offset >= 0 && offset < bytes.length));
+  // a way the game never takes isn't followed, so what only it reaches isn't asked for (#1536)
+  const never = new Map([...ruledOut].filter(([where]) => where >= address && where < address + bytes.length).map(([where, way]) => [where - address, way]));
   let found;
   for (;;) {
-    found = instructionsOf(bytes, [...seeds]);
+    found = instructionsOf(bytes, [...seeds], never);
     const before = seeds.size;
     for (let word = (4 - address % 4) % 4; word + 4 <= bytes.length; word += 4) {
       if (found.instructions.has(word) || found.instructions.has(word + 2)) continue;
@@ -1029,6 +1039,7 @@ export function outcome(f, { calls, seconds }) {
     never: 'the original itself didn\'t come back',
     clocked: 'a DMA the console\'s clock started wrote memory in the middle of the original\'s call, which a twin has no clock for',
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
+    impossible: 'the original went a way the game never takes, as its unreachable.json says, from what the game never has',
   }).filter(([key]) => f.aside[key]).sort(([a], [b]) => f.aside[b] - f.aside[a]).map(([key, text]) => `${text} (${count(f.aside[key])} calls)`).join(', and ');
   if (!f.compared) return { kind: 'unchecked', line: `no call could be compared: ${why}.` };
   return { kind: 'few', line: `only ${count(f.compared)} of ${count(calls)} calls could be compared, all the same: ${why}.` };
@@ -1136,7 +1147,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   if (functions.length) {
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers: await original.registers() });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size) });
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut });
     } finally {
       runner.stop();
     }
