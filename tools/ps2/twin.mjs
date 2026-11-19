@@ -28,12 +28,16 @@
 // instructions ran and which way each branch went, and a function counts as proven only when every instruction ran and
 // each branch went both ways (../lib/played.mjs).
 
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { gameFolder, REPO } from '../lib/paths.mjs';
-import { hex, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
+import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
+import { hex, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { originalPlay } from '../lib/recording.mjs';
+import { consoleOf } from '../consoles.mjs';
+import { libretroReference } from '../libretro/reference.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
@@ -45,6 +49,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { openBuild } from '../gba/twin.mjs';
 import { findFunctions, ps2Program } from './functions.mjs';
 import { keepProgram } from './original-program.mjs';
+import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
 import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -574,12 +579,59 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
   return { functions };
 }
 
+/**
+ * Takes the memories of play for a version's twins, unless the ones kept are from the same copy, functions and
+ * recordings: plays the game's recordings, or those of `names`, in the console's emulator, which tells of each time
+ * the EE reaches one of `addresses`, with its registers and the memory then (../libretro/starts.h), and keeps a few
+ * for each function (twin-memories.mjs). Answers them, as openMemories does.
+ */
+export async function memoriesOfPlay({ game, original, copy, addresses, names = [], folder = join(LOCAL, 'twin', game, 'ps2'), log = console.log }) {
+  const reference = libretroReference(consoleOf('ps2')), keysLate = original.keysAfterVBlank === true;
+  // one console plays them: a recording of several on a link isn't one's play
+  const alone = readRecordings(game, names).filter(recording => !recording.players);
+  if (!alone.length) throw new Error(`games/${versionOf(game).game}/proof/recordings/ has no recording one console plays${names.length ? ' among those named' : ''}, so there's no play to take memories from.`);
+  const plays = alone.map(recording => {
+    const way = originalPlay(recording, { keysLate });
+    const buttons = way.originalHeld.map(list => list.reduce((mask, button) => mask | (reference.KEY[button] ?? 0), 0));
+    if (keysLate) buttons.unshift(0);
+    return { name: recording.name, buttons, sets: way.sets.map(({ frame, address, bytes, value }) => ({ frame, address, bytes, value })) };
+  });
+  const key = memoriesKey({ sha1: original.sha1, addresses, plays: plays.map(({ name, buttons, sets }) => [name, createHash('sha1').update(Buffer.from(Uint32Array.from(buttons).buffer)).digest('hex'), sets]) });
+  const where = inRepo(folder);
+  if (hasMemories(folder, key)) log(`The memories of play in ${where}/ are from these recordings and this copy already.`);
+  else {
+    reference.ensureOriginal(log);
+    const frames = plays.reduce((sum, play) => sum + play.buttons.length, 0);
+    log(`Playing ${plays.length === 1 ? plays[0].name : `${count(plays.length)} recordings`} in the original, ${count(frames)} frames, for the memory each function starts from…`);
+    const began = Date.now(), work = join(LOCAL, 'tmp', `ps2-starts-${process.pid}`);
+    mkdirSync(work, { recursive: true });
+    try {
+      const taken = await takeMemories({
+        addresses, folder, key,
+        plays: plays.map((play, n) => ({
+          name: play.name,
+          // played when its starts are wanted, and its file read a start at a time, as one can hold the console's memory many times over
+          starts: async () => {
+            const watched = join(work, `starts-${n}.bin`);
+            writeFileSync(watched, new Uint8Array(Uint32Array.from(addresses).buffer));
+            await reference.runOriginal({ copy, frames: play.buttons.length, buttons: play.buttons, sets: play.sets, env: { DP_STARTS: watched } });
+            return startsIn(`${watched}.out`);
+          },
+        })),
+      });
+      log(`${count(taken.memories)} memories of ${count(taken.functions)} of the ${count(addresses.length)} functions kept in ${where}/, ${(taken.bytes / 1048576).toFixed(1)} MB, in ${count(Math.round((Date.now() - began) / 1000))} seconds. They come from your copy of the game: never put them in a commit, an issue or a pull request.`);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+  return openMemories(folder);
+}
+
 /** The function check of a PlayStation 2 game's version in C, as the tool runs it: 0, or 3 when a twin isn't the same. */
 export async function twin(asked, options = {}, log = console.log) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   // a game's name alone means its version in C
   const game = writtenIn(versionOf(asked).language) !== 'c' && existsSync(gameFolder(`${versionOf(asked).game}/c`)) ? `${versionOf(asked).game}/c` : asked;
-  if (all.memories) throw new Error('--memories isn\'t there yet on the PlayStation 2: every call starts from the program as the console loads it.');
   if (all.frames !== undefined) throw new Error('--frames is for a Game Boy Advance game: on the PlayStation 2 every call starts from the program as the console loads it.');
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
@@ -615,12 +667,16 @@ export async function twin(asked, options = {}, log = console.log) {
   const header = await twinsFolder(folder);
   const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const { ways: ruledOut } = readUnreachable(game);
+  // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
+  // check of them all
+  const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address).filter(address => address !== null)))].sort((a, b) => a - b);
+  const memories = all.memories ? await memoriesOfPlay({ game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   const proven = [], differing = [];
   const caller = new Original(await buildCaller(log), 'ee');
   try {
     for (const file of chosen) {
-      const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, ruledOut });
+      const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, memories, ruledOut });
       const where = inRepo(file);
       if (result.error) {
         const said = result.error.split('\n');
@@ -653,7 +709,7 @@ export async function twin(asked, options = {}, log = console.log) {
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_00123450.`);
   if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
-  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
+  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of, and the program as the console loads it for the rest` : 'from the program as the console loads it'} (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
   // a proof is found with the game's own names, and over enough calls to be worth the name
   if (asksForProofs(game)) {

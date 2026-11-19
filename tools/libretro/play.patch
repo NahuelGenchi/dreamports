@@ -31,6 +31,10 @@ midnight on 1 January 2001, Coordinated Universal Time, as it starts, going on a
 reads and for the times of a card's files, which Play! took from the computer's clock. How far the clock has got is
 kept in a saved state, so a search that brings one back has the time it was saved at (tools/route.mjs).
 
+And it says what the EE's registers hold as a block ends, and where it goes next (dreamports_registers), for the tools
+to keep a function's start as play reaches it, with the memory it starts from, which the function check's calls then
+start from (tools/libretro/starts.h, tools/ps2/twin-memories.mjs).
+
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
 index 4c460e6..7a0c6ef 100644
 --- a/Source/BasicBlock.cpp
@@ -750,10 +754,10 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..1becae2 100644
+index 8a07c26..8307f59 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
-@@ -19,6 +19,11 @@
+@@ -19,6 +19,12 @@
  
  #include <vector>
  #include <cstdlib>
@@ -761,11 +765,12 @@ index 8a07c26..1becae2 100644
 +#include "DreamportsWatch.h"
 +#include "states/MemoryStateFile.h"
 +#include <cstdint>
++#include <cstring>
 +#include <mutex>
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +42,157 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +43,196 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -890,6 +895,45 @@ index 8a07c26..1becae2 100644
 +	return nullptr;
 +}
 +
++// The EE's registers as the function check gives and takes them, 327 words (tools/ps2/original.mjs, EE_REGISTERS): its
++// 32 registers, 128 bits each, HI and LO and their upper halves, SA, the FPU's registers, its accumulator and its
++// control word, and vector unit 0's registers, accumulator, integer registers, Q, I, P, R and its flags. And `next`, where
++// the EE goes after the block it's ending, or 1 when no jump waits. For the tools to keep a function's start as play
++// reaches it (tools/libretro/starts.h), asked from the block's own callback, on the EE's thread
++extern "C" RETRO_API const uint32_t* dreamports_registers(uint32_t* next)
++{
++	static uint32_t words[327];
++	const auto& state = m_virtualMachine->m_ee->m_EE.m_State;
++	uint32_t* at = words;
++	const auto take = [&](const void* from, size_t bytes) {
++		memcpy(at, from, bytes);
++		at += bytes / 4;
++	};
++	take(state.nGPR, sizeof(state.nGPR));
++	take(state.nHI, 8);
++	take(state.nLO, 8);
++	take(state.nHI1, 8);
++	take(state.nLO1, 8);
++	take(&state.nSA, 4);
++	take(state.nCOP1, sizeof(state.nCOP1));
++	take(&state.nCOP1A, 4);
++	take(&state.nFCSR, 4);
++	take(state.nCOP2, 32 * 16);
++	take(&state.nCOP2A, 16);
++	take(state.nCOP2VI, sizeof(state.nCOP2VI));
++	take(&state.nCOP2Q, 4);
++	take(&state.nCOP2I, 4);
++	take(&state.nCOP2P, 4);
++	take(&state.nCOP2R, 4);
++	take(&state.nCOP2SF, 4);
++	take(&state.nCOP2MF, 4);
++	take(&state.nCOP2CF, 4);
++	take(&state.nCOP2DF, 4);
++	static_assert(sizeof(state.nGPR) == 512 && sizeof(state.nCOP1) == 128 && sizeof(state.nCOP2VI) == 64, "the EE's registers aren't the size the tools take them for");
++	*next = state.nDelayedJumpAddr;
++	return words;
++}
++
 +// Where a memory card's files are, for port 0 or 1, and how many times the game has changed a card so far, for the tools
 +// to read them again when it has (Iop_McServ.cpp)
 +extern "C" RETRO_API const char* dreamports_memory_card(uint32_t port, uint32_t* changes)
@@ -923,7 +967,7 @@ index 8a07c26..1becae2 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -258,6 +414,8 @@ bool retro_serialize(void* data, size_t size)
+@@ -258,6 +454,8 @@ bool retro_serialize(void* data, size_t size)
  		m_virtualMachine->m_ee->SaveState(archive);
  		m_virtualMachine->m_iop->SaveState(archive);
  		m_virtualMachine->m_ee->m_gs->SaveState(archive);
@@ -932,7 +976,7 @@ index 8a07c26..1becae2 100644
  
  		archive.Write(stateStream);
  		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
-@@ -285,6 +443,7 @@ bool retro_unserialize(const void* data, size_t size)
+@@ -285,6 +483,7 @@ bool retro_unserialize(const void* data, size_t size)
  			m_virtualMachine->m_ee->LoadState(archive);
  			m_virtualMachine->m_iop->LoadState(archive);
  			m_virtualMachine->m_ee->m_gs->LoadState(archive);
@@ -940,7 +984,7 @@ index 8a07c26..1becae2 100644
  		}
  		catch(...)
  		{
-@@ -446,15 +605,24 @@ void retro_run()
+@@ -446,15 +645,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -968,7 +1012,7 @@ index 8a07c26..1becae2 100644
  	}
  }
  
-@@ -554,7 +722,7 @@ void retro_init()
+@@ -554,7 +762,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -977,7 +1021,7 @@ index 8a07c26..1becae2 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +742,7 @@ void retro_deinit()
+@@ -574,6 +782,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{

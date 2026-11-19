@@ -184,7 +184,7 @@ try {
     run = dp('twin', VERSION, 'sum', '--calls', '200');
     check(run.status === 3 && /Differs  0x00100094 sum: call \d+, sum\(/.test(run.out), `a twin that differs ends it with 3: ${run.out.trim().split('\n').find(line => /Differs/.test(line))}`);
     run = dp('twin', VERSION, '--memories');
-    check(run.status === 1 && /--memories isn't there yet on the PlayStation 2/.test(run.out), 'what the PlayStation 2\'s check can\'t do yet is said');
+    check(run.status === 1 && /has no recording one console plays, so there's no play to take memories from/.test(run.out), 'memories of play are asked of the game\'s recordings, and it says it has none');
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);

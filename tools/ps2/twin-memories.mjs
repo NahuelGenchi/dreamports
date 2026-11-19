@@ -16,7 +16,7 @@
 // few megabytes takes about that much before it's packed.
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { EE_REGISTERS, KINDS, PAGE } from './original.mjs';
@@ -105,6 +105,29 @@ export async function takeMemories({ plays, addresses, folder, key }) {
   writeFileSync(join(folder, 'memories.json.part'), `${JSON.stringify({ key, memories: listed }, null, 1)}\n`);
   renameSync(join(folder, 'memories.json.part'), join(folder, 'memories.json'));
   return { memories: listed.length, functions: kept.size, bytes };
+}
+
+/**
+ * The starts a play of the original in its emulator told of, read from the file the program that runs it wrote for
+ * DP_STARTS (../libretro/starts.h), one at a time, as takeMemories takes them: { address, number, steps, registers,
+ * pages }, `steps` the frame it was in.
+ */
+export function* startsIn(file) {
+  const descriptor = openSync(file, 'r');
+  try {
+    const head = Buffer.alloc((3 + WORDS + 1) * 4), page = Buffer.alloc(4 + PAGE);
+    for (let at = 0; readSync(descriptor, head, 0, head.length, at) === head.length;) {
+      at += head.length;
+      const pages = [];
+      for (let n = head.readUInt32LE((3 + WORDS) * 4); n; n--, at += page.length) {
+        if (readSync(descriptor, page, 0, page.length, at) !== page.length) throw new Error(`${file} ends in the middle of a start: the emulator stopped as it wrote it.`);
+        pages.push({ page: page.readUInt32LE(0), bytes: Uint8Array.from(page.subarray(4)) });
+      }
+      yield { address: head.readUInt32LE(0), number: head.readUInt32LE(4), steps: head.readUInt32LE(8), registers: Array.from({ length: WORDS }, (_, n) => head.readUInt32LE(12 + n * 4)), pages };
+    }
+  } finally {
+    closeSync(descriptor);
+  }
 }
 
 const listOf = folder => (existsSync(join(folder, 'memories.json')) ? JSON.parse(readFileSync(join(folder, 'memories.json'), 'utf8')) : null);
