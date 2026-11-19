@@ -177,6 +177,12 @@ void gba_sound_frames_gone_by(int frames);
 /** For a start point that leaves out what led to it, the frames the sound has already played: the engine, with the
  *  calls before this one, runs `frames` frames at once, unheard, so the music is where the original's is. */
 void gba_sound_played_for(int frames);
+/** For a game that runs the console's own sound engine itself, in the console's memory: the kit is only the sound
+ *  hardware from here. The game then gives it each sound register as it writes it (0x60 to 0x9F from 0x04000000, a
+ *  byte), and once a frame the samples the console's DMA feeds FIFO A and FIFO B during it, `count` of each. */
+void gba_sound_console(void);
+void gba_sound_console_write(int reg, int value);
+void gba_sound_console_samples(const int8_t *a, const int8_t *b, int count);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);
 /** m4aSongNumStart */
