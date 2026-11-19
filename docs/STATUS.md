@@ -24,3 +24,13 @@ Every game needs your own copy of the original. The proof tools write this table
 | [Sonic Advance Dreamport in C](../games/sonic-advance/c/) | [27.85%](../.github/readme/progress/sonic-advance-c.svg) | [67.5%, the lower of its code, 73.72%, 241,838 of 328,045 instructions and branch ways played, and its content, 67.5%, 135,680 of 200,999 cells of data used, with 40 of 40 parts played through](../.github/readme/progress/sonic-advance-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
 
 <!-- End of the table of Dreamports. -->
+
+## Shared code
+
+Some code is in many games of a console without any of them having written it: the console maker's libraries, sound drivers and the helpers its compiler adds. It's written once in the kit, and each Dreamport that has it takes it from there and proves it on its own copy ([Shared libraries](../tools/README.md#shared-libraries)). Each console's map shows its libraries as blocks and their functions as cells: green once proven by the same bytes, blue once proven by the same memory, amber while written and not proven yet, and grey while nobody has written it.
+
+<!-- The proof tools draw these maps from the kit's shared libraries: npm run dp -- readme. -->
+
+![Game Boy Advance: 0% of its known shared code proven, 0 of 7,044 bytes and 0 of 95 functions, in 1 library, taken by 0 games.](../.github/readme/progress/shared.gba.svg)
+
+<!-- End of the maps of shared code. -->

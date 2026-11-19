@@ -66,7 +66,10 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 const KIT = '__kit', ELSEWHERE = '__from';
 // what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
 // and where the module's own values are, which the kit's and the version's hardware are among (twin-worker.mjs)
-const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end'];
+const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
+// how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
+// in its own console_io, is given before each call (#1527)
+const REGISTERS = 0x400;
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -159,6 +162,13 @@ class Original {
     this.ask('i');
     const said = await this.take(8);
     return { stack: said.readUInt32LE(0), cartridge: said.readUInt32LE(4) };
+  }
+
+  /** The hardware's registers as the console has them now, which each call starts from: 1 KB, each halfword at its
+   *  distance from 0x04000000. */
+  async registers() {
+    this.ask('r');
+    return Buffer.from(await this.take(REGISTERS));
   }
 
   /** The console's memory, as an image. */
@@ -268,13 +278,13 @@ export async function openOriginal(copy, frames) {
 // The twins: a thread that runs the module (twin-worker.mjs), stopped and started again when a twin doesn't come back.
 
 class Twins {
-  constructor({ module, copy, seconds }) {
-    Object.assign(this, { module, copy, seconds, worker: null, waiting: null });
+  constructor({ module, copy, seconds, registers = null }) {
+    Object.assign(this, { module, copy, seconds, registers, worker: null, waiting: null });
   }
 
   async start(image) {
     this.stop();
-    this.worker = new Worker(WORKER, { workerData: { module: this.module, copy: this.copy, noCode: NO_CODE } });
+    this.worker = new Worker(WORKER, { workerData: { module: this.module, copy: this.copy, noCode: NO_CODE, registers: this.registers } });
     this.worker.on('message', message => this.waiting?.(message));
     this.worker.on('error', error => this.waiting?.({ broken: String(error.message ?? error) }));
     const ready = await new Promise(done => { this.waiting = done; });
@@ -1124,7 +1134,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   let rom = null;
   const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
-    const runner = new Twins({ module: built.module, copy, seconds: all.seconds });
+    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers: await original.registers() });
     try {
       await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size) });
     } finally {

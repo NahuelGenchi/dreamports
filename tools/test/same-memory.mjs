@@ -7,7 +7,8 @@
 // every frame. And it has to find a line written wrong: one that shows on the screen, one that only the work memory
 // shows, a wait a frame short, a byte written to video memory as if it were any other memory, and a call to a function
 // of the cartridge with no C yet, which stops the Dreamport and names it. A function kept and called as plain C, with
-// no CODE or CALL, is kept by its address in the cartridge and called as its twin all the same.
+// no CODE or CALL, is kept by its address in the cartridge and called as its twin all the same. A function the program
+// copies to the fast work memory and calls there is called as its twin too.
 //
 // The Dreamport is in a folder of its own, games/test-same-memory/, which is removed after.
 
@@ -171,6 +172,7 @@ async function main() {
   check(rom.length > DATA - CARTRIDGE && names.get('gWave') === DATA, `the cartridge is ${rom.length} bytes, each function where its comment says, and its data at 0x0${DATA.toString(16).toUpperCase()}`);
   check(/VRAM_BYTE\(0x20 /.test(source) && /VRAM_BYTE\(0x10020 /.test(source), 'it writes a byte to video memory, among the background\'s tiles and among the sprites\'');
   check(/CALL\(obj->update\)\(obj\)/.test(source), 'it calls a function through a pointer kept in work memory');
+  check(/twice = \(s32\(\*\)\(s32\)\)\(\(u32\)gCode \+ 1\);\s*gTwice = CALL\(twice\)/.test(source), 'and a function it copied to the fast work memory, through a pointer to the copy (#1529)');
   check(/static void Flash[^]*?for \(i = 0; i < 16; i\+\+\) \{[^}]*WaitFrame\(\);/.test(source), 'it waits for the screen from inside a function, in a loop');
 
   const original = { console: 'gba', name: 'Test Same Memory (World)', title: 'SAME MEMORY', code: 'SMEM', sha1: createHash('sha1').update(rom).digest('hex'), keysAfterVBlank: true, workMemory: WORK_MEMORY };
