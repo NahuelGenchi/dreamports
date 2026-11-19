@@ -67,8 +67,8 @@ jobs:
           node-version: '22'
           check-latest: true
           cache: npm
-      # Mesa's EGL with no window and llvmpipe, which the tools draw with on Linux
-      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libegl1 libegl-mesa0 libgl1-mesa-dri
+      # Mesa's EGL with no window and llvmpipe, which the tools draw with on Linux, and the headers Play! is built with
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri
       - run: npm ci
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: github.event_name != 'schedule'
