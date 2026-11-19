@@ -27,6 +27,8 @@ export async function openGame(url, bytes, { save = null, query = globalThis.loc
   const kept = save ? cartridgeSave(save, proof ? proofStorage() : undefined) : null;
   let memory = null;
   const imports = {
+    // a function of the original a game made a function at a time calls and has no C for yet: the game stops there
+    env: new Proxy({}, { get: (_, name) => () => { throw new Error(`The game called ${String(name)}, which has no code in it yet.`); } }),
     dreamports: {
       save_read(at, size) {
         const saved = kept?.read();

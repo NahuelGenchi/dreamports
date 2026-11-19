@@ -25,10 +25,14 @@
 //
 // In a version that keeps its proofs (lib/proofs.mjs), each function found the same is kept there as proven by the
 // same bytes, and one that differs loses that line. Only this tool and `twin` write them.
+//
+// A shared library the version takes (lib/libraries.mjs) is compared as the version's own files, at the addresses its
+// proof/libraries.json gives, each file built from the library's folder alone with the compiler its library.json
+// names, whichever game it's in.
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { LOCAL, REPO } from './lib/paths.mjs';
 import { hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
@@ -41,6 +45,7 @@ import { addressFinder, compilerAt, matchFile, readCompiler, runIn } from './gba
 import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from './lib/proofs.mjs';
 import { resolve } from './read.mjs';
+import { CONSOLES } from './consoles.mjs';
 
 const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]';
 const count = n => n.toLocaleString('en-US');
@@ -96,7 +101,9 @@ export async function run(args) {
 
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
   // every twin of the version, by name, as a file calls the others' by theirs, and every name with an address
-  const { folder, shifts, files, twinsOf, twins, named } = versionTwins(game, more ? resolvePath(more) : null);
+  const { folder, shifts, files, twinsOf, twins, named, libraries, givenOf } = versionTwins(game, more ? resolvePath(more) : null);
+  // the shared library each of the version's files from the kit is of (lib/libraries.mjs)
+  const libraryOf = new Map(libraries.flatMap(library => library.files.map(file => [file, library])));
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => sizes.has(address) });
 
   // what to build: every file, the one named, or the one with the twin of the function named
@@ -117,13 +124,20 @@ export async function run(args) {
   }
   // each file is built with the compiler that built the original's code its twins are the twins of: the game's, or a
   // stretch's (gba/match.mjs, compilerAt). A file whose twins were built two ways can't be built one way
-  const builtWith = new Map(), mixed = new Map();
+  const builtWith = new Map(), mixed = new Map(), unbuilt = new Map();
   for (const file of chosen) {
+    // a shared library is built as library.json says it was, whichever game it's in
+    if (libraryOf.has(file)) {
+      const { library } = libraryOf.get(file), given = library.compilers[original.console];
+      if (given) builtWith.set(file, readCompiler({ compiler: given }, inRepo(join(library.folder, 'library.json'))));
+      else unbuilt.set(file, library.id);
+      continue;
+    }
     const ways = new Map(twinsOf.get(file).filter(twin => twin.address !== null).map(twin => compilerAt(compiler, twin.address)).map(way => [`${way.name} ${way.flags.join(' ')}`, way]));
     if (ways.size > 1) mixed.set(file, [...ways.keys()]);
     builtWith.set(file, ways.size === 1 ? [...ways.values()][0] : compilerAt(compiler, -1));
   }
-  const needed = [...new Set([...builtWith.values()].map(way => way.name))].filter(name => !isCompilerBuilt(name));
+  const needed = [...new Set([...builtWith.values()].filter(Boolean).map(way => way.name))].filter(name => !isCompilerBuilt(name));
   if (needed.length) withBuildTools(console.log, tools => buildCompilers(needed, console.log, tools));
   ensureOriginal(console.log);
 
@@ -134,19 +148,25 @@ export async function run(args) {
   // what goes in the version's proofs, when it keeps them (lib/proofs.mjs): each function of the code map tried
   const proven = [], differing = [];
   for (const file of chosen) {
-    const inside = !relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file));
+    const library = libraryOf.get(file)?.library ?? null;
+    const inside = library !== null || (!relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file)));
     const where = inside ? inRepo(file) : file;
+    if (unbuilt.has(file)) {
+      console.log(`${where}\n  Not compared: ${unbuilt.get(file)}'s library.json names no compiler for the ${CONSOLES[original.console].name}, which match needs to build it.`);
+      continue;
+    }
     if (mixed.has(file)) {
       console.log(`${where}\n  Not compared: its twins are of code the original built two ways, ${mixed.get(file).join(' and ')}, as original.json's compiler says, and a file is built one way. Put each way's twins in a file of its own.`);
       failed.push(`${where}: its twins are of code built two ways`);
       continue;
     }
     const compiler = builtWith.get(file);
+    // a library's file is built from its own folder alone, as it's the same in every game that has it
     const result = await matchFile({
-      file, compiler, shifts, addressOf, original: read,
-      root: inside ? folder : dirname(file),
-      includes: [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
-      work: join(LOCAL, 'match', game, inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
+      file, compiler, shifts, addressOf, original: read, given: givenOf(file),
+      root: library ? library.folder : inside ? folder : dirname(file),
+      includes: library ? [library.folder] : [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
+      work: join(LOCAL, 'match', game, library ? join('lib', ...library.id.split('/'), basename(file, '.c')) : inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
       sizeOf: address => sizes.get(address) ?? null,
       runOf: (address, through) => runIn(codeMap.functions, address, through),
     });
@@ -163,7 +183,8 @@ export async function run(args) {
     for (const f of shown) {
       const at = f.address === null ? null : `0x${hex(f.address)}`;
       if (at === null) {
-        console.log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
+        if (library) console.log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: games/${game}/proof/libraries.json gives ${library.id} none for it`);
+        else console.log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
         continue;
       }
       if (f.elsewhere) {

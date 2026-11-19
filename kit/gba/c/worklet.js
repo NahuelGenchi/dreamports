@@ -18,7 +18,7 @@ class GbaCSound extends AudioWorkletProcessor {
     if (data.type === 'start') {
       // the module is small enough to make at once, which an audio thread allows
       const nothing = () => {};
-      const { exports } = new WebAssembly.Instance(new WebAssembly.Module(data.code), { dreamports: { save_read: nothing, save_write: nothing } });
+      const { exports } = new WebAssembly.Instance(new WebAssembly.Module(data.code), { dreamports: { save_read: nothing, save_write: nothing }, env: new Proxy({}, { get: () => nothing }) });
       const rom = new Uint8Array(data.rom), at = exports.dp_rom(rom.length);
       new Uint8Array(exports.memory.buffer, at, rom.length).set(rom);
       exports.dp_sound_output(sampleRate, 0);
