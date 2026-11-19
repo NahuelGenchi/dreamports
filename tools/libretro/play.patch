@@ -23,7 +23,8 @@ It says where the console's memories are (dreamports_memory: the EE's, the IOP's
 and its memory cards' files (dreamports_memory_card), with how many times the game has changed a card, for the tools to
 compare with a Dreamport's (tools/libretro/held.h). And it gives the console a clock of its own, the same in every run:
 midnight on 1 January 2001, Coordinated Universal Time, as it starts, going on as its V-blanks do, for the time the game
-reads and for the times of a card's files, which Play! took from the computer's clock.
+reads and for the times of a card's files, which Play! took from the computer's clock. How far the clock has got is
+kept in a saved state, so a search that brings one back has the time it was saved at (tools/route.mjs).
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
 index 4c460e6..7a0c6ef 100644
 --- a/Source/BasicBlock.cpp
@@ -627,21 +628,22 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..09e320c 100644
+index 8a07c26..1bf9587 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
-@@ -19,6 +19,10 @@
+@@ -19,6 +19,11 @@
  
  #include <vector>
  #include <cstdlib>
 +#include <condition_variable>
 +#include "DreamportsWatch.h"
++#include "states/MemoryStateFile.h"
 +#include <cstdint>
 +#include <mutex>
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +41,121 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +42,121 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -680,7 +682,7 @@ index 8a07c26..09e320c 100644
 +	}
 +	g_vblanksReached++;
 +	// the console's clock goes on as its V-blanks do: 59.94 a second, or 50 on a PAL screen (DreamportsWatch.h)
-+	Dreamports::g_vblanks = g_vblanksReached;
++	Dreamports::g_vblanks++;
 +	if(auto gs = m_virtualMachine ? m_virtualMachine->GetGSHandler() : nullptr) Dreamports::g_vblankMilliHertz = gs->GetCrtFrameRate() == 50 ? 50000 : 59940;
 +	g_vblankCondition.notify_all();
 +	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
@@ -763,7 +765,24 @@ index 8a07c26..09e320c 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +565,24 @@ void retro_run()
+@@ -258,6 +378,8 @@ bool retro_serialize(void* data, size_t size)
+ 		m_virtualMachine->m_ee->SaveState(archive);
+ 		m_virtualMachine->m_iop->SaveState(archive);
+ 		m_virtualMachine->m_ee->m_gs->SaveState(archive);
++		// Dreamports: how far the console's clock has got is part of its state
++		archive.InsertFile(std::make_unique<CMemoryStateFile>("dreamports/vblanks", &Dreamports::g_vblanks, sizeof(Dreamports::g_vblanks)));
+ 
+ 		archive.Write(stateStream);
+ 		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
+@@ -285,6 +407,7 @@ bool retro_unserialize(const void* data, size_t size)
+ 			m_virtualMachine->m_ee->LoadState(archive);
+ 			m_virtualMachine->m_iop->LoadState(archive);
+ 			m_virtualMachine->m_ee->m_gs->LoadState(archive);
++			archive.BeginReadFile("dreamports/vblanks")->Read(&Dreamports::g_vblanks, sizeof(Dreamports::g_vblanks));
+ 		}
+ 		catch(...)
+ 		{
+@@ -446,15 +569,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -791,7 +810,7 @@ index 8a07c26..09e320c 100644
  	}
  }
  
-@@ -554,7 +682,7 @@ void retro_init()
+@@ -554,7 +686,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -800,7 +819,7 @@ index 8a07c26..09e320c 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +702,7 @@ void retro_deinit()
+@@ -574,6 +706,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
