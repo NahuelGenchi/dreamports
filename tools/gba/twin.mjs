@@ -44,7 +44,7 @@ import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { resolve } from '../read.mjs';
 import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
-import { looksLikeArm } from './functions.mjs';
+import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
 import { addressFinder, twinsIn } from './match.mjs';
@@ -1260,8 +1260,10 @@ export async function twin(game, options = {}) {
   const header = await twinsFolder(folder);
   const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
-  // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs)
+  // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs), each function's paths with the pieces
+  // it goes on into by a BL used as a long jump, which the code map keeps as functions of their own
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  for (const [address, size] of withLongJumps(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE), { isArm })) sizes.set(address, size);
   const givesBack = givesBackUsed(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE && !isArm(f.address)).map(f => ({ address: f.address, size: f.size })));
   const { ways: ruledOut } = readUnreachable(game);
   const proven = [], differing = [];
