@@ -1,5 +1,5 @@
-// The program: a scrolling background, three sprites each moved by its own function, and a backdrop that answers the
-// buttons. Built as it is for the cartridge and for a Dreamport, and each function's comment names where the
+// The program: a scrolling background, three sprites each moved by its own function, a backdrop that answers the
+// buttons, and a function copied to the fast work memory and called there each frame. Built as it is for the cartridge and for a Dreamport, and each function's comment names where the
 // cartridge has it, which is where the test's few lines of a linker put it (../same-memory.mjs).
 #include "cart.h"
 
@@ -83,6 +83,8 @@ void CartInit(void) {
   AddObj(&gObjs[1], CODE(ObjKeys), 116, 76, 0, 0, 2);
   AddObj(&gObjs[2], CODE(ObjBlink), 200, 120, -1, 0, 1);
 
+  gTwice = 0;
+
   REGISTER(BG0CNT, 31 << 8);
   REGISTER(DISPCNT, 0x1140);
 }
@@ -114,6 +116,7 @@ void CartFrame(void) {
     oam += 4;
   }
   gTrail[gFrame & 0xFF] = gObjs[0].x;
+  RunTwice();
   gFrame++;
 }
 
@@ -154,4 +157,18 @@ void ObjBlink(struct Obj *obj) {
   if (obj->x < -8) obj->x = 240;
   if (gKeys & KEY_B) obj->next = NULL;
   else if (obj->next == NULL && obj != &gObjs[0]) obj->next = &gObjs[1];
+}
+
+/** Twice, 0x08000800: twice what it's given. The program runs it from its copy in the fast work memory. */
+s32 Twice(s32 x) { return x * 2; }
+
+/** RunTwice, 0x08000840: Twice's two instructions copied to the fast work memory, as a game copies code it can't run
+ *  from the cartridge, and the copy run there with the frame. */
+void RunTwice(void) {
+  s32 (*twice)(s32);
+
+  gCode[0] = ((const u16 *)((u32)CODE(Twice) & ~1))[0];
+  gCode[1] = ((const u16 *)((u32)CODE(Twice) & ~1))[1];
+  twice = (s32(*)(s32))((u32)gCode + 1);
+  gTwice = CALL(twice)(gFrame);
 }
