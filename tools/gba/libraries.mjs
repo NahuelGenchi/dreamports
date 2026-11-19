@@ -113,7 +113,8 @@ export function findLibrary({ library, files, built, rom, codeMap }) {
       continue;
     }
     if (!found.length) missing.push({ name: f.name, why: sized.length ? `none of the code map's ${sized.length} functions of its size is the same` : 'the code map has no function of its size' });
-    else candidates.set(f.name, { f, twin, at: found.map(each => each.address) });
+    // what a function found by its hash calls and reads isn't known from it, as what its compiler built isn't the copy's
+    else candidates.set(f.name, { f, twin: f.hash ? null : twin, at: found.map(each => each.address) });
   }
 
   // first every function with one place it can be, then those another one's calls name
