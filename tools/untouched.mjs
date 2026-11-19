@@ -371,6 +371,9 @@ async function neverWritten(game, { original, codeMap, copy, address, allocators
   else {
     console.log(`Following the pointers, in ${followed.seconds.toFixed(1)} seconds: ${count(followed.bounded)} of ${count(followed.bounded + followed.unbounded)} stores bounded, ${count(followed.unbounded)} it still can't follow.`);
     if (followed.everywhere) console.log(`What it can't follow may land on any value of the work memory, so every pointer read from there can point anywhere: ${followed.why.slice(0, 2).join('; and ')}.`);
+    const verdicts = { data: 0, target: 0, open: 0 };
+    for (const w of followed.words) verdicts[w.verdict]++;
+    if (followed.words.length) console.log(`Words of the cartridge that hold an address in a function's middle: ${count(verdicts.data)} data, which no code it reads can jump through, ${count(verdicts.target)} ways in, and ${count(verdicts.open)} it can't rule out${verdicts.open ? `, as ${followed.words.find(w => w.verdict === 'open').why}` : ''}.`);
   }
   const found = neverWrittenBranch(rom, codeMap.functions, branch, writesOf(rom, codeMap.functions, codeMap.copies ?? [], followed), followed);
   if (found.cannot) {
