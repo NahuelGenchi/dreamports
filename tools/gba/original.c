@@ -31,6 +31,11 @@
 // code map (codemap.mjs): each time an instruction runs at an address there with other bytes than the last time,
 // its frame, its address (+1 for Thumb) and its bytes (32 bits each).
 //
+// DP_UNPACKS, when it's set, names a file to write each time the BIOS unpacks the cartridge's data into the work RAM
+// to, for the code map too, which finds the code a game unpacks there to run (codemap.mjs): BitUnPack to
+// Diff16bitUnFilter, swi 0x10 to 0x18, from the cartridge into either work RAM. A record is four 32-bit words: its
+// frame, the call's number, and where from and where to, as the game gives them.
+//
 // The environment's DP_PLAYED, when it's set, names a file to write what ran to, for gameplay proven (lib/played.mjs):
 // every instruction that ran, in the cartridge or the work RAM, and for a conditional branch each of its two ways, taken
 // and not, each with the stretches of frames it happened in. A record is five 32-bit words: the instruction's address
@@ -336,6 +341,33 @@ static uint32_t whyLoad8(struct ARMCore* cpu, uint32_t address, int* cycles) { w
 
 static int byAddress(const void* a, const void* b) { return (*(const uint32_t*) a > *(const uint32_t*) b) - (*(const uint32_t*) a < *(const uint32_t*) b); }
 
+// the BIOS's unpacks from the cartridge into the work RAM, for the code map: each call as the game makes it, and then
+// the BIOS's own work, or that of whoever watches it already
+static struct {
+	FILE* file;
+	long frame;
+	void (*swi16)(struct ARMCore*, int);
+	void (*swi32)(struct ARMCore*, int);
+} unpacks;
+
+static void unpackSeen(struct ARMCore* cpu, int number) {
+	uint32_t source = cpu->gprs[0], target = cpu->gprs[1];
+	if (number < 0x10 || number > 0x18 || source >> 24 < 8 || source >> 24 > 13 || (target >> 24 != 2 && target >> 24 != 3)) return;
+	uint32_t record[4] = { (uint32_t) unpacks.frame, (uint32_t) number, source, target };
+	fwrite(record, 4, 4, unpacks.file);
+}
+static void unpackSwi16(struct ARMCore* cpu, int immediate) { unpackSeen(cpu, immediate & 0xFF); unpacks.swi16(cpu, immediate); }
+static void unpackSwi32(struct ARMCore* cpu, int immediate) { unpackSeen(cpu, immediate >> 16 & 0xFF); unpacks.swi32(cpu, immediate); }
+
+static void watchUnpacks(struct ARMCore* cpu, const char* path) {
+	unpacks.file = fopen(path, "wb");
+	if (!unpacks.file) { fprintf(stderr, "Can't write %s\n", path); exit(2); }
+	unpacks.swi16 = cpu->irqh.swi16;
+	unpacks.swi32 = cpu->irqh.swi32;
+	cpu->irqh.swi16 = unpackSwi16;
+	cpu->irqh.swi32 = unpackSwi32;
+}
+
 static void watchWhy(struct ARMCore* cpu, const char* asked) {
 	char list[4096], path[4096];
 	size_t size;
@@ -634,6 +666,7 @@ int main(int argc, char** argv) {
 		usedWatch(cpu);
 	}
 	if (getenv("DP_WHY")) watchWhy(cpu, getenv("DP_WHY"));
+	if (getenv("DP_UNPACKS")) watchUnpacks(cpu, getenv("DP_UNPACKS"));
 	// the save memory as the last frame left it
 	FILE* saves = getenv("DP_SAVES") ? fopen(getenv("DP_SAVES"), "wb") : NULL;
 	if (getenv("DP_SAVES") && !saves) { fprintf(stderr, "Can't write %s\n", getenv("DP_SAVES")); exit(2); }
@@ -642,6 +675,7 @@ int main(int argc, char** argv) {
 
 	for (long frame = 0; frame < frames; frame++) {
 		usedFrame(frame);
+		unpacks.frame = frame;
 		core->setKeys(core, (size_t) frame < buttonsSize / 2 ? buttons[frame] : 0);
 		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
 			setValue(core, sets[nextSet * 4 + 1], sets[nextSet * 4 + 2], sets[nextSet * 4 + 3]);
@@ -757,6 +791,7 @@ int main(int argc, char** argv) {
 		fclose(memoryOut);
 	}
 	usedClose();
+	if (unpacks.file) fclose(unpacks.file);
 	ranClose();
 	if (playedCode) fclose(playedCode);
 	fprintf(stderr, "{\"cartridge\":%ld,\"memory\":%ld,\"reads\":[", regions[0].seen, regions[1].seen + regions[2].seen);
