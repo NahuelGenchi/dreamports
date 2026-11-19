@@ -82,9 +82,11 @@ const leaves = op => (op & 0xFF00) === 0xBD00 || (op & 0xFF87) === 0x4700 || (op
  * have run (`seeds`, offsets), through each branch's two ways, to where it returns or leaves, and gives the offsets
  * that hold an instruction and, of those, the conditional branches: { instructions, branches }. A switch's cases are
  * found only from where they ran, as its table isn't read. `never` maps a branch's offset to the way it can't go, TAKEN
- * or NOT_TAKEN, as a game's unreachable.json says, and that way isn't followed (#1536).
+ * or NOT_TAKEN, as a game's unreachable.json says, and that way isn't followed (#1536). With `longJumps`, a BL to
+ * the function's own code past its start is a long jump, as agbcc writes a branch too far for B, with no code after it
+ * (#1567).
  */
-export function instructionsOf(bytes, seeds = [], never = new Map()) {
+export function instructionsOf(bytes, seeds = [], never = new Map(), { longJumps = false } = {}) {
   const size = bytes.length, u16 = at => bytes[at] | bytes[at + 1] << 8, u32 = at => (u16(at) | u16(at + 2) << 16) >>> 0;
   const arm = size >= 16 && size % 4 === 0 && looksLikeArm([0, 4, 8, 12].map(u32));
   const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
@@ -113,7 +115,8 @@ export function instructionsOf(bytes, seeds = [], never = new Map()) {
       if ((op & 0xF800) === 0xF000 && pc + 4 <= size && (u16(pc + 2) & 0xF800) === 0xF800) {
         // BL, in two halves, each a step of the processor's
         instructions.add(pc).add(pc + 2);
-        pc += 4;
+        const target = pc + 4 + ((op & 0x7FF) << 21 >> 9 | (u16(pc + 2) & 0x7FF) << 1);
+        pc = longJumps && target > 0 && target < size ? target : pc + 4;
         continue;
       }
       if (invalid(op) || (op & 0xF800) === 0xF800) break;

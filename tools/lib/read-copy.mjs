@@ -85,9 +85,10 @@ async function disc(file) {
 }
 
 /**
- * A whole file on a disc, by its name in the disc's top folder, such as SLUS_205.73, read a sector at a time from
- * however the disc's sectors are laid out, or null when it has none of that name. For the program a PlayStation 2 game
- * boots, which its code map is made from (ps2/functions.mjs).
+ * A whole file on a disc, by its name in the disc's top folder, such as SLUS_205.73, or with the folders it's in before
+ * it, as GAME\MAIN.EXE, read a sector at a time from however the disc's sectors are laid out, or null when it has
+ * none of that name. For the program a PlayStation or PlayStation 2 game boots, which its code map is made from
+ * (ps1/functions.mjs, ps2/functions.mjs).
  */
 export async function readDiscFile(path, name) {
   const files = await dataFiles(path);
@@ -101,17 +102,30 @@ export async function readDiscFile(path, name) {
     for (const [sector, data] of SECTORS) {
       const volume = await read(16 * sector + data, 2048);
       if (ascii(volume, 1, 5) !== 'CD001') continue;
-      const folder = await read(volume.readUInt32LE(158) * sector + data, Math.min(volume.readUInt32LE(166), 0x10000));
-      for (let at = 0; at + 33 < folder.length;) {
-        if (!folder[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
-        if (ascii(folder, at + 33, folder[at + 32]).replace(/;\d+$/, '').toUpperCase() === name.toUpperCase()) {
-          const first = folder.readUInt32LE(at + 2), size = folder.readUInt32LE(at + 10), whole = Buffer.alloc(size);
-          for (let done = 0, n = 0; done < size; n++, done += 2048) (await read((first + n) * sector + data, Math.min(2048, size - done))).copy(whole, done);
-          return whole;
+      // the folder's entries a sector at a time, as each sector holds whole entries and zeros after the last one
+      const whole = async (first, size) => {
+        const bytes = Buffer.alloc(size);
+        for (let done = 0, n = 0; done < size; n++, done += 2048) (await read((first + n) * sector + data, Math.min(2048, size - done))).copy(bytes, done);
+        return bytes;
+      };
+      let first = volume.readUInt32LE(158), size = Math.min(volume.readUInt32LE(166), 0x10000);
+      const parts = name.split(/[\\/]/).filter(Boolean);
+      for (const [n, part] of parts.entries()) {
+        const folder = await whole(first, size);
+        let found = null;
+        for (let at = 0; at + 33 < folder.length;) {
+          if (!folder[at]) { at = (Math.floor(at / 2048) + 1) * 2048; continue; }
+          if (ascii(folder, at + 33, folder[at + 32]).replace(/;\d+$/, '').toUpperCase() === part.toUpperCase()) {
+            found = { first: folder.readUInt32LE(at + 2), size: folder.readUInt32LE(at + 10), folder: (folder[at + 25] & 2) !== 0 };
+            break;
+          }
+          at += folder[at];
         }
-        at += folder[at];
+        if (!found || found.folder !== (n < parts.length - 1)) return null;
+        ({ first, size } = found);
+        if (found.folder) size = Math.min(size, 0x10000);
       }
-      return null;
+      return parts.length ? await whole(first, size) : null;
     }
     return null;
   } finally {

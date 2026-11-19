@@ -25,6 +25,10 @@
 // words on that line is a stop, and none of them a name. The address can be anywhere in the function, such as the
 // branch not taken, or its start when none of it is ported.
 //
+// On the PlayStation a name is an address in the console's memory, where its code is, written as a number,
+// 0x800C1234, or in a label, as decompilations name functions and values, func_800C1234 and D_800D8408, or as Ghidra
+// does, FUN_800c1234.
+//
 // On the NES, where the program is in banks the cartridge switches, a name is a label with the bank in it: sub_04_923F
 // is $923F with bank 4 switched in at $8000, and sub_C39C, with no bank, is in the last bank, always at $C000. The code
 // map numbers each by its offset in the program (nes/functions.mjs).
@@ -49,6 +53,16 @@ export const NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_0?|0x0?)([238][0-9A-Fa-f]{6})\b
 // the first addresses of the cartridge and of the work RAMs, which code uses as the base of every address in them, not
 // as functions
 export const BASES = new Set([0x08000000, 0x02000000, 0x03000000]);
+// a PlayStation address in the console's memory, as a number or in a label
+const PS1_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(80[0-7][0-9A-Fa-f]{5})\b/g;
+
+/** How a console's code names an address: `pattern`, whose first group is a label's word and second its digits,
+ *  `bases`, the addresses code uses as the base of others and not as names, and `address(digits)`, the address. A
+ *  Game Boy Advance address's lowest bit says Thumb code, which a function's start doesn't have. */
+export function namesOf(console) {
+  if (console === 'ps1') return { pattern: PS1_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
+  return { pattern: NAME, bases: BASES, address: digits => parseInt(digits, 16) & ~1 };
+}
 // the words that mark a stop, in any language's code
 export const STOP = /\bdp:stop\b/;
 
@@ -60,7 +74,8 @@ function namer(console, codeMap) {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
   }
-  return line => [...line.matchAll(NAME)].map(([name, label, digits]) => [name, parseInt(digits, 16) & ~1, Boolean(label)]).filter(([, address]) => !BASES.has(address));
+  const { pattern, bases, address: of } = namesOf(console);
+  return line => [...line.matchAll(pattern)].map(([name, label, digits]) => [name, of(digits), Boolean(label)]).filter(([, address]) => !bases.has(address));
 }
 
 /** A line's names as [those before the stop's words, those after them]: its names, and its stops. */
