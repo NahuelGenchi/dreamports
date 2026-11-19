@@ -6,14 +6,18 @@
 // (functions.mjs), and the tools' assembler encodes with it, so one table does both and what one writes the other reads
 // back, word for word.
 //
-// Each instruction is written as GNU's assembler takes it for `-march=r5900`: registers by their names, as `$sp`, a load's
-// or a store's place as an offset from a register, as `16($sp)`, a branch's or a jump's target as the address it goes to,
-// a vector unit's register with the fields it names, as `$vf1xyz`, and the short forms `nop`, `move`, `li`, `b`, `bal`,
-// `beqz`, `bnez`, `beqzl`, `bnezl`, `neg`, `negu`, `dneg`, `dnegu` and `not`, each only where the long form would be encoded the same,
-// so a text always gives back its own word. A short form that GNU's assembler encodes another way, as `move` was `daddu`
-// for Sony's and is `or` for today's, is the assembler's to choose (assemble.mjs), not this table's: here `move` is the
-// one with `daddu`, and `or` and `addu` with `$zero` are written as they are. The texts were checked against GNU
-// binutils 2.43's objdump for the R5900 when they were written (tools/test/ps2-ee.test.mjs).
+// Each instruction is written as Sony's own assembler for the EE takes it, the GNU assembler of its 1999 toolchain
+// (2.9-ee-991111-01, GPL, built from Sony's source release), which built the games: registers by their names, as $sp,
+// a load's or a store's place as an offset from a register, as 16($sp), a branch's or a jump's target as the address it
+// goes to, a vector unit's register with the fields it names, as $vf1xyz, its accumulator and its own registers as ACC,
+// I, Q and R, and the short forms nop, move, li, b, bal, beqz, bnez, beqzl, bnezl, neg, negu, dneg, dnegu and not,
+// each only where the long form would be encoded the same, so a text always gives back its own word. A short form an
+// assembler encodes more than one way, as move, which was daddu for Sony's and is or for today's GNU, is written so here
+// only for the word Sony's made: here move is daddu's, and or and addu with $zero are written as they are. Sony's
+// assembler encoded every form the same when this was written, and today's GNU binutils' objdump read the same, but
+// where Sony's tools and the EE differ from it: break's one code is 20 bits, cvt.w.s is the EE's name for its float to
+// integer, sqrt.s takes ft, vadda and vmsuba take ft before fs, and vsqrt and vcallmsr are as Sony's table has them
+// (tools/test/ps2-read.test.mjs).
 
 /** The registers by the names MIPS code gives them, in the processor's order. */
 export const REGISTERS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
@@ -85,7 +89,7 @@ const number = (shift, bits, { signed = false, hex = false, scale = 1 } = {}) =>
   },
 });
 // a fixed word in the operands, as $ACC or $Q, which no bits hold
-const fixed = text => ({ print: () => text, parse: t => (t.trim() === text ? 0 : null) });
+const fixed = text => ({ print: () => text, parse: t => (t.trim().replace(/^\$(?=[A-Z])/, '') === text ? 0 : null) });
 
 const OPERANDS = {
   rd: gpr(11), rs: gpr(21), rt: gpr(16),
@@ -153,8 +157,8 @@ const OPERANDS = {
   imm15: number(6, 15, { hex: true, scale: 8 }),
   // the accumulator, with the fields the instruction names, as GNU's tools write it
   zero: { print: () => '$zero', parse: text => (gprOf(text) === 0 ? 0 : null) },
-  ACC: { print: word => `$ACC${destFields(word)}`, parse: (text, address, entry, word) => { const f = /^\$?ACC([xyzw]*)$/i.exec(text.trim()); return f && (!f[1] || f[1] === destFields(word)) ? 0 : null; } },
-  I: fixed('$I'), Q: fixed('$Q'), R: fixed('$R'), vi27: fixed('$vi27'),
+  ACC: { print: word => `ACC${destFields(word)}`, parse: (text, address, entry, word) => { const f = /^\$?ACC([xyzw]*)$/i.exec(text.trim()); return f && (!f[1] || f[1] === destFields(word)) ? 0 : null; } },
+  I: fixed('I'), Q: fixed('Q'), R: fixed('R'), vi27: fixed('$vi27'),
   // a multiply's unit and pmfhl's kinds are in the name, not here
 };
 // an operand that names a vector register with fields: the fields must be those the instruction's name gives
@@ -201,7 +205,8 @@ three('movz', SPECIAL, 10); three('movn', SPECIAL, 11);
 add('syscall', SPECIAL | 12, 0xFFFFFFFF, '', { kind: 'trap' });
 add('syscall', SPECIAL | 12, 0xFC00003F, 'code20', { kind: 'trap' });
 add('break', SPECIAL | 13, 0xFFFFFFFF, '', { kind: 'trap' });
-add('break', SPECIAL | 13, 0xFC00FFFF, 'breakHigh', { kind: 'trap' });
+// one code is 20 bits on the R5900, as Sony's assembler takes it, and two are the high and low 10
+add('break', SPECIAL | 13, 0xFC00003F, 'code20', { kind: 'trap' });
 add('break', SPECIAL | 13, 0xFC00003F, 'breakHigh,breakLow', { kind: 'trap' });
 add('sync', SPECIAL | 15, 0xFFFFFFFF);
 add('sync.l', SPECIAL | 15, 0xFFFFFFFF);
@@ -295,16 +300,16 @@ group(41, [['pmadduw', 0], ['psravw', 3, 'rd,rt,rs'], ['pmthi', 8, 'rs'], ['pmtl
   add(`mf${name}`, COP0 | (24 << 11) | code, 0xFFE0FFFF, 'rt', { writes: 'rt' });
   add(`mt${name}`, COP0 | (4 << 21) | (24 << 11) | code, 0xFFE0FFFF, 'rt');
 });
-add('mfps', COP0 | (25 << 11), 0xFFE0FFFF, 'rt,perf', { writes: 'rt' });
-add('mtps', COP0 | (4 << 21) | (25 << 11), 0xFFE0FFFF, 'rt,perf');
-add('mfpc', COP0 | (25 << 11) | 1, 0xFFE0FFC1, 'rt,counter', { writes: 'rt' });
-add('mtpc', COP0 | (4 << 21) | (25 << 11) | 1, 0xFFE0FFC1, 'rt,counter');
+// the EE has two performance counters, chosen by bit 1
+add('mfps', COP0 | (25 << 11), 0xFFE0FFFD, 'rt,counter', { writes: 'rt' });
+add('mtps', COP0 | (4 << 21) | (25 << 11), 0xFFE0FFFD, 'rt,counter');
+add('mfpc', COP0 | (25 << 11) | 1, 0xFFE0FFFD, 'rt,counter', { writes: 'rt' });
+add('mtpc', COP0 | (4 << 21) | (25 << 11) | 1, 0xFFE0FFFD, 'rt,counter');
 add('mfc0', COP0, 0xFFE007FF, 'rt,cop0', { writes: 'rt' });
 add('mtc0', COP0 | (4 << 21), 0xFFE007FF, 'rt,cop0');
 [['bc0f', 0], ['bc0t', 1], ['bc0fl', 2, true], ['bc0tl', 3, true]].forEach(([name, rt, likely]) => add(name, COP0 | (8 << 21) | (rt << 16), 0xFFFF0000, 'branch', { kind: 'branch', ...(likely ? { likely } : {}) }));
 [['tlbr', 1], ['tlbwi', 2], ['tlbwr', 6], ['tlbp', 8], ['eret', 24, 'return'], ['ei', 56], ['di', 57]].forEach(([name, funct, kind]) => add(name, COP0 | (16 << 21) | funct, 0xFFFFFFFF, '', kind ? { kind } : {}));
-OPERANDS.perf = fixed('0');
-OPERANDS.counter = number(1, 5);
+OPERANDS.counter = number(1, 1);
 
 // ----- COP1: the floating-point unit, singles only
 add('mfc1', COP1, 0xFFE007FF, 'rt,fs', { writes: 'rt' });
@@ -316,7 +321,7 @@ const S = COP1 | (16 << 21);
 const FORMS = { 'fd,fs,ft': 0xFFE0003F, 'fd,ft': 0xFFE0F83F, 'fd,fs': 0xFFFF003F, 'fs,ft': 0xFFE007FF };
 [['add.s', 0], ['sub.s', 1], ['mul.s', 2], ['div.s', 3], ['sqrt.s', 4, 'fd,ft'], ['abs.s', 5, 'fd,fs'], ['mov.s', 6, 'fd,fs'], ['neg.s', 7, 'fd,fs'],
   ['rsqrt.s', 22], ['adda.s', 24, 'fs,ft'], ['suba.s', 25, 'fs,ft'], ['mula.s', 26, 'fs,ft'], ['madd.s', 28], ['msub.s', 29], ['madda.s', 30, 'fs,ft'],
-  ['msuba.s', 31, 'fs,ft'], ['trunc.w.s', 36, 'fd,fs'], ['cvt.w.s', 36, 'fd,fs'], ['max.s', 40], ['min.s', 41], ['c.f.s', 48, 'fs,ft'], ['c.eq.s', 50, 'fs,ft'], ['c.lt.s', 52, 'fs,ft'],
+  ['msuba.s', 31, 'fs,ft'], ['cvt.w.s', 36, 'fd,fs'], ['max.s', 40], ['min.s', 41], ['c.f.s', 48, 'fs,ft'], ['c.eq.s', 50, 'fs,ft'], ['c.lt.s', 52, 'fs,ft'],
   ['c.le.s', 54, 'fs,ft']].forEach(([name, funct, form = 'fd,fs,ft']) => add(name, S | funct, FORMS[form], form));
 add('cvt.s.w', COP1 | (20 << 21) | 32, 0xFFFF003F, 'fd,fs');
 
@@ -326,6 +331,7 @@ add('cvt.s.w', COP1 | (20 << 21) | 32, 0xFFFF003F, 'fd,fs');
   const writes = name.includes('mf') ? { writes: 'rt' } : {};
   add(name, COP2 | (rs << 21), 0xFFE007FF, operands, writes);
   add(`${name}.i`, COP2 | (rs << 21) | 1, 0xFFE007FF, operands, writes);
+  add(`${name}.ni`, COP2 | (rs << 21), 0xFFE007FF, operands, writes);
 });
 [['bc2f', 0], ['bc2t', 1], ['bc2fl', 2, true], ['bc2tl', 3, true]].forEach(([name, rt, likely]) => add(name, COP2 | (8 << 21) | (rt << 16), 0xFFFF0000, 'branch', { kind: 'branch', ...(likely ? { likely } : {}) }));
 
@@ -350,7 +356,8 @@ vu('iaddi', 50, 'vit,vis,imm5', { dest: false, upper: false });
 vu('iand', 52, 'vid,vis,vit', { dest: false, upper: false });
 vu('ior', 53, 'vid,vis,vit', { dest: false, upper: false });
 vu('callms', 56, 'imm15', { dest: false, upper: false, kind: 'call' });
-vu('callmsr', 57, 'vis', { dest: false, upper: false, kind: 'call' });
+// VCALLMSR starts the program at the address in vi27, which its fs field names
+vu('callmsr', 57, 'vi27', { dest: false, upper: false, kind: 'call', macroBits: 27 << 11 });
 // the second table: 64 + index
 const two = (name, index, operands, more) => vu(name, 64 + index, operands, more);
 [['adda', 0], ['suba', 4], ['madda', 8], ['msuba', 12], ['mula', 24]].forEach(([name, index]) => {
@@ -364,7 +371,9 @@ const two = (name, index, operands, more) => vu(name, 64 + index, operands, more
   ['msubaq', 37, 'Q'], ['subai', 38, 'I'], ['msubai', 39, 'I']].forEach(([name, index, with_]) => two(name, index, `ACC,vfs,${with_}`));
 two('abs', 29, 'vft,vfs');
 two('clipw', 31, 'vfs,vftw', { xyz: true });
-[['adda', 40], ['madda', 41], ['mula', 42], ['suba', 44], ['msuba', 45], ['opmula', 46]].forEach(([name, index]) => two(name, index, 'ACC,vfs,vft', name === 'opmula' ? { xyz: true } : {}));
+// Sony's assembler for the EE takes ft before fs in vadda and vmsuba, as its own table has them
+[['adda', 40], ['madda', 41], ['mula', 42], ['suba', 44], ['msuba', 45], ['opmula', 46]].forEach(([name, index]) => two(name, index, 'ACC,vfs,vft',
+  { ...(name === 'opmula' ? { xyz: true } : {}), ...(name === 'adda' || name === 'msuba' ? { macroOperands: 'ACC,vft,vfs' } : {}) }));
 two('nop', 47, '', { dest: false });
 // vector unit 0's lower operations, which macro mode has as well
 two('move', 48, 'vft,vfs', { upper: false });
@@ -374,8 +383,7 @@ two('sqi', 53, 'vfs,vitInc', { upper: false, kind: 'store', bytes: 16 });
 two('lqd', 54, 'vft,visDec', { upper: false, kind: 'load', bytes: 16 });
 two('sqd', 55, 'vfs,vitDec', { upper: false, kind: 'store', bytes: 16 });
 two('div', 56, 'Q,vfsf,vftf', { dest: false, upper: false });
-// GNU's tools, and so Sony's, give macro mode's sqrt fsf 1
-two('sqrt', 57, 'Q,vftf', { dest: false, upper: false, macroBits: 0x200000 });
+two('sqrt', 57, 'Q,vftf', { dest: false, upper: false });
 two('rsqrt', 58, 'Q,vfsf,vftf', { dest: false, upper: false });
 two('waitq', 59, '', { dest: false, upper: false });
 two('mtir', 60, 'vit,vfsf', { dest: false, upper: false });
@@ -405,7 +413,7 @@ export function vuBits(operation) {
 for (const operation of VU_OPERATIONS) {
   if (!operation.macro) continue;
   const { value, mask } = vuBits(operation), more = operation.macroBits ?? 0;
-  add(`v${operation.name}`, COP2 | (1 << 25) | value | more, 0xFE000000 | mask | more, operation.operands,
+  add(`v${operation.name}`, COP2 | (1 << 25) | value | more, 0xFE000000 | mask | more, operation.macroOperands ?? operation.operands,
     { dest: operation.dest, oneField: operation.oneField, kind: operation.kind ?? 'other', ...(operation.bytes ? { bytes: operation.bytes } : {}) });
 }
 

@@ -3,14 +3,16 @@
 // one, which loads, stores, branches, works the integer registers and the units that divide and take roots (FDIV, EFU),
 // or, when the upper's I bit is set, a float the I register takes. The upper's operations are the EE's macro mode's
 // (ee.mjs, VU_OPERATIONS), so the two tables can't part; the lower's are here, laid out as Sony's VU manual and Play!'s
-// tables have them (checked against Play!'s MA_VU_LowerReflection.cpp when written). `read` prints a program with it, the
+// tables have them. `read` prints a program with it, the
 // finder tells a program from data with it (functions.mjs), and the tools' assembler encodes with it, pair for pair.
 //
 // A pair is written upper then lower, as Sony's assembler for the vector units takes it: `mulax.xyzw ACC, vf04, vf03x
 // iaddiu vi02, vi00, 0x10`, registers as vf01 and vi01, the accumulator and the units' own registers as ACC, I, Q, P and R,
 // a field after a register where the instruction takes one field of it, a load's place as `1(vi02)`, counted in 16-byte
 // quadwords, a branch's target as the address in the unit's memory it goes to, in bytes, and the upper's flags after its
-// name, as `nop[e]` for a program's end. A lower word that is a float shows as `loi 0x3F800000`.
+// name and before its fields, as `nop[e]` for a program's end or `addx[e].xyz`. A lower word that is a float shows as
+// `loi 0x3F800000`. Sony's own assembler for the units, built from its GPL source, encoded every form the same when
+// this was written (tools/test/ps2-read.test.mjs).
 
 import { VU_OPERATIONS, fieldsOf, vuBits } from './ee.mjs';
 
@@ -101,6 +103,8 @@ const imm12 = {
   print: word => hexOf(((word >>> 10) & 0x800) | (word & 0x7FF)),
   parse: text => { const n = numberOf(text); return n === null || n < 0 || n > 0xFFF ? null : ((((n & 0x800) << 10) | (n & 0x7FF)) >>> 0); },
 };
+// FSSET sets only the sticky flags, bits 11 to 6 of the 12, and Sony's assembler drops the rest of what it's given
+const imm12up6 = { print: imm12.print, parse: text => { const bits = imm12.parse(text); return bits === null ? null : (bits & ~0x3F) >>> 0; } };
 const oneOf = (shift, word) => 'xyzw'[field(word, shift, 2)];
 // a register's one field, kept in two bits of dest, as fsf and ftf are
 const vfField = (shift, at) => ({
@@ -116,14 +120,14 @@ const OPERANDS = {
   vfsf: vfField(11, 21), vftf: vfField(16, 23),
   vid: vi(6), vis: vi(11), vit: vi(16), vi1: fixed('vi01'),
   ACC: fixed('ACC'), I: fixed('I'), Q: fixed('Q'), P: fixed('P'), R: fixed('R'),
-  imm5: number(6, 5, { signed: true }), imm11: number(0, 11, { signed: true }), imm12, imm15, imm24: number(0, 24, { hex: true }),
+  imm5: number(6, 5, { signed: true }), imm11: number(0, 11, { signed: true }), imm12, imm12up6, imm15, imm24: number(0, 24, { hex: true }),
   ftPlace: place(11), fsPlace: place(16), itPlace: place(11),
   visInc: counted(11, '', '++'), vitInc: counted(16, '', '++'), visDec: counted(11, '--', ''), vitDec: counted(16, '--', ''), visAt: counted(11, '', ''),
   branch,
 };
 // the bits each operand takes in a lower word
 const USES = { vfd: 0x7C0, vid: 0x7C0, imm5: 0x7C0, vfs: 0xF800, vis: 0xF800, visInc: 0xF800, visDec: 0xF800, visAt: 0xF800, vft: 0x1F0000,
-  vit: 0x1F0000, vitInc: 0x1F0000, vitDec: 0x1F0000, vfsf: 0x60F800, vftf: 0x19F0000, imm11: 0x7FF, branch: 0x7FF, imm12: 0x2007FF,
+  vit: 0x1F0000, vitInc: 0x1F0000, vitDec: 0x1F0000, vfsf: 0x60F800, vftf: 0x19F0000, imm11: 0x7FF, branch: 0x7FF, imm12: 0x2007FF, imm12up6: 0x2007C0,
   imm15: 0x1E007FF, imm24: 0xFFFFFF, ftPlace: 0xFFFF, fsPlace: 0x1F07FF, itPlace: 0xFFFF };
 
 /** The lower instructions: { name, value, mask, operands, dest, kind, bytes }, first match wins. */
@@ -131,7 +135,10 @@ export const LOWER = [];
 const lower = (name, value, operands = '', more = {}) => {
   let used = more.dest ? 0x1E00000 : 0;
   for (const o of operands ? operands.split(',') : []) used |= USES[o] ?? 0;
-  LOWER.push({ name, value: value >>> 0, mask: (0xFFFFFFFF & ~used) >>> 0, operands: operands ? operands.split(',') : [], kind: 'other', ...more });
+  // an instruction whose fields Sony's assembler always sets the same, as the EFU's sums on x, y and z, has them in
+  // its value and names none
+  const fixed = more.fixed === undefined ? 0 : more.fixed << 21;
+  LOWER.push({ name, value: (value | fixed) >>> 0, mask: (0xFFFFFFFF & ~used) >>> 0, operands: operands ? operands.split(',') : [], kind: 'other', ...more });
 };
 const top = n => (n << 25) >>> 0;
 lower('lq', top(0x00), 'vft,ftPlace', { dest: true, kind: 'load', bytes: 16 });
@@ -145,7 +152,7 @@ lower('fcset', top(0x11), 'imm24');
 lower('fcand', top(0x12), 'vi1,imm24');
 lower('fcor', top(0x13), 'vi1,imm24');
 lower('fseq', top(0x14), 'vit,imm12');
-lower('fsset', top(0x15), 'imm12');
+lower('fsset', top(0x15), 'imm12up6');
 lower('fsand', top(0x16), 'vit,imm12');
 lower('fsor', top(0x17), 'vit,imm12');
 lower('fmeq', top(0x18), 'vit,vis');
@@ -194,9 +201,10 @@ special('mfp', 0x64, 'vft,P', { dest: true });
 special('xtop', 0x68, 'vit');
 special('xitop', 0x69, 'vit');
 special('xgkick', 0x6C, 'vis');
-// the EFU's sums on x, y and z take dest's bits as Sony's assembler writes them, xyz, and its one-field ones fsf
-[['esadd', 0x70], ['ersadd', 0x71], ['eleng', 0x72], ['erleng', 0x73], ['eatanxy', 0x74], ['eatanxz', 0x75], ['esum', 0x76]]
-  .forEach(([name, index]) => special(name, index, 'P,vfs', { dest: true }));
+// the EFU's sums on several fields have them in dest, always the same, as Sony's assembler writes them, and its
+// one-field ones take fsf
+[['esadd', 0x70, 0xE], ['ersadd', 0x71, 0xE], ['eleng', 0x72, 0xE], ['erleng', 0x73, 0xE], ['eatanxy', 0x74, 0xC], ['eatanxz', 0x75, 0xA], ['esum', 0x76, 0xF]]
+  .forEach(([name, index, fields]) => special(name, index, 'P,vfs', { fixed: fields }));
 [['esqrt', 0x78], ['ersqrt', 0x79], ['ercpr', 0x7A], ['esin', 0x7C], ['eatan', 0x7D], ['eexp', 0x7E]].forEach(([name, index]) => special(name, index, 'P,vfsf'));
 special('waitp', 0x7B, '');
 
@@ -233,8 +241,9 @@ export function decodePair(lowerWord, upperWord, address = 0, size = MEMORY[1]) 
   const upper = decodeWith(UPPER, UPPER_OPERANDS, upperWord & 0x07FFFFFF, address, size);
   if (!upper) return null;
   const flags = FLAGS.filter(([, bit]) => upperWord & (1 << bit)).map(([name]) => name);
+  // the flags go after the name and before the fields, as `addx[e].xyz`
   const shown = flags.filter(f => f !== 'i');
-  const upperText = shown.length ? upper.text.replace(/^(\S+)/, `$1[${shown.join('')}]`) : upper.text;
+  const upperText = shown.length ? upper.text.replace(/^([a-z0-9]+)/, `$1[${shown.join('')}]`) : upper.text;
   let lower, kind = 'other', made = {};
   if (flags.includes('i')) {
     lower = `loi ${hexOf(lowerWord)}`;
@@ -295,9 +304,10 @@ function encodeWith(list, operands, text, address, size) {
  */
 export function encodePair(text, address = 0, size = MEMORY[1]) {
   // the upper's name and operands, then the lower's: the lower starts at the first name after the upper's operands
-  const found = /^\s*([a-z]\w*(?:\.[xyzw]*)?)(?:\[([eimdt]+)\])?\s+(.*)$/i.exec(text);
+  const found = /^\s*([a-z][a-z0-9]*)(?:\[([eimdt]+)\])?(\.[xyzw]*)?(?:\[([eimdt]+)\])?\s+(.*)$/i.exec(text);
   if (!found) throw new Error(`"${text}" isn't a pair of a vector unit's instructions.`);
-  const [, upperName, flagText = '', rest] = found;
+  const [, base, before = '', fields = '', after = '', rest] = found;
+  const upperName = `${base}${fields}`, flagText = `${before}${after}`;
   const words = rest.split(/\s+/);
   for (let cut = 0; cut < words.length; cut++) {
     const upperText = `${upperName} ${words.slice(0, cut).join(' ')}`, lowerText = words.slice(cut).join(' ');

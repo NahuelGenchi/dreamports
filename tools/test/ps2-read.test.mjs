@@ -2,12 +2,14 @@
 // (tools/ps2/functions.mjs) and `read` on it (tools/ps2/read.mjs), on words written here and on a made-up disc of the
 // tools' tests (made-up-ps2-disc.mjs), with nothing from any game in them.
 //
-// The EE's texts were checked against GNU binutils 2.43's objdump for the R5900 when they were written, on every form
-// of the table with random fields and on 400,000 random words. They differ where the table chooses so a text always
-// gives back its own word: `or` and `addu` with $zero aren't written `move`, which is `daddu`'s, `ori` with $zero is
-// `li` only for a number addiu can't hold, and `bgez $zero` isn't `b`. GNU 2.43 also writes vadda and vmsuba with ft
-// before fs, and encodes sqrt.s with fs, where the EE takes ft, as Sony's manual has it; the table keeps the processor's
-// way in both. GNU has no reader for vector unit programs, so their table was checked against Play!'s.
+// The EE's table was checked when it was written against Sony's own assembler for the EE and dvp-as, its assembler for
+// the vector units, both built on this computer from Sony's GPL source release of its 1999 toolchain (2.9-ee-991111-01):
+// every form of both tables with random fields, written as text and assembled by Sony's, gave the same words, but the
+// forms that name no field, which Sony's refuses. The EE's texts were also checked against today's GNU binutils
+// objdump for the R5900, on every form and 400,000 random words; they differ only where the table chooses so a text
+// gives back its own word (or and addu with $zero aren't written move, ori with $zero is li only for a number addiu
+// can't hold, bgez $zero isn't b) and where Sony's tools and the EE differ from today's GNU (break's 20-bit code,
+// cvt.w.s, sqrt.s with ft, and vsqrt).
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,11 +33,11 @@ function* numbers(seed = 1) {
   }
 }
 
-test('reads the EE\'s instructions as GNU\'s tools write them', () => {
+test('reads the EE\'s instructions as Sony\'s assembler writes them', () => {
   const words = {
     0x00000000: 'nop', 0x000940C0: 'sll     $t0, $t1, 3', 0x0004103F: 'dsra32  $v0, $a0, 0', 0x01494014: 'dsllv   $t0, $t1, $t2',
     0x03E00008: 'jr      $ra', 0x01000008: 'jr      $t0', 0x0120F809: 'jalr    $t1', 0x01202009: 'jalr    $a0, $t1', 0x0085100A: 'movz    $v0, $a0, $a1',
-    0x0000000C: 'syscall', 0x0007000D: 'break   0x7', 0x0000000F: 'sync', 0x0000040F: 'sync.p', 0x00001010: 'mfhi    $v0',
+    0x0000000C: 'syscall', 0x000001CD: 'break   0x7', 0x0007000D: 'break   0x1C00', 0x0000000F: 'sync', 0x0000040F: 'sync.p', 0x00001010: 'mfhi    $v0',
     0x00851018: 'mult    $v0, $a0, $a1', 0x0085001A: 'div     $zero, $a0, $a1', 0x00851021: 'addu    $v0, $a0, $a1', 0x0080102D: 'move    $v0, $a0',
     0x00801025: 'or      $v0, $a0, $zero', 0x00041023: 'negu    $v0, $a0', 0x0085102D: 'daddu   $v0, $a0, $a1', 0x00800029: 'mtsa    $a0',
     0x00850034: 'teq     $a0, $a1', 0x0004183C: 'dsll32  $v1, $a0, 0', 0x24020005: 'li      $v0, 5', 0x34028000: 'li      $v0, 0x8000',
@@ -46,11 +48,11 @@ test('reads the EE\'s instructions as GNU\'s tools write them', () => {
     0x708514A9: 'por     $v0, $a0, $a1', 0x70001030: 'pmfhl.lw $v0', 0x70851018: 'mult1   $v0, $a0, $a1', 0x7085001A: 'div1    $zero, $a0, $a1',
     0x70851000: 'madd    $v0, $a0, $a1', 0x70801004: 'plzcw   $v0, $a0', 0x70051134: 'psllh   $v0, $a1, 4', 0x40026000: 'mfc0    $v0, $12',
     0x42000018: 'eret', 0x42000038: 'ei', 0x4002C000: 'mfbpc   $v0', 0x44026000: 'mfc1    $v0, $f12', 0x44C2F800: 'ctc1    $v0, $31',
-    0x46030840: 'add.s   $f1, $f1, $f3', 0x46001064: 'trunc.w.s $f1, $f2', 0x4603105C: 'madd.s  $f1, $f2, $f3', 0x46020818: 'adda.s  $f1, $f2',
+    0x46030840: 'add.s   $f1, $f1, $f3', 0x46001064: 'cvt.w.s $f1, $f2', 0x4603105C: 'madd.s  $f1, $f2, $f3', 0x46020818: 'adda.s  $f1, $f2',
     0x46801020: 'cvt.s.w $f0, $f2', 0x46020832: 'c.eq.s  $f1, $f2', 0xC7A10010: 'lwc1    $f1, 16($sp)', 0xD8810010: 'lqc2    $vf1, 16($a0)',
     0x48221800: 'qmfc2   $v0, $vf3', 0x48221801: 'qmfc2.i $v0, $vf3', 0x48A20800: 'qmtc2   $v0, $vf1', 0x48421800: 'cfc2    $v0, $vi3',
-    0x4BE31068: 'vadd.xyzw $vf1xyzw, $vf2xyzw, $vf3xyzw', 0x4BC31040: 'vaddx.xyz $vf1xyz, $vf2xyz, $vf3x', 0x4BE009FC: 'vmulaq.xyzw $ACCxyzw, $vf1xyzw, $Q',
-    0x4A820BBC: 'vdiv    $Q, $vf1x, $vf2y', 0x4A2003BD: 'vsqrt   $Q, $vf0x', 0x4BE20B7D: 'vsqi.xyzw $vf1xyzw, ($vi2++)', 0x4BC209FF: 'vclipw.xyz $vf1xyz, $vf2w',
+    0x4BE31068: 'vadd.xyzw $vf1xyzw, $vf2xyzw, $vf3xyzw', 0x4BC31040: 'vaddx.xyz $vf1xyz, $vf2xyz, $vf3x', 0x4BE009FC: 'vmulaq.xyzw ACCxyzw, $vf1xyzw, Q',
+    0x4A820BBC: 'vdiv    Q, $vf1x, $vf2y', 0x4A8203BD: 'vsqrt   Q, $vf2y', 0x4B0E02BC: 'vadda.x ACCx, $vf14x, $vf0x', 0x4A00D839: 'vcallmsr $vi27', 0x4BE20B7D: 'vsqi.xyzw $vf1xyzw, ($vi2++)', 0x4BC209FF: 'vclipw.xyz $vf1xyz, $vf2w',
     0x4A0002FF: 'vnop', 0x4A011772: 'viaddi  $vi1, $vi2, -3', 0x4A000838: 'vcallms 0x100', 0x4BE1133C: 'vmove.xyzw $vf1xyzw, $vf2xyzw',
     0x4B0113FD: 'vmfir.x $vf1x, $vi2', 0x4A8003FE: 'vilwr.y $vi0, ($vi0)',
   };
@@ -65,7 +67,7 @@ test('reads the EE\'s instructions as GNU\'s tools write them', () => {
   assert.equal(decode(0x04110004, at).text, 'bal     0x100014');
   assert.equal(decode(0x0C040009, at).text, 'jal     0x100024');
   // what isn't the EE's: a unit's register field it doesn't have, a field a word must leave clear, and opcodes it lacks
-  for (const word of [0x4A0003FE, 0x00000005, 0x74000000, 0xE8000000, 0x46820820]) assert.ok(!isInstruction(word), `0x${word.toString(16)}`);
+  for (const word of [0x4A0003FE, 0x00000005, 0x74000000, 0xE8000000, 0x46820820, 0x4A2003BD, 0x4600104D]) assert.ok(!isInstruction(word), `0x${word.toString(16)}`);
 });
 
 test('every form of every instruction reads back to its own word', () => {
@@ -83,7 +85,10 @@ test('every form of every instruction reads back to its own word', () => {
   // the long form of a short one gives the same word, and a number that doesn't fit is refused
   assert.equal(encode('beq $zero, $zero, 0x100000', 0x100000), encode('b 0x100000', 0x100000));
   assert.equal(encode('daddu $v0, $a0, $zero'), encode('move $v0, $a0'));
-  assert.equal(encode('cvt.w.s $f1, $f2'), encode('trunc.w.s $f1, $f2'));
+  // the spellings Sony's assembler takes: ACC, Q, I and R with no $, and qmfc2.ni for qmfc2
+  assert.equal(encode('vmulaq.xyzw ACC, $vf1, Q'), 0x4BE009FC);
+  assert.equal(encode('qmfc2.ni $v0, $vf3'), 0x48221800);
+  assert.throws(() => encode('trunc.w.s $f1, $f2'), /isn't one of the EE's/);
   assert.equal(encode('sync.l'), 0x0000000F);
   assert.throws(() => encode('addiu $v0, $v0, 40000'), /doesn't fit/);
   assert.throws(() => encode('paddq $v0, $v0, $v0'), /isn't one of the EE's/);
@@ -130,6 +135,26 @@ test('reads a vector unit\'s pairs, upper first, and writes them back', () => {
     }
   }
   assert.ok(checked > 3000, `${checked} pairs`);
+});
+
+test('writes a vector unit\'s pairs as Sony\'s own assembler does', () => {
+  // each line's words as Sony's assembler for the units, built from its GPL source, encoded them when this was written
+  const sony = {
+    'nop iaddiu vi01, vi00, 0x10': [0x10010010, 0x000002FF], 'mulax.xyzw ACC, vf04, vf03x lqi.xyzw vf05, (vi01++)': [0x81E50B7C, 0x01E321BC],
+    'add.xyzw vf06, vf05, vf04 nop': [0x8000033C, 0x01E429A8], 'nop[e] nop': [0x8000033C, 0x400002FF], 'addi.xyzw vf01, vf00, I loi 1.5': [0x3FC00000, 0x81E00062],
+    'nop xgkick vi01': [0x80000EFC, 0x000002FF], 'clipw.xyz vf01, vf02w div Q, vf03x, vf04y': [0x80841BBC, 0x01C209FF],
+    'ftoi4.xyzw vf01, vf02 sq.xyzw vf03, -2(vi04)': [0x03E41FFE, 0x01E1117D], 'nop iswr.x vi01, (vi02)': [0x810113FF, 0x000002FF],
+    'nop esqrt P, vf01x': [0x80000FBC, 0x000002FF], 'nop esadd P, vf01': [0x81C00F3C, 0x000002FF], 'nop mfp.x vf01, P': [0x8101067C, 0x000002FF],
+    'nop sqrt Q, vf02y': [0x808203BD, 0x000002FF], 'nop fcand vi01, 0x3f': [0x2400003F, 0x000002FF], 'nop fsand vi01, 0x2': [0x2C010002, 0x000002FF],
+    'opmula.xyz ACC, vf01, vf02 nop': [0x8000033C, 0x01C20AFE], 'nop ilw.x vi01, 1(vi02)': [0x09011001, 0x000002FF], 'nop waitp': [0x800007BF, 0x000002FF],
+  };
+  for (const [text, words] of Object.entries(sony)) assert.deepEqual(encodePair(text), words, text);
+  // flags go after the name and before the fields, and FSSET keeps only the sticky flags' six bits
+  assert.equal(decodePair(0x8000033C, 0x01E31041 | 0x50000000).upper, 'addy[ed].xyzw vf01, vf02, vf03y');
+  assert.deepEqual(encodePair('addy[ed].xyzw vf01, vf02, vf03y nop'), [0x8000033C, (0x01E31041 | 0x50000000) >>> 0]);
+  assert.deepEqual(encodePair('nop fsset 0xDC6'), [0x2A2005C0, 0x000002FF]);
+  assert.equal(decodePair(0x2A2005C6, 0x000002FF), null);
+  assert.equal(decodePair(0x81C00F3C, 0x000002FF).lower, 'esadd P, vf01');
 });
 
 test('finds a vector unit\'s uploads by their MPG commands', () => {
