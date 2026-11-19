@@ -5,7 +5,7 @@
 // same memory as its original over every path, but those whose original the check can't follow, which say why. Then one
 // line of the twins is changed at a time, and the check has to find each: a wrong sum, a byte too many, a value one
 // along, a 64-bit sum cut to 32, a product rounded as a computer rounds, one that doesn't clamp what the FPU clamps, a
-// quadword copied from where the console doesn't, an argument in t3 left out, a switch with a case too many, a GS
+// quadword copied from where the console doesn't, an argument in t3 left out, one on the stack left out, a switch with a case too many, a GS
 // register four bytes off, a twin that never comes back, and one that calls what nothing built is. Last, the same
 // program as a game of its own, through the tool everyone runs, npm run dp -- twin.
 
@@ -39,7 +39,7 @@ const { elf, labels, functions } = madeUpElf();
 const game = readFileSync(GAME, 'utf8');
 const sizes = new Map(functions.map(f => [f.address, f.size]));
 const named = new Map(['values', 'buffer', 'functions'].map(name => [name, labels[name]]));
-const TWINS = ['sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick', 'hardware', 'shine', 'game_main', 'kernel', 'misaligned', 'vu0'];
+const TWINS = ['sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick', 'hardware', 'shine', 'ten', 'game_main', 'kernel', 'misaligned', 'vu0'];
 
 console.log('The twins name the program\'s functions:');
 {
@@ -94,9 +94,10 @@ try {
   await wrong('scale', [['return ee_mul(clamped(a), clamped(b));', 'return ee_mul(a, b);']], 'differs', 'a product of floats the FPU would have clamped first');
   await wrong('copy16', [['*(unsigned __int128 *)((unsigned)to & ~15u) = *(const unsigned __int128 *)((unsigned)from & ~15u);', '*to = *from;']], 'differs', 'a quadword copied from where the address says, where LQ and SQ leave its low bits out');
   await wrong('eight', [['+ g + h;', '+ g;']], 'differs', 'the eighth argument, in t3, left out');
+  await wrong('ten', [['+ i + j;', '+ i;']], 'differs', 'the tenth argument, the second on the stack, left out');
   await wrong('pick', [['case 2: return 30;', 'case 2: return 30;\n  case 3: return 40;']], 'differs', 'a case too many, which only 3, at the edge of what the original takes, meets', /pick\(0x00000003\)/);
   await wrong('hardware', [['0x12000070', '0x12000074']], 'differs', 'a register of the GS four bytes off', /in the GS's registers/);
-  await wrong('shine', [['  return 1;\n}\n\n/** 0x0010001C', '  for (;;) {}\n  return 1;\n}\n\n/** 0x0010001C']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);
+  await wrong('shine', [['  return 1;\n}\n\n/** 0x001001F0', '  for (;;) {}\n  return 1;\n}\n\n/** 0x001001F0']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);
   await wrong('twice', [['return sum(a, a);', 'extern int nowhere(int);\n  return nowhere(a);']], 'unchecked', 'a twin that calls what nothing built is the twin of', /nowhere, which nothing built is the twin of/);
 } finally {
   original.close();
@@ -127,10 +128,10 @@ try {
     let run = dp('rom', copy);
     check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s copy');
     run = dp('codemap', NAME);
-    check(run.status === 0 && /19 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 0 && /20 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--calls', '200');
-    check(run.status === 0 && /14 of 17 functions left the same memory/.test(run.out) && /14 of those 14 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
-    check((run.out.match(/The same memory/g) ?? []).length === 14 && (run.out.match(/Not checked/g) ?? []).length === 3, 'a line for each twin');
+    check(run.status === 0 && /15 of 18 functions left the same memory/.test(run.out) && /15 of those 15 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+    check((run.out.match(/The same memory/g) ?? []).length === 15 && (run.out.match(/Not checked/g) ?? []).length === 3, 'a line for each twin');
     run = dp('twin', '--seed', '9', VERSION, 'func_00100158', '--calls', '200');
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'lookup', '--calls', '200');
@@ -141,7 +142,7 @@ try {
     run = dp('twin', VERSION, 'sum', '--calls', '200');
     check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls/.test(run.out), 'a proof isn\'t kept over fewer than 1,000 calls');
     run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 0 && /14 functions kept as proven by the same memory in games\/test-ps2-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls each, the 14 twins proven are kept: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 0 && /15 functions kept as proven by the same memory in games\/test-ps2-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls each, the 15 twins proven are kept: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION, '--check');
     check(run.status === 0, `and their proofs hold, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;', 'return a - b;'));

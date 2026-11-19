@@ -92,6 +92,11 @@ int shine(int a) {
   return 1;
 }
 
+/** 0x001001F0: ten numbers' sum, the last two on the stack */
+int ten(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j) {
+  return a + b + c + d + e + f + g + h + i + j;
+}
+
 /** 0x0010001C: the rest, one after another, and the first of the table through its pointer */
 int game_main(void) {
   sum(2, 3);

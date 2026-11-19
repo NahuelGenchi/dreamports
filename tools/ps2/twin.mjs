@@ -14,8 +14,8 @@
 // its proof/addresses.json gives, or the one in its label, as D_00123450.
 //
 // A call is made as Sony's compiler for the EE makes one: integer arguments in a0 to a3 and then t0 to t3, floats in f12
-// to f19, a 32-bit value spread to 64 bits by its sign, as the processor keeps one, and the upper half of each of the
-// 128-bit registers left as anything; sp, ra and gp, the register the program reaches its small values through, as the
+// to f19, any past those on the stack from where sp points, eight bytes apart, a 32-bit value spread to 64 bits by its
+// sign, as the processor keeps one, and the upper half of each of the 128-bit registers left as anything; sp, ra and gp, the register the program reaches its small values through, as the
 // program has them; and any value in every other register, so a function that reads one it wasn't given differs. A
 // function gives back what its C says in v0, all 64 bits of it, or a float in f0, and keeps s0 to s7, gp, sp, fp and
 // f20 to f31 for its caller. The original's own saves on the stack, below where the call starts it, aren't compared, as
@@ -326,11 +326,14 @@ const spread = value => [value >>> 0, value & 0x80000000 ? 0xFFFFFFFF : 0];
  */
 async function checkFunction({ f, original, runner, gp, options, choose }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
-  const integers = f.params.filter(type => !type.float), floats = f.params.filter(type => type.float);
-  if (integers.length > 8 || floats.length > 8) return { compared: 0, aside: { arguments: 1 }, ran, result: null };
-  // the original's own saves below its stack, which a twin keeps in its own
-  const skip = [[inImage(STACK - SAVES), inImage(STACK)]];
-  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK) && !(address >= f.code.from && address < f.code.to);
+  // where each argument goes: the first eight whole numbers and the first eight floats in registers, and the rest on
+  // the stack from where sp points, a slot of eight bytes each, in the order they're written
+  let integers = 0, floats = 0, slots = 0;
+  const places = f.params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
+  // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
+  // call is given and may change
+  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 8 * slots]];
+  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK + 8 * slots) && !(address >= f.code.from && address < f.code.to);
   let compared = 0, number = 0;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
@@ -357,11 +360,15 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
     gpr(28, ...spread(gp));
     registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
     // the arguments, as the caller puts them: whole numbers in a0 to a3 and t0 to t3, floats in f12 on
-    let integer = 0, float = 0;
     f.params.forEach((type, k) => {
-      if (type.float) registers[EE_REGISTERS.fpr + 12 + float++] = args[k];
-      else if (type.bits === 64) gpr(4 + integer++, Number(args[k] & 0xFFFFFFFFn), Number(args[k] >> 32n));
-      else gpr(4 + integer++, ...spread(args[k]));
+      const place = places[k], low = Number(BigInt(args[k]) & 0xFFFFFFFFn), high = Number(BigInt(args[k]) >> 32n);
+      if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
+      else if (place.register !== undefined) gpr(4 + place.register, ...(type.bits === 64 ? [low, high] : spread(low)));
+      else {
+        // on the stack a caller stores a word, and the other half of the slot too for 64 bits
+        changes.push([STACK + 8 * place.slot, 4, low]);
+        if (type.bits === 64) changes.push([STACK + 8 * place.slot + 4, 4, high]);
+      }
     });
     registers[EE_REGISTERS.fcsr] = 0x01000001;
     for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
@@ -442,7 +449,6 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   if (compared >= calls) return { kind: 'same', line: `${count(compared)} calls` };
   // what kept the rest from being compared, the most common first
   const why = Object.entries({
-    arguments: 'it takes more arguments than registers carry, which the check doesn\'t place on the stack yet',
     kernel: `the original ${aside.kernelText}, which a twin asks the kit for`,
     elsewhere: `the original ${aside.elsewhereText}`,
     exception: `the original ${aside.exceptionText}`,
@@ -453,7 +459,7 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     kept: `the original changed ${aside.keptText}, which a function keeps for its caller`,
     unbuilt: `the twin calls ${aside.unbuiltText}, which nothing built is the twin of`,
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
-  }).filter(([key]) => aside[key]).sort(([a], [b]) => aside[b] - aside[a]).map(([key, text]) => `${text}${key === 'arguments' ? '' : ` (${count(aside[key])} calls)`}`).join(', and ');
+  }).filter(([key]) => aside[key]).sort(([a], [b]) => aside[b] - aside[a]).map(([key, text]) => `${text} (${count(aside[key])} calls)`).join(', and ');
   if (!compared) return { kind: 'unchecked', line: `no call could be compared: ${why}.` };
   return { kind: 'few', line: `only ${count(compared)} of ${count(calls)} calls could be compared, all the same: ${why}.` };
 }
