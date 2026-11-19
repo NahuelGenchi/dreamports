@@ -33,6 +33,8 @@ export const R = {
 export const voice = (n, register) => n * 0x10 + register;
 export const voiceAddress = (n, register) => register + n * 12;
 
+/** The module's own RPC server's number, and the call the EE makes to it every frame. */
+export const SERVER = 0x01234567, SERVER_CALL = 7;
 /** Where the tone and the click go in the sound chip's memory, in bytes. */
 export const TONE_AT = 0x5000, CLICK_AT = 0x6000;
 /** The reverb's work area: from here to the end of the chip's memory. */
@@ -127,12 +129,13 @@ export const IRQ_AT = TONE_AT + 3 * 16;
 // reaches its data from there, so it needs no relocations. It calls the IOP's kernel through import tables, as every
 // module does, which the emulator's stand-in for the kernel answers.
 
-const ZERO = 0, V0 = 2, A0 = 4, A1 = 5, T0 = 8, T1 = 9, T2 = 10, T3 = 11, S0 = 16, S1 = 17, S2 = 18, S3 = 19, SP = 29, RA = 31;
+const ZERO = 0, V0 = 2, A0 = 4, A1 = 5, A2 = 6, A3 = 7, T0 = 8, T1 = 9, T2 = 10, T3 = 11, S0 = 16, S1 = 17, S2 = 18, S3 = 19, SP = 29, RA = 31;
 const op = (code, rs, rt, value) => (code << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;
 const lui = (rt, value) => op(0x0F, 0, rt, value), ori = (rt, rs, value) => op(0x0D, rs, rt, value), addiu = (rt, rs, value) => op(0x09, rs, rt, value);
 const slti = (rt, rs, value) => op(0x0A, rs, rt, value);
 const lw = (rt, offset, base) => op(0x23, base, rt, offset), sw = (rt, offset, base) => op(0x2B, base, rt, offset);
 const lhu = (rt, offset, base) => op(0x25, base, rt, offset), sh = (rt, offset, base) => op(0x29, base, rt, offset);
+const addu = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x21) >>> 0, sll = (rd, rt, shift) => (rt << 16 | rd << 11 | shift << 6) >>> 0;
 const JR_RA = 0x03E00008;
 const li = (rt, value) => (value >>> 16) ? [lui(rt, value >>> 16), ori(rt, rt, value & 0xFFFF)] : [ori(rt, ZERO, value)];
 // places by name, and what's filled in once every place is known: branches (BAL calls), a register set to a place in
@@ -163,13 +166,14 @@ function assembleIop(code) {
     if (places[name] === undefined) throw new Error(`No place called ${name} in the module.`);
     return places[name];
   };
-  return items.map((item, index) => {
+  const words = items.map((item, index) => {
     if (typeof item === 'number') return item >>> 0;
     if (item.word !== undefined) return item.word >>> 0;
     if (item.place) return addiu(item.rt, S0, placed(item.place));
     if (item.start) return addiu(S0, RA, -placed(item.start));
     return op(item.branch, item.rs, item.rt, (placed(item.name) - index * 4 - 4) >> 2);
   });
+  return { words, places };
 }
 
 // frames % n into T2, from S1, by taking n away while it's at least n
@@ -181,6 +185,10 @@ const soundModule = () => assembleIop([
   addiu(SP, SP, -32), sw(RA, 28, SP), sw(S0, 24, SP),
   bal('started'), NOP, at('started'), startFrom('started'),
   placeOf(A0, 'thread'), placeOf(T0, 'run'), sw(T0, 8, A0),
+  bal('CreateThread'), NOP,
+  addiu(A0, V0, 0), bal('StartThread'), addiu(A1, ZERO, 0),
+  // and its server's thread
+  placeOf(A0, 'serverThread'), placeOf(T0, 'serve'), sw(T0, 8, A0),
   bal('CreateThread'), NOP,
   addiu(A0, V0, 0), bal('StartThread'), addiu(A1, ZERO, 0),
   lw(S0, 24, SP), lw(RA, 28, SP), addiu(SP, SP, 32),
@@ -224,17 +232,47 @@ const soundModule = () => assembleIop([
   at('next'),
   beq(ZERO, ZERO, 'frame'), addiu(S1, S1, 1),
 
-  // what it calls of the IOP's kernel: thbase's CreateThread and StartThread, and vblank's WaitVblankStart
+  // its server's thread: an RPC server of its own, as a game's sound driver has, which the EE calls every frame
+  at('serve'),
+  bal('serving'), NOP, at('serving'), startFrom('serving'),
+  bal('SifInitRpc'), addiu(A0, ZERO, 0),
+  bal('GetThreadId'), NOP,
+  placeOf(A0, 'queue'), bal('SifSetRpcQueue'), addiu(A1, V0, 0),
+  addiu(SP, SP, -32), placeOf(T0, 'queue'), sw(T0, 0x18, SP), sw(ZERO, 0x10, SP), sw(ZERO, 0x14, SP),
+  placeOf(A0, 'server'), ...li(A1, SERVER), placeOf(A2, 'answer'), placeOf(A3, 'rpcBuffer'),
+  bal('SifRegisterRpc'), NOP,
+  placeOf(A0, 'queue'), bal('SifRpcLoop'), NOP,
+  at('stuck'), beq(ZERO, ZERO, 'stuck'), NOP,
+  // the server's function, with the call's number in A0 and its arguments in A1: the first word three times over and
+  // the number added, written over it, its buffer being its answer
+  at('answer'),
+  lw(T0, 0, A1), NOP, sll(T1, T0, 1), addu(T1, T1, T0), addu(T1, T1, A0), sw(T1, 0, A1),
+  JR_RA, addu(V0, A1, ZERO),
+
+  // what it calls of the IOP's kernel: thbase's CreateThread, StartThread and GetThreadId, vblank's WaitVblankStart,
+  // and sifcmd's RPC calls
   word(0x41E00000), word(0), word(0x0101), name8('thbase'),
   at('CreateThread'), JR_RA, addiu(ZERO, ZERO, 4),
   at('StartThread'), JR_RA, addiu(ZERO, ZERO, 6),
+  at('GetThreadId'), JR_RA, addiu(ZERO, ZERO, 20),
+  word(0), word(0),
+  word(0x41E00000), word(0), word(0x0101), name8('sifcmd'),
+  at('SifInitRpc'), JR_RA, addiu(ZERO, ZERO, 14),
+  at('SifRegisterRpc'), JR_RA, addiu(ZERO, ZERO, 17),
+  at('SifSetRpcQueue'), JR_RA, addiu(ZERO, ZERO, 19),
+  at('SifRpcLoop'), JR_RA, addiu(ZERO, ZERO, 22),
   word(0), word(0),
   word(0x41E00000), word(0), word(0x0101), name8('vblank'),
   at('WaitVblankStart'), JR_RA, addiu(ZERO, ZERO, 4),
   word(0), word(0),
 
-  // its thread's parameters: an ordinary thread, its code filled in as it starts, 2 KB of stack, priority 32
+  // its threads' parameters: ordinary threads, their code filled in as it starts, 2 KB of stack, the sound's at
+  // priority 32 and the server's below it at 40, and what the server's registration and its queue keep
   at('thread'), word(0x02000000), word(0), word(0), word(0x800), word(32),
+  at('serverThread'), word(0x02000000), word(0), word(0), word(0x800), word(40),
+  at('server'), ...Array(32).fill(word(0)),
+  at('queue'), ...Array(32).fill(word(0)),
+  align(16), at('rpcBuffer'), ...Array(16).fill(word(0)),
   bytesAt('tone', TONE),
   // the click on a 16-byte boundary for the DMA, as a module's own place is on one
   align(16), bytesAt('click', CLICK),
@@ -292,13 +330,31 @@ function irxOf(words) {
 }
 
 /** The IOP module that plays the sound, as an IRX file. */
-export const soundIrx = () => irxOf(soundModule());
+export const soundIrx = () => irxOf(soundModule().words);
+/** Where the module's file has its code, and where in that its tone and its click are, in bytes. */
+export const IRX_BODY = 0x80;
+export const moduleData = () => {
+  const { places } = soundModule();
+  return { tone: places.tone, click: places.click, rpcBuffer: places.rpcBuffer };
+};
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The program for the EE, which loads the module through the SIF
 
 // the EE's registers
-const E = { ZERO: 0, V0: 2, V1: 3, A0: 4, A1: 5, T1: 9, T2: 10, S2: 18 };
+const E = { ZERO: 0, V0: 2, V1: 3, A0: 4, A1: 5, T1: 9, T2: 10, S2: 18, S3: 19, S4: 20, S5: 21 };
+// the EE's DMA channel to the GIF
+const GIF_DMA = 0x1000A000;
+/** What the program puts in its LABEL writes, in order: what SifGetReg says of the SIF's registers, the ids SifSetDma
+ *  gives, what SifDmaStat says of two of them, the words of the IOP's two replies, and what the loader's call gave back. */
+export const LABEL_NAMES = [
+  ...[1, 3, 4, 0x80000000, 0x80000002, 2].map(register => `register ${register.toString(16)}`),
+  'init id', 'irx id', 'irx status', 'bind id', 'call id', 'call status',
+  ...['bind', 'call', 'server bind'].flatMap(name => Array.from({ length: 12 }, (_, i) => `${name} reply ${i}`)),
+  'received 0', 'received 1', 'answer',
+];
+// the LABEL packet as `send` takes it: only its length counts
+const LABELS_SIZE = { length: 4 + LABEL_NAMES.length * 4 };
 /** Where the module goes in the IOP's memory before the loader puts it in a place of its own. */
 export const IRX_IN_IOP = 0x180000;
 /** The SIF's commands, and the loader's RPC server and its call that loads a module from the IOP's memory. */
@@ -319,9 +375,15 @@ export function madeUpPs2Sound() {
   put('reply', Array(16).fill(0));
   put('received', Array(4).fill(0));
   put('client', Array(16).fill(0));
+  put('serverClient', Array(16).fill(0));
+  put('serverArguments', Array(4).fill(0));
+  put('answered', Array(4).fill(0));
   put('arguments', [IRX_IN_IOP, 0, ...Array(126).fill(0)]);
   const irxWords = Array.from({ length: Math.ceil(irx.length / 4) }, (_, i) => irx.length >= i * 4 + 4 ? irx.readUInt32LE(i * 4) : Buffer.concat([irx.subarray(i * 4), Buffer.alloc(4)]).readUInt32LE(0));
   put('irx', irxWords);
+  // a GIF packet of GS LABEL writes, which change nothing drawn, each carrying one thing the SIF gave the program, so
+  // they're in its draw list (LABEL_NAMES)
+  put('labels', [LABEL_NAMES.length | 0x8000, 0x10000000, 0xE, 0, ...LABEL_NAMES.flatMap(() => [0, 0, 0x62, 0])]);
   const addressOf = (packetAt, name) => packetAt + layout[name];
   // the packets need the program's own place, so they're filled in for wherever the data lands
   const packets = packetAt => {
@@ -330,6 +392,8 @@ export function madeUpPs2Sound() {
       init: [...header(20, SIF_INIT), at('reply')],
       bind: [...header(36, SIF_BIND), 0, at('client'), 0, at('client'), LOADFILE],
       call: [...header(56, SIF_CALL), 1, at('client'), 1, at('client'), LOAD_FROM_MEMORY, 512, at('received'), 8, 0, (LOADFILE ^ 0xACACACAC) >>> 0],
+      serverBind: [...header(36, SIF_BIND), 2, at('serverClient'), 2, at('serverClient'), SERVER],
+      serverCall: [...header(56, SIF_CALL), 3, at('serverClient'), 3, at('serverClient'), SERVER_CALL, 16, at('answered'), 16, 0, (SERVER ^ 0xACACACAC) >>> 0],
     };
   };
   // the transfers each SifSetDma sends: from, to, how many bytes, and 0. The command buffer's place is filled in as the
@@ -339,6 +403,8 @@ export function madeUpPs2Sound() {
     irx: [[addressOf(packetAt, 'irx'), IRX_IN_IOP, irxWords.length * 4, 0]],
     bind: [[sent.bind, 0, 48, 0]],
     call: [[addressOf(packetAt, 'arguments'), RPC_ARGUMENTS, 512, 0], [sent.call, 0, 64, 0]],
+    serverBind: [[sent.serverBind, 0, 48, 0]],
+    serverCall: [[addressOf(packetAt, 'serverArguments'), RPC_ARGUMENTS, 16, 0], [sent.serverCall, 0, 64, 0]],
   });
   // the packets and transfers go after the rest of the data, which is where the program's code finds them
   const finish = packetAt => {
@@ -365,28 +431,49 @@ export function madeUpPs2Sound() {
       ...toCommands.flatMap(i => [...eeLi(E.T1, placed[`${name}Transfers`] + i * 16 + 4), eeSw(E.S2, 0, E.T1)]),
       ...call(0x77, placed[`${name}Transfers`], count),
     ];
-    // waiting for the IOP's reply, then saying it's been taken, as the SIF's interrupt handler does with iSifSetDChain
-    const waitForReply = name => [
+    // a thing the SIF gave, from V0 or from a word of memory, into its LABEL write
+    const label = name => addressOf(packetAt, 'labels') + 16 + LABEL_NAMES.indexOf(name) * 16;
+    const keep = name => [...eeLi(E.T1, label(name)), eeSw(E.V0, 0, E.T1)];
+    const keepWord = (name, address) => [...eeLi(E.T1, address), eeLw(E.V0, 0, E.T1), ...keep(name)];
+    // waiting for the IOP's reply, keeping its words, then saying it's been taken, as the SIF's interrupt handler does
+    // with iSifSetDChain
+    const waitForReply = (name, kept = name) => [
       ...eeLi(E.T1, reply), ...eeLi(E.T2, SIF_REND),
       here(`waiting${name}`), eeLw(E.V0, 8, E.T1), eeBne(E.V0, E.T2, `waiting${name}`), NOP,
-      eeSw(E.ZERO, 8, E.T1),
+      ...(kept ? Array.from({ length: 12 }, (_, i) => keepWord(`${kept} reply ${i}`, reply + i * 4)).flat() : []),
+      ...eeLi(E.T1, reply), eeSw(E.ZERO, 8, E.T1),
       eeAddiu(E.V1, E.ZERO, -0x78), SYSCALL, NOP,
     ];
+    // SifDmaStat(the id in S4)
+    const dmaStat = name => [eeAddiu(E.V1, E.ZERO, 0x76), eeAddiu(E.A0, E.S4, 0), SYSCALL, NOP, ...keep(name)];
     return [
       ...setUp(packetAt),
-      // the IOP's command buffer, from SifGetReg(2)
-      ...call(0x7A, 2), eeAddiu(E.S2, E.V0, 0),
-      ...sendTo('init', 1, [0]),
-      ...sendTo('irx', 1),
-      ...sendTo('bind', 1, [0]), ...waitForReply('Bind'),
-      ...sendTo('call', 2, [1]), ...waitForReply('Call'),
+      // what SifGetReg says of each of the SIF's registers, the IOP's command buffer, the second, kept in S2
+      ...[1, 3, 4, 0x80000000, 0x80000002].flatMap(register => [...call(0x7A, register), ...keep(`register ${register.toString(16)}`)]),
+      ...call(0x7A, 2), ...keep('register 2'), eeAddiu(E.S2, E.V0, 0),
+      ...sendTo('init', 1, [0]), ...keep('init id'),
+      ...sendTo('irx', 1), ...keep('irx id'), eeAddiu(E.S4, E.V0, 0), ...dmaStat('irx status'),
+      ...sendTo('bind', 1, [0]), ...keep('bind id'), ...waitForReply('Bind', 'bind'),
+      ...sendTo('call', 2, [1]), ...keep('call id'), eeAddiu(E.S4, E.V0, 0), ...waitForReply('Call', 'call'), ...dmaStat('call status'),
+      ...keepWord('received 0', addressOf(packetAt, 'received')), ...keepWord('received 1', addressOf(packetAt, 'received') + 4),
+      // the module's own server, bound once
+      ...sendTo('serverBind', 1, [0]), ...waitForReply('ServerBind', 'server bind'),
+      ...eeLi(E.S3, addressOf(packetAt, 'labels')), eeAddiu(E.S5, E.ZERO, 0),
       here('frame'),
       ...waitForVBlank,
+      // and called each frame with the frame's number, its answer kept
+      ...eeLi(E.T1, addressOf(packetAt, 'serverArguments')), eeSw(E.S5, 0, E.T1),
+      ...sendTo('serverCall', 2, [1]), ...waitForReply('ServerCall', null),
+      ...keepWord('answer', addressOf(packetAt, 'answered')), eeAddiu(E.S5, E.S5, 1),
       ...send(PACKET),
+      ...send(LABELS_SIZE, GIF_DMA, E.S3, 'labels'),
       eeJ('frame'), NOP,
     ];
   };
   // the code's size doesn't depend on where its data is, so the data is made for the place elfOf puts it at
-  const codeWords = program(0).filter(item => !item.here).length;
-  return elfOf(program, finish(LOAD_AT + Math.ceil(codeWords * 4 / 16) * 16).all);
+  const codeWords = program(0).filter(item => !item.here).length, packetAt = LOAD_AT + Math.ceil(codeWords * 4 / 16) * 16;
+  const { placed } = finish(packetAt);
+  // where the program keeps what its Dreamport needs to find in its own copy of it
+  const places = { reply: addressOf(packetAt, 'reply'), received: addressOf(packetAt, 'received'), serverArguments: addressOf(packetAt, 'serverArguments'), answered: addressOf(packetAt, 'answered'), ...Object.fromEntries(Object.entries(placed).filter(([name]) => name.endsWith('Transfers'))) };
+  return { ...elfOf(program, finish(packetAt).all), places };
 }
