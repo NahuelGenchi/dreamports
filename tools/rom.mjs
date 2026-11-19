@@ -1,6 +1,7 @@
 // npm run dp -- rom <file or folder>… [--game "<name>"]: checks copies of games, says which game and which version
 // each is, and remembers where it is on this computer, for the other tools. It only reads the files: it never copies
-// them, changes them or sends them anywhere. In a folder it names only the copies a Dreamport here measures against,
+// them, changes them, unpacks them or sends them anywhere. A disc can be an ISO, a BIN with or without its .cue, a CHD,
+// a CSO or a ZSO, read a few sectors at a time (kit/copy/disc.js). In a folder it names only the copies a Dreamport here measures against,
 // and those of the game --game names, by its header or its file's name, and sums up the rest in one line. Without a
 // file, it lists the copies it remembers.
 
@@ -63,7 +64,14 @@ function options(args) {
 // Checks one copy and says what it is, unless it's in a folder and nothing here measures against it. Returns what it
 // found: a copy a Dreamport measures against, the game --game names, another game, or no game at all.
 async function check(file, originals, named, inFolder, said) {
-  const copy = await readAnyCopy(file, said);
+  let copy;
+  try {
+    copy = await readAnyCopy(file, said);
+  } catch (error) {
+    // a disc in a file that can't be read, such as a CHD that holds only changes to another, says why and stops nothing
+    console.log(`${file}\n  ${error.message}`);
+    return 'none';
+  }
   if (!copy) {
     if (!inFolder) console.log(`${file}\n  Not a game the tools can tell. If it is one, --console <id> says which console it's for: ${Object.keys(CONSOLES).filter(id => id !== 'made-up').join(', ')}.`);
     return 'none';

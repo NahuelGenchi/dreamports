@@ -20,6 +20,16 @@ import { CONSOLES } from '../../kit/consoles.js';
 import { LOCAL, REPO } from './paths.mjs';
 import { librariesFile, versionLibraries } from './libraries.mjs';
 import { BINARYEN_VERSION, binaryen } from './binaryen.mjs';
+import { readOriginal } from './proof-files.mjs';
+
+// a version's original.json as it reads it, or null for one that has none
+const readOriginalOf = game => {
+  try {
+    return readOriginal(game);
+  } catch {
+    return null;
+  }
+};
 
 /** The base every console's kit in C shares: kit.h, the copy, the save memory, the start point's words, memory and
  *  the picture, and what a console with no kit of its own runs on (console.c, native.c). */
@@ -29,13 +39,13 @@ export const C_BASE = fileURLToPath(new URL('../../kit/c/', import.meta.url));
 // console.h, and runs on a computer with the base's program for one (native.c), as a console with no kit of its own does
 const OWN = {
   gba: {
-    folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c', 'clock.c'],
+    folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c', 'clock.c', 'stack.c'],
     // what the console's compiler takes for granted, which C written for it leans on: a char with no sign, and code
     // that reads a value through a pointer of another type or through address 0
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks'],
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
-  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gif.c', 'ee.c', 'vu.c'], header: true },
+  ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'vu.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
 };
 
@@ -318,9 +328,22 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
   // where the copy keeps each value a library names, as ADDRESS_<name>, on a console whose game has no twins.h to say it
   const defines = kit.id === 'gba' ? [] : libraries.flatMap(library => [...library.values].map(([name, value]) => `-DADDRESS_${name}=0x${value.toString(16).toUpperCase()}`));
   const twins = await twinsFolder(folder);
+  if (!twins) return buildWasm(sources, out, { ...kit, folders, ...(defines.length ? { flags: defines } : {}) });
   // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
   // with what that compiler takes for granted, and each value it names where the console keeps it
-  return buildWasm(sources, out, twins ? { ...kit, folders: [...folders, twins.folder], flags: [...kit.twinFlags, ...defines, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : { ...kit, folders, ...(defines.length ? { flags: defines } : {}) });
+  const flags = [...kit.twinFlags, ...defines, '-Wl,--export-if-defined=kit_twin'], all = [...folders, twins.folder];
+  // one that matches the console's work memory has the console's stack too, as its functions proven by the same bytes
+  // leave it (../gba/stack.mjs): its own files are built from copies with the stack's calls in
+  const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
+  if (kit.id === 'gba' && !game.startsWith('..') && readOriginalOf(game)?.workMemory) {
+    const { stackSources } = await import('../gba/stack.mjs');
+    const src = join(folder, 'src'), withSrc = [...all, src];
+    const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
+    const made = await stackSources({ game, folder, own, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+    const stacked = sources.map(file => made.sources[own.indexOf(file)] ?? file);
+    return buildWasm(stacked, out, { ...kit, folders: withSrc, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
+  }
+  return buildWasm(sources, out, { ...kit, folders: all, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
 }
 
 // a file of the game's own that includes twins.h
