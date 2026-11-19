@@ -63,6 +63,8 @@ struct Background {
 void DrawBackground(struct Background *background);
 u32 sub_8004010(void);
 
+/** The V-blank's step that copies the backgrounds on the list to video memory (background.c). */
+bool32 sa2__sub_8002B20(void);
 /** The V-blank's step that draws the sprites the game put on backgrounds into their tile maps (background.c). */
 bool32 sa2__sub_80039E4(void);
 

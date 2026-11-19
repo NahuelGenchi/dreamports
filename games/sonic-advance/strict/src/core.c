@@ -2,6 +2,7 @@
 #include "core.h"
 #include "malloc.h"
 #include "task.h"
+#include "time.h"
 
 /** EngineInit, 0x080003EC: the engine from power-on. The console's wait states, the screen and every list the engine
  *  keeps emptied, the interrupt handler copied to the fast work memory, the sound, the task list, the heaps, the save
@@ -15,16 +16,25 @@ void EngineInit(void) {
   gFlagsPreVBlank = 0;
 
   if ((REG_READ16(REG_RCNT) & 0xC000) != 0x8000) {
+    TIME(0x080003EC, 0x0800041A, 0x0800041D, 0x04000204, IW, IW, 0x04000134);
     gFlags = FLAGS_200;
     DMA3_COPY16(OBJ_VRAM0, EWRAM_START + 0x3B000, 0x5000);
+    TIME(0x0800041C, 0x08000430, 0x08000433, IW, DMA3);
+  } else TIME(0x080003EC, 0x0800041A, 0x08000433, 0x04000204, IW, IW, 0x04000134);
+
+  if (gInput == (START_BUTTON | SELECT_BUTTON | B_BUTTON | A_BUTTON)) {
+    gFlags |= FLAGS_SKIP_INTRO;
+    TIME(0x08000432, 0x08000438, 0x0800043B, IW);
+    TIME(0x0800043A, 0x08000442, 0x08000473, IW);
+    TIME(0x08000472, 0x08000472, 0x08000475, IW);
+  } else {
+    gFlags &= ~FLAGS_SKIP_INTRO;
+    TIME(0x08000432, 0x08000438, 0x0800046D, IW);
+    TIME(0x0800046C, 0x08000472, 0x08000475, IW, IW);
   }
 
-  if (gInput == (START_BUTTON | SELECT_BUTTON | B_BUTTON | A_BUTTON)) gFlags |= FLAGS_SKIP_INTRO;
-  else gFlags &= ~FLAGS_SKIP_INTRO;
-
   DMA3_FILL32(0, VRAM, VRAM_SIZE);
-  DMA3_FILL32(0, OAM, OAM_SIZE);
-  DMA3_FILL32(0, PLTT, PLTT_SIZE);
+  DMA3_FILL32(0, OAM, OAM_SIZE);  DMA3_FILL32(0, PLTT, PLTT_SIZE);
 
   sLastCalledVblankFuncId = VBLANK_FUNC_ID_NONE;
   gBackgroundsCopyQueueCursor = 0;
@@ -87,6 +97,13 @@ void EngineInit(void) {
   for (i = 0; i < 10; i++) {
     gKeysFirstRepeatIntervals[i] = 20;
     gKeysContinuedRepeatIntervals[i] = 8;
+    // in the console's time, the first pass ends the run from the skip-intro flag, through the fills and the values
+    // above, and the last goes on below
+    if (i == 0)
+      TIME(0x08000474, 0x080005F6, 0x080005E1, DMA3, DMA3, DMA3, IW, IW, IW, IW, IW, IW, DMA3, IW, DMA3, IW, IW, IW, DMA3,
+           IW, IW, IW, DMA3, IW, DMA3, DMA3, DMA3, DMA3, DMA3, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW,
+           IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW);
+    else if (i < 9) TIME(0x080005E0, 0x080005F6, 0x080005E1, IW, IW);
   }
 
   gInputRecorder.mode = 0;
@@ -94,7 +111,11 @@ void EngineInit(void) {
   gInputPlaybackData = NULL;
   gFrameCount = 0;
 
-  for (i = 0; i < 15; i++) gIntrTable[i] = gIntrTableTemplate[i];
+  for (i = 0; i < 15; i++) {
+    gIntrTable[i] = gIntrTableTemplate[i];
+    if (i == 0) TIME(0x080005E0, 0x08000628, 0x08000611, IW, IW, IW, IW, IW, IW, ROM, IW);
+    else if (i < 14) TIME(0x08000610, 0x08000628, 0x08000611, ROM, IW);
+  }
 
   DMA3_FILL32(0, gBgOffsetsBuffer, sizeof(gBgOffsetsBuffer));
   gBgOffsetsHBlankPrimary = gBgOffsetsBuffer[0];
@@ -111,16 +132,22 @@ void EngineInit(void) {
   DMA3_FILL32(0, gVBlankCallbacks, sizeof(gVBlankCallbacks));
   DMA3_FILL32(0, gVBlankIntrs, sizeof(gVBlankIntrs));
 
+  TIME(0x08000610, 0x0800069E, 0x08097761, ROM, IW, DMA3, IW, IW, IW, IW, IW, IW, DMA3, DMA3, IW, IW, DMA3, DMA3);
   m4aSoundInit();
+  TIME(0x080006A0, 0x080006A4, 0x08097CFD);
   m4aSoundMode(0x93F500);
   gExecSoundMain = TRUE;
+  TIME(0x080006A6, 0x080006AE, 0x080014A9, IW);
 
   TasksInit();
+  TIME(0x080006B0, 0x080006B2, 0x08006A75);
   EwramInitHeap();
   gVramHeapMaxTileSlots = 0x270;
   gVramHeapStartAddr = (u8 *)(OBJ_VRAM0 + 0x3200);
+  TIME(0x080006B4, 0x080006C6, 0x08006C0D, IW, IW);
   VramResetHeapState();
 
+  TIME(0x080006C8, 0x080006CA, 0x08098CED);
   errorIdentifying = IdentifyFlash();
   if (errorIdentifying) gFlags |= FLAGS_NO_FLASH_MEMORY;
   else SetFlashTimerIntr(1, &gIntrTable[5]);
@@ -265,6 +292,7 @@ void GamepakIntr(void) { REG_WRITE16(REG_IF, 0x2000); }
 
 /** AgbMain, 0x08001494: where the cartridge's start hands over. The engine, then the game, then the loop. */
 void AgbMain(void) {
+  TIME(0x08001494, 0x08001498, 0x080003ED);
   EngineInit();
   GameInit();
   EngineMainLoop();
