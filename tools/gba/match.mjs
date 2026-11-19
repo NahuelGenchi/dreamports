@@ -137,7 +137,7 @@ function lex(text) {
 /** A file of C as what it's built from: without its comments, and with each run of spaces as one. */
 export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
 
-/** The functions a file of C defines, each { name, address, line, own, code }: `address` is the function of the original it's
+/** The functions a file of C defines, each { name, address, line, own, code, unaligned }: `address` is the function of the original it's
  *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, `own`
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
@@ -206,7 +206,10 @@ export function piecesIn(text, shifts = [], given = null) {
       }
       const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts);
       const address = given ? given.get(name) ?? null : addressIn(above.join('\n'), shifts) ?? addressIn(name, shifts);
-      twins.push({ name, address, ...(through === null ? {} : { through }), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
+      // whose calls the function check compares as the processor ran them (twin.mjs)
+      const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
+      twins.push({ name, address, ...(through === null ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
