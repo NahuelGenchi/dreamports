@@ -221,7 +221,13 @@ class Original {
    *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
    *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. `spare` is
    *  what the registers no argument fills hold, 0 unless given. */
-  async call({ address, span = 0, args, changes, limit, spare = [] }) {
+  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false }) {
+    // a twin that says it follows reads and writes where no halfword or word starts has those calls compared
+    if (Boolean(unaligned) !== Boolean(this.unaligned)) {
+      this.ask('a', [unaligned ? 1 : 0]);
+      await this.take(4);
+      this.unaligned = Boolean(unaligned);
+    }
     const registers = [0, 1, 2, 3].map(i => args[i] ?? spare[i] ?? 0), onStack = args.slice(4);
     this.ask('c', [address, span, ...registers, limit, onStack.length, ...onStack, changes.length, ...changes.flat()]);
     const head = await this.take(36);
@@ -858,7 +864,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
     if (theirs.ended === 0 && changing && options.aim !== false && bytesOf && f.span) {
@@ -1141,7 +1147,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   if (built.error) return { error: built.error };
   if (built.missing.length) return { missing: built.missing };
   const { twins, unknown } = built.unit;
-  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1), span: (f.address >= CARTRIDGE && sizeOf(f.address)) || 0 }));
+  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1), span: (f.address >= CARTRIDGE && sizeOf(f.address)) || 0, unaligned: twins.find(twin => twin.name === f.name)?.unaligned === true }));
   let rom = null;
   const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
