@@ -679,28 +679,40 @@ function throughSteps(value, steps) {
     else if (kind === 3) v = by >= 32 ? 0 : v >>> by;
     else if (kind === 4) v = ((v | 0) >> Math.min(by, 31)) >>> 0;
     else if (kind === 5) v = (v & by) >>> 0;
+    else if (kind === 6) v = (0 - v) >>> 0;
   }
   return v;
 }
 
 // The value a comparison read, as one it came from that comes out as one the branch wants: for a byte or a halfword,
-// the nearest to what it held of all it could hold, and for a word, the one that steps of adding alone give. Null when
-// none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
+// the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
+// give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-function sourceFor(held, bytes, now, steps, wanted, other) {
+export function sourceFor(held, bytes, now, steps, wanted, other) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
   if (!read) return null;
   if (bytes < 4) {
+    // through a mask, a flag among others: one bit changed first, as the nearest number can change many (#1570)
+    if (steps.some(([kind]) => kind === 5)) {
+      for (let bit = 0; bit < bits; bit++) if (wanted(throughSteps(read((held ^ 1 << bit) & mask), steps))) return ((held ^ 1 << bit) & mask) >>> 0;
+    }
     for (let d = 1; d <= mask; d++) {
       for (const value of [(held + d) & mask, (held - d) & mask]) if (wanted(throughSteps(read(value), steps))) return value >>> 0;
     }
     return null;
   }
-  if (steps.some(([kind]) => kind !== 1)) return null;
-  const added = steps.reduce((sum, [, by]) => sum + by, 0);
-  for (const want of CANDIDATES(now, other)) if (wanted(want)) return (want - added) >>> 0;
+  // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
+  if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
+  let sign = 1, added = 0;
+  for (const [kind, by] of steps) {
+    if (kind === 6) {
+      sign = -sign;
+      added = -added;
+    } else added += by;
+  }
+  for (const want of CANDIDATES(now, other)) if (wanted(want)) return (sign * (want - added)) >>> 0;
   return null;
 }
 const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, other - 2, other ^ 0x80000000, 0, 1, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, now + 1, now - 1, ~now].map(value => value >>> 0);
