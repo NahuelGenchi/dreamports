@@ -96,7 +96,9 @@ export function findLibrary({ library, files, built, rom, codeMap }) {
     const twin = built?.functions.get(`${f.file}\n${f.name}`);
     const sized = starts.filter(each => each.size === f.size);
     let found = [];
-    if (twin) {
+    // a function with a short hash is one no compiler rebuilds, whatever the library's compiler gives for it (#1521)
+    if (f.hash) found = sized.filter(each => shortHash(bytesAt(each.address, each.size)) === f.hash);
+    else if (twin) {
       const skip = new Set(twin.places.flatMap(place => [0, 1, 2, 3].map(i => place.at + i)));
       found = sized.filter(each => {
         const theirs = bytesAt(each.address, each.size);
@@ -106,8 +108,7 @@ export function findLibrary({ library, files, built, rom, codeMap }) {
         }
         return true;
       });
-    } else if (f.hash) found = sized.filter(each => shortHash(bytesAt(each.address, each.size)) === f.hash);
-    else {
+    } else {
       missing.push({ name: f.name, why: built ? 'it didn\'t build' : 'the library names no compiler for the Game Boy Advance, and it has no short hash' });
       continue;
     }
