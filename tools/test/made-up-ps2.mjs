@@ -390,3 +390,6 @@ function elfOf(written, packet) {
   const elf = Buffer.concat([header, segment]);
   return { elf, sha1: createHash('sha1').update(elf).digest('hex') };
 }
+
+/** What the programs of made-up-ps2-iop.mjs, which start the console's second processor, are built with as well. */
+export const forOtherPrograms = { imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET };

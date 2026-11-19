@@ -1,0 +1,178 @@
+// The PlayStation 2's second processor, the IOP, as a Dreamport's twins of a game's own IOP modules reach it (ps2.h):
+// its memory, and its hardware as the modules write it, the sound chip's registers (spu2.c) and the two DMA channels that
+// move sound to and from it, 4 for core 0 and 7 for core 1, as the console's emulator, Play!, has them.
+//
+// And the console's time as the emulator keeps it, which says when the sound chip mixes each block of its samples. The
+// emulator runs the console in slices of 4,800 of the EE's clock ticks, the IOP 600 of its own in each, and at the top
+// of each slice mixes 45 samples when their time has come, then starts the V-blank when its time has come. A frame of
+// the tools runs from one V-blank's start to the next, so it mixes 16 or 17 blocks, and what the IOP writes to the chip
+// as the frame starts comes before the frame's first block. The IOP's DMA to the sound chip goes on every 10,000 of its
+// ticks once a transfer has started. A game's IOP code runs as its frame starts, unless it says that time passes first
+// (ps2_time_pass).
+
+#include "ps2-kit.h"
+
+#define IOP_RAM_SIZE 0x400000
+#define EE_HZ 294912000u
+#define SLICE 4800
+#define IOP_SLICE 600
+#define DMA_EVERY 10000
+#define IRQ_EVERY 1000
+
+static uint8_t *ram;
+
+uint8_t *iop_memory(void) {
+  if (!ram) ram = kit_alloc(IOP_RAM_SIZE);
+  return ram;
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+// DMA to the sound chip
+
+typedef struct { uint32_t madr, bcr, chcr; } channel;
+static channel channels[2];
+static uint32_t dma_ended;
+
+// a channel's transfer goes on as far as its core takes it, as the emulator's does each time it's started or picked up
+static void resume(int n) {
+  channel *c = &channels[n];
+  if (!(c->chcr & 0x01000000)) return;
+  uint32_t size = (c->bcr & 0xFFFF) * 4, blocks = c->bcr >> 16;
+  uint32_t taken = spu2_dma(n, iop_memory() + (c->madr & 0x1FFFFFFF & (IOP_RAM_SIZE - 1)), size, blocks, c->chcr & 1);
+  blocks = (blocks - taken) & 0xFFFF;
+  c->bcr = (c->bcr & 0xFFFF) | blocks << 16;
+  c->madr += size * taken;
+  if (blocks == 0) {
+    c->chcr &= ~0x01000000u;
+    dma_ended |= 1u << n;
+  }
+}
+static void channel_write(int n, uint32_t offset, uint32_t value) {
+  channel *c = &channels[n];
+  switch (offset) {
+  case 0x0: c->madr = value; break;
+  case 0x4: c->bcr = value; break;
+  case 0x6: c->bcr = (c->bcr & 0xFFFF) | (value & 0xFFFF) << 16; break;
+  case 0x8:
+    c->chcr = value;
+    if (c->chcr & 0x01000000) resume(n);
+    break;
+  }
+}
+static uint32_t channel_read(int n, uint32_t offset) {
+  channel *c = &channels[n];
+  return offset == 0x0 ? c->madr : offset == 0x4 ? c->bcr : offset == 0x8 ? c->chcr : 0;
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+// The IOP's addresses
+
+static int is_sound(uint32_t at) { return (at >= 0x1F801C00 && at <= 0x1F801DFF) || (at >= 0x1F900000 && at <= 0x1F90FFFF); }
+static int channel_of(uint32_t at) { return at >= 0x1F8010C0 && at < 0x1F8010D0 ? 0 : at >= 0x1F801500 && at < 0x1F801510 ? 1 : -1; }
+
+static void hardware_write(uint32_t address, uint32_t value, int bytes) {
+  uint32_t at = address & 0x1FFFFFFF;
+  if (at < IOP_RAM_SIZE * 4) {
+    __builtin_memcpy(iop_memory() + (at & (IOP_RAM_SIZE - 1)), &value, bytes);
+    return;
+  }
+  if (is_sound(at)) {
+    spu2_write(at, value);
+    return;
+  }
+  int n = channel_of(at);
+  if (n >= 0) channel_write(n, at & 0xF, value);
+}
+static uint32_t hardware_read(uint32_t address, int bytes) {
+  uint32_t at = address & 0x1FFFFFFF, value = 0;
+  if (at < IOP_RAM_SIZE * 4) {
+    __builtin_memcpy(&value, iop_memory() + (at & (IOP_RAM_SIZE - 1)), bytes);
+    return value;
+  }
+  if (is_sound(at)) return spu2_read(at);
+  int n = channel_of(at);
+  return n >= 0 ? channel_read(n, at & 0xF) : 0;
+}
+
+void iop_write8(uint32_t address, uint8_t value) { hardware_write(address, value, 1); }
+void iop_write16(uint32_t address, uint16_t value) { hardware_write(address, value, 2); }
+void iop_write32(uint32_t address, uint32_t value) { hardware_write(address, value, 4); }
+uint8_t iop_read8(uint32_t address) { return (uint8_t)hardware_read(address, 1); }
+uint16_t iop_read16(uint32_t address) { return (uint16_t)hardware_read(address, 2); }
+uint32_t iop_read32(uint32_t address) { return hardware_read(address, 4); }
+
+// ----------------------------------------------------------------------------------------------------------------
+// The console's time
+
+static int64_t spu_ticks, spu_total;
+static int32_t vblank_ticks, on_screen, in_blank;
+static int in_vblank, at_vblank;
+static uint32_t into_slice, dma_ticks, irq_ticks, irq_line;
+
+void ps2_clock_power(void) {
+  uint32_t frame = EE_HZ / (CONSOLE_CLOCK / CONSOLE_FRAME_TICKS);
+  on_screen = (int32_t)(frame * 9 / 10);
+  in_blank = (int32_t)(frame / 10);
+  // the EE's ticks between two blocks of 45 samples at 44,100 a second, with 32 bits after the point, worked out as
+  // the emulator does
+  spu_total = (int64_t)((((uint64_t)EE_HZ) << 32) / 44100) * 45;
+  spu_ticks = spu_total;
+  vblank_ticks = on_screen;
+  in_vblank = at_vblank = 0;
+  into_slice = dma_ticks = irq_ticks = 0;
+}
+
+// the IOP's own ticks in a slice: its DMA goes on, and the sound chip's interrupt line follows the chip
+static void iop_ticks(uint32_t ticks) {
+  dma_ticks += ticks;
+  if (dma_ticks >= DMA_EVERY) {
+    resume(0);
+    resume(1);
+    dma_ticks -= DMA_EVERY;
+  }
+  irq_ticks += ticks;
+  if (irq_ticks >= IRQ_EVERY) {
+    irq_line = spu2_irq();
+    irq_ticks -= IRQ_EVERY;
+  }
+}
+static void slice_run(void) {
+  spu_ticks -= (int64_t)SLICE << 32;
+  vblank_ticks -= SLICE;
+  iop_ticks(IOP_SLICE);
+}
+// the top of a slice: a block of samples when one is due, then the V-blank, and 1 when the V-blank starts
+static int slice_top(void) {
+  if (spu_ticks <= 0) {
+    spu2_block();
+    spu_ticks += spu_total;
+  }
+  if (vblank_ticks <= 0) {
+    in_vblank = !in_vblank;
+    if (in_vblank) {
+      vblank_ticks += in_blank;
+      return 1;
+    }
+    vblank_ticks += on_screen;
+  }
+  return 0;
+}
+
+void ps2_time_pass(uint32_t ee_ticks) {
+  into_slice += ee_ticks;
+  while (into_slice >= SLICE && !at_vblank) {
+    into_slice -= SLICE;
+    slice_run();
+    at_vblank = slice_top();
+  }
+}
+void ps2_clock_to_vblank(void) {
+  if (!at_vblank) {
+    slice_run();
+    while (!slice_top()) slice_run();
+  }
+  at_vblank = 0;
+  into_slice = 0;
+}
+
+uint32_t iop_lines(void) { return (irq_line ? 1u : 0) | dma_ended << 1; }
