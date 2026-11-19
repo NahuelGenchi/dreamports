@@ -194,3 +194,38 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
   compare.dips = dips;
   return compare;
 }
+
+// A PlayStation 2 game's sound is proven exactly instead (docs/STANDARD.md): each frame, what the game gave the sound
+// chip, its sound list, hashed as its draw list is, and the samples the chip mixed of it, every one the same as the
+// original's in its emulator (kit/ps2/c/spu2.c, tools/libretro/play.patch).
+
+/** A frame's samples, left and right, as their 16-bit bytes hashed (FNV-1a), as the page hashes the Dreamport's
+ *  (in-page.js). */
+export function samplesHash(bytes) {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let hash = 0x811C9DC5;
+  for (let i = 0; i < view.length; i++) hash = Math.imul(hash ^ view[i], 0x01000193) >>> 0;
+  return hash >>> 0;
+}
+
+/**
+ * soundOf's counterpart for a console whose sound is proven by sound lists: `original` is what runReference gives as
+ * `soundLists`, and `compare(dreamport, originalOf, f)` takes the page's frames, each with its `list`, `listCount`,
+ * `exact` and `exactCount`, and gives null when frame f's list and samples are the original frame's, or what differs.
+ * Nothing is let through, so it never has dips.
+ */
+export function soundListsOf(original) {
+  const compare = (dreamport, originalOf, f) => {
+    const own = dreamport[f], g = originalOf[f];
+    if (own?.list === undefined) return { exact: true, by: 'list', original: { list: original.hashes[g], things: original.counts[g] }, dreamport: null };
+    if (own.list !== original.hashes[g] || own.listCount !== original.counts[g]) {
+      return { exact: true, by: 'list', original: { list: original.hashes[g], things: original.counts[g] }, dreamport: { list: own.list, things: own.listCount } };
+    }
+    if (own.exact !== original.samples.hashes[g] || own.exactCount !== original.samples.pairs[g]) {
+      return { exact: true, by: 'samples', original: { samples: original.samples.pairs[g] }, dreamport: { samples: own.exactCount } };
+    }
+    return null;
+  };
+  compare.dips = [];
+  return compare;
+}
