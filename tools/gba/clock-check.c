@@ -81,6 +81,10 @@ int main(int argc, char** argv) {
 	gba_clock_start();
 	gba_clock_on_frame_end(clockEnded);
 	int frames = atoi(argv[2]);
+	// with a third argument, a frame the clock isn't told of, as a game leaves its time alone between the stretches it
+	// times: the clock stops as that frame starts, and goes on from the emulator's time at the first instruction after
+	// it that a jump reaches, where the cartridge's prefetch starts again
+	int skip = argc > 3 ? atoi(argv[3]) : -1, skipping = 0, jumped = 0;
 	long compared = 0, differ = 0;
 	uint32_t firstPc = 0, firstOp = 0; uint64_t firstClock = 0, firstEmulator = 0;
 	while (emulatorFrames < frames) {
@@ -103,8 +107,15 @@ int main(int argc, char** argv) {
 		}
 		// the clock is for a game's power-on, with interrupts off: the first time it waits, the game's own wait goes on
 		if (cpu->halted || (gba->memory.io[0x208 >> 1] & 1)) break;
-		if (pc < 0x4000) continue;   // the BIOS's own code: the clock times it itself
 		uint32_t next = cpu->gprs[ARM_PC] - (cpu->executionMode == MODE_THUMB ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+		if (skip >= 0) {
+			int was = jumped;
+			jumped = next != pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			if (!skipping && emulatorFrames == skip && !ended) { skipping = 1; gba_clock_stop(); }
+			if (skipping == 1 && emulatorFrames > skip && was && pc >= 0x4000) { skipping = 2; gba_clock_resume(start); }
+			if (skipping == 1) continue;
+		}
+		if (pc < 0x4000) continue;   // the BIOS's own code: the clock times it itself
 		next |= cpu->executionMode == MODE_THUMB;
 		if (thumb && (op & 0xFF00) == 0xDF00) {
 			gba_clock_swi(pc, op & 0xFF, r[0], r[1], r[2], NULL);

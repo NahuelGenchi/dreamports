@@ -162,7 +162,7 @@ async function main() {
   } catch (error) {
     said(`this computer gives no other graphics context to compare with: ${error.message.split('\n')[0]}`);
   }
-  if (other && /llvmpipe/.test(other.outside.drawnBy)) said('this computer draws with llvmpipe whatever is asked, so there\'s nothing to compare');
+  if (other && (/llvmpipe/.test(other.outside.drawnBy) || other.outside.drawnBy === first.outside.drawnBy)) said(`this computer draws with ${other.outside.drawnBy} whatever is asked, so there's nothing to compare`);
   else if (other) {
     said(`drawn by ${other.outside.drawnBy}, next to ${first.outside.drawnBy}`);
     check(other.draws.hashes.every((hash, frame) => hash === first.draws.hashes[frame]), 'the draw list is the same on both, every frame');

@@ -2,7 +2,8 @@
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
 // (gba/functions.mjs), an NES game (nes/functions.mjs), a PlayStation game (ps1/functions.mjs) or a PlayStation 2 game
-// (ps2/functions.mjs). With --from, it takes them from a list: a decompilation's
+// (ps2/functions.mjs), where it maps every program on the disc: the one it boots, its other programs, its modules for
+// the second processor and the vector units' programs. With --from, it takes them from a list: a decompilation's
 // symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
 // a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
 // copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
@@ -65,10 +66,15 @@ const FINDERS = {
     read: ps1Functions.ps1Program,
     address: address => address,
   },
+  // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
+  // is of the program the disc boots
   ps2: {
-    ...ps2Functions,
     file: 'tools/ps2/functions.mjs',
-    read: ps2Functions.ps2Program,
+    read: path => ps2Functions.ps2Disc(path, { progress: (done, total) => process.stdout.write(`\rLooking for code in the disc's files: ${Math.floor(done / total * 100)}%…`) }).finally(() => process.stdout.write('\n')),
+    inCode: code => ps2Functions.inCode(code.boot),
+    startsInData: (code, listed) => ps2Functions.startsInData(code.boot, listed.filter(f => !f.program && !f.vu)),
+    findFunctions: (code, listed) => ps2Functions.discFunctions(code, listed),
+    fill: (code, listed) => ps2Functions.discFunctions(code, listed),
     address: address => address,
   },
 };
@@ -94,7 +100,7 @@ export async function run(args) {
     const inData = finder.startsInData(theCopy, listed);
     if (inData.length) console.log(`Left out ${inData.length} of the functions listed, which start in the data of the code before them: ${inData.map(f => `0x${hex(f.address)}`).join(', ')}.`);
     const real = listed.filter(f => !inData.includes(f));
-    return gbaFunctions.fillFunctions(real, finder.findFunctions(theCopy, real));
+    return finder.fill ? finder.fill(theCopy, real) : gbaFunctions.fillFunctions(real, finder.findFunctions(theCopy, real));
   };
   let functions, from, copies = [];
   if (list) {
@@ -144,6 +150,12 @@ export async function run(args) {
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
+  // a disc's other programs and its vector units' programs
+  const others = functions.filter(f => f.program && !f.vu), vu = functions.filter(f => f.vu);
+  if (others.length || vu.length) {
+    const sum = list => list.reduce((total, f) => total + f.size, 0).toLocaleString('en');
+    console.log(`Of those, ${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc, and ${sum(vu)} bytes in ${vu.length} vector unit programs.`);
+  }
   return 0;
 }
 

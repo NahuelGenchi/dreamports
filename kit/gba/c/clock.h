@@ -63,7 +63,7 @@ int gba_clock_frame_ended(void);
 void gba_clock_on_frame_end(void (*wait)(void));
 
 /** A register the game wrote, which waits for the store of it in the next runs: the DMA channels', the timers', the
- *  sound's and WAITCNT, whose time the store's decides. */
+ *  sound's and WAITCNT, whose time the store's decides. With the time stopped it's written as the time stands. */
 void gba_clock_written(uint32_t address, uint16_t value);
 
 /** A run's `next` when its last instruction goes back from a call, to wherever the latest timed call came from. */
@@ -81,6 +81,10 @@ void gba_clock_registers(const volatile uint16_t *file);
 /** The end of the console's time for the game: its runs, swis and calls cost nothing from here, as when it first waits
  *  for a frame, which a game's own frames time from then on. gba_clock_start starts it again. */
 void gba_clock_stop(void);
+
+/** The console's time again from `time`, cycles from power-on, with the timers and the sound brought up to it: for a
+ *  stretch a game times after power-on, as its work in the V-blank from a frame's end (gba_clock_frame_end). */
+void gba_clock_resume(uint64_t time);
 
 /** How many stores to the work memory came after a frame's end inside the run it ended in: what the Dreamport's frame
  *  has and the console's doesn't. */
