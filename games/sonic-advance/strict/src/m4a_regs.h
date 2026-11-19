@@ -1,6 +1,6 @@
 // The console's sound and DMA registers the sound library writes, each as the C variable the library's source
-// names: at the console's own address for its compiler (MATCHING), and in the kit's shadow of the registers, gba_io,
-// for a Dreamport, which keeps every value the library writes without a sound chip behind it yet.
+// names: at the console's own address for its compiler (MATCHING), and in the version's own registers, console_io
+// (hardware.c), for a Dreamport, which keeps every value the library writes without a sound chip behind it yet.
 #ifndef SA_M4A_REGS_H
 #define SA_M4A_REGS_H
 #include "console.h"
@@ -22,15 +22,18 @@ typedef s32 intptr_t;
 #define REG_ADDR_DMA1SAD 0x040000BC
 #define REG_ADDR_DMA2SAD 0x040000C8
 #else
-#define M4A_REG(bits, offset) (*(vu##bits *)((u8 *)gba_io + (offset)))
-#define REG_ADDR_VCOUNT ((u32)gba_io + 0x06)
-#define REG_ADDR_FIFO_A ((u32)gba_io + 0xA0)
-#define REG_ADDR_FIFO_B ((u32)gba_io + 0xA4)
-#define REG_ADDR_WAVE_RAM0 ((u32)gba_io + 0x90)
-#define REG_ADDR_NR10 ((u32)gba_io + 0x60)
-#define REG_ADDR_NR30 ((u32)gba_io + 0x70)
-#define REG_ADDR_DMA1SAD ((u32)gba_io + 0xBC)
-#define REG_ADDR_DMA2SAD ((u32)gba_io + 0xC8)
+extern u16 console_io[];
+#define M4A_REG(bits, offset) (*(vu##bits *)((u8 *)console_io + (offset)))
+// the line count, a line on each time it's looked at, as the console's goes on while the library waits for one line
+u32 console_vcount_at(void);
+#define REG_ADDR_VCOUNT console_vcount_at()
+#define REG_ADDR_FIFO_A ((u32)console_io + 0xA0)
+#define REG_ADDR_FIFO_B ((u32)console_io + 0xA4)
+#define REG_ADDR_WAVE_RAM0 ((u32)console_io + 0x90)
+#define REG_ADDR_NR10 ((u32)console_io + 0x60)
+#define REG_ADDR_NR30 ((u32)console_io + 0x70)
+#define REG_ADDR_DMA1SAD ((u32)console_io + 0xBC)
+#define REG_ADDR_DMA2SAD ((u32)console_io + 0xC8)
 #endif
 
 #define REG_SOUNDCNT_L M4A_REG(16, 0x080)
