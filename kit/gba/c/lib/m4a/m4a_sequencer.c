@@ -242,7 +242,7 @@ void MP2K_event_port(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track)
     u32 reg = *at;
     at++;
     track->cmdPtr = at + 1;
-    M4A_REG(8, 0x060 + reg) = ldrb_r3_r2(at);
+    M4A_SET(M4A_REG(8, 0x060 + reg), ldrb_r3_r2(at));
 }
 
 /** The engine's work at each V-blank: the sound DMA started again at the start of each of its periods. */
@@ -260,13 +260,13 @@ void m4aSoundVSync(void)
     soundInfo->dmaCounter = soundInfo->framesPerDmaCycle;
 
     if (REG_DMA1CNT & (DMA_REPEAT << 16))
-        REG_DMA1CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
+        M4A_SET(REG_DMA1CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
     if (REG_DMA2CNT & (DMA_REPEAT << 16))
-        REG_DMA2CNT = ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4;
-    REG_DMA1CNT_H = DMA_32BIT;
-    REG_DMA2CNT_H = DMA_32BIT;
-    REG_DMA1CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
-    REG_DMA2CNT_H = DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT;
+        M4A_SET(REG_DMA2CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
+    M4A_SET(REG_DMA1CNT_H, DMA_32BIT);
+    M4A_SET(REG_DMA2CNT_H, DMA_32BIT);
+    M4A_SET(REG_DMA1CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
+    M4A_SET(REG_DMA2CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
 }
 
 /**
