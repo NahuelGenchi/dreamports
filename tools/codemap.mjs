@@ -11,7 +11,11 @@
 // lists the code that ran in the work RAM, reads it back, and finds its functions (gba/functions.mjs). A stretch of
 // them that's a copy of the cartridge's code goes in the map's copies, where it runs, and its functions are the
 // cartridge's, split where the copy shows one starts; the rest are functions of their own, each known by its address
-// and its first 8 bytes (lib/proof-files.mjs). --memory does only that, and leaves the rest of the map as it is.
+// and its first 8 bytes (lib/proof-files.mjs). Where the game has the BIOS unpack them from the cartridge, as a program
+// it unpacks and runs, the map's copies say so too, for what reads their code (lib/points-to.mjs): a function whose
+// bytes are what an unpack put there, or are found in what one made, as code copied on from there is. One whose bytes
+// it can't find in the cartridge either way is listed by its address. --memory does only that, and leaves the rest of
+// the map as it is.
 // In an NES game, --fill plays the recordings in the original too, and adds the functions play sends the processor to
 // that following the code didn't find, as a jump through a table the tools couldn't read leads to (libretro/ran.h).
 
@@ -25,6 +29,7 @@ import { originalPlay } from './lib/recording.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { atOnce } from './lib/at-once.mjs';
 import * as gbaFunctions from './gba/functions.mjs';
+import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 
@@ -101,6 +106,9 @@ export async function run(args) {
       if (found) {
         functions = [...splitAt(functions, found.starts), ...found.functions].sort((a, b) => a.address - b.address || (a.bytes ?? '').localeCompare(b.bytes ?? ''));
         copies = found.copies;
+        const unpacked = copies.filter(c => c.packed);
+        if (unpacked.length) console.log(`Unpacked: ${unpacked.length} stretch${unpacked.length === 1 ? '' : 'es'} of the work RAM hold code the game has the BIOS unpack from the cartridge, ${unpacked.map(c => `0x${hex(c.ram)} from 0x${hex(c.cartridge)}${c.from ? ` (${c.from} bytes in)` : ''}`).join(', ')}.`);
+        if (found.unknown.length) console.log(`Not traced to the cartridge: ${found.unknown.length} function${found.unknown.length === 1 ? '' : 's'} the game makes in its work RAM, whose bytes no copy of the cartridge or unpack the tools follow holds: ${found.unknown.map(a => `0x${hex(a)}`).join(', ')}.`);
         from = from.replace(/, and the code (its|the game's) recordings run.*$/, '') + `, and the code the game's recordings run in the work RAM, found by playing them in the original`;
       }
     }
@@ -127,7 +135,7 @@ export async function run(args) {
   writeCodeMap(game, { original: original.sha1, from, functions, copies });
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
-    + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.length} stretch${copies.length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
+    + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
   return 0;
 }
 
@@ -246,11 +254,13 @@ async function codeInMemory(game, original, copyPath, cartridge, mapped) {
   const keysLate = original.keysAfterVBlank === true;
   const recordings = readRecordings(game).filter(r => r.players === undefined);
   // the recordings a few at a time, each the stretches of memory its code ran in, joined in the recordings' order
-  const perRecording = new Array(recordings.length);
+  const perRecording = new Array(recordings.length), unpacks = new Map();
   let next = 0, done = 0;
   const worker = async () => {
     for (let i = next++; i < recordings.length; i = next++) {
-      perRecording[i] = await stretchesIn(recordings[i], reference, copyPath, keysLate);
+      const ran = await stretchesIn(recordings[i], reference, copyPath, keysLate);
+      perRecording[i] = ran.stretches;
+      for (const u of ran.unpacks) unpacks.set(`${u.call} ${u.source} ${u.target}`, u);
       process.stdout.write(`\rLooking for code in the work RAM: ${++done} of ${recordings.length} recordings…`);
     }
   };
@@ -275,19 +285,48 @@ async function codeInMemory(game, original, copyPath, cartridge, mapped) {
   // whether the instructions that ran from `ram` on are those the cartridge has from `from` on, for `size` bytes
   const agrees = (ran, ram, from, size) => ran.length > 0 && ran.every(r => r.address < ram || r.address >= ram + size
     || (r.thumb ? romAt(from + r.address - ram, 2).readUInt16LE(0) : romAt(from + r.address - ram, 4).readUInt32LE(0)) === r.code);
+  // what each unpack of the cartridge the recordings made puts in the work RAM
+  const made = [...unpacks.values()].map(u => ({ ...u, packed: UNPACKED_BY[u.call], bytes: UNPACKED_BY[u.call] && unpack(UNPACKED_BY[u.call], cartridge, u.source - 0x08000000)?.bytes }))
+    .filter(u => u.bytes).map(u => ({ ...u, bytes: Buffer.from(u.bytes.buffer, u.bytes.byteOffset, u.bytes.length) }));
+  const sameAs = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  // where a function of the game's own comes from, as the code map's copies say it: what an unpack put where it runs,
+  // or a stretch of what one made, the only place it's found, that the game copied on to run where it runs
+  const unpackedAs = (address, bytes, ran) => {
+    const agreeing = (all, from) => ran.every(r => (r.thumb ? all[from + r.address - address] | all[from + r.address - address + 1] << 8
+      : (all[from + r.address - address] | all[from + r.address - address + 1] << 8 | all[from + r.address - address + 2] << 16 | all[from + r.address - address + 3] << 24) >>> 0) === r.code);
+    for (const u of made) {
+      const at = address - u.target;
+      if (at >= 0 && at + bytes.length <= u.bytes.length && sameAs(u.bytes.subarray(at, at + bytes.length), bytes) && agreeing(u.bytes, at)) return { ram: u.target, cartridge: u.source, size: u.bytes.length, packed: u.packed };
+    }
+    if (bytes.length < 8) return null;
+    const places = [];
+    for (const u of made) for (let at = u.bytes.indexOf(bytes); at >= 0; at = u.bytes.indexOf(bytes, at + 1)) if (agreeing(u.bytes, at)) places.push({ u, at });
+    if (places.length !== 1) return null;
+    const { u, at } = places[0];
+    return { ram: address, cartridge: u.source, size: bytes.length, packed: u.packed, ...(at ? { from: at } : {}) };
+  };
   const functions = [], copies = [], starts = [];
   for (const stretch of stretches) {
     const found = gbaFunctions.findInMemory(stretch.bytes, stretch.base, [...stretch.ran.values()]);
     const bytesOf = (address, size) => stretch.bytes.subarray(address - stretch.base, address - stretch.base + size);
+    // a function whose bytes aren't what ran in it, as where a stretch read once the game had cleared that memory was
+    // joined over another's, isn't there to be found, and nor is one nothing ran in whose bytes are all one value, as
+    // memory the game cleared is, which the code that ran calls into only at another time
+    const stillThere = f => {
+      const ran = [...stretch.ran.values()].filter(r => r.address >= f.address && r.address < f.address + f.size);
+      if (!ran.length && bytesOf(f.address, f.size).every((b, i, all) => b === all[0])) return false;
+      return ran.every(r => (r.thumb ? stretch.bytes.readUInt16LE(r.address - stretch.base) : stretch.bytes.readUInt32LE(r.address - stretch.base)) === r.code);
+    };
     // how far the bigger functions sit from where the cartridge has them, as a copy of a stretch of its code shows
     const apart = new Set();
     for (const f of found) {
       if (f.size < 32) continue;
       const at = cartridge.indexOf(bytesOf(f.address, f.size));
-      if (at >= 0) apart.add(f.address - (0x08000000 + at));
+      if (at >= 0 && stillThere(f)) apart.add(f.address - (0x08000000 + at));
     }
     const here = [];   // this stretch's copies, { ram, cartridge, size }
     for (const f of found) {
+      if (!stillThere(f)) continue;
       const within = here.find(c => f.address >= c.ram && f.address < c.ram + c.size);
       // a function inside a copy is the cartridge's: it shows where one starts, if it surely starts one
       let copy = within ? { ram: f.address, cartridge: f.address - within.ram + within.cartridge, size: 0 } : null;
@@ -303,7 +342,7 @@ async function codeInMemory(game, original, copyPath, cartridge, mapped) {
         if (g) copy = { ram: f.address, cartridge: g.address, size: g.size };
       }
       if (!copy) {
-        functions.push({ address: f.address, size: f.size, bytes: bytesText(bytesOf(f.address, 8)), ran });
+        functions.push({ address: f.address, size: f.size, bytes: bytesText(bytesOf(f.address, 8)), ran, unpacked: unpackedAs(f.address, bytesOf(f.address, f.size), ran) });
         continue;
       }
       if (f.starts || !within) starts.push({ address: copy.cartridge, size: copy.size || f.size });
@@ -322,19 +361,41 @@ async function codeInMemory(game, original, copyPath, cartridge, mapped) {
   // what ran as part of a copy another recording shows whole is that copy's, and the same code found again, as it is
   // in several recordings, counts once
   const own = functions.filter(f => !joined.some(c => f.address >= c.ram && f.address < c.ram + c.size && agrees(f.ran, c.ram, c.cartridge, c.size)));
-  const unique = new Map(own.map(({ ran, ...f }) => [`${f.address}/${f.bytes}`, f]));
-  return { functions: [...unique.values()], copies: joined.sort((a, b) => a.ram - b.ram || a.cartridge - b.cartridge), starts: [...new Map(starts.map(s => [s.address, s])).values()].sort((a, b) => a.address - b.address) };
+  const unique = new Map();
+  for (const { ran, unpacked, ...f } of own) {
+    const key = `${f.address}/${f.bytes}`;
+    unique.set(key, { ...f, unpacked: unique.get(key)?.unpacked ?? unpacked, ran: unique.get(key)?.ran || ran.some(r => r.address === f.address) });
+  }
+  // and where the cartridge holds a function's bytes, other bytes at that address nothing ran from, and that nothing
+  // holds, were read at another time, as memory the game had cleared or used for something else
+  const traced = new Set([...unique.values()].filter(f => f.unpacked).map(f => f.address));
+  for (const [key, f] of unique) if (!f.ran && !f.unpacked && traced.has(f.address)) unique.delete(key);
+  // the unpacked copies, each once, those copied on joined where they meet as far into what was unpacked
+  const packed = [];
+  for (const c of [...unique.values()].map(f => f.unpacked).filter(Boolean).sort((a, b) => a.ram - (a.from ?? 0) - (b.ram - (b.from ?? 0)) || a.ram - b.ram)) {
+    const last = packed.at(-1);
+    if (last && last.cartridge === c.cartridge && last.packed === c.packed && last.ram - (last.from ?? 0) === c.ram - (c.from ?? 0) && c.ram <= last.ram + last.size) last.size = Math.max(last.size, c.ram + c.size - last.ram);
+    else packed.push({ ...c });
+  }
+  const unknown = [...unique.values()].filter(f => !f.unpacked).map(f => f.address);
+  return {
+    functions: [...unique.values()].map(({ unpacked, ran, ...f }) => f),
+    copies: [...joined, ...packed].sort((a, b) => a.ram - b.ram || a.cartridge - b.cartridge),
+    starts: [...new Map(starts.map(s => [s.address, s])).values()].sort((a, b) => a.address - b.address),
+    unknown: [...new Set(unknown)],
+  };
 }
 
 /** The stretches of the work RAM a recording runs code in, each as the last of its code ran: what ran, a load at a
- *  time, as a load ends where an address runs other code than it did before in it. */
+ *  time, as a load ends where an address runs other code than it did before in it; and the BIOS's unpacks from the
+ *  cartridge into the work RAM, { frame, call, source, target }. */
 async function stretchesIn(recording, reference, copyPath, keysLate) {
   const { originalHeld, sets } = originalPlay(recording, { keysLate });
   const buttons = originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
   if (keysLate) buttons.unshift(0);
   const run = { copy: copyPath, frames: buttons.length + 1, buttons, sets };
-  const { ramCode } = await reference.runOriginal({ ...run, ramCode: true });
-  if (!ramCode.length) return [];
+  const { ramCode, unpacks } = await reference.runOriginal({ ...run, ramCode: true });
+  if (!ramCode.length) return { stretches: [], unpacks };
   const loads = [];
   for (const [base, length] of MEMORY) {
     let load = null;
@@ -361,12 +422,14 @@ async function stretchesIn(recording, reference, copyPath, keysLate) {
   const { outside } = await reference.runOriginal({ ...run, reads: order.map(i => reads[i]) });
   const values = new Uint32Array(reads.length);
   order.forEach((i, k) => { values[i] = outside.reads[k]; });
-  // only what's still there as it's read: code a later load put elsewhere comes in its own load
-  return wanted.map(w => {
+  // only what's still there as it's read: code a later load put elsewhere comes in its own load, and a stretch none of
+  // whose code is there any more, as the game cleared it, holds none of it
+  const stretches = wanted.map(w => {
     const bytes = Buffer.from(new Uint32Array(values.subarray(w.at, w.at + (w.to - w.from) / 4)).buffer);
     const ran = w.ran.filter(r => (r.thumb ? bytes.readUInt16LE(r.address - w.from) : bytes.readUInt32LE(r.address - w.from)) === r.code);
     return { base: w.from, bytes, ran: new Map(ran.map(r => [r.address, r])) };
-  });
+  }).filter(s => s.ran.size);
+  return { stretches, unpacks };
 }
 
 /** A stretch of memory joins one it overlaps or meets whose code that ran is the same in both, as the same code read
