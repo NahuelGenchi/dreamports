@@ -22,8 +22,9 @@ export const BIOS = { Div: 0x08000510 };
 // and the function that calls it, in a file of its own (bios.c)
 export const DIVIDES = { Share: 0x08000540 };
 // a function that reads a register of the hardware and writes it changed, one that waits for a DMA the V-blank
-// starts, and one that reads a register through its twin's own register file, in a file of their own (register.c)
-export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680 };
+// starts, one that reads a register through its twin's own register file, and one whose DMA copies from the BIOS,
+// in a file of their own (register.c)
+export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680, Fetch: 0x08000940 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, one that runs code play put in the work memory, and the value play keeps the stage in
 export const PLAYED = { Shine: 0x08000400, Play: 0x08000440, Glow: 0x08000800 };
