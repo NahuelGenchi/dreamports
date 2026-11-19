@@ -308,7 +308,8 @@ public:
   }
 };
 
-// The EE's blocks, as the emulator makes them for a game with no settings of its own in its GameConfig.xml.
+// The EE's blocks, as the emulator makes them for a game with no settings of its own in its GameConfig.xml, which is
+// every game as the tools run the emulator: it looks for that file in its resources folder, and the tools give it none.
 class EeStepper : public Stepper<CGenericMipsExecutor<BlockLookupTwoWay>> {
 public:
   EeStepper(CMIPS &context) : Stepper(context, 0x20000000, BLOCK_CATEGORY_PS2_EE) {}
