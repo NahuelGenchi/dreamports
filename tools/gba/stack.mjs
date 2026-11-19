@@ -233,8 +233,10 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   const { versionTwins } = await import('../lib/twins.mjs');
   const { readCompiler, compilerAt } = await import('./match.mjs');
   const original = readOriginal(game), proofs = readProofs(game);
-  const compiler = readCompiler(original, `games/${game.split('/')[0]}/proof/original.json`);
   const bytes = new Set([...(proofs?.functions ?? new Map())].filter(([, p]) => p.kind === 'bytes').map(([key]) => key.slice(0, 8)));
+  // with no function proven by the same bytes, or no compiler to build one with, there's nothing to read the stack from
+  if (!bytes.size || !original.compiler) return { sources: own, gaps: [] };
+  const compiler = readCompiler(original, `games/${game.split('/')[0]}/proof/original.json`);
   const { twinsOf, twins } = versionTwins(game);
   const addressOf = name => (twins.get(name)?.size === 1 ? [...twins.get(name)][0] | 1 : null);
   const sources = [], gaps = [];
