@@ -18,6 +18,12 @@
 // On a PlayStation game it prints the function's MIPS instructions, from the program the copy boots, which the tools'
 // own decoder reads (ps1/mips.mjs, ps1/read.mjs): <function> is an address, such as 0x800C1234, a name in the code map
 // or a label with an address, such as func_800C1234, and --bytes is its only option.
+//
+// On a PlayStation 2 game it prints any code its code map has, read off the disc by the tools' own decoders
+// (ps2/read.mjs): the EE's MIPS, MMI and vector unit 0 instructions (ps2/ee.mjs), an IOP module's MIPS, or a vector
+// unit's program as its pairs of instructions (ps2/vu.mjs). <function> is an address, such as 0x00123456, a code map
+// key, such as 00000120@MCMAN.IRX or 00340010~vu, a name in the code map or a label with an address, and --bytes is its
+// only option.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -34,6 +40,7 @@ import { readShifts } from './portmap.mjs';
 import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
 import { readNes } from './nes/read.mjs';
 import { readPs1 } from './ps1/read.mjs';
+import { readPs2 } from './ps2/read.mjs';
 
 const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>]';
 const CARTRIDGE = 0x08000000;
@@ -45,9 +52,9 @@ const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
 // the consoles whose instructions read knows, and what reads each
-const READERS = { gba: readGba, nes: readNes, ps1: readPs1 };
+const READERS = { gba: readGba, nes: readNes, ps1: readPs1, ps2: readPs2 };
 // the consoles whose reader reads the program a disc boots itself, rather than the whole copy
-const OFF_DISC = new Set(['ps1']);
+const OFF_DISC = new Set(['ps1', 'ps2']);
 const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(', ').replace(/, ([^,]+)$/, ' and $1');
 
 export async function run(args) {

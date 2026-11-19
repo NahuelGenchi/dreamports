@@ -15,7 +15,7 @@ import { cartridgeOf, prepareCopy } from '../lib/proof-files.mjs';
 import { decidedMipsBranches } from '../ps2/decided.mjs';
 import { testedValues } from '../untouched.mjs';
 import { LOAD_AT, VU1_PROGRAM, madeUpPs2 } from './made-up-ps2.mjs';
-import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-disc.mjs';
+import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-iso.mjs';
 
 // the EE's instructions, as MIPS encodes them
 const I = (op, rs, rt, value) => (op << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;

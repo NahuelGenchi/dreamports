@@ -1,6 +1,6 @@
 // npm run test:ps2-ledger: what the tools learn of a PlayStation 2 game as it plays, for gameplay proven
 // (docs/STANDARD.md#how-progress-is-measured), checked on the console's real emulator, Play!, with the tools' change to it
-// (libretro/play.patch), on a disc of the project's own (made-up-ps2-disc.mjs) that boots the program that draws through
+// (libretro/play.patch), on a disc of the project's own (made-up-ps2-iso.mjs) that boots the program that draws through
 // vector unit 1 (made-up-ps2.mjs), with a file of data beside it that nothing reads and one of nothing but zeros.
 //
 // Every instruction the program runs on the EE is told, with each way of the branch that waits for the V-blank, and so is
@@ -29,7 +29,7 @@ import { findFunctions } from '../ps2/functions.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
-import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-disc.mjs';
+import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-iso.mjs';
 
 const FRAMES = 120;
 const WORK = join(LOCAL, 'test-ps2-ledger');
