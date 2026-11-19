@@ -4,7 +4,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { open, stat } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join } from 'node:path';
 import { constants as zlibConstants, inflateRawSync, zstdDecompressSync } from 'node:zlib';
 import { CONSOLES } from '../consoles.mjs';
@@ -155,17 +155,26 @@ export async function bootFile(path) {
   }
 }
 
-// a file that isn't a disc, as one piece of an image
-const wholeFile = path => ({
+// files that aren't a disc, each a track of an image
+const wholeFiles = paths => ({
   async* image() {
-    const source = await fileSource(path);
-    try {
-      for (let at = 0; at < source.size; at += 0x400000) yield { track: 0, bytes: await source.read(at, 0x400000) };
-    } finally {
-      await source.close();
+    for (const [track, path] of paths.entries()) {
+      const source = await fileSource(path);
+      try {
+        for (let at = 0; at < source.size; at += 0x400000) yield { track, bytes: await source.read(at, 0x400000) };
+      } finally {
+        await source.close();
+      }
     }
   },
 });
+
+// the files a .cue names, in order, or the file itself
+async function cueFiles(path) {
+  if (extname(path).toLowerCase() !== '.cue') return [path];
+  const listed = [...(await readFile(path, 'latin1')).matchAll(/^\s*FILE\s+"([^"]+)"/gim)].map(found => join(dirname(path), found[1]));
+  return listed.length ? listed : [path];
+}
 
 // the SHA-1 of a disc's bytes, as the image it was made from holds them, and of each of its tracks
 async function sha1Of(disc) {
@@ -207,7 +216,10 @@ export async function readAnyCopy(path, said = null) {
     const gba = await gbaIn();
     if (gba) return gba;
   }
-  const file = await fileSource(path);
+  // a .cue's files, in order, hold the copy: a disc whose tracks have moved isn't a copy of anything
+  const files = await cueFiles(path);
+  if (!files.every(existsSync)) return null;
+  const file = await fileSource(files[0]);
   let found = null, disc = null;
   try {
     found = cartridge(Buffer.from(await file.read(0, HEAD * 2)));
@@ -225,7 +237,7 @@ export async function readAnyCopy(path, said = null) {
     const id = said ?? found?.console;
     // a file with a name of its own can still hold a Game Boy Advance game, whose header says so; another console's file can't
     if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
-    const { sha1, tracks, size } = await sha1Of(disc ?? wholeFile(path));
+    const { sha1, tracks, size } = await sha1Of(disc ?? wholeFiles(files));
     return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format } : {}) };
   } finally {
     await disc?.close();
