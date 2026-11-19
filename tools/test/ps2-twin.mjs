@@ -135,7 +135,18 @@ try {
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'lookup', '--calls', '200');
     check(run.status === 0 && /1 of 1 function/.test(run.out), 'the game\'s name alone means its version in C, and a twin is named by its own name');
+    // made a function at a time: twin keeps each proof it finds over enough calls, and a proof goes stale with its twin
+    run = dp('proofs', VERSION, '--start');
+    check(run.status === 0 && /made a function at a time/.test(run.out), `proofs --start makes it a version made a function at a time: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('twin', VERSION, 'sum', '--calls', '200');
+    check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls/.test(run.out), 'a proof isn\'t kept over fewer than 1,000 calls');
+    run = dp('twin', VERSION, '--calls', '1000');
+    check(run.status === 0 && /14 functions kept as proven by the same memory in games\/test-ps2-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls each, the 14 twins proven are kept: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 0, `and their proofs hold, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;', 'return a - b;'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status !== 0 && /sum/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${run.out.trim().split('\n').find(line => /sum/.test(line))}`);
     run = dp('twin', VERSION, 'sum', '--calls', '200');
     check(run.status === 3 && /Differs  0x00100094 sum: call \d+, sum\(/.test(run.out), `a twin that differs ends it with 3: ${run.out.trim().split('\n').find(line => /Differs/.test(line))}`);
     run = dp('twin', VERSION, '--memories');

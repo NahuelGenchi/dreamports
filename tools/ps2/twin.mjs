@@ -38,12 +38,13 @@ import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
-import { asksForProofs } from '../lib/proofs.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { openBuild } from '../gba/twin.mjs';
 import { findFunctions, ps2Program } from './functions.mjs';
+import { keepProgram } from './original-program.mjs';
 import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -87,6 +88,8 @@ export const DEFAULTS = {
   seconds: 2,        // how long a twin may take over one call
   limit: 1000000,    // how many instructions the original may run in one call
 };
+// how many calls a proof by the same memory is over, at the least
+const KEPT_FROM = 1000;
 // how many calls may be made for each one that has to be compared
 const TRIES = 4;
 // where a call's stack starts, near the top of the console's memory, where it comes back to, an address in the
@@ -522,6 +525,8 @@ export async function twin(asked, options = {}, log = console.log) {
   if (!copy) throw new Error(`twin calls the functions of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
   const elf = await ps2Program(copy.path);
+  // kept for the proofs, which read the original's functions as they go
+  keepProgram(original.sha1, elf);
 
   const { folder, shifts, files, twinsOf, twins, named, givenOf } = versionTwins(game, all.addresses ?? null);
   // a value is the game's, at the address its proof/addresses.json gives, a twin's, or the one in its label
@@ -546,7 +551,7 @@ export async function twin(asked, options = {}, log = console.log) {
   const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const { ways: ruledOut } = readUnreachable(game);
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
-  let proven = 0;
+  const proven = [], differing = [];
   const caller = new Original(await buildCaller(log), 'ee');
   try {
     for (const file of chosen) {
@@ -571,7 +576,8 @@ export async function twin(asked, options = {}, log = console.log) {
           continue;
         }
         totals[f.kind]++;
-        if (f.whole) proven++;
+        if (f.whole) proven.push({ key: hex(f.address), calls: f.compared });
+        else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
         if (f.kind === 'same' && f.left.length) log(`    Its calls left out ${count(f.left.length)} of its ${count(f.total)} instructions and branch ways, such as ${f.left.slice(0, 3).map(([address, how]) => `${at(address)} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
       }
@@ -583,7 +589,12 @@ export async function twin(asked, options = {}, log = console.log) {
   if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
-  if (totals.same) log(`${count(proven)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
-  if (asksForProofs(game)) log('Nothing was kept as proven: a PlayStation 2 version\'s proofs aren\'t kept in its proofs.json yet (#1591).');
+  if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  // a proof is found with the game's own names, and over enough calls to be worth the name
+  if (asksForProofs(game)) {
+    if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
+    else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+    else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
+  }
   return totals.differs || totals.never || totals.stopped ? 3 : 0;
 }

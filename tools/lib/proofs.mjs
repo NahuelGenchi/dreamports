@@ -35,6 +35,7 @@ import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
+import { keptProgram } from '../ps2/original-program.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
@@ -189,10 +190,15 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
 }
 
 /** What reads the original's functions for their marks, from the copy this computer knows, or null without one:
- *  `mark(f)` of a function of the code map. */
+ *  `mark(f)` of a function of the code map. A PlayStation 2 game's are read from the program its disc boots, as a
+ *  tool that read it off the disc kept it on this computer (../ps2/original-program.mjs). */
 export function originalMarks(version, codeMap = readCodeMap(version)) {
   const original = readOriginal(version), copy = copyWith(original.sha1);
   if (!copy || !existsSync(copy.path)) return null;
+  if ((codeMap?.console ?? original.console) === 'ps2') {
+    const read = keptProgram(original.sha1);
+    return read && (f => markOf(read(f.address, f.size)));
+  }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));
 }
