@@ -3,9 +3,10 @@
 // memory, written through each core's data port or by DMA, and its interrupt address. A Dreamport's sound is proven
 // against what the emulator makes of the same writes (docs/STANDARD.md), so this follows the emulator's own model of
 // the chip, Play!'s Iop_SpuBase, Iop_Spu2_Core, Iop_Spu2 and the way PS2VM mixes the two cores, step for step, down to
-// what that model leaves out or does its own way: it mixes at 44,100 samples a second, 45 at a time, does no noise, no
-// pitch modulation and no master or effect volume, and keeps decoded blocks in a cache that a write into the middle of
-// a block doesn't empty. Its reverb works in floats, each sum cut towards zero with tiny floats flushed, as Play!'s
+// what that model does its own way: it mixes at 44,100 samples a second, 45 at a time, and keeps decoded blocks in a
+// cache that a write into the middle of a block doesn't empty. Noise, pitch modulation and the master and effect
+// volumes, which Play! leaves out, are here as the console does them, checked against PCSX2's SPU2, and the tools'
+// patch gives Play! the same (tools/libretro/play.patch), so the two still match. Its reverb works in floats, each sum cut towards zero with tiny floats flushed, as Play!'s
 // emulation thread has them (ee.c).
 //
 // Every write to the chip's registers, every block of sound data moved by DMA and every block of 45 samples mixed is
@@ -154,6 +155,13 @@ typedef struct {
   uint32_t input_addr, input_written;
   uint32_t input_volume_left, input_volume_right;
   int32_t external_volume_left, external_volume_right;
+  // the voices that play noise and those whose pitch the voice before bends, the noise generator, what each voice
+  // gave this sample after its envelope, and the master and effect volumes
+  uint32_t noise_voices, bent_voices, noise_count, noise_out;
+  int32_t voice_out[VOICES];
+  uint16_t master_left, master_right;
+  int32_t master_left_abs, master_right_abs;
+  int32_t effect_left, effect_right;
 } core;
 
 // Each block the voices decode, kept by where it is and the two samples before it, as the emulator keeps them: a write
@@ -249,6 +257,8 @@ const int16_t *spu2_heard(uint32_t *pairs) {
 // ----------------------------------------------------------------------------------------------------------------
 // Waking the chip
 
+static void update_noise(core *c);
+
 static void core_reset(core *c, unsigned number) {
   __builtin_memset(c, 0, sizeof *c);
   c->number = number;
@@ -276,6 +286,8 @@ static void woken(void) {
   core_reset(&spu.cores[0], 0);
   core_reset(&spu.cores[1], 1);
   spu.cores[0].output_offset = (ticks_asleep * 2) & (CORE0_OUTPUT_SIZE - 1);
+  // and its noise generator went on stepping
+  for (uint32_t i = 0; i < ticks_asleep; i++) update_noise(&spu.cores[0]);
   spu.watched[0] = spu.watched[1] = 0xFFFFFFFF;
   // the envelope's steps, which double every four
   uint32_t value = 3, increment = 1, column = 0;
@@ -530,6 +542,27 @@ static void reverb_write(const core *c, uint32_t offset, float value) {
 static float coefficient(const core *c, int param) { return ee_div((float)(int16_t)c->reverb[param], 32768.0f); }
 #define R(param) reverb_sample(c, c->reverb[param])
 
+// The noise generator, a step each sample, at the rate the core's control says: the console's own, as PCSX2 has it
+// (Dr. Hell's, from pcsxr)
+static void update_noise(core *c) {
+  static const uint8_t add[64] = {
+    1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
+    0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
+  };
+  static const uint16_t rate_add[5] = { 0, 84, 140, 180, 210 };
+  uint32_t clock = c->control >> 8 & 0x3F, level = (0x8000u >> (clock >> 2)) << 16;
+  c->noise_count += 0x10000;
+  c->noise_count += rate_add[clock & 3];
+  if ((c->noise_count & 0xFFFF) >= rate_add[4]) {
+    c->noise_count += 0x10000;
+    c->noise_count -= rate_add[clock & 3];
+  }
+  if (c->noise_count >= level) {
+    while (c->noise_count >= level) c->noise_count -= level;
+    c->noise_out = (c->noise_out << 1) | add[(c->noise_out >> 10) & 63];
+  }
+}
+
 static void update_reverb(core *c, const int16_t in[2], int16_t *out) {
   if (c->reverb_ticks & 1) {
     float input_l = ee_mul((float)in[0], 0.5f), input_r = ee_mul((float)in[1], 0.5f);
@@ -565,9 +598,9 @@ static void update_reverb(core *c, const int16_t in[2], int16_t *out) {
   if (c->reverb_start != 0) {
     float left = ee_mul(0.333f, ee_add(R(MIX_DEST_A0), R(MIX_DEST_B0)));
     float right = ee_mul(0.333f, ee_add(R(MIX_DEST_A1), R(MIX_DEST_B1)));
-    int32_t l = (int32_t)left + out[0], r = (int32_t)right + out[1];
-    out[0] = (int16_t)(l < -32768 ? -32768 : l > 32767 ? 32767 : l);
-    out[1] = (int16_t)(r < -32768 ? -32768 : r > 32767 ? 32767 : r);
+    // at the effect volume
+    mix((int32_t)left, c->effect_left, out + 0);
+    mix((int32_t)right, c->effect_right, out + 1);
   }
   c->reverb_ticks++;
 }
@@ -576,7 +609,8 @@ static void update_reverb(core *c, const int16_t in[2], int16_t *out) {
 // ----------------------------------------------------------------------------------------------------------------
 // A core's samples
 
-static void render(core *c, int16_t *samples, unsigned count) {
+// `external` is what comes in from the other core, core 0's output into core 1
+static void render(core *c, int16_t *samples, unsigned count, const int16_t *external) {
   int update_reverb_now = (c->control & CONTROL_REVERB) && c->reverb_start < c->reverb_end;
   int irq_enabled = (c->control & CONTROL_IRQ) != 0;
   __builtin_memset(samples, 0, sizeof(int16_t) * count);
@@ -603,7 +637,14 @@ static void render(core *c, int16_t *samples, unsigned count) {
         }
         r->repeat_addr = v->repeat & RAM_MASK;
       }
+      // a voice the one before bends steps by its pitch times what that voice gave this sample
+      if (i > 0 && (c->bent_voices & (1u << i))) {
+        int32_t bent = (int32_t)(v->pitch * (32768 + c->voice_out[i - 1])) >> 15;
+        r->step = (c->base_rate * (uint32_t)(bent < 0 ? 0 : bent > 0x3FFF ? 0x3FFF : bent)) / r->dst_rate;
+      } else r->step = r->src_rate / r->dst_rate;
       int32_t read = reader_sample(r);
+      if (c->noise_voices & (1u << i)) read = (int16_t)c->noise_out;
+      c->voice_out[i] = 0;
       v->current = reader_current(r);
       update_adsr(v);
       v->volume_left_abs = channel_volume(v->volume_left, v->volume_left_abs);
@@ -611,6 +652,7 @@ static void render(core *c, int16_t *samples, unsigned count) {
       if (read == 0) continue;
       int32_t in = (read * (int32_t)(v->adsr_volume >> 16)) / (int32_t)(MAX_ADSR_VOLUME >> 16);
       if (in == 0) continue;
+      c->voice_out[i] = in;
       int32_t left = v->volume_left_abs >> 16, right = v->volume_right_abs >> 16;
       mix(in, left, samples + 0);
       mix(in, right, samples + 1);
@@ -649,7 +691,17 @@ static void render(core *c, int16_t *samples, unsigned count) {
       }
       c->output_offset = (c->output_offset + 2) & (CORE0_OUTPUT_SIZE - 1);
     }
+    update_noise(c);
     if (update_reverb_now) update_reverb(c, reverb_in, samples);
+    if (external) {
+      mix(external[tick * 2], c->external_volume_left, samples + 0);
+      mix(external[tick * 2 + 1], c->external_volume_right, samples + 1);
+    }
+    // the master volume, which sweeps as a voice's does, over everything the core gives
+    c->master_left_abs = channel_volume(c->master_left, c->master_left_abs);
+    c->master_right_abs = channel_volume(c->master_right, c->master_right_abs);
+    samples[0] = (int16_t)((samples[0] * (c->master_left_abs >> 16)) / 0x7FFF);
+    samples[1] = (int16_t)((samples[1] * (c->master_right_abs >> 16)) / 0x7FFF);
   }
   if (irq_enabled && spu.watched_hit[c->number]) c->irq_pending = 1;
   spu.watched_hit[c->number] = 0;
@@ -672,16 +724,13 @@ void spu2_block(void) {
     ticks_asleep += BLOCK_SAMPLES;
     return;
   }
-  render(&spu.cores[0], out, BLOCK_SAMPLES * 2);
+  render(&spu.cores[0], out, BLOCK_SAMPLES * 2, 0);
   core *c1 = &spu.cores[1];
   if (c1->control & CONTROL_ENABLE) {
+    // core 0's output goes through core 1's, at its external input's volume and under its master volume
     int16_t second[BLOCK_SAMPLES * 2];
-    render(c1, second, BLOCK_SAMPLES * 2);
-    // core 0's output goes through core 1's, at its external input's volume
-    for (int i = 0; i < BLOCK_SAMPLES * 2; i++) {
-      mix(out[i], i % 2 ? c1->external_volume_right : c1->external_volume_left, &second[i]);
-      out[i] = second[i];
-    }
+    render(c1, second, BLOCK_SAMPLES * 2, out);
+    __builtin_memcpy(out, second, sizeof second);
   }
 }
 
@@ -797,6 +846,14 @@ static void core_write(core *c, uint32_t address, uint32_t value) {
   case 0x19A: c->base_rate = c->core_rate; c->input.base_rate = c->core_rate; c->input.step = (c->input.base_rate * TIME_SCALE) / c->input.dst_rate; set_control(c, (uint16_t)value); break;
   case 0x1AC: write_word(c, (uint16_t)value); break;
   case 0x1B0: c->transfer_mode = (uint16_t)value; break;
+  case 0x180: c->bent_voices = (c->bent_voices & 0xFFFF0000) | (uint16_t)value; break;
+  case 0x182: c->bent_voices = (c->bent_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
+  case 0x184: c->noise_voices = (c->noise_voices & 0xFFFF0000) | (uint16_t)value; break;
+  case 0x186: c->noise_voices = (c->noise_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
+  case 0x760: c->master_left = (uint16_t)value; if (!(value & 0x8000)) c->master_left_abs = (int32_t)((value & 0x3FFF) << 17); break;
+  case 0x762: c->master_right = (uint16_t)value; if (!(value & 0x8000)) c->master_right_abs = (int32_t)((value & 0x3FFF) << 17); break;
+  case 0x764: c->effect_left = (int16_t)value; break;
+  case 0x766: c->effect_right = (int16_t)value; break;
   case 0x194: c->reverb_voices = (c->reverb_voices & 0xFFFF0000) | (uint16_t)value; break;
   case 0x196: c->reverb_voices = (c->reverb_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
   case 0x1A0: key_on(c, value); break;
@@ -831,6 +888,10 @@ static uint32_t core_read(core *c, uint32_t address) {
   case 0x2E0: return address_high(c->reverb_start);
   case 0x2E2: return address_low(c->reverb_start);
   case 0x33C: return address_high(c->reverb_end - 1);
+  case 0x760: return (uint32_t)c->master_left_abs >> 16;
+  case 0x762: return (uint32_t)c->master_right_abs >> 16;
+  case 0x764: return (uint32_t)c->effect_left & 0xFFFF;
+  case 0x766: return (uint32_t)c->effect_right & 0xFFFF;
   case 0x768: return (uint32_t)c->external_volume_left;
   case 0x76A: return (uint32_t)c->external_volume_right;
   case 0x76C: return c->input_volume_left;

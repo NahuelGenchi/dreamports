@@ -75,6 +75,7 @@ function writeGame({ broken = false, early = false, noPressure = false } = {}) {
     KON_HI: hex(R.KON_HI), KOFF_HI: hex(R.KOFF_HI), MMIX: hex(R.MMIX), ENDX_HI: hex(R.ENDX_HI), IRQINFO: hex(R.IRQINFO),
     VOICE0_VOLR: hex(sound.voice(0, R.VOLR)), VOICE0_PITCH: hex(sound.voice(0, R.PITCH)), VOICE1_VOLL: hex(sound.voice(1, R.VOLL)),
     ATTR_SET_UP: hex(sound.ATTR_SET_UP), ATTR_PLAYING: hex(sound.ATTR_PLAYING), TONE_AT: hex(sound.TONE_AT), CLICK_AT: hex(sound.CLICK_AT), IRQ_AT: hex(sound.IRQ_AT),
+    MVOLR: hex(R.MVOLR), MASTER_SWEEP_AT: sound.MASTER_SWEEP_AT, MASTER_BACK_AT: sound.MASTER_BACK_AT, MASTER_SWEEP: hex(sound.MASTER_SWEEP), MASTER_RIGHT: hex(sound.MASTER_RIGHT),
     SWEEP_UP: hex(sound.SWEEP_UP), SWEEP_DOWN: hex(sound.SWEEP_DOWN), SWEEP_AT: sound.SWEEP_AT,
     PITCH_START: hex(sound.PITCH_START), PITCH_STEP: hex(sound.PITCH_STEP), PITCH_END: hex(sound.PITCH_END),
     TONE_EVERY: sound.TONE_EVERY, TONE_OFF: sound.TONE_OFF, CLICK_EVERY: sound.CLICK_EVERY,

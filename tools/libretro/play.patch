@@ -14,11 +14,17 @@ in the order given, every register write, every block of sound data sent to or r
 block of 45 samples mixed, so the list says which block each write came before. The frontend asks for it with
 dreamports_sound_list, and DP_SOUND_DUMP names a file the whole list goes to, the sound data's bytes left out.
 
+It also gives Play!'s SPU2 four things of the console's that it leaves out, as the console does them, cross-checked
+against PCSX2's SPU2 (GPL-3.0-or-later): noise, at the rate the core's control says, on the voices NON names; pitch
+modulation, a voice's step bent by what the voice before it gave, on the voices PMON names; the master volume, MVOL, over
+everything a core gives, core 0's output coming into core 1 under core 1's; and the effect volume, EVOL, on what the
+reverb gives. The kit does the same (kit/ps2/c/spu2.c), so the two still match sample for sample.
+
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
 diff --git a/Source/PS2VM.cpp b/Source/PS2VM.cpp
-index 5c8ded9..79ebadd 100644
+index 5c8ded9..86fdd3f 100644
 --- a/Source/PS2VM.cpp
 +++ b/Source/PS2VM.cpp
 @@ -777,6 +777,9 @@ void CPS2VM::UpdateSpu()
@@ -31,6 +37,27 @@ index 5c8ded9..79ebadd 100644
  	unsigned int blockOffset = (BLOCK_SIZE * m_currentSpuBlock);
  	int16* samplesSpu0 = m_samples + blockOffset;
  
+@@ -784,17 +787,10 @@ void CPS2VM::UpdateSpu()
+ 
+ 	if(m_iop->m_spuCore1.IsEnabled())
+ 	{
++		// Core0 output is mixed into Core1's at Core1's AVOL, under Core1's master volume, inside its Render
+ 		int16 samplesSpu1[BLOCK_SIZE];
+-		m_iop->m_spuCore1.Render(samplesSpu1, BLOCK_SIZE);
+-
+-		for(unsigned int i = 0; i < BLOCK_SIZE; i++)
+-		{
+-			// Core0 output should be mixed with Core1 at volume
+-			// corresponding to Core1's AVOL register values
+-			int32 volume = (i % 2) ? m_iop->m_spuCore1.m_extInputVolR : m_iop->m_spuCore1.m_extInputVolL;
+-			Iop::CSpuBase::MixSamples(samplesSpu0[i], volume, &samplesSpu1[i]);
+-			samplesSpu0[i] = samplesSpu1[i];
+-		}
++		m_iop->m_spuCore1.Render(samplesSpu1, BLOCK_SIZE, samplesSpu0);
++		memcpy(samplesSpu0, samplesSpu1, sizeof(samplesSpu1));
+ 	}
+ 
+ 	m_currentSpuBlock++;
 diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
 index 57e58ba..bd6316f 100644
 --- a/Source/gs/GSHandler.cpp
@@ -165,11 +192,86 @@ index 66bfe59..478f3d1 100644
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
+diff --git a/Source/iop/Iop_Spu2_Core.cpp b/Source/iop/Iop_Spu2_Core.cpp
+index 617a4b5..a582d55 100644
+--- a/Source/iop/Iop_Spu2_Core.cpp
++++ b/Source/iop/Iop_Spu2_Core.cpp
+@@ -176,6 +176,18 @@ uint32 CCore::ReadRegisterCore(unsigned int channelId, uint32 address, uint32 va
+ 	case A_EEA_HI:
+ 		result = GetAddressHi(m_spuBase.GetReverbWorkAddressEnd());
+ 		break;
++	case P_MVOLL:
++		result = static_cast<uint32>(m_spuBase.m_masterLeftAbs) >> 16;
++		break;
++	case P_MVOLR:
++		result = static_cast<uint32>(m_spuBase.m_masterRightAbs) >> 16;
++		break;
++	case P_EVOLL:
++		result = static_cast<uint32>(m_spuBase.m_effectLeft) & 0xFFFF;
++		break;
++	case P_EVOLR:
++		result = static_cast<uint32>(m_spuBase.m_effectRight) & 0xFFFF;
++		break;
+ 	case P_AVOLL:
+ 		result = m_spuBase.m_extInputVolL;
+ 		break;
+@@ -233,6 +245,32 @@ uint32 CCore::WriteRegisterCore(unsigned int channelId, uint32 address, uint32 v
+ 		case A_TS_MODE:
+ 			m_spuBase.SetTransferMode(static_cast<uint16>(value));
+ 			break;
++		case S_PMON_HI:
++			m_spuBase.m_bentVoices = (m_spuBase.m_bentVoices & 0xFFFF0000) | static_cast<uint16>(value);
++			break;
++		case S_PMON_LO:
++			m_spuBase.m_bentVoices = (m_spuBase.m_bentVoices & 0x0000FFFF) | (static_cast<uint32>(static_cast<uint16>(value)) << 16);
++			break;
++		case S_NON_HI:
++			m_spuBase.m_noiseVoices = (m_spuBase.m_noiseVoices & 0xFFFF0000) | static_cast<uint16>(value);
++			break;
++		case S_NON_LO:
++			m_spuBase.m_noiseVoices = (m_spuBase.m_noiseVoices & 0x0000FFFF) | (static_cast<uint32>(static_cast<uint16>(value)) << 16);
++			break;
++		case P_MVOLL:
++			m_spuBase.m_masterLeft <<= static_cast<uint16>(value);
++			if(m_spuBase.m_masterLeft.mode.mode == 0) m_spuBase.m_masterLeftAbs = m_spuBase.m_masterLeft.volume.volume << 17;
++			break;
++		case P_MVOLR:
++			m_spuBase.m_masterRight <<= static_cast<uint16>(value);
++			if(m_spuBase.m_masterRight.mode.mode == 0) m_spuBase.m_masterRightAbs = m_spuBase.m_masterRight.volume.volume << 17;
++			break;
++		case P_EVOLL:
++			m_spuBase.m_effectLeft = static_cast<int16>(value);
++			break;
++		case P_EVOLR:
++			m_spuBase.m_effectRight = static_cast<int16>(value);
++			break;
+ 		case S_VMIXER_HI:
+ 			m_spuBase.SetChannelReverbLo(static_cast<uint16>(value));
+ 			break;
 diff --git a/Source/iop/Iop_SpuBase.cpp b/Source/iop/Iop_SpuBase.cpp
-index 231400b..3a15387 100644
+index 231400b..81c8636 100644
 --- a/Source/iop/Iop_SpuBase.cpp
 +++ b/Source/iop/Iop_SpuBase.cpp
-@@ -574,6 +574,19 @@ void CSpuBase::SetReverbCurrentAddress(uint32 address)
+@@ -194,6 +194,18 @@ void CSpuBase::Reset()
+ 
+ 	m_volumeAdjust = 1.0f;
+ 
++	m_noiseVoices = 0;
++	m_bentVoices = 0;
++	m_noiseCount = 0;
++	m_noiseOut = 0;
++	memset(m_voiceOut, 0, sizeof(m_voiceOut));
++	m_masterLeft <<= 0;
++	m_masterRight <<= 0;
++	m_masterLeftAbs = 0;
++	m_masterRightAbs = 0;
++	m_effectLeft = 0;
++	m_effectRight = 0;
++
+ 	m_channelOn.f = 0;
+ 	m_channelReverb.f = 0;
+ 	m_reverbTicks = 0;
+@@ -574,6 +586,19 @@ void CSpuBase::SetReverbCurrentAddress(uint32 address)
  }
  
  uint32 CSpuBase::ReceiveDma(uint8* buffer, uint32 blockSize, uint32 blockAmount, uint32 direction)
@@ -189,8 +291,131 @@ index 231400b..3a15387 100644
  {
  #ifdef _DEBUG
  	CLog::GetInstance().Print(LOG_NAME, "Receiving DMA transfer to 0x%08X. Size = 0x%08X bytes.\r\n",
+@@ -714,7 +739,29 @@ void CSpuBase::MixSamples(int32 inputSample, int32 volumeLevel, int16* output)
+ 	*output = static_cast<int16>(resultSample);
+ }
+ 
+-void CSpuBase::Render(int16* samples, unsigned int sampleCount)
++void CSpuBase::UpdateNoise()
++{
++	static const uint8 add[64] = {
++	    1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
++	    0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1};
++	static const uint16 rateAdd[5] = {0, 84, 140, 180, 210};
++	uint32 clock = (m_ctrl >> 8) & 0x3F;
++	uint32 level = (0x8000u >> (clock >> 2)) << 16;
++	m_noiseCount += 0x10000;
++	m_noiseCount += rateAdd[clock & 3];
++	if((m_noiseCount & 0xFFFF) >= rateAdd[4])
++	{
++		m_noiseCount += 0x10000;
++		m_noiseCount -= rateAdd[clock & 3];
++	}
++	if(m_noiseCount >= level)
++	{
++		while(m_noiseCount >= level) m_noiseCount -= level;
++		m_noiseOut = (m_noiseOut << 1) | add[(m_noiseOut >> 10) & 63];
++	}
++}
++
++void CSpuBase::Render(int16* samples, unsigned int sampleCount, const int16* external)
+ {
+ 	bool updateReverb = m_reverbEnabled && (m_ctrl & CONTROL_REVERB) && (m_reverbWorkAddrStart < m_reverbWorkAddrEnd);
+ 	bool irqEnabled = (m_ctrl & CONTROL_IRQ);
+@@ -756,7 +803,19 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 				reader.SetRepeat(channel.repeat);
+ 			}
+ 
++			// a voice the one before bends steps by its pitch times what that voice gave this sample
++			if((i > 0) && (m_bentVoices & (1 << i)))
++			{
++				int32 bent = static_cast<int32>(channel.pitch * (32768 + m_voiceOut[i - 1])) >> 15;
++				reader.SetBentPitch(m_baseSamplingRate, static_cast<uint32>(std::clamp<int32>(bent, 0, 0x3FFF)));
++			}
++			else
++			{
++				reader.SetBentPitch(0, 0);
++			}
+ 			int32 readSample = reader.GetSample();
++			if(m_noiseVoices & (1 << i)) readSample = static_cast<int16>(m_noiseOut);
++			m_voiceOut[i] = 0;
+ 			channel.current = reader.GetCurrent();
+ 
+ 			UpdateAdsr(channel);
+@@ -769,6 +828,7 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 			int32 inputSample = (readSample * static_cast<int32>(channel.adsrVolume >> 16)) / static_cast<int32>(MAX_ADSR_VOLUME >> 16);
+ 
+ 			if(inputSample == 0) continue;
++			m_voiceOut[i] = inputSample;
+ 
+ 			int32 volumeLeft = channel.volumeLeftAbs >> 16;
+ 			int32 volumeRight = channel.volumeRightAbs >> 16;
+@@ -833,12 +893,25 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 			m_core0OutputOffset &= (CORE0_OUTPUT_SIZE - 1);
+ 		}
+ 
++		UpdateNoise();
++
+ 		//Update reverb
+ 		if(updateReverb)
+ 		{
+ 			UpdateReverb(reverbSample, samples);
+ 		}
+ 
++		if(external)
++		{
++			MixSamples(external[j * 2], m_extInputVolL, samples + 0);
++			MixSamples(external[(j * 2) + 1], m_extInputVolR, samples + 1);
++		}
++		// the master volume, which sweeps as a voice's does, over everything the core gives
++		m_masterLeftAbs = ComputeChannelVolume(m_masterLeft, m_masterLeftAbs);
++		m_masterRightAbs = ComputeChannelVolume(m_masterRight, m_masterRightAbs);
++		samples[0] = static_cast<int16>((samples[0] * (m_masterLeftAbs >> 16)) / 0x7FFF);
++		samples[1] = static_cast<int16>((samples[1] * (m_masterRightAbs >> 16)) / 0x7FFF);
++
+ 		samples += 2;
+ 	}
+ 
+@@ -1112,21 +1185,9 @@ void CSpuBase::UpdateReverb(int16 reverbSample[2], int16* samples)
+ 		float sampleL = 0.333f * (GetReverbSample(GetReverbOffset(MIX_DEST_A0)) + GetReverbSample(GetReverbOffset(MIX_DEST_B0)));
+ 		float sampleR = 0.333f * (GetReverbSample(GetReverbOffset(MIX_DEST_A1)) + GetReverbSample(GetReverbOffset(MIX_DEST_B1)));
+ 
+-		{
+-			int16* output = samples + 0;
+-			int32 resultSample = static_cast<int32>(sampleL) + static_cast<int32>(*output);
+-			resultSample = std::max<int32>(resultSample, SHRT_MIN);
+-			resultSample = std::min<int32>(resultSample, SHRT_MAX);
+-			*output = static_cast<int16>(resultSample);
+-		}
+-
+-		{
+-			int16* output = samples + 1;
+-			int32 resultSample = static_cast<int32>(sampleR) + static_cast<int32>(*output);
+-			resultSample = std::max<int32>(resultSample, SHRT_MIN);
+-			resultSample = std::min<int32>(resultSample, SHRT_MAX);
+-			*output = static_cast<int16>(resultSample);
+-		}
++		// at the effect volume
++		MixSamples(static_cast<int32>(sampleL), m_effectLeft, samples + 0);
++		MixSamples(static_cast<int32>(sampleR), m_effectRight, samples + 1);
+ 	}
+ 
+ 	m_reverbTicks++;
+@@ -1380,6 +1441,12 @@ void CSpuBase::CSampleReader::UpdateSampleStep()
+ 	m_sampleStep = m_srcSamplingRate / m_dstSamplingRate;
+ }
+ 
++void CSpuBase::CSampleReader::SetBentPitch(uint32 baseSamplingRate, uint32 pitch)
++{
++	//With no rate, the voice's own pitch
++	m_sampleStep = baseSamplingRate ? ((baseSamplingRate * pitch) / m_dstSamplingRate) : (m_srcSamplingRate / m_dstSamplingRate);
++}
++
+ void CSpuBase::CSampleReader::UnpackSamples(int16* dst)
+ {
+ 	int32 workBuffer[BUFFER_SAMPLES];
 diff --git a/Source/iop/Iop_SpuBase.h b/Source/iop/Iop_SpuBase.h
-index 1fab09e..1350917 100644
+index 1fab09e..a8f5382 100644
 --- a/Source/iop/Iop_SpuBase.h
 +++ b/Source/iop/Iop_SpuBase.h
 @@ -1,5 +1,6 @@
@@ -242,16 +467,44 @@ index 1fab09e..1350917 100644
  	class CSpuBase
  	{
  	public:
-@@ -270,6 +306,7 @@ namespace Iop
+@@ -270,8 +306,25 @@ namespace Iop
  		void WriteWord(uint16);
  
  		uint32 ReceiveDma(uint8*, uint32, uint32, uint32);
+-
+-		void Render(int16*, unsigned int);
 +		uint32 ReceiveDmaTaken(uint8*, uint32, uint32, uint32);
++
++		// `external` is what comes in from the other core, core 0's output into core 1
++		void Render(int16*, unsigned int, const int16* external = nullptr);
++
++		// Noise, pitch modulation and the master and effect volumes, which Play! leaves out, as the console does them
++		// (Dreamports, cross-checked against PCSX2's SPU2)
++		uint32 m_noiseVoices = 0;
++		uint32 m_bentVoices = 0;
++		uint32 m_noiseCount = 0;
++		uint32 m_noiseOut = 0;
++		int32 m_voiceOut[24] = {};
++		CHANNEL_VOLUME m_masterLeft;
++		CHANNEL_VOLUME m_masterRight;
++		int32 m_masterLeftAbs = 0;
++		int32 m_masterRightAbs = 0;
++		int32 m_effectLeft = 0;
++		int32 m_effectRight = 0;
++		void UpdateNoise();
  
- 		void Render(int16*, unsigned int);
+ 		static bool g_reverbParamIsAddress[REVERB_PARAM_COUNT];
  
+@@ -315,6 +368,7 @@ namespace Iop
+ 			void SetParamsRead(uint32, uint32);
+ 			void SetParamsNoRead(uint32, uint32);
+ 			void SetPitch(uint32, uint16);
++			void SetBentPitch(uint32, uint32);
+ 			int32 GetSample();
+ 			uint32 GetRepeat() const;
+ 			void SetRepeat(uint32);
 diff --git a/Source/iop/Iop_SubSystem.cpp b/Source/iop/Iop_SubSystem.cpp
-index dd584b3..7f46108 100644
+index dd584b3..7aa467e 100644
 --- a/Source/iop/Iop_SubSystem.cpp
 +++ b/Source/iop/Iop_SubSystem.cpp
 @@ -287,6 +287,12 @@ uint32 CSubSystem::ReadIoRegister(uint32 address)
