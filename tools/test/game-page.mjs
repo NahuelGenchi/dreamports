@@ -13,6 +13,7 @@ import { openChrome, go, until } from '../lib/chrome.mjs';
 import { openDreamport } from '../lib/dreamport.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
+import { madeUpPs2Disc } from './made-up-disc.mjs';
 import { buildGame } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 
@@ -204,6 +205,8 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
 const TEST = 'made-up-game', TEST_C = 'made-up-game/c';
 // a game in C on each of the other consoles, each in a folder of its own
 const OTHERS = Object.keys(CONSOLES).filter(id => id !== 'gba').map(id => ({ id, game: `made-up-c-${id}` }));
+// each console's made-up copy, in the first kind of file its games come in, or an ISO for a disc
+const copyName = id => `made-up-${id}${CONSOLES[id].disc ? '.iso' : CONSOLES[id].files[0]}`;
 const folder = gameFolder(TEST), folderC = gameFolder(TEST_C);
 const temporary = join(LOCAL, 'tmp', 'test-game');
 mkdirSync(temporary, { recursive: true });
@@ -231,13 +234,14 @@ try {
     const theirs = { console: id, name: 'Made Up Game (World)', title: 'MADE UP GAME', code: 'MADE', sha1 };
     write(gameFolder(game), { 'proof/original.json': JSON.stringify(theirs) });
     write(gameFolder(`${game}/c`), startingFiles(game, theirs, { language: 'c' }));
-    writeFileSync(join(temporary, `made-up-${id}${CONSOLES[id].files[0]}`), rom);
+    // a console whose games come on discs is given a made-up disc, which its page reads a few sectors at a time
+    writeFileSync(join(temporary, copyName(id)), CONSOLES[id].disc ? madeUpPs2Disc({ console: id }) : rom);
   }
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });
   await tryGame(page, server, TEST, join(temporary, 'made-up.gba'));
   await tryGame(page, server, TEST_C, join(temporary, 'made-up.gba'));
-  for (const { id, game } of OTHERS) await tryGame(page, server, `${game}/c`, join(temporary, `made-up-${id}${CONSOLES[id].files[0]}`), id);
+  for (const { id, game } of OTHERS) await tryGame(page, server, `${game}/c`, join(temporary, copyName(id)), id);
 
   // the games that are still only what new wrote
   for (const game of readdirSync(join(REPO, 'games'))) {

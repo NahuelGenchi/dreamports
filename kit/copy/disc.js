@@ -43,6 +43,8 @@ const time = words => {
  *   the file's own bytes for an ISO, a BIN or a .cue's files (each file a track), and for a CHD or a CSO the ISO or the
  *   tracks they were made from, so a copy's SHA-1 is the same in any of them
  * - `files` names the files it reads, the .cue's tracks for a .cue
+ * - `whole` says the file keeps every sector as the drive reads it, or can make it again exactly: false for an ISO of
+ *   a PlayStation's CD, which has lost each sector's subheader
  */
 export async function openDisc(source, { open = null, zstd = null, inflate } = {}) {
   const head = await source.read(0, 0x9400);
@@ -101,7 +103,7 @@ async function sectorDisc(format, source, { files, image = fileImage([source]) }
     if (second > 0 && second + 16 < sectors && has(await read(second + 16, 1), 1, 'CD001')) layerBreak = second;
   }
   return {
-    format, kind: 'dvd', sectors, layerBreak, files,
+    format, kind: 'dvd', sectors, layerBreak, files, whole: true,
     tracks: [{ number: 1, type: 'mode1', first: 0, pregap: 0, sectors }],
     read: (lba, count) => read(lba, clamp(lba, count, sectors)),
     data: (lba, count) => read(lba, clamp(lba, count, sectors)),
@@ -144,8 +146,11 @@ function cdDisc(format, tracks, { files, image }) {
       done += n;
     }
   }
+  // whether the file keeps every sector as the drive reads it: a Mode 2 sector kept as its data alone, as an ISO of a
+  // PlayStation's CD keeps it, has lost its subheader, which says what the sector holds, and nothing can make it again
+  const keptWhole = !tracks.some(t => t.type === 'mode2' && t.extents.some(e => e.size === DATA || e.size === 2324));
   return {
-    format, kind: 'cd', sectors, layerBreak: 0, files, image,
+    format, kind: 'cd', sectors, layerBreak: 0, files, image, whole: keptWhole,
     tracks: tracks.map(({ number, type, first, pregap, sectors: s }) => ({ number, type, first, pregap, sectors: s })),
     async read(lba, count) {
       count = clamp(lba, count, sectors);
