@@ -105,6 +105,7 @@ export async function run(args) {
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
   if (original.console === 'ps1') return (await import('./ps1/match.mjs')).matchGame({ game, what, more, whole, original });
+  if (original.console === 'ps2') return (await import('./ps2/match.mjs')).matchGame({ game, what, more, whole, original });
   if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's and the PlayStation's compilers and no other console's yet (docs/CONSOLES.md).`);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
   const compiler = readCompiler(original, `games/${base}/proof/original.json`);

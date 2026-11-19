@@ -1,9 +1,9 @@
 // Sony's own compiler and assemblers for the PlayStation 2, for `match` on the console (#1588): EE-GCC 2.9-ee-991111-01,
 // the GCC Sony's 1999 toolchain shipped for the EE, which built Sony's libraries and the games of studios that used
-// Sony's toolchain, with its GNU assembler for the EE and dvp-as, its assembler for the vector units' programs. All three
-// are built from Sony's own GPL source release (GirianSeed/ee-gcc's copy, GCC GPL-2.0-or-later, binutils GPL), fetched
-// at a fixed version and checked against its hash, on the contributor's computer, and never in the repository, as the
-// PlayStation's GCC is (../ps1/gcc.mjs).
+// Sony's toolchain, with its GNU assembler and linker for the EE and dvp-as, its assembler for the vector units'
+// programs. All are built from Sony's own GPL source release (GirianSeed/ee-gcc's copy, GCC GPL-2.0-or-later, binutils
+// GPL), fetched at a fixed version and checked against its hash, on the contributor's computer, and never in the
+// repository, as the PlayStation's GCC is (../ps1/gcc.mjs).
 //
 // The 1999 code is built for this computer with clang, Apple's compiler on a Mac and the one `apt install clang` brings
 // on Linux, with Sony's own patch from the release and decomp-meadow/ee-gcc-macos's port (GPL-2.0), fetched at a fixed
@@ -55,7 +55,7 @@ const HOSTS = { 'linux-x64': 'x86_64-pc-linux-gnu', 'linux-arm64': 'aarch64-unkn
 const CFLAGS = '-std=gnu89 -O2 -fwrapv -fno-strict-aliasing -fcommon -fsigned-char -w -Wno-unknown-warning-option -Wno-return-mismatch -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion -Wno-incompatible-pointer-types';
 // the parts of Sony's tree the three programs don't need, which its configure would otherwise try to set up
 const LEFT_OUT = ['gdb', 'tcl', 'tk', 'itcl', 'tix', 'libgui', 'expect', 'dejagnu', 'sim', 'snavigator', 'sn', 'ide', 'bsp', 'examples', 'binutils', 'gprof',
-  'winsup', 'utils', 'readline', 'libtermcap', 'make', 'send-pr', 'release-info', 'patch', 'diff', 'dosrel', 'xiberty', 'mmalloc', 'gperf', 'ld'];
+  'winsup', 'utils', 'readline', 'libtermcap', 'make', 'send-pr', 'release-info', 'patch', 'diff', 'dosrel', 'xiberty', 'mmalloc', 'gperf'];
 
 /** The files of a .zip, by name: a stored or deflated file each, found from its central directory. */
 export function zipFiles(zip) {
@@ -97,10 +97,10 @@ function step(what, program, args, cwd, env = {}) {
   return result.stdout;
 }
 
-/** Where a built version's programs are: { gcc, as, dvpAs, folder }. */
+/** Where a built version's programs are: { gcc, as, ld, dvpAs, folder }. */
 export function eeGccPaths(version = '2.9-ee-991111-01') {
   const folder = join(FOLDER, `${version}-${RECIPE}`);
-  return { folder, gcc: join(folder, 'bin', 'ee-gcc'), as: join(folder, 'ee', 'bin', 'as'), dvpAs: join(folder, 'bin', 'dvp-as') };
+  return { folder, gcc: join(folder, 'bin', 'ee-gcc'), as: join(folder, 'ee', 'bin', 'as'), ld: join(folder, 'ee', 'bin', 'ld'), dvpAs: join(folder, 'bin', 'dvp-as') };
 }
 
 /**
@@ -164,7 +164,7 @@ export async function ensureEeGcc(version = '2.9-ee-991111-01', log = console.lo
     };
     const ee = configured('ee', ['--with-gnu-as', '--with-gnu-ld', '--enable-c-cpplib']);
     if (!readFileSync(join(ee, 'gcc', 'tm.h'), 'latin1').includes('MASK_MIPS5900|20))')) throw new Error('GCC wasn\'t configured as Sony configured it: its tm.h doesn\'t default to the R5900 with split addresses.');
-    for (const dir of ['bison', 'libiberty', 'intl', 'bfd', 'opcodes', 'gas']) step(`the ${dir} for the EE`, 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`], join(ee, dir), env);
+    for (const dir of ['bison', 'libiberty', 'intl', 'bfd', 'opcodes', 'gas', 'ld']) step(`the ${dir} for the EE`, 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`], join(ee, dir), env);
     step('GCC', 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`, `BISON=${join(ee, 'bison', 'bison')} -L ${join(src, 'bison')}/`, 'cpp', 'cc1', 'cc1plus', 'xgcc'], join(ee, 'gcc'), env);
     const dvp = configured('dvp-elf', []);
     for (const dir of ['libiberty', 'intl', 'bfd', 'opcodes', 'gas']) step(`the ${dir} for the vector units`, 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`], join(dvp, dir), env);
@@ -176,6 +176,7 @@ export async function ensureEeGcc(version = '2.9-ee-991111-01', log = console.lo
     copy(join(ee, 'gcc', 'xgcc'), join(made, 'bin', 'ee-gcc'));
     for (const name of ['cpp', 'cc1', 'cc1plus']) copy(join(ee, 'gcc', name), join(lib, name));
     copy(join(ee, 'gas', 'as-new'), join(made, 'ee', 'bin', 'as'));
+    copy(join(ee, 'ld', 'ld-new'), join(made, 'ee', 'bin', 'ld'));
     copy(join(dvp, 'gas', 'as-new'), join(made, 'bin', 'dvp-as'));
     writeFileSync(join(made, 'COPYING'), readFileSync(join(src, 'COPYING')));
 
@@ -246,3 +247,20 @@ export async function assembleVu(text, { version = '2.9-ee-991111-01', log = con
   return result.error ? { error: result.error } : { object: result.made };
 }
 
+/**
+ * Links `objects`, each { name, bytes }, into a program with Sony's linker for the EE and `args`, such as -Ttext and an
+ * address: { program }, the ELF file, or { error }. For a test's made-up original, linked as a game's was.
+ */
+export async function linkEe(objects, { version = '2.9-ee-991111-01', args = [], log = console.log } = {}) {
+  const { ld } = await ensureEeGcc(version, log);
+  const folder = scratch('link');
+  try {
+    for (const { name, bytes } of objects) writeFileSync(join(folder, name), bytes);
+    const result = spawnSync(ld, [...args, '-o', 'out.elf', ...objects.map(o => o.name)], { cwd: folder, env: { ...process.env, LC_ALL: 'C' }, encoding: 'utf8' });
+    const said = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+    if (result.error || result.status !== 0 || !existsSync(join(folder, 'out.elf'))) return { error: said || result.error?.message || `the linker ended with ${result.status}` };
+    return { program: readFileSync(join(folder, 'out.elf')), said };
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
