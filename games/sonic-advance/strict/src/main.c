@@ -5,11 +5,14 @@
 //
 // Nothing of it plays yet: the twins are being proven in the order the game runs them from power-on, and the game
 // calls them from here once all that its logos run are proven.
+//
+// Its twins follow SAT-R's decompilation of Sonic Advance (https://github.com/SAT-R/sa1 at fdd8956).
 
 #ifndef MATCHING
 #include "console.h"
 #include "animation.h"
 #include "background.h"
+#include "bg_triangles.h"
 #include "core.h"
 #include "language.h"
 #include "multi_sio.h"
@@ -18,6 +21,8 @@
 #include "ui.h"
 #include "logos.h"
 #include "malloc.h"
+#include "flash.h"
+#include "m4a_internal.h"
 #include "save.h"
 #include "sprite.h"
 #include "task.h"
@@ -25,6 +30,7 @@
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
 void CreateTask_8011DBC(void);
+void MP2K_event_null(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) { gba_console_memory(1); }
