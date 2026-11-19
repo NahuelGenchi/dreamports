@@ -6,6 +6,7 @@ import { spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { LOCAL } from './paths.mjs';
+import { samplesHash } from './sound.mjs';
 
 // how many runs this thread has started, which with its number keeps the files of two at once apart
 let runs = 0;
@@ -33,6 +34,24 @@ function soundIn(file, frames) {
   };
 }
 
+// each frame's sound list, and its samples as the core made them, for a console whose emulator keeps sound lists
+// (libretro/host.c): { hashes, counts } of the lists, and the samples' { pairs, hashes, read(frame) }, hashed as
+// lib/sound.mjs's samplesHash does
+function soundListsIn(listsFile, exactFile, frames) {
+  const pairs = new Uint32Array(new Uint8Array(readFileSync(listsFile)).buffer);
+  const bytes = readFileSync(exactFile), at = new Float64Array(frames), counts = new Uint32Array(frames), hashes = new Uint32Array(frames);
+  for (let frame = 0, position = 0; frame < frames; frame++) {
+    counts[frame] = bytes.readUInt32LE(position);
+    at[frame] = position + 4;
+    hashes[frame] = samplesHash(bytes.subarray(position + 4, position + 4 + counts[frame] * 4));
+    position += 4 + counts[frame] * 4;
+  }
+  return {
+    hashes: pairs.filter((_, i) => i % 2 === 0), counts: pairs.filter((_, i) => i % 2 === 1),
+    samples: { pairs: counts, hashes, read: frame => new Int16Array(bytes.buffer.slice(bytes.byteOffset + at[frame], bytes.byteOffset + at[frame] + counts[frame] * 4)) },
+  };
+}
+
 /**
  * Runs `frames` frames of the original from power-on. `buttons` holds each frame's buttons as bits, `functions` where
  * the code map's functions run ({ address, size, index, bytes }, as watchesOf in proof-files.mjs makes them: `index`
@@ -57,12 +76,14 @@ function soundIn(file, frames) {
  * `draws` { hashes, counts }: for each frame, the hash of what the console gave its graphics chip and how many things.
  * With `memory`, { spec } as lib/memory.mjs makes it for a program that compares work memory (gba/original.c), also
  * `memory` { hashes, bytes }: the hash of the stretches' bytes as each frame ended, and the bytes at the frame the spec
- * names, or null. With `entries`, on a console whose program says them (libretro/ran.h), also `entries`: where the
+ * names, or null. With `soundLists`, for a console whose emulator keeps sound lists (libretro/host.c), also `soundLists`:
+ * for each frame, the hash of what the console gave its sound chip and how many things, and its samples exactly as the
+ * emulator made them, as soundListsIn says. With `entries`, on a console whose program says them (libretro/ran.h), also `entries`: where the
  * processor was sent in ways only play shows, each { address, way, frame }, `way` being 'called', 'jumped' through a
  * pointer or 'returned' to. With `registers`, there too, also `registers`: what the processor held as functions of
  * `functions` started, each { index, a, x, y, s, p, frame }, a few for each function.
  */
-export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, played = false, saves = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false, memory = null, entries = false, registers = false }) {
+export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, played = false, saves = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false, soundLists = false, memory = null, entries = false, registers = false }) {
   const folder = join(LOCAL, 'tmp');
   mkdirSync(folder, { recursive: true });
   const id = `${process.pid}-${threadId}-${Date.now()}-${++runs}`;
@@ -73,6 +94,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     played: join(folder, `played-${id}.bin`), playedCode: join(folder, `played-code-${id}.bin`), content: join(folder, `content-${id}.bin`), saves: join(folder, `saves-${id}.bin`),
     memory: join(folder, `memory-${id}.bin`), memoryOut: join(folder, `memory-${id}.bin.out`),
     entries: join(folder, `entries-${id}.bin`), registers: join(folder, `registers-${id}.bin`),
+    soundLists: join(folder, `sound-lists-${id}.bin`), exact: join(folder, `exact-${id}.bin`),
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 6);
@@ -87,7 +109,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(memory ? { DP_MEMORY: names.memory } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode, DP_UNPACKS: names.unpacks } : {}), ...(entries ? { DP_ENTRIES: names.entries } : {}), ...(registers ? { DP_REGISTERS: names.registers } : {}) } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(soundLists ? { DP_SOUNDS: names.soundLists, DP_SOUND_EXACT: names.exact } : {}), ...(memory ? { DP_MEMORY: names.memory } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode, DP_UNPACKS: names.unpacks } : {}), ...(entries ? { DP_ENTRIES: names.entries } : {}), ...(registers ? { DP_REGISTERS: names.registers } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
@@ -128,6 +150,7 @@ export async function runReference({ program, args, env, width, height, stateByt
       const pairs = new Uint32Array(new Uint8Array(readFileSync(files.draws)).buffer);
       drawn = { hashes: pairs.filter((_, i) => i % 2 === 0), counts: pairs.filter((_, i) => i % 2 === 1) };
     }
+    const heard = soundLists ? soundListsIn(files.soundLists, files.exact, frames) : null;
     let codeInRam = null, unpacked = null;
     if (ramCode) {
       const words = new Uint32Array(new Uint8Array(readFileSync(files.ramCode)).buffer);
@@ -176,7 +199,7 @@ export async function runReference({ program, args, env, width, height, stateByt
       const [index, axys, rest] = wordsOf(files.registers).subarray(i * 3, i * 3 + 3);
       return { index, a: axys & 0xFF, x: axys >> 8 & 0xFF, y: axys >> 16 & 0xFF, s: axys >>> 24, p: rest & 0xFF, frame: rest >>> 8 };
     });
-    return { ...(sent ? { entries: sent } : {}), ...(heldAt ? { registers: heldAt } : {}), ...(workMemory ? { memory: workMemory } : {}), ...(saved ? { saves: saved } : {}), ...(whatPlayed ? { played: whatPlayed } : {}), hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, ...(codeInRam ? { ramCode: codeInRam, unpacks: unpacked } : {}), outside: JSON.parse(stderr.split('\n').pop()) };
+    return { ...(sent ? { entries: sent } : {}), ...(heldAt ? { registers: heldAt } : {}), ...(workMemory ? { memory: workMemory } : {}), ...(saved ? { saves: saved } : {}), ...(whatPlayed ? { played: whatPlayed } : {}), hashes, plain, ran, pictures: shown, states: held, sound: sound ? soundIn(files.sound, frames) : null, draws: drawn, ...(heard ? { soundLists: heard } : {}), ...(codeInRam ? { ramCode: codeInRam, unpacks: unpacked } : {}), outside: JSON.parse(stderr.split('\n').pop()) };
   } finally {
     for (const file of Object.values(files)) rmSync(file, { force: true });
   }

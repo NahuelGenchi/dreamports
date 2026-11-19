@@ -392,4 +392,4 @@ function elfOf(written, packet) {
 }
 
 // what the other programs' files build on (made-up-ps2-gs.mjs): the instructions, the screen, the DMA and the ELF file
-export { ZERO, T0, T1, T2, T3, S0, S1, imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, assemble, elfOf, bitsOf };
+export { ZERO, T0, T1, T2, T3, S0, S1, imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, assemble, elfOf, bitsOf, SYSCALL, send, PACKET };
