@@ -18,7 +18,7 @@ const BAR = 26; // a panel's title bar
 const CODE = 264; // the code panel's map
 const PART = 24; // the height of a part's block
 
-const COLOURS = {
+export const COLOURS = {
   panel: '#050a24',
   block: '#0f1847',
   text: '#eef4ff',
@@ -35,7 +35,7 @@ const COLOURS = {
 // a badge's colour for its %, light enough to read white on
 const badgeColour = percent => (percent === null ? COLOURS.label : percent >= 100 ? '#2b7a37' : percent >= 50 ? '#6a7a0b' : '#b54708');
 
-const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, \'DejaVu Sans Mono\', \'Liberation Mono\', monospace';
+export const FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, \'DejaVu Sans Mono\', \'Liberation Mono\', monospace';
 // how wide a line of monospace text is, at its size
 const textWidth = (text, size) => text.length * size * 0.62;
 const n = value => +value.toFixed(1);
@@ -162,7 +162,8 @@ function blocksOf(functions) {
 
 // Lays out `items`, each with its `size`, in the rectangle `box`, biggest first, or in their order with `inOrder`, each
 // as near to a square as it can be: the squarified treemap of Bruls, Huizing and van Wijk. Returns [{ item, x, y, w, h }].
-function squarify(items, box, { inOrder = false } = {}) {
+// The map of a console's shared code lays out its libraries with it too (shared-map.mjs).
+export function squarify(items, box, { inOrder = false } = {}) {
   const sorted = inOrder ? items : [...items].sort((a, b) => b.size - a.size || a.at - b.at);
   const total = sorted.reduce((sum, item) => sum + item.size, 0);
   const out = [];

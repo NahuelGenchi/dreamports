@@ -418,18 +418,25 @@ export function signatureOf(text, name) {
  *   files: every .c file of the version, where what a file names and doesn't define is looked for
  *   console: whose kit it's built on
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
+ *     twinsIn takes it, or null (../lib/twins.mjs)
  * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [] }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
-  const source = treeOf(root), elsewhere = {};
-  const given = includes.map(folder => {
-    if (inside(folder)) return inRoot(folder);
-    const n = Object.keys(elsewhere).length;
-    elsewhere[n] = treeOf(folder, false);
-    return `${ELSEWHERE}/${n}`;
-  });
+  const source = treeOf(root), elsewhere = {}, placed = new Map();
+  // a folder outside the version's, as the compiler sees it: a shared library's, or one it includes from
+  const elsewhereOf = folder => {
+    if (!placed.has(folder)) {
+      const n = Object.keys(elsewhere).length;
+      elsewhere[n] = treeOf(folder, false);
+      placed.set(folder, `${ELSEWHERE}/${n}`);
+    }
+    return placed.get(folder);
+  };
+  const given = includes.map(folder => (inside(folder) ? inRoot(folder) : elsewhereOf(folder)));
+  const placeOf = file => (inside(dirname(file)) ? inRoot(file) : `${elsewhereOf(dirname(file))}/${basename(file)}`);
   const units = new Map();
   let everyOther = null;
 
@@ -442,7 +449,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       units.set(file, (async () => {
         const kit = await kitBuilt(id);
         const text = readFileSync(file, 'utf8');
-        const twins = twinsIn(text, shifts), calls = [], unknown = [];
+        const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file)), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
           const signature = signatureOf(text, twin.name);
@@ -453,7 +460,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         for (const { name, address } of twins) if (address !== null && !cases.some(([other]) => other === address)) cases.push([address, name]);
         const name = `__twin_unit${n}.c`;
         const build = () => {
-          const lines = [`#include "${inRoot(file)}"`];
+          const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
           for (const { name: twin, params, returns, call } of calls) {
             const taken = params.map((_, i) => `unsigned a${i}`).join(', ') || 'void', passed = params.map((_, i) => `a${i}`).join(', ');
@@ -1200,7 +1207,7 @@ export async function twin(game, options = {}) {
 
   const starts = new Set(codeMap.functions.filter(f => !f.bytes).map(f => f.address));
   // every function the version defines, by name, and every name with an address, as match and the build read them
-  const { folder, shifts, files, twinsOf, twins, named } = versionTwins(game, all.addresses ?? null);
+  const { folder, shifts, files, twinsOf, twins, named, givenOf } = versionTwins(game, all.addresses ?? null);
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => starts.has(address) });
 
   let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null;
@@ -1224,7 +1231,7 @@ export async function twin(game, options = {}) {
   const opened = await openOriginal(copy.path, all.frames);
   // the game's own folders, then the build's twins.h for a game that includes it, on the kit of the game's console
   const header = await twinsFolder(folder);
-  const build = openBuild({ root: folder, files, shifts, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
+  const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs)
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
