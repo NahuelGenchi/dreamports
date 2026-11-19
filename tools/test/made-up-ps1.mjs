@@ -16,6 +16,8 @@
 //   misaligned reads a word where none starts
 //   hardware   writes the scratchpad and a register of the sound chip
 //   gte        puts a0 in the geometry processor and takes it back
+//   pick       a switch on a0, through a table of its cases
+// and after the program's values:
 //   shine      reached only through the table of functions, with a stack of its own
 
 /** Where the program loads and starts, and where its values and its table of functions are. */
@@ -30,6 +32,7 @@ const addu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x21);
 const addiu = (rt, rs, imm) => i(9, rs, rt, imm);
 const ori = (rt, rs, imm) => i(13, rs, rt, imm);
 const lui = (rt, imm) => i(15, 'zero', rt, imm);
+const sltiu = (rt, rs, imm) => i(11, rs, rt, imm);
 const sll = (rd, rt, sa) => r('zero', rt, rd, sa, 0);
 const jr = rs => r(rs, 'zero', 'zero', 0, 8);
 const jalr = rs => r(rs, 'zero', 'ra', 0, 9);
@@ -45,6 +48,7 @@ const b = label => beq('zero', 'zero', label);
 const jal = label => ({ at: labels => ((3 << 26) | ((labels[label] >>> 2) & 0x3FFFFFF)) >>> 0 });
 const hi = (rt, label) => ({ at: labels => lui(rt, (labels[label] + 0x8000) >>> 16) });
 const lo = (rt, rs, label) => ({ at: labels => addiu(rt, rs, labels[label] & 0xFFFF) });
+const lwLo = (rt, rs, label) => ({ at: labels => lw(rt, labels[label] & 0xFFFF, rs) });
 const here = name => ({ name });
 const pointer = label => ({ at: labels => labels[label] >>> 0 });
 
@@ -69,15 +73,23 @@ const PROGRAM = [
   here('misaligned'), lw('v0', 1, 'a0'), jr('ra'), nop,
   here('hardware'), lui('t0', 0x1F80), sw('a0', 0x10, 't0'), sh('a0', 0x1C00, 't0'), jr('ra'), nop,
   here('gte'), mtc2('a0', 25), nop, mfc2('v0', 25), nop, jr('ra'), nop,
-  here('shine'), addiu('sp', 'sp', -8), sw('a0', 0, 'sp'), addiu('v0', 'zero', 1), jr('ra'), addiu('sp', 'sp', 8),
+  here('pick'), sltiu('t0', 'a0', 3), beq('t0', 'zero', 'pick_else'), sll('t0', 'a0', 2), hi('at', 'cases'), addu('at', 'at', 't0'), lwLo('t0', 'at', 'cases'), nop, jr('t0'), nop,
+  here('pick_0'), jr('ra'), addiu('v0', 'zero', 10),
+  here('pick_1'), jr('ra'), addiu('v0', 'zero', 20),
+  here('pick_2'), jr('ra'), addiu('v0', 'zero', 30),
+  here('pick_else'), jr('ra'), addiu('v0', 'zero', 0),
   here('values'), ...VALUES,
+  here('cases'), pointer('pick_0'), pointer('pick_1'), pointer('pick_2'),
+  here('shine'), addiu('sp', 'sp', -8), sw('a0', 0, 'sp'), addiu('v0', 'zero', 1), jr('ra'), addiu('sp', 'sp', 8),
   here('functions'), pointer('shine'),
   here('buffer'), 0, 0,
   here('end'),
 ];
 
 /** The functions, in order, each with the name of the label it starts at. */
-export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'bios', 'forever', 'misaligned', 'hardware', 'gte', 'shine'];
+export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'bios', 'forever', 'misaligned', 'hardware', 'gte', 'pick', 'shine'];
+// what isn't code: the values, the switch's table, the table of functions and the buffer
+const DATA = ['values', 'cases', 'functions', 'buffer', 'end'];
 
 /** The program as words, from LOAD, and where each label is. */
 export function madeUpProgram() {
@@ -94,11 +106,9 @@ export function madeUpProgram() {
     words.push(typeof item === 'number' ? item >>> 0 : item.at(labels, pc));
     pc += 4;
   }
-  // each function's address and size, to the next one, or to where the program's values start
-  const functions = FUNCTIONS.map((name, n) => {
-    const to = labels[FUNCTIONS[n + 1]] ?? labels.values;
-    return { name, address: labels[name], size: to - labels[name] };
-  });
+  // each function's address and size, to the next function or values after it
+  const after = [...FUNCTIONS, ...DATA].map(name => labels[name]).sort((a, b) => a - b);
+  const functions = FUNCTIONS.map(name => ({ name, address: labels[name], size: after.find(at => at > labels[name]) - labels[name] }));
   return { words, labels, functions };
 }
 
