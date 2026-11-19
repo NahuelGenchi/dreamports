@@ -112,7 +112,7 @@ export function portMap(game) {
     spans.push({ address, size, f });
   };
   for (const f of codeMap.functions) at(f.address, f.size, f);
-  for (const copy of codeMap.copies) {
+  for (const copy of codeMap.copies.filter(c => !c.packed)) {
     for (const f of codeMap.functions) {
       if (!f.bytes && f.address >= copy.cartridge && f.address < copy.cartridge + copy.size) at(copy.ram + f.address - copy.cartridge, f.size, f);
     }
