@@ -25,8 +25,8 @@ export const DIVIDES = { Share: 0x08000540 };
 // starts, in a file of their own (register.c)
 export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
-// which the cartridge starts, and the value play keeps the stage in
-export const PLAYED = { Shine: 0x08000400, Play: 0x08000440 };
+// which the cartridge starts, one that runs code play put in the work memory, and the value play keeps the stage in
+export const PLAYED = { Shine: 0x08000400, Play: 0x08000440, Glow: 0x08000800 };
 NAMED.set('gStage', 0x03000060);
 // a function that gives back what its caller keeps, and that caller, in a file of their own (gives.c)
 export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
