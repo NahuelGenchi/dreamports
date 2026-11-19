@@ -100,13 +100,13 @@ static const Region IOP_REGIONS[] = {
     {0x00000000, 0x00000000, 0x00200000, false}, // the IOP's memory
     {0x00200000, 0x1F800000, 0x00000400, false}, // its scratchpad
     {0x00201000, 0x1F801000, 0x0000F000, true},  // the hardware's registers
-    {0x00210000, 0x1F900000, 0x00000800, true},  // the SPU2's
+    {0x00300000, 0x1F900000, 0x00000800, true},  // the SPU2's, as far from the scratchpad as the console has them
 };
 static const Region VU1_REGIONS[] = {
     {0x00000000, 0x00000000, 0x00004000, false}, // the data memory
     {0x00004000, 0x00000000, 0x00004000, false}, // the micro memory, which holds the program and isn't read as data
 };
-static const uint32 EE_IMAGE = 0x02232000, IOP_IMAGE = 0x00210800, VU1_IMAGE = 0x00008000;
+static const uint32 EE_IMAGE = 0x02232000, IOP_IMAGE = 0x00300800, VU1_IMAGE = 0x00008000;
 
 // The registers a call is given and leaves, as words, in this order.
 struct EeRegisters {
