@@ -39,6 +39,8 @@ u16 console_io[0x210];
 // V-blank is on, as the main loop's wait for its end reads it
 static u16 console_keys;
 static int console_line = LINES - 1, console_in_vblank;
+// how many interrupts are being seen to: their handlers change the display's status, which isn't looking for the end
+static int console_handling;
 
 void console_set_keys(u16 keys) { console_keys = keys; }
 
@@ -56,8 +58,9 @@ u16 console_read16(u32 at) {
     // console_io, which play never writes there, the display's being the kit's
     u16 status = (console_in_vblank || (console_io[IO_DISPSTAT >> 1] & STAT_VBLANK) ? STAT_VBLANK : 0)
       | ((gba_io[IO_DISPSTAT >> 1] >> 8) == console_line ? STAT_VCOUNT : 0);
-    // the V-blank's end comes as soon as the game looks for it: the frame's drawing waits for the game's next step
-    console_in_vblank = 0;
+    // the V-blank's end comes as soon as the game looks for it: the frame's drawing waits for the game's next step. An
+    // interrupt's handler only changes the register, as the V-blank's own does at its start
+    if (!console_handling) console_in_vblank = 0;
     return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
   }
   if (at == IO_VCOUNT) return (u16)console_line;
@@ -159,7 +162,9 @@ void console_interrupt(u16 flags) {
     if (!(console_io[IO_IME >> 1] & 1) || !pending) return;
     for (i = 0; i < 12 && !(pending & intr_order[i]); i++) {}
     console_io[IO_IF >> 1] &= ~(pending & intr_order[i]);
+    console_handling++;
     TWIN(gIntrTable[i])();
+    console_handling--;
   }
 }
 
