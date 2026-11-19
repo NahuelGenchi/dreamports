@@ -11,6 +11,7 @@ import { proof } from '../../../kit/gba/proof.js';
 import { createSettings } from '../../../kit/gba/ui/settings.js';
 import { createTouch } from '../../../kit/gba/ui/touch.js';
 import { CONSOLES, layoutOf } from '../../../kit/consoles.js';
+import { openCopy, sha1Of } from '../../../kit/copy/page.js';
 
 const MACHINE = CONSOLES[@CONSOLE_JS@];
 const GAME = { name: @NAME_JS@, versions: [{ sha1: @SHA1_JS@ }] };
@@ -22,7 +23,9 @@ const input = createInput(layoutOf(@CONSOLE_JS@));
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
 const touch = createTouch(stage, input, { screen, key: @FOLDER_JS@ });
 createSettings(stage, input, { touch });
-let rom = null;
+// the player's copy: a cartridge's bytes, or a disc, read a few sectors at a time as the game asks for them with
+// `await disc.read(sector, count)` or `await disc.data(sector, count)` (kit/copy/disc.js)
+let rom = null, disc = null;
 
 createRomSetup(picker, {
   brand: @TITLE_QUOTED@,
@@ -32,13 +35,25 @@ createRomSetup(picker, {
   intro: 'Your copy stays on this device.',
   slots: [{
     key: 'game', store: 'rom', title: GAME.name, required: true, accept: MACHINE.files.join(','), console: MACHINE.name, maxBytes: MACHINE.largest,
+    pieces: !!MACHINE.disc,
     claims: () => true,
-    async read(buffer) {
-      const sha1 = await sha1Hex(buffer);
-      rom = new Uint8Array(buffer);
-      return GAME.versions.some(version => version.sha1 === sha1) ? 'tested version' : 'untested version';
+    async read(copy, progress, { others = [] } = {}) {
+      const version = sha1 => (GAME.versions.some(each => each.sha1 === sha1) ? 'tested version' : 'untested version');
+      // a disc is read a few sectors at a time, as the game asks; anything else, such as a program, whole
+      const opened = MACHINE.disc ? await openCopy(copy, others) : null;
+      if (!opened) {
+        const bytes = copy instanceof ArrayBuffer ? copy : await copy.arrayBuffer();
+        rom = new Uint8Array(bytes);
+        disc = null;
+        return version(await sha1Hex(bytes));
+      }
+      rom = null;
+      if (opened.what?.console && opened.what.console !== @CONSOLE_JS@) throw new Error(`${copy.name} is a disc for ${CONSOLES[opened.what.console]?.name ?? 'another console'}.`);
+      disc = opened.disc;
+      // which version it is takes the whole disc, so it comes after, while the game can already start
+      return { about: 'checking its version…', later: sha1Of(opened.files).then(version) };
     },
-    unload() { rom = null; },
+    unload() { rom = null; disc = null; },
   }],
   onPlay: start,
 });

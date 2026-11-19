@@ -101,8 +101,10 @@ export function cKit(id) {
   if (!CONSOLES[id]) throw new Error(`There's no console called ${id} in kit/consoles.js, so there's no kit in C for it.`);
   const own = OWN[id];
   const base = name => join(C_BASE, name);
+  // the player's disc, for a console whose games come on one (disc.h)
+  const disc = CONSOLES[id].disc ? [base('disc.c')] : [];
   if (own && !own.header) {
-    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
+    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
     return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
   }
   // console.h, written where the tools keep what they make, once it says something new
@@ -113,11 +115,11 @@ export function cKit(id) {
     writeFileSync(header, text);
   }
   if (own) {
-    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...own.sources.map(name => join(own.folder, name))];
+    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
     return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [] };
   }
-  const sources = [base('kit.c'), base('pause.c'), base('libc.c'), base('console.c')];
-  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), base('console.c'), base('native.c')], twinFlags: [] };
+  const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
+  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
 }
 
 /** How every build of a game's C works it out, the function check's too (../gba/twin.mjs): made fast the same way, and
