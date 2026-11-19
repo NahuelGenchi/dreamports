@@ -14,7 +14,7 @@
 const utf8 = new TextDecoder();
 
 /** A reader over `bytes` from `at`: unsigned and signed LEB128 numbers, bytes and names. */
-function reader(bytes, at = 0) {
+export function reader(bytes, at = 0) {
   const r = {
     at,
     byte: () => bytes[r.at++],

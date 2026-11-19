@@ -4,9 +4,13 @@ name: Check
 # what every new game starts with in a real browser, with a made-up cartridge, so nothing from any game is needed,
 # npm run test:c-kit, which tries the kit in C against the JavaScript kit's drawing and starting point, and
 # npm run test:consoles and test:real-console, which do the same on a made-up console and on a real NES emulator, built
-# from its makers' source, with a small program of the project's own, and say which of its functions ran, and npm run test:match, which builds the Game Boy
+# from its makers' source, with a small program of the project's own, and say which of its functions ran, and
+# npm run test:ps1-kit, which proves the PlayStation's kit in C against its real emulator with another, and npm run test:match, which builds the Game Boy
 # Advance's compiler from its keepers' source and tries match with another small program of the project's own, and
-# npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third. A pull
+# npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third, and
+# npm run test:ps1-call and test:ps1-twin, which run the functions of a fourth in the PlayStation's emulator's own
+# interpreter and check its twins against them, and npm run test:ps1-gcc, which builds the PlayStation's compiler from
+# GNU's source as WebAssembly and compiles a C file of the project's own with it. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
@@ -40,18 +44,24 @@ jobs:
               npm run test:c-kit
               npm run test:consoles
               npm run test:real-console
+              npm run test:ps1-kit
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
           # program of the project's own as a cartridge and as a Dreamport from the same C, and has prove find every
           # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
-          # the project's own, found in a second made-up program by its short hash and proven there
+          # the project's own, found in a second made-up program by its short hash and proven there; and the GBA kit's
+          # clock, measured against mGBA an instruction at a time on a made-up program's power-on
           - part: functions
             run: |
               npm run test:twin
+              npm run test:clock
               npm run test:match
               npm run test:rebuild
               npm run test:nes-twin
+              npm run test:ps1-call
+              npm run test:ps1-twin
+              npm run test:ps1-gcc
               npm run test:same-memory
               npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
