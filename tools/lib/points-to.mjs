@@ -15,11 +15,12 @@
 // copy holds; the work memory starts as 0. What a store the pass can't bound stores may land in any cell, so it's
 // joined into every load from the work memory and the stacks: one that stores a pointer, or anything narrower than a
 // word, which may change part of a pointer, makes every such load "anywhere". So does code the pass doesn't read: code
-// in the work memory that isn't a copy of the cartridge's the code map names. That's the price of never guessing.
+// in the work memory that none of the code map's copies holds. That's the price of never guessing.
 //
 // The code it reads: each function of the code map in the cartridge, Thumb or ARM, and each the game runs from its
-// work memory that the code map's copies say is a copy of the cartridge's, read as those bytes, at the address it runs
-// at. A function's own stack is followed within it: a slot it surely stored before, on every way there, is read back
+// work memory that one of the code map's copies holds, read as those bytes, at the address it runs at: a copy of the
+// cartridge's, or what the BIOS unpacks from it (gba/unpack.mjs), when the copy's bytes there are the function's. Other
+// code at an address it already reads is code it doesn't read. A function's own stack is followed within it: a slot it surely stored before, on every way there, is read back
 // as what it stored, and any other, or one of its caller's above it, is "anywhere".
 //
 // Ways in: a function starts where it starts, and a branch of another function may arrive in its middle. A word of the
@@ -37,6 +38,8 @@
 //
 // A comparison of a register with a number, just before an unsigned branch or a conditional instruction, bounds it on
 // each way to the numbers that way allows, when they're few enough: that's what makes a switch's table read exactly.
+
+import { UNPACKED_BY, copyBytes, unpack } from '../gba/unpack.mjs';
 
 const CARTRIDGE = 0x08000000;
 const EWRAM = 0x02000000, EWRAM_END = 0x02040000, IWRAM = 0x03000000, IWRAM_END = 0x03008000;
@@ -155,10 +158,11 @@ const QUIET = new Set([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0
 
 /**
  * The pass, over the whole game. `rom` is the cartridge's bytes, `functions` the code map's, `copies` its copies,
- * { ram, cartridge, size }, and `allocators` a Map from the address of each allocator to the arena it hands out from,
+ * { ram, cartridge, size, packed, from }, and `allocators` a Map from the address of each allocator to the arena it hands out from,
  * { from, to }. `seconds` and `cells` limit how long it runs and how much it keeps. Answers { stores, loads, swis,
  * sites, bounded, unbounded, words, unread, complete, why, passes, rounds, seconds, everywhere }: each store's and
- * load's { base, offset, size, value }, by its address, as the pass ends; each swi's registers; each word of the
+ * load's { base, offset, size, value }, by its address, as the pass ends; each swi's registers, and for an unpack
+ * it bounds, `wrote`, the places it writes, [{ from, size }]; each word of the
  * cartridge that holds an address in the middle of a function, { at, to, verdict, why }, `verdict` 'data', 'target' or
  * 'open'; and the code it couldn't read. `complete` is false when it ran past its limit, and then nothing it says may
  * be used.
@@ -175,20 +179,28 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     return number(v);
   };
 
-  // the code it reads: the cartridge's functions, and the copies of them the game runs from its work memory
+  // the code it reads: the cartridge's functions, and those the game runs from its work memory that a copy holds, with
+  // the copy's bytes, to read the numbers the code keeps beside itself
   const units = [], unread = [];
+  const keyOf = bytes => Array.from(bytes.subarray(0, 8), b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
+  const held = copies.map(c => ({ ...c, bytes: copyBytes(rom, c) })).filter(c => c.bytes);
   for (const f of functions) {
-    if (!f.bytes && inRom(f.address) && f.address + f.size <= end) { units.push({ address: f.address, size: f.size, source: f.address }); continue; }
-    const copy = copies.find(c => f.address >= c.ram && f.address + f.size <= c.ram + c.size);
-    if (copy && inRom(copy.cartridge) && copy.cartridge + (f.address - copy.ram) + f.size <= end) units.push({ address: f.address, size: f.size, source: copy.cartridge + (f.address - copy.ram), copied: true });
-    else unread.push(f.address);
+    if (!f.bytes && inRom(f.address) && f.address + f.size <= end) { units.push({ address: f.address, size: f.size, source: f.address, bytes: rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size) }); continue; }
+    const copy = held.find(c => f.address >= c.ram && f.address + f.size <= c.ram + c.size && (!f.bytes || f.bytes.startsWith(keyOf(c.bytes.subarray(f.address - c.ram)))));
+    if (!copy) { unread.push(f.address); continue; }
+    const at = f.address - copy.ram;
+    units.push({ address: f.address, size: f.size, ...(copy.packed ? {} : { source: copy.cartridge + at }), bytes: copy.bytes.subarray(at, at + f.size), copy, copied: true });
   }
-  for (const u of units) {
-    u.bytes = rom.subarray(u.source - CARTRIDGE, u.source - CARTRIDGE + u.size);
-    u.arm = isArm(u.bytes);
-  }
+  for (const u of units) u.arm = isArm(u.bytes);
+  // one piece of code to an address: other code there at another time is code the pass doesn't read
   const byAddress = new Map();
-  for (const u of units) if (!byAddress.has(u.address)) byAddress.set(u.address, u);
+  for (const u of units.splice(0)) {
+    const there = byAddress.get(u.address);
+    if (!there) {
+      byAddress.set(u.address, u);
+      units.push(u);
+    } else if (keyOf(there.bytes) !== keyOf(u.bytes)) unread.push(u.address);
+  }
   const sorted = [...byAddress.values()].sort((a, b) => a.address - b.address);
   const inside = a => {
     let lo = 0, hi = sorted.length;
@@ -196,15 +208,21 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const u = sorted[lo];
     return u && a >= u.address && a < u.address + u.size ? u : null;
   };
-  // a number the code keeps beside itself: the cartridge's, or a copy's, as the cartridge holds it
+  // a number the code keeps beside itself: the cartridge's, or a copy's, as the copy holds it
   const codeValue = (a, size, signed) => {
     if (inRom(a)) return romValue(a, size, signed);
     const u = inside(a);
-    return u?.copied ? romValue(u.source + (a - u.address), size, signed) : ANYWHERE;
+    if (!u?.copied) return ANYWHERE;
+    const at = a - u.copy.ram;
+    if (at < 0 || at + size > u.copy.bytes.length) return ANYWHERE;
+    let v = 0;
+    for (let i = size - 1; i >= 0; i--) v = v * 256 + u.copy.bytes[at + i];
+    if (signed) v = size === 2 ? (v << 16) >> 16 : (v << 24) >> 24;
+    return number(v);
   };
   const known = new Set(functions.map(f => f.address));
   const why = [];
-  if (unread.length) why.push(`${unread.length} pieces of code in the work memory the code map's copies don't name, such as ${hex(unread[0])}, which the pass can't read, may store anything anywhere`);
+  if (unread.length) why.push(`${unread.length} pieces of code in the work memory the code map's copies don't hold, such as ${hex(unread[0])}, which the pass can't read, may store anything anywhere`);
 
   // what's known before reading: which functions something calls, which escape as values, which branches arrive in
   // another function's middle, and the words of the cartridge that hold an address in a function's middle
@@ -213,7 +231,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const w = view.getUint32(at, true), to = w & ~1;
     if (known.has(to)) escaped.add(to);
     const u = inside(to);
-    if (u && to !== u.address && !(u.source <= CARTRIDGE + at && CARTRIDGE + at < u.source + u.size)) candidates.set(CARTRIDGE + at, to);
+    if (u && to !== u.address && !(u.source !== undefined && u.source <= CARTRIDGE + at && CARTRIDGE + at < u.source + u.size)) candidates.set(CARTRIDGE + at, to);
   }
   const branchTo = (u, target, isCallTo) => {
     const g = inside(target);
@@ -397,6 +415,29 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
           const length = (c & 0x1FFFFF) * (call === 0x0C || c & 0x04000000 ? 4 : 2);
           for (let w = d & ~3; w < d + length; w += 4) if (inWork(w)) grow(`a${w}`, ANYWHERE);
         }
+      } else if (call >= 0x11 && call <= 0x18 && numbers(s.r[0]) && numbers(s.r[1])) {
+        // an unpack, as far as the header it reads first says: from one place of the cartridge to one place, exactly
+        // what it makes, when the tools follow its kind (gba/unpack.mjs)
+        const sources = numbers(s.r[0]), targets = numbers(s.r[1]), wrote = [];
+        let bounded = true;
+        for (const from of sources) {
+          const headers = from & 3 ? null : inRom(from) && inRom(from + 3) ? [view.getUint32(from - CARTRIDGE, true)] : inWork(from) ? numbers(join(join(cell(`a${from}`), number(0)), anyStore)) : null;
+          if (!headers || headers.some(h => h >>> 8 > EWRAM_END - EWRAM)) {
+            widenAll(`the BIOS's work at ${hex(pc)} (swi 0x${call.toString(16).toUpperCase()}) unpacks data whose size the pass can't bound`);
+            bounded = false;
+            continue;
+          }
+          const made = sources.length === 1 && targets.length === 1 && inRom(from) && UNPACKED_BY[call] ? unpack(UNPACKED_BY[call], rom, from - CARTRIDGE)?.bytes : null;
+          for (const d of targets) for (const size of headers.map(h => h >>> 8)) {
+            wrote.push({ from: d, size });
+            for (let w = d & ~3; w < d + size; w += 4) {
+              if (!inWork(w)) continue;
+              const exact = made && !(d & 3) && w + 4 <= d + size;
+              grow(`a${w}`, exact ? number(made[w - d] | made[w - d + 1] << 8 | made[w - d + 2] << 16 | made[w - d + 3] << 24) : ANYWHERE);
+            }
+          }
+        }
+        if (bounded) swis.get(pc).wrote = wrote;
       } else if (!QUIET.has(call)) widenAll(`the BIOS's work at ${hex(pc)} (swi 0x${call.toString(16).toUpperCase()}) writes where the pass can't bound`);
       for (const i of [0, 1, 2, 3]) s.r[i] = ANYWHERE;
     };

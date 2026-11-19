@@ -209,7 +209,7 @@ export function finderOf(codeMap, cartridge, made) {
   return (address, code, thumb) => {
     if (address >= CARTRIDGE) return inCartridge(address);
     for (const copy of codeMap.copies ?? []) {
-      if (address < copy.ram || address >= copy.ram + copy.size) continue;
+      if (copy.packed || address < copy.ram || address >= copy.ram + copy.size) continue;
       const from = copy.cartridge + address - copy.ram;
       if (same(cartridge(from, 4), 0, code, thumb)) return inCartridge(from);
     }
