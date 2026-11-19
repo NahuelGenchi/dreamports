@@ -33,7 +33,7 @@ import { joinChrome, openChrome } from './lib/chrome.mjs';
 import { buildIfC, openDreamport } from './lib/dreamport.mjs';
 import { atOnce } from './lib/at-once.mjs';
 import { mp4 } from './lib/mp4.mjs';
-import { makeFilter, soundOf, NEAR } from './lib/sound.mjs';
+import { makeFilter, soundOf, soundListsOf, NEAR } from './lib/sound.mjs';
 import { compareState, describeState } from './lib/state.mjs';
 import { compareMemory, describeMemory, memoryBytes, memorySpec, workMemoryOf } from './lib/memory.mjs';
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
@@ -331,7 +331,7 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
         if (recording.players && own.some(part => part.reaches !== undefined)) throw new Error('A recording that links several consoles can\'t prove a part that names what it reaches yet, as only one console\'s memory is read.');
         if (recording.players && memory) log(`\n${name} links several consoles, whose work memory isn't compared yet: only its pictures and sound are.`);
         const result = recording.players ? await proveLinked({ page, game, recording, copy, server, main, quick, asked, codeMap: reference.seesInstructions === true ? codeMap : null, log, say })
-          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, memory, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', paced, quick, log, say });
+          : await prove({ page, reference, game, recording, copy, server, codeMap, main, before: before[name], asked, askedState, parts: own, couldProve: partsItCouldProve(name, parts), kinds, route, memory, keysLate: original.keysAfterVBlank === true, drawLists: (original.provenBy ?? reference.machine.provenBy) === 'draw lists', soundLists: (original.soundBy ?? reference.machine.soundBy) === 'sound lists', paced, quick, log, say });
         // what the original shows is checked however the frames compare, and a linked recording, played by more than one
         // console, isn't read
         const wrong = showsProblems(name, result.shows, recording.players ? [] : kinds);
@@ -382,7 +382,7 @@ const stretchesOf = frames => {
 const listed = stretches => stretches.slice(0, 8).map(([a, b]) => (a === b ? `${a}` : `${a} to ${b}`)).join(', ')
   + (stretches.length > 8 ? `, and ${stretches.length - 8} more stretches` : '');
 
-async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, memory, keysLate, drawLists, paced, quick, log, say }) {
+async function prove({ page, reference, game, recording, copy, server, codeMap, main, before, asked, askedState, parts, couldProve, kinds, route, memory, keysLate, drawLists, soundLists, paced, quick, log, say }) {
   const { name, frames } = recording;
   const { machine, KEY, runOriginal } = reference;
   const out = resultFolder(game, name);
@@ -405,7 +405,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
   {
     await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}`, saves: startSaves && Object.fromEntries(Object.entries(startSaves).map(([key, save]) => [key, save.bytes])) });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
-    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__memory = ${JSON.stringify(memory)}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
+    await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__soundLists = ${!!soundLists}; window.__memory = ${JSON.stringify(memory)}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
     await page.evaluate(IN_PAGE);
     const buttons = await page.evaluate('dreamportsProof.buttons');
     // the recording's buttons as the Dreamport names them, and as the console's buttons for the original
@@ -446,7 +446,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) for (let [f, last] = clipAt ?? clipWindow({ frames, changed: null, firstDifference: -1 }); f <= last && f < frames; f++) if (f >= 0) sure.add(f);
     // with a code map, every instruction that ran and each way every branch went, where the program says them
     const seesPlayed = !quick && !!codeMap && reference.seesInstructions === true;
-    const first = await runOriginal({ copy, startSave, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, registers: seesPlayed && reference.seesEntries === true, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, memory: memory ? { spec: memorySpec(memory) } : null, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
+    const first = await runOriginal({ copy, startSave, frames: originalHeld.length + 1, buttons: masks, functions, played: seesPlayed, registers: seesPlayed && reference.seesEntries === true, saves: !quick && reference.seesSaves === true, sound: true, sets, reads, draws: !!drawLists, soundLists: !!soundLists, memory: memory ? { spec: memorySpec(memory) } : null, pictures: [...sure].sort((a, b) => a - b).map(f => originalOf[f] + 1) });
     if (reads.length && first.outside.reads?.length !== reads.length) throw new Error("The program that runs the original read nothing of its memory: npm run dp -- setup builds it again.");
     const showing = kinds.length ? shownOf(kinds, first.outside.reads.slice(reads.length - kinds.length)) : null;
     // the frames over which each goal held, and the parts whose goal doesn't come true within their own
@@ -471,7 +471,10 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const ranAt = codeMap && first.ran ? f => Array.from(first.ran[originalOf[f]] ?? [], i => codeMap.functions[i].key) : null;
     const changeOf = (differs, sound = null, picture = null) => firstChanged({ main, name, file: recordingFile, text: recordingText, frames, ran: ranAt, differs, sound, picture, parts });
     const guessed = quick ? null : changeOf(null);
-    const compareSound = soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
+    // a frame's sound, by the loudness of its pitches, or for a game proven by sound lists, as a PlayStation 2's is,
+    // what it gave its sound chip and every sample the chip mixed (lib/sound.mjs)
+    if (soundLists && !first.soundLists) throw new Error(`${machine.name}'s emulator keeps no sound lists, which this game's sound is proven by.`);
+    const compareSound = soundLists ? soundListsOf(first.soundLists) : soundOf(first.sound, machine), heardOf = Array.from(originalOf, g => g + 1);
     // the frames next to a stretch only the original has, whose sound isn't compared: the original's runs into or out
     // of the screen the Dreamport skips
     const unheard = new Set(recording.onlyInOriginal.flatMap(({ at }) => Array.from({ length: 2 * NEAR }, (_, i) => at - NEAR + i)).filter(f => f >= 0 && f < frames));
@@ -821,7 +824,13 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // a picture of another size can't match, whatever its pixels are
     const otherSize = first.outside.sizes && firstOtherSize(first.outside.sizes, ownSizes, hashes.length, f => originalOf[f] + 1);
     if (otherSize) log(`  At frame ${otherSize.frame} the original's picture is ${otherSize.original.join(' by ')} and the Dreamport's ${otherSize.dreamport.join(' by ')}, so they can't match.`);
-    if (soundDifferent.length) {
+    if (soundDifferent.length && firstSound.exact) {
+      const { frame, by, original: theirs, dreamport: ours } = firstSound;
+      log(`  Frames whose sound differs: ${listed(soundDiffers)}.${madeSound ? '' : ' The Dreamport makes no sound yet.'}`);
+      log(`  The first is frame ${frame}: ${!ours ? "the Dreamport's kit keeps no sound list"
+        : by === 'list' ? `what it gave the sound chip differs, ${ours.things} things in the Dreamport's sound list and ${theirs.things} in the original's`
+          : `it gave the sound chip the same, and the chip mixed ${ours.samples === theirs.samples ? `other samples, ${ours.samples} of them` : `${ours.samples} samples, where the original's mixed ${theirs.samples}`}`}.`);
+    } else if (soundDifferent.length) {
       const { frame, side, band, original: theirs, dreamport: ours, dB, silent } = firstSound;
       const where = `around ${band.toLocaleString('en')} Hz, on the ${side}`;
       log(`  Frames whose sound differs: ${listed(soundDiffers)}.${madeSound ? '' : ' The Dreamport makes no sound yet.'}`);

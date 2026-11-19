@@ -9,6 +9,11 @@ It also keeps each frame's draw list: a hash of everything the console gave the 
 given, every register write, every picture sent and what the screen shows of the framebuffer, which the frontend asks for
 with dreamports_draw_list. That's what a 3D game is proven by (docs/STANDARD.md).
 
+It keeps each frame's sound list as well, the same way: a hash of everything the console gave its sound chip, the SPU2,
+in the order given, every register write, every block of sound data sent to or read from a core, and a mark for each
+block of 45 samples mixed, so the list says which block each write came before. The frontend asks for it with
+dreamports_sound_list, and DP_SOUND_DUMP names a file the whole list goes to, the sound data's bytes left out.
+
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
@@ -18,6 +23,7 @@ way its branch went and the words it was compiled from, on the EE and the IOP ea
 hold before it runs, and every sector of the disc read. A block that runs only says so, so the console does the same
 with it or without; while the tools watch, the processors compile each block for itself rather than reuse the code of
 another block of the same bytes, which would name that one.
+
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
 index 4c460e6..1c27549 100644
 --- a/Source/BasicBlock.cpp
@@ -261,6 +267,20 @@ index 3ca3d52..6f98142 100644
  			m_stream->Seek(static_cast<uint64>(address) * INTERNAL_BLOCKSIZE, Framework::STREAM_SEEK_SET);
  			m_stream->Read(block, MEDIA_BLOCKSIZE);
  		}
+diff --git a/Source/PS2VM.cpp b/Source/PS2VM.cpp
+index 5c8ded9..7d63eee 100644
+--- a/Source/PS2VM.cpp
++++ b/Source/PS2VM.cpp
+@@ -777,6 +777,9 @@ void CPS2VM::UpdateSpu()
+ 	CProfilerZone profilerZone(m_spuProfilerZone);
+ #endif
+ 
++	// each block of samples mixed is part of the sound list, so it says which block each write came before
++	Iop::SoundList::Add('B', nullptr, 0);
++
+ 	unsigned int blockOffset = (BLOCK_SIZE * m_currentSpuBlock);
+ 	int16* samplesSpu0 = m_samples + blockOffset;
+ 
 diff --git a/Source/ee/EeExecutor.cpp b/Source/ee/EeExecutor.cpp
 index c8c72f9..9367819 100644
 --- a/Source/ee/EeExecutor.cpp
@@ -435,6 +455,108 @@ index 66bfe59..478f3d1 100644
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
+diff --git a/Source/iop/Iop_SpuBase.cpp b/Source/iop/Iop_SpuBase.cpp
+index 231400b..3a15387 100644
+--- a/Source/iop/Iop_SpuBase.cpp
++++ b/Source/iop/Iop_SpuBase.cpp
+@@ -574,6 +574,19 @@ void CSpuBase::SetReverbCurrentAddress(uint32 address)
+ }
+ 
+ uint32 CSpuBase::ReceiveDma(uint8* buffer, uint32 blockSize, uint32 blockAmount, uint32 direction)
++{
++	// what was sent, and how much of it this core took, is part of the sound list
++	uint32 taken = ReceiveDmaTaken(buffer, blockSize, blockAmount, direction);
++	{
++		uint32 about[4] = {m_spuNumber, m_transferMode, static_cast<uint32>(m_ctrl & CONTROL_DMA), blockSize * taken};
++		SoundList::Add('D', about, sizeof(about));
++		// the bytes moved, sent to the core or read from it
++		if(taken) SoundList::Add('d', buffer, blockSize * taken, false);
++	}
++	return taken;
++}
++
++uint32 CSpuBase::ReceiveDmaTaken(uint8* buffer, uint32 blockSize, uint32 blockAmount, uint32 direction)
+ {
+ #ifdef _DEBUG
+ 	CLog::GetInstance().Print(LOG_NAME, "Receiving DMA transfer to 0x%08X. Size = 0x%08X bytes.\r\n",
+diff --git a/Source/iop/Iop_SpuBase.h b/Source/iop/Iop_SpuBase.h
+index 1fab09e..467d19f 100644
+--- a/Source/iop/Iop_SpuBase.h
++++ b/Source/iop/Iop_SpuBase.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <cstdio>
+ #include <map>
+ #include "Types.h"
+ #include "BasicUnion.h"
+@@ -61,6 +62,41 @@ namespace Iop
+ 		bool m_irqPending[MAX_CORES] = {};
+ 	};
+ 
++	// The sound list: everything the console gives the SPU2 that decides its sound, hashed in the order given (FNV-1a),
++	// with how many things that was, as the draw list is for the GS. The frontend reads it at each V-blank and starts it
++	// again. When the frontend opens one, a file the whole list goes to as well: 'W' a register's address and the value
++	// written, 'D' sound data sent to a core (the core, the transfer's mode, its length and the hash of its bytes, which
++	// stay out of the file), 'B' a block of 45 samples mixed, and from the others 'F', the end of a frame.
++	struct SoundList
++	{
++		inline static uint32 hash = 0x811C9DC5;
++		inline static uint32 count = 0;
++		inline static FILE* dump = nullptr;
++		static void Add(char kind, const void* data, size_t length, bool keep = true)
++		{
++			auto bytes = static_cast<const uint8*>(data);
++			uint32 own = 0x811C9DC5;
++			hash = (hash ^ static_cast<uint8>(kind)) * 0x01000193;
++			for(size_t i = 0; i < length; i++)
++			{
++				hash = (hash ^ bytes[i]) * 0x01000193;
++				own = (own ^ bytes[i]) * 0x01000193;
++			}
++			count++;
++			if(!dump) return;
++			fputc(kind, dump);
++			if(keep)
++			{
++				fwrite(data, 1, length, dump);
++			}
++			else
++			{
++				uint32 about[2] = {static_cast<uint32>(length), own};
++				fwrite(about, 4, 2, dump);
++			}
++		}
++	};
++
+ 	class CSpuBase
+ 	{
+ 	public:
+@@ -270,6 +306,7 @@ namespace Iop
+ 		void WriteWord(uint16);
+ 
+ 		uint32 ReceiveDma(uint8*, uint32, uint32, uint32);
++		uint32 ReceiveDmaTaken(uint8*, uint32, uint32, uint32);
+ 
+ 		void Render(int16*, unsigned int);
+ 
+diff --git a/Source/iop/Iop_SubSystem.cpp b/Source/iop/Iop_SubSystem.cpp
+index dd584b3..7aa467e 100644
+--- a/Source/iop/Iop_SubSystem.cpp
++++ b/Source/iop/Iop_SubSystem.cpp
+@@ -287,6 +287,12 @@ uint32 CSubSystem::ReadIoRegister(uint32 address)
+ 
+ uint32 CSubSystem::WriteIoRegister(uint32 address, uint32 value)
+ {
++	if((address >= CSpu::SPU_BEGIN && address <= CSpu::SPU_END) || (address >= CSpu2::REGS_BEGIN && address <= CSpu2::REGS_END))
++	{
++		// each write to the sound chip's registers, as its address and the value written, is part of the sound list
++		uint32 written[2] = {address, value};
++		Iop::SoundList::Add('W', written, sizeof(written));
++	}
+ 	if(address >= CSpu::SPU_BEGIN && address <= CSpu::SPU_END)
+ 	{
+ 		m_spu.WriteRegister(address, static_cast<uint16>(value));
 diff --git a/Source/ui_libretro/PH_Libretro_Input.cpp b/Source/ui_libretro/PH_Libretro_Input.cpp
 index 3f9a1ea..46ec710 100644
 --- a/Source/ui_libretro/PH_Libretro_Input.cpp
@@ -485,7 +607,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..9b53459 100644
+index 8a07c26..fb786e3 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,10 @@
@@ -499,7 +621,7 @@ index 8a07c26..9b53459 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +41,79 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +41,108 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -516,6 +638,9 @@ index 8a07c26..9b53459 100644
 +// the draw list of the frame that has just ended, for the frontend to ask for (dreamports_draw_list)
 +static uint32_t g_drawListHash = 0;
 +static uint32_t g_drawListCount = 0;
++// and its sound list (Iop::SoundList), for dreamports_sound_list
++static uint32_t g_soundListHash = 0;
++static uint32_t g_soundListCount = 0;
 +
 +void WaitAtVBlank()
 +{
@@ -536,6 +661,24 @@ index 8a07c26..9b53459 100644
 +		gs->m_drawListHash = 0x811C9DC5;
 +		gs->m_drawListCount = 0;
 +	}
++	{
++		// the sound list the same way, its file opened once, when the environment names one
++		static bool soundAsked = false;
++		if(!soundAsked)
++		{
++			soundAsked = true;
++			if(auto path = getenv("DP_SOUND_DUMP")) Iop::SoundList::dump = fopen(path, "wb");
++		}
++		g_soundListHash = Iop::SoundList::hash;
++		g_soundListCount = Iop::SoundList::count;
++		if(Iop::SoundList::dump)
++		{
++			fputc('F', Iop::SoundList::dump);
++			fflush(Iop::SoundList::dump);
++		}
++		Iop::SoundList::hash = 0x811C9DC5;
++		Iop::SoundList::count = 0;
++	}
 +	g_vblanksReached++;
 +	g_vblankCondition.notify_all();
 +	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
@@ -547,6 +690,14 @@ index 8a07c26..9b53459 100644
 +	std::lock_guard<std::mutex> lock(g_vblankMutex);
 +	*hash = g_drawListHash;
 +	*count = g_drawListCount;
++}
++
++// What the console gave the sound chip in the frame the last retro_run ran: its hash and how many things it was
++extern "C" RETRO_API void dreamports_sound_list(uint32_t* hash, uint32_t* count)
++{
++	std::lock_guard<std::mutex> lock(g_vblankMutex);
++	*hash = g_soundListHash;
++	*count = g_soundListCount;
 +}
 +
 +// Dreamports: what the tools' program asks to be told as the console plays, set before a game loads (DreamportsWatch.h):
@@ -579,7 +730,7 @@ index 8a07c26..9b53459 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +523,24 @@ void retro_run()
+@@ -446,15 +552,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -607,7 +758,7 @@ index 8a07c26..9b53459 100644
  	}
  }
  
-@@ -554,7 +640,7 @@ void retro_init()
+@@ -554,7 +669,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -616,7 +767,7 @@ index 8a07c26..9b53459 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +660,7 @@ void retro_deinit()
+@@ -574,6 +689,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{

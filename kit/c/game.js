@@ -124,6 +124,13 @@ export async function loadGame(url, bytes, { console: id, save = null, query } =
           return size === 0xFFFFFFFF ? null : new Uint8Array(game.memory.buffer, game.dp_draw_list_bytes(), size).slice();
         };
       }
+      // and its sound list, with the samples its sound chip mixed, which a PlayStation 2's sound is proven by
+      if (globalThis.dreamportsProof && game.dp_sound_list) {
+        dreamportsProof.soundList = game.dp_sound_list() >>> 0;
+        dreamportsProof.soundListCount = game.dp_sound_list_count() >>> 0;
+        const pairs = game.dp_sound_heard_count() >>> 0;
+        dreamportsProof.soundSamples = new Int16Array(game.memory.buffer, game.dp_sound_heard(), pairs * 2).slice();
+      }
       sound.frameDone();
     },
     draw() {
