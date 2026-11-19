@@ -51,8 +51,9 @@ const FOLDER = join(LOCAL, 'ps2', 'ee-gcc');
 const RECIPE = createHash('sha1').update(readFileSync(new URL(import.meta.url))).digest('hex').slice(0, 12);
 // the computers it builds on, by the name GCC's configure knows each by
 const HOSTS = { 'linux-x64': 'x86_64-pc-linux-gnu', 'linux-arm64': 'aarch64-unknown-linux-gnu', 'darwin-x64': 'x86_64-apple-darwin', 'darwin-arm64': 'aarch64-apple-darwin' };
-// as the port builds it: C of 1999, which relies on wrapping sums, type punning, common symbols and signed chars
-const CFLAGS = '-std=gnu89 -O2 -fwrapv -fno-strict-aliasing -fcommon -fsigned-char -w -Wno-unknown-warning-option -Wno-return-mismatch -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion -Wno-incompatible-pointer-types';
+// as the port builds it: C of 1999, which relies on wrapping sums, type punning, common symbols and signed chars, and
+// has what today's clang refuses unless told not to, under the names its older and newer versions know each by
+const CFLAGS = '-std=gnu89 -O2 -fwrapv -fno-strict-aliasing -fcommon -fsigned-char -w -Wno-unknown-warning-option -Wno-return-mismatch -Wno-return-type -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion -Wno-incompatible-pointer-types';
 // the parts of Sony's tree the three programs don't need, which its configure would otherwise try to set up
 const LEFT_OUT = ['gdb', 'tcl', 'tk', 'itcl', 'tix', 'libgui', 'expect', 'dejagnu', 'sim', 'snavigator', 'sn', 'ide', 'bsp', 'examples', 'binutils', 'gprof',
   'winsup', 'utils', 'readline', 'libtermcap', 'make', 'send-pr', 'release-info', 'patch', 'diff', 'dosrel', 'xiberty', 'mmalloc', 'gperf', 'ld'];
