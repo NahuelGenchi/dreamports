@@ -60,8 +60,13 @@ export function fetchSource({ core, name }) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
-  // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
-  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  if (core.patch) {
+    // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
+    // emulator's own files, and the patch won't write over it
+    for (const [, added] of readFileSync(join(REPO, core.patch), 'utf8').matchAll(/^diff --git a\/(\S+) b\/\S+\nnew file mode/gm)) rmSync(join(source, added), { force: true });
+    // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
+    run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  }
   return source;
 }
 
