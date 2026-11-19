@@ -234,3 +234,47 @@ test('a literal pool is data, not instructions that write registers', () => {
   const functions = [{ address: BASE, size: 0x14 }, { address: BASE + 0x40, size: 0x0C }];
   assert.deepEqual([...pointsTo(rom, functions, { seconds: 10 }).stores.get(BASE + 0x0A).base], [`c${CELL}`]);
 });
+
+// Loops, their counters kept as ranges, widened at the loop's head and narrowed by its guard (#1551).
+const range = (lo, hi, step) => `n${lo}:${hi}:${step}`;
+
+test('a count-down loop with a signed guard against another register stays within it', () => {
+  // ldr r1, =T   mov r2, #7   mov r0, #0x80   lsl r0, r0, #2   add r0, r0, r1
+  // loop: str r2, [r0]   sub r0, #4   cmp r0, r1   bge loop   bx lr: 129 words from T + 0x200 down to T
+  const T = 0x02000100;
+  const rom = cartridge([halves(0x00, 0x4904, 0x2207, 0x2080, 0x0080, 0x1840, 0x6002, 0x3804, 0x4288, 0xDAFB, 0x4770), words(0x14, T)]);
+  const read = pointsTo(rom, [{ address: BASE, size: 0x18 }], { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x0A).base], [range(T, T + 0x200, 4)]);
+  assert.equal(read.everywhere, false);
+});
+
+test('a count-up loop with an unsigned guard against a number stays within it', () => {
+  // ldr r1, =T   mov r2, #7   mov r0, #0   loop: lsl r3, r0, #2   add r3, r3, r1   str r2, [r3]   add r0, #1
+  // cmp r0, #100   bcc loop   bx lr: words T to T + 99 * 4
+  const T = 0x02000400;
+  const rom = cartridge([halves(0x00, 0x4904, 0x2207, 0x2000, 0x0083, 0x185B, 0x601A, 0x3001, 0x2864, 0xD3F9, 0x4770), words(0x14, T)]);
+  const read = pointsTo(rom, [{ address: BASE, size: 0x18 }], { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x0A).base], [range(T, T + 99 * 4, 4)]);
+  assert.equal(read.everywhere, false);
+});
+
+test('a loop whose guard register is unknown stays open on that side', () => {
+  // ldr r0, =T   mov r2, #7   loop: str r2, [r0]   sub r0, #4   cmp r0, r1   bge loop   bx lr, r1 an argument the
+  // pass can't know: r0 steps down from T to wherever
+  const T = 0x02000300;
+  const rom = cartridge([halves(0x00, 0x4803, 0x2207, 0x6002, 0x3804, 0x4288, 0xDAFB, 0x4770), words(0x10, T)]);
+  const read = pointsTo(rom, [{ address: BASE, size: 0x14 }], { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x04).base], [range(0, 0xFFFFFFFC, 4)], 'down from T past 0, as a signed guard against anything allows, every word the step reaches');
+  assert.equal(read.unbounded, 1, 'and the store is one the pass can\'t bound');
+});
+
+test('nested loops: each counter within its own guard, the store within both', () => {
+  // ldr r1, =T   mov r2, #7   mov r4, #0   outer: lsl r3, r4, #6   add r3, r3, r1   mov r0, #0
+  // inner: lsl r5, r0, #2   add r5, r5, r3   str r2, [r5]   add r0, #1   cmp r0, #16   bcc inner
+  // add r4, #1   cmp r4, #16   bcc outer   bx lr: 16 rows of 16 words from T
+  const T = 0x02000800;
+  const rom = cartridge([halves(0x00, 0x4907, 0x2207, 0x2400, 0x01A3, 0x185B, 0x2000, 0x0085, 0x18ED, 0x602A, 0x3001, 0x2810, 0xD3F9, 0x3401, 0x2C10, 0xD3F3, 0x4770), words(0x20, T)]);
+  const read = pointsTo(rom, [{ address: BASE, size: 0x24 }], { seconds: 10 });
+  assert.deepEqual([...read.stores.get(BASE + 0x10).base], [range(T, T + 15 * 64 + 15 * 4, 4)]);
+  assert.equal(read.everywhere, false);
+});

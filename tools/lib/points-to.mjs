@@ -45,6 +45,8 @@ import { UNPACKED_BY, copyBytes, unpack } from '../gba/unpack.mjs';
 const CARTRIDGE = 0x08000000;
 const EWRAM = 0x02000000, EWRAM_END = 0x02040000, IWRAM = 0x03000000, IWRAM_END = 0x03008000;
 const SIZE_CAP = 64;
+// how many times a loop head's state may grow before the pass widens it, and how many sweeps then narrow it
+const WIDEN_AFTER = 8, NARROW = 64;
 const ANYWHERE = null;
 const u32 = n => n >>> 0;
 const hex = n => `0x${u32(n).toString(16).toUpperCase().padStart(8, '0')}`;
@@ -54,22 +56,112 @@ const number = n => new Set([`c${u32(n)}`]);
 const NOTHING = new Set();
 const RETURN = new Set(['r']);
 
+// Numbers past the cap are a range stepping by a power of two, 'n<lo>:<hi>:<step>', lo < hi, as a loop's counter is:
+// the numbers from lo to hi, step apart. A value's numbers are either each spelled out, when there are at most
+// SIZE_CAP, or one such range around them all, so the same numbers are always written the same way.
+const MAX = 0xFFFFFFFF;
+const EXPAND = 4096;   // the most numbers a range is spelled out as, for the places a load or a store can reach
+const isNumber = e => e[0] === 'c' || e[0] === 'n';
+const rangeOf = e => {
+  if (e[0] === 'c') { const n = Number(e.slice(1)); return [n, n, 0]; }
+  const [lo, hi, step] = e.slice(1).split(':').map(Number);
+  return [lo, hi, step];
+};
+const countOf = ([lo, hi, step]) => (step ? (hi - lo) / step + 1 : 1);
+// the biggest power of two that divides x, up to 2^31 (and 2^31 for 0)
+const lowBit = x => { let p = 1; while (p < 2 ** 31 && x % (p * 2) === 0) p *= 2; return p; };
+// a value from its numbers, as ranges [lo, hi, step] (a lone number with step 0), and its other elements
+function shaped(ranges, others) {
+  let total = 0;
+  for (const r of ranges) total += countOf(r);
+  const out = new Set(others);
+  if (total <= SIZE_CAP) {
+    for (const [lo, hi, step] of ranges) if (!step) out.add(`c${lo}`); else for (let x = lo; x <= hi; x += step) out.add(`c${x}`);
+  } else {
+    const [lo, hi, step] = hull(ranges);
+    out.add(`n${lo}:${hi}:${step}`);
+  }
+  return out.size > SIZE_CAP ? ANYWHERE : out;
+}
+// one range around ranges, stepping by the biggest power of two every number in them is apart by
+function hull(ranges) {
+  let lo = Infinity, hi = -Infinity, step = 2 ** 31;
+  const first = ranges[0][0];
+  for (const [l, h, s] of ranges) {
+    lo = Math.min(lo, l);
+    hi = Math.max(hi, h);
+    if (s) step = Math.min(step, lowBit(s));
+    if (l !== first) step = Math.min(step, lowBit(Math.abs(l - first)));
+  }
+  return [lo, hi, step];
+}
+// a register at a loop head that keeps growing: its numbers taken on, on each side they grew on, to the nearest bound
+// a comparison in the function has set for it (`marks`), or with none, or the second time, to the end of the 32 bits,
+// still stepping as they did, so the loop's fixed point comes in a few rounds
+function widen(before, now, marks) {
+  const was = split(before), is = split(now);
+  if (!was || !is || !was.ranges.length || !is.ranges.length) return now;
+  const [oldLo, oldHi] = hull(was.ranges), [lo, hi, step] = hull(is.ranges);
+  if (lo >= oldLo && hi <= oldHi) return now;
+  const r = lo % step, top = r + Math.floor((MAX - r) / step) * step;
+  let newLo = lo, newHi = hi;
+  if (lo < oldLo) {
+    const below = [...marks].map(m => m + ((r - m % step) % step + step) % step).filter(m => m <= lo);
+    newLo = below.length ? Math.max(...below) : r;
+  }
+  if (hi > oldHi) {
+    const above = [...marks].map(m => m - ((m % step - r) % step + step) % step).filter(m => m >= hi && m <= MAX);
+    newHi = above.length ? Math.min(...above) : top;
+  }
+  return shaped([[newLo, newHi, step]], is.others);
+}
+// a value's numbers as ranges and its other elements, or null for anywhere
+function split(v) {
+  if (v === ANYWHERE) return null;
+  const ranges = [], others = [];
+  for (const e of v) (isNumber(e) ? ranges.push(rangeOf(e)) : others.push(e));
+  return { ranges, others };
+}
+
 function join(a, b) {
   if (a === ANYWHERE || b === ANYWHERE) return ANYWHERE;
   if (!a.size) return b;
   if (!b.size) return a;
   const all = new Set(a);
+  let ranged = false;
   for (const e of b) all.add(e);
-  return all.size > SIZE_CAP ? ANYWHERE : all;
+  for (const e of all) if (e[0] === 'n') { ranged = true; break; }
+  if (all.size <= SIZE_CAP && !ranged) return all;
+  const { ranges, others } = split(all);
+  if (others.length > SIZE_CAP) return ANYWHERE;
+  return ranges.length ? shaped(ranges, others) : ANYWHERE;
 }
+// whether a value can be the number n
+const holds = (v, n) => v === ANYWHERE || v.has(`c${n}`) || [...v].some(e => e[0] === 'n' && (([lo, hi, step]) => n >= lo && n <= hi && (n - lo) % step === 0)(rangeOf(e)));
 const same = (a, b) => (a === ANYWHERE || b === ANYWHERE ? a === b : a.size === b.size && [...a].every(e => b.has(e)));
-// the numbers a value can be, or null if it can be anything else
-function numbers(v) {
+// the numbers a value can be, each, or null if it can be anything else or more than `limit` of them
+function numbers(v, limit = EXPAND) {
   if (v === ANYWHERE) return null;
   const out = [];
   for (const e of v) {
-    if (e[0] !== 'c') return null;
-    out.push(Number(e.slice(1)));
+    if (e[0] === 'c') { out.push(Number(e.slice(1))); continue; }
+    if (e[0] !== 'n') return null;
+    const [lo, hi, step] = rangeOf(e);
+    if (out.length + (hi - lo) / step + 1 > limit) return null;
+    for (let x = lo; x <= hi; x += step) out.push(x);
+  }
+  return out;
+}
+// a value with its ranges spelled out as numbers, for the places a load or store reaches, or null when there are
+// too many to follow
+function elements(v) {
+  if (v === ANYWHERE) return null;
+  const out = new Set();
+  for (const e of v) {
+    if (e[0] !== 'n') { out.add(e); continue; }
+    const [lo, hi, step] = rangeOf(e);
+    if (out.size + (hi - lo) / step + 1 > EXPAND) return null;
+    for (let x = lo; x <= hi; x += step) out.add(`c${x}`);
   }
   return out;
 }
@@ -78,53 +170,145 @@ const place = e => {
   const at = e.lastIndexOf(':'), offset = e.slice(at + 1);
   return [e[0], e.slice(1, at), offset === '*' ? null : Number(offset)];
 };
+// a range moved on by k, which past either end of the 32 bits wraps round to every number it can step to
+function shiftRange([lo, hi, step], k) {
+  const l = lo + k, h = hi + k;
+  if (!step) return [u32(l), u32(l), 0];
+  if (l >= 0 && h <= MAX) return [l, h, step];
+  const r = u32(l) % step;
+  return [r, r + Math.floor((MAX - r) / step) * step, step];
+}
 // the value moved on by `k` bytes, or by an amount the pass can't know (k null)
 function moved(v, k) {
   if (v === ANYWHERE) return ANYWHERE;
-  const out = new Set();
+  const ranges = [], others = [];
   for (const e of v) {
     if (e === 'r') return ANYWHERE;
-    if (e[0] === 'c') {
+    if (isNumber(e)) {
       if (k === null) return ANYWHERE;
-      out.add(`c${u32(Number(e.slice(1)) + k)}`);
+      ranges.push(shiftRange(rangeOf(e), k));
     } else {
       const [kind, owner, offset] = place(e);
-      out.add(`${kind}${owner}:${k === null || offset === null ? '*' : offset + k}`);
+      others.push(`${kind}${owner}:${k === null || offset === null ? '*' : offset + k}`);
     }
   }
-  return out.size > SIZE_CAP ? ANYWHERE : out;
+  if (!ranges.length) return others.length > SIZE_CAP ? ANYWHERE : new Set(others);
+  return shaped(ranges, others);
 }
 const placesOnly = v => v !== ANYWHERE && v.size > 0 && [...v].every(e => e[0] === 'h' || e[0] === 's');
 // a + b: a place plus a number moves the place, two numbers add, a place of an object or a stack plus what the pass
 // can't know stays in that object or stack, and anything else is anywhere
 function plus(a, b) {
-  const na = numbers(a), nb = numbers(b);
+  const na = numbers(a, SIZE_CAP), nb = numbers(b, SIZE_CAP);
   if (na && nb) {
-    const out = new Set();
-    for (const x of na) for (const y of nb) out.add(`c${u32(x + y)}`);
-    return out.size > SIZE_CAP ? ANYWHERE : out;
+    const ranges = [];
+    for (const x of na) for (const y of nb) ranges.push([u32(x + y), u32(x + y), 0]);
+    return shaped(ranges, []);
   }
   if (nb && nb.length === 1) return moved(a, nb[0]);
   if (na && na.length === 1) return moved(b, na[0]);
+  // two values of numbers only, some of them ranges: each pair of ranges added, stepping by the smaller step
+  const sa = split(a), sb = split(b);
+  if (sa && sb && !sa.others.length && !sb.others.length && sa.ranges.length && sb.ranges.length) {
+    const ranges = [];
+    for (const [l1, h1, s1] of sa.ranges) for (const [l2, h2, s2] of sb.ranges) {
+      const step = Math.min(s1 ? lowBit(s1) : 2 ** 31, s2 ? lowBit(s2) : 2 ** 31);
+      ranges.push(shiftRange([l1, h1 + h2 - l2, step === 2 ** 31 ? 0 : step], l2));
+    }
+    return shaped(ranges, []);
+  }
   if (placesOnly(a) && !placesOnly(b)) return moved(a, null);
   if (placesOnly(b) && !placesOnly(a)) return moved(b, null);
   return ANYWHERE;
 }
 // an operation on numbers only, or anywhere
 function arith(a, b, f) {
-  const na = numbers(a), nb = b === undefined ? [0] : numbers(b);
+  const na = numbers(a, SIZE_CAP), nb = b === undefined ? [0] : numbers(b, SIZE_CAP);
   if (!na || !nb) return ANYWHERE;
-  const out = new Set();
-  for (const x of na) for (const y of nb) out.add(`c${u32(f(x, y))}`);
-  return out.size > SIZE_CAP ? ANYWHERE : out;
+  const ranges = [];
+  for (const x of na) for (const y of nb) { const v = u32(f(x, y)); ranges.push([v, v, 0]); }
+  return ranges.length ? shaped(ranges, []) : NOTHING;
 }
-// a register bounded by a comparison with `k`, unsigned, on the way that keeps `keep(value)` true: a set of numbers
-// filtered, or "anywhere" made the few numbers the way allows, or left as it is
-function bounded(v, k, keep, upTo) {
-  const n = numbers(v);
-  if (n) return new Set(n.filter(keep).map(x => `c${x}`));
-  if (v === ANYWHERE && upTo !== null && upTo < SIZE_CAP) return new Set(Array.from({ length: upTo + 1 }, (_, i) => `c${i}`));
-  return v;
+// numbers shifted left or right by a known amount, as an index scaled to a table's entries is, ranges and all
+function shifted(v, by, left) {
+  const sv = split(v);
+  if (!sv || sv.others.length) return ANYWHERE;
+  if (!sv.ranges.length) return NOTHING;
+  const ranges = [];
+  for (const [lo, hi, step] of sv.ranges) {
+    if (left) {
+      if (hi * 2 ** by > MAX) return arith(v, undefined, x => x << by);
+      ranges.push([lo * 2 ** by, hi * 2 ** by, step ? Math.min(step * 2 ** by, 2 ** 31) : 0]);
+    } else {
+      const l = Math.floor(lo / 2 ** by), h = Math.floor(hi / 2 ** by);
+      ranges.push([l, h, l === h ? 0 : step >= 2 ** by ? step / 2 ** by : 1]);
+    }
+  }
+  return shaped(ranges, []);
+}
+
+// What a comparison tells of a register on each way out of it. Numbers are compared unsigned or signed (two's
+// complement, as the console's conditions read them); a value with anything but numbers tells nothing.
+const SIGNED_MIN = -(2 ** 31), SIGNED_MAX = 2 ** 31 - 1;
+// a value's least and most number, in the order asked for, or null
+function extent(v, signed) {
+  const sv = split(v);
+  if (!sv || sv.others.length || !sv.ranges.length) return null;
+  let lo = Infinity, hi = -Infinity;
+  for (const [l, h] of sv.ranges) {
+    if (!signed) { lo = Math.min(lo, l); hi = Math.max(hi, h); continue; }
+    if (l < 2 ** 31 && h >= 2 ** 31) { lo = SIGNED_MIN; hi = SIGNED_MAX; continue; }
+    lo = Math.min(lo, l | 0);
+    hi = Math.max(hi, h | 0);
+  }
+  return [lo, hi];
+}
+// the unsigned stretches a signed stretch is
+const windowsOf = (lo, hi, signed) => (!signed || lo >= 0 ? [[lo, hi]] : hi < 0 ? [[lo + 2 ** 32, hi + 2 ** 32]] : [[lo + 2 ** 32, MAX], [0, hi]]);
+// a value's numbers kept to lo..hi, its places as they are. "Anywhere" is made the numbers allowed only when none of
+// them is in the work memory, where a place of an object or a stack could be: else it stays as it is
+function clamp(v, lo, hi, signed) {
+  const windows = lo > hi ? [] : windowsOf(lo, hi, signed);
+  if (v === ANYWHERE) {
+    if (!windows.length) return NOTHING;
+    if (windows.some(([, h]) => h >= EWRAM)) return ANYWHERE;
+    return shaped(windows.map(([l, h]) => [l, h, l === h ? 0 : 1]), []);
+  }
+  const { ranges, others } = split(v), kept = [];
+  for (const [l, h, s] of ranges) for (const [wl, wh] of windows) {
+    if (!s) { if (l >= wl && l <= wh) kept.push([l, l, 0]); continue; }
+    const nl = l >= wl ? l : l + Math.ceil((wl - l) / s) * s, nh = h <= wh ? h : h - Math.ceil((h - wh) / s) * s;
+    if (nl <= nh) kept.push([nl, nh, nl === nh ? 0 : s]);
+  }
+  return kept.length ? shaped(kept, others) : new Set(others);
+}
+// a's values on the way where `a <cond> b` holds, from what's known of b, which is only numbers or else tells nothing
+function narrow(a, b, cond, marks = null) {
+  const signed = cond >= 0xA && cond <= 0xD, known = extent(b, signed);
+  if (!known) return a;
+  const [bl, bh] = known, least = signed ? SIGNED_MIN : 0, most = signed ? SIGNED_MAX : MAX;
+  const mark = m => { if (marks && m >= least && m <= most) marks.add(u32(m)); };
+  switch (cond) {
+    case 0x0: mark(bl); mark(bh); return clamp(a, bl, bh, false);
+    case 0x2: case 0xA: mark(bl); return clamp(a, bl, most, signed);
+    case 0x3: case 0xB: mark(bh - 1); return clamp(a, least, bh - 1, signed);
+    case 0x8: case 0xC: mark(bl + 1); return clamp(a, bl + 1, most, signed);
+    case 0x9: case 0xD: mark(bh); return clamp(a, least, bh, signed);
+    default: return a;
+  }
+}
+// a <cond> b is b <swapped cond> a
+const SWAPPED = { 0x0: 0x0, 0x1: 0x1, 0x2: 0x9, 0x3: 0x8, 0x8: 0x3, 0x9: 0x2, 0xA: 0xD, 0xB: 0xC, 0xC: 0xB, 0xD: 0xA };
+// on the two ways out of a comparison of register `reg` with `other` (a number, or register `otherReg`), what each
+// way allows of both
+// `marks`, when given, collects for each register the bounds comparisons set it, for widening (widen)
+function bound(taken, on, reg, other, cond, otherReg = -1, marks = null) {
+  const a = taken[reg], b = other;
+  taken[reg] = narrow(a, b, cond, marks?.[reg]);
+  on[reg] = narrow(a, b, cond ^ 1, marks?.[reg]);
+  if (otherReg < 0 || otherReg === reg || SWAPPED[cond] === undefined) return;
+  taken[otherReg] = narrow(b, a, SWAPPED[cond], marks?.[otherReg]);
+  on[otherReg] = narrow(b, a, SWAPPED[cond] ^ 1, marks?.[otherReg]);
 }
 
 // a function in ARM instructions, by its first words
@@ -361,7 +545,11 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
 
   // what each piece records at each address, kept apart until the end, where two pieces at one address join
   const records = { stores: new Map(), loads: new Map(), swis: new Map(), carriers: new Map() };
+  // while a function's states are widened, what they'd write, call or give back is held, as they're wider than its
+  // loops allow until the guards narrow them, and it's done once, from where its states end
+  let holding = false;
   const note = (kind, pc, id, record) => {
+    if (holding) return;
     let by = records[kind].get(pc);
     if (!by) records[kind].set(pc, by = new Map());
     by.set(id, record);
@@ -382,8 +570,9 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
   let anyStore = unread.length ? ANYWHERE : NOTHING, changed = true, complete = true, firstUnbounded = null;
   const resets = [];
   const cleared = a => resets.some(([from, to]) => a >= from && a < to);
-  const widenAll = reason => { if (anyStore !== ANYWHERE) { anyStore = ANYWHERE; changed = true; if (why.length < 8) why.push(reason); } };
+  const widenAll = reason => { if (holding) return; if (anyStore !== ANYWHERE) { anyStore = ANYWHERE; changed = true; if (why.length < 8) why.push(reason); } };
   const grow = (key, v) => {
+    if (holding) return;
     const before = cells.has(key) ? cells.get(key) : NOTHING, after = join(before, v);
     if (!cells.has(key) || !same(before, after)) { cells.set(key, after); changed = true; }
   };
@@ -398,26 +587,45 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     for (let i = 0; i < 13; i++) start[i] = open ? ANYWHERE : given?.[i] ?? NOTHING;
     start[13] = new Set([`${me}:0`]);
     start[14] = RETURN;
-    const states = new Map([[0, { r: start, stored: new Set() }]]), queue = [0];
+    holding = false;
+    let states = new Map([[0, { r: start, stored: new Set() }]]), into = null, widenedHere = false, current = -1;
+    const queue = [0], grewAt = new Map(), widenedAt = new Map(), marks = Array.from({ length: 16 }, () => new Set());
     const widened = () => ({ r: new Array(16).fill(ANYWHERE), stored: new Set() });
+    // on to `at` with state s: joined into what's there, and past WIDEN_AFTER rounds of growing there, widened; or,
+    // in a sweep, joined into the sweep's own states (`into`)
     const next = (at, s) => {
       if (at < 0 || at >= size) return;
       if (arrivals.has(u.address + at)) s = widened();
-      const had = states.get(at);
-      if (!had) { states.set(at, { r: s.r.slice(), stored: new Set(s.stored) }); queue.push(at); return; }
+      const target = into ?? states, had = target.get(at);
+      if (!had) { target.set(at, { r: s.r.slice(), stored: new Set(s.stored) }); if (!into) queue.push(at); return; }
       let grew = false;
       const r = had.r.map((v, i) => { const j = join(v, s.r[i]); if (!same(v, j)) grew = true; return j; });
       const stored = new Set([...had.stored].filter(k => s.stored.has(k)));
       if (stored.size !== had.stored.size) grew = true;
-      if (grew) { states.set(at, { r, stored }); queue.push(at); }
+      if (!grew) return;
+      // a loop's head, where a jump back arrives
+      if (!into && at <= current) {
+        const rounds = (grewAt.get(at) ?? 0) + 1;
+        grewAt.set(at, rounds);
+        if (rounds > WIDEN_AFTER) {
+          const times = (widenedAt.get(at) ?? 0) + 1;
+          widenedAt.set(at, times);
+          for (let i = 0; i < 16; i++) r[i] = widen(had.r[i], r[i], times === 1 ? marks[i] : NOTHING);
+          widenedHere = true;
+          holding = true;
+        }
+      }
+      target.set(at, { r, stored });
+      if (!into) queue.push(at);
     };
-    for (const a of arrivals) if (a > u.address && a < u.address + size) next(a - u.address, widened());
+    const enter = () => { for (const a of arrivals) if (a > u.address && a < u.address + size) next(a - u.address, widened()); };
+    enter();
 
     // a load of `size` bytes from each place `base` can be, `offset` on
     const load = (s, base, offset, bytes, signed) => {
       if (base === ANYWHERE) return ANYWHERE;
-      const at = moved(base, offset);
-      if (at === ANYWHERE) return ANYWHERE;
+      const at = elements(moved(base, offset));
+      if (at === null) return ANYWHERE;
       let out = NOTHING;
       for (const e of at) {
         let word, low;
@@ -470,10 +678,11 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const store = (s, pc, base, offset, bytes, value) => {
       note('stores', pc, u.id, { base, offset, size: bytes, value });
       const whole = bytes === 4 ? value : ANYWHERE;
-      const at = base === ANYWHERE ? ANYWHERE : moved(base, offset);
+      const at = base === ANYWHERE ? ANYWHERE : elements(moved(base, offset));
       if (at === ANYWHERE) {
         if (firstUnbounded === null) { firstUnbounded = pc; why.push(`the store at ${hex(pc)} writes through a base the pass can't bound`); }
         const before = anyStore;
+        if (holding) return;
         anyStore = join(anyStore, whole);
         if (!same(before, anyStore)) changed = true;
         return;
@@ -502,7 +711,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       if (call === 0x01) {
         const flags = numbers(s.r[0]);
         const asked = flags ? flags.flatMap(f => [...(f & 1 ? [[EWRAM, EWRAM_END]] : []), ...(f & 2 ? [[IWRAM, IWRAM_END - 0x200]] : [])]) : [[EWRAM, EWRAM_END], [IWRAM, IWRAM_END]];
-        for (const range of asked) if (!resets.some(r => r[0] === range[0] && r[1] === range[1])) { resets.push(range); changed = true; }
+        if (!holding) for (const range of asked) if (!resets.some(r => r[0] === range[0] && r[1] === range[1])) { resets.push(range); changed = true; }
       }
       const given = { r0: s.r[0], r1: s.r[1], r2: s.r[2] };
       note('swis', pc, u.id, given);
@@ -546,7 +755,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     // a call to each of `targets`, addresses, with its pieces: those a direct call at `pc` can reach, or every one
     // there for a jump through a value (`direct` false)
     const call = (s, targets, pc, direct) => {
-      if (targets === null) return;
+      if (targets === null || holding) return;
       for (const t of targets) for (const g of pieces(t, direct ? { u, pc } : null)) {
         const had = args.get(g.id) ?? new Array(13).fill(NOTHING);
         const now = had.map((v, i) => join(v, s.r[i]));
@@ -562,7 +771,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       let back = NOTHING;
       for (const c of targets) {
         if (allocators.has(c)) {
-          if (!sites.has(site)) { sites.set(site, { ...allocators.get(c), callee: c }); changed = true; }
+          if (!sites.has(site) && !holding) { sites.set(site, { ...allocators.get(c), callee: c }); changed = true; }
           back = join(back, new Set([`h${site}:0`]));
           continue;
         }
@@ -577,6 +786,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       return { r, stored: s.stored };
     };
     const giveBack = v => {
+      if (holding) return;
       const before = returns.has(u.id) ? returns.get(u.id) : NOTHING, after = join(before, v);
       if (!returns.has(u.id) || !same(before, after)) { returns.set(u.id, after); changed = true; }
     };
@@ -630,7 +840,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       const lo = op & 7, mid = op >> 3 & 7;
       if ((op & 0xE000) === 0x0000 && (op & 0x1800) !== 0x1800) {
         const kind = op >> 11 & 3, by = op >> 6 & 31;
-        r[lo] = arith(r[mid], undefined, x => (kind === 0 ? x << by : kind === 1 ? (by ? x >>> by : 0) : (by ? x >> by : x >> 31)));
+        r[lo] = kind === 0 ? shifted(r[mid], by, true) : kind === 1 && by ? shifted(r[mid], by, false)
+          : arith(r[mid], undefined, x => (kind === 1 ? 0 : by ? x >> by : x >> 31));
       } else if ((op & 0xF800) === 0x1800) {
         const v = op & 0x0400 ? number(op >> 6 & 7) : r[op >> 6 & 7], nv = numbers(v);
         r[lo] = op & 0x0200 ? (nv && nv.length === 1 ? moved(r[mid], -nv[0]) : arith(r[mid], v, (x, y) => x - y)) : plus(r[mid], v);
@@ -698,7 +909,9 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       } else if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) {
         const target = at + 4 + ((op & 0xFF) << 24 >> 23), cond = op >> 8 & 0xF, prev = at >= 2 && !arrivals.has(pc) ? u16(at - 2) : 0;
         const taken = { r: r.slice(), stored: new Set(s.stored) }, on = { r: r.slice(), stored: new Set(s.stored) };
-        if ((prev & 0xF800) === 0x2800) bound(taken.r, on.r, prev >> 8 & 7, prev & 0xFF, cond);
+        if ((prev & 0xF800) === 0x2800) bound(taken.r, on.r, prev >> 8 & 7, number(prev & 0xFF), cond, -1, marks);
+        else if ((prev & 0xFFC0) === 0x4280) bound(taken.r, on.r, prev & 7, taken.r[prev >> 3 & 7], cond, prev >> 3 & 7, marks);
+        else if ((prev & 0xFF00) === 0x4500 && ((prev & 7) | (prev >> 4 & 8)) < 13 && (prev >> 3 & 15) < 13) bound(taken.r, on.r, (prev & 7) | (prev >> 4 & 8), taken.r[prev >> 3 & 15], cond, prev >> 3 & 15, marks);
         next(target, taken);
         next(at + 2, on);
         return;
@@ -720,7 +933,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       // a conditional instruction: on with what it leaves where it ran, and with nothing changed where it didn't
       const conditional = cond !== 0xE, ran = { r: s.r.slice(), stored: new Set(s.stored) }, skipped = { r: s.r.slice(), stored: new Set(s.stored) };
       const prev = at >= 4 && !arrivals.has(pc) ? (b[at - 4] | b[at - 3] << 8 | b[at - 2] << 16 | b[at - 1] << 24) >>> 0 : 0;
-      if (conditional && (prev & 0x0FF00000) === 0x03500000) bound(ran.r, skipped.r, prev >> 16 & 15, armImmediate(prev), cond);
+      if (conditional && (prev & 0x0FF00000) === 0x03500000) bound(ran.r, skipped.r, prev >> 16 & 15, number(armImmediate(prev)), cond, -1, marks);
+      else if (conditional && (prev & 0x0FF00FF0) === 0x01500000 && (prev >> 16 & 15) < 13 && (prev & 15) < 13) bound(ran.r, skipped.r, prev >> 16 & 15, ran.r[prev & 15], cond, prev & 15, marks);
       const r = ran.r, rd = op >> 12 & 15, rn = op >> 16 & 15;
       const reg = i => (i === 15 ? number(pc + 8) : r[i]);
       const go = () => { next(at + 4, ran); if (conditional) next(at + 4, skipped); };
@@ -848,12 +1062,37 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       if (conditional) next(at + 4, skipped);
     };
 
+    const stepAt = (at, state) => {
+      current = at;
+      const s = { r: state.r.slice(), stored: new Set(state.stored) };
+      if (!holding && !u.arm && u.pools.has(at)) doubt(u.id);
+      if (u.arm) { if (at % 4 === 0 && at + 4 <= size) armStep(at, s); } else if (at + 2 <= size) thumbStep(at, s);
+    };
     while (queue.length) {
       if (Date.now() - began > seconds * 1000) { complete = false; return; }
-      const at = queue.pop(), s = { r: states.get(at).r.slice(), stored: new Set(states.get(at).stored) };
-      if (!u.arm && u.pools.has(at)) doubt(u.id);
-      if (u.arm) { if (at % 4 === 0 && at + 4 <= size) armStep(at, s); } else if (at + 2 <= size) thumbStep(at, s);
+      const at = queue.pop();
+      stepAt(at, states.get(at));
     }
+    if (!widenedHere) return;
+    // narrowing: each state worked out again from those before it, without the widening, a few times over, each as
+    // sound as the last; then what the states write, call and give back, done once
+    const unchanged = (a, b) => a.size === b.size && [...a].every(([at, s]) => {
+      const t = b.get(at);
+      return t && s.r.every((v, i) => same(v, t.r[i])) && s.stored.size === t.stored.size && [...s.stored].every(k => t.stored.has(k));
+    });
+    for (let sweep = 0; sweep < NARROW; sweep++) {
+      if (Date.now() - began > seconds * 1000) { complete = false; return; }
+      into = new Map([[0, { r: start.slice(), stored: new Set() }]]);
+      enter();
+      for (const [at, state] of states) stepAt(at, state);
+      const done = unchanged(into, states);
+      states = into;
+      if (done) break;
+    }
+    holding = false;
+    into = new Map();
+    for (const [at, state] of states) stepAt(at, state);
+    into = null;
   };
 
   // each word in a function's middle, weighed against what the carriers can hold
@@ -863,7 +1102,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const anyCarrier = carriers.find(([, c]) => c.value === ANYWHERE && !c.local);
     for (const [at, to] of candidates) {
       let verdict = 'data', because;
-      const by = carriers.find(([, c]) => (c.local ? c.local.has(to) : c.value !== ANYWHERE && (c.value.has(`c${to}`) || c.value.has(`c${to | 1}`))));
+      const by = carriers.find(([, c]) => (c.local ? c.local.has(to) : c.value !== ANYWHERE && (holds(c.value, to) || holds(c.value, to | 1))));
       if (unread.length) { verdict = 'open'; because = `code the pass can't read, such as ${hex(unread[0])}, may load it and jump to it`; } else if (by) { verdict = 'target'; because = `the jump at ${hex(by[0])} can carry it to the program counter`; } else if (anyCarrier) { verdict = 'open'; because = `the jump at ${hex(anyCarrier[0])} can carry anything to the program counter`; } else because = 'no code the pass reads can carry it to the program counter';
       words.push({ at, to, verdict, why: because });
     }
@@ -901,7 +1140,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
   const stores = joined('stores', access), loads = joined('loads', access), swis = joined('swis', calls);
   let boundedCount = 0, unbounded = 0;
   for (const st of stores.values()) {
-    if (st.base !== ANYWHERE && moved(st.base, st.offset) !== ANYWHERE) boundedCount++;
+    if (st.base !== ANYWHERE && elements(moved(st.base, st.offset)) !== null) boundedCount++;
     else unbounded++;
   }
   return { stores, loads, swis, sites, words, unread, bounded: boundedCount, unbounded, complete, why, passes, rounds, seconds: (Date.now() - began) / 1000, everywhere: anyStore === ANYWHERE };
@@ -928,15 +1167,4 @@ function tableTargets(offsets, from, u) {
   return out;
 }
 
-// on the two ways out of an unsigned comparison of register `reg` with `k`, the numbers each way allows
-function bound(taken, on, reg, k, cond) {
-  const le = v => bounded(v, k, x => x <= k, k), gt = v => bounded(v, k, x => x > k, null);
-  const lt = v => bounded(v, k, x => x < k, k - 1), ge = v => bounded(v, k, x => x >= k, null);
-  if (cond === 0x8) { taken[reg] = gt(taken[reg]); on[reg] = le(on[reg]); }
-  else if (cond === 0x9) { taken[reg] = le(taken[reg]); on[reg] = gt(on[reg]); }
-  else if (cond === 0x2) { taken[reg] = ge(taken[reg]); on[reg] = lt(on[reg]); }
-  else if (cond === 0x3) { taken[reg] = lt(taken[reg]); on[reg] = ge(on[reg]); }
-  else if (cond === 0x0) { const n = numbers(taken[reg]); taken[reg] = n ? new Set(n.filter(x => x === k).map(x => `c${x}`)) : number(k); }
-}
-
-export { ANYWHERE, numbers, moved };
+export { ANYWHERE, numbers, moved, elements };
