@@ -49,8 +49,8 @@ export async function ps2Program(path) {
   return program;
 }
 
-// an ELF file's sections: { name, type, flags, address, offset, size }
-function sectionsOf(program) {
+/** An ELF file's sections: { name, type, flags, address, offset, size }. */
+export function sectionsOf(program) {
   const sections = [], count = program.readUInt16LE(48), at = program.readUInt32LE(32);
   if (!at || at + count * 40 > program.length) return sections;
   const names = program.readUInt16LE(50) < count ? program.readUInt32LE(at + program.readUInt16LE(50) * 40 + 16) : 0;
