@@ -23,14 +23,14 @@
 // and `--decided` works out from the program the disc boots alone (ps2/decided.mjs). `--never-written` is the Game Boy
 // Advance's alone so far.
 
-import { readCodeMap, readOriginal, readRecordings, cartridgeOf, hex, proofVersions } from './lib/proof-files.mjs';
+import { readCodeMap, readOriginal, readRecordings, cartridgeOf, hex, prepareCopy, proofVersions } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
 import { decidedMipsBranches, decidedMipsWhy } from './ps2/decided.mjs';
-import { bootProgram, programReader } from './ps2/ledger.mjs';
+import { loadedCopy } from './ps2/ledger.mjs';
 import { neverWrittenBranch, neverWrittenWhy, writesOf } from './lib/never-written.mjs';
 import { pointsTo } from './lib/points-to.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
@@ -59,6 +59,7 @@ export async function run(args) {
   if (!readPlayed(game).places) throw new Error(`games/${game}/proof/played.json isn't there yet: npm run dp -- prove ${game} writes it.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
+  await prepareCopy(copy.path, original.console);
   if (args.includes('--decided')) return decided(game, { original, codeMap, copy, write: args.includes('--write') });
   if (args.includes('--sort')) return sort(game, { original, codeMap, copy, all, atOnce: Number(flagged('--at-once') ?? 0) });
   if (flagged('--why') !== null) return why(game, { original, codeMap, copy, address: flagged('--why'), asked: flagged('--in') });
@@ -335,7 +336,7 @@ async function sort(game, { original, codeMap, copy, all, atOnce }) {
 
 // the PlayStation 2's: from the program the disc boots, every word of whose segments may point into its code
 function decidedPs2(path, codeMap) {
-  const program = bootProgram(path), read = programReader(program), words = [];
+  const { program, read } = loadedCopy(path), words = [];
   const segments = program.readUInt16LE(44);
   for (let i = 0; i < segments; i++) {
     const o = program.readUInt32LE(28) + i * 32;

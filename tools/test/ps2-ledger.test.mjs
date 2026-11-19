@@ -10,7 +10,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { NOT_TAKEN, RAN, TAKEN, cellsOf, finderOf, layoutOf, playedIn } from '../lib/played.mjs';
-import { branchKind, discCells, mipsInstructionsOf, programReader, vuBranches, vuInstructionsOf } from '../ps2/ledger.mjs';
+import { branchKind, loadCopy, mipsInstructionsOf, programReader, vuBranches, vuInstructionsOf } from '../ps2/ledger.mjs';
+import { cartridgeOf, prepareCopy } from '../lib/proof-files.mjs';
 import { decidedMipsBranches } from '../ps2/decided.mjs';
 import { testedValues } from '../untouched.mjs';
 import { LOAD_AT, VU1_PROGRAM, madeUpPs2 } from './made-up-ps2.mjs';
@@ -62,7 +63,7 @@ test('a function\'s instructions are followed through each branch, its delay slo
   assert.deepEqual([...vu.branches], [24 * 8], 'its one branch, the loop over the corners');
 });
 
-test('the program\'s bytes are where it runs, and a disc\'s sectors that hold anything are its content', () => {
+test('the program\'s bytes are where it runs, and a disc\'s sectors that hold anything are its content', async () => {
   const { elf } = madeUpPs2();
   const read = programReader(elf);
   assert.equal(Buffer.from(read(LOAD_AT, 4)).readUInt32LE(), elf.readUInt32LE(elf.readUInt32LE(elf.readUInt32LE(28) + 4)), 'the first word of the program where it\'s loaded');
@@ -73,13 +74,17 @@ test('the program\'s bytes are where it runs, and a disc\'s sectors that hold an
     const { disc, sectors } = madeUpPs2Disc({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'ZEROS.BIN': Buffer.alloc(2 * SECTOR), 'DATA.BIN': Buffer.alloc(SECTOR, 1).fill(2, 10) });
     const path = join(work, 'made-up.iso');
     writeFileSync(path, disc);
-    const { sectors: count, holds } = discCells(path);
+    const { cells: { sectors: count, holds }, program } = await loadCopy(path);
+    assert.deepEqual(Buffer.from(program), elf, 'the program its SYSTEM.CNF boots');
     const has = sector => (holds[sector >> 3] >> (sector & 7) & 1) === 1;
     assert.equal(count, disc.length / SECTOR);
     assert.ok(has(16) && has(sectors['SYSTEM.CNF'].at) && has(sectors['DATA.BIN'].at));
     assert.ok(!has(0) && !has(sectors['ZEROS.BIN'].at) && !has(sectors['ZEROS.BIN'].at + 1), 'a sector of one value throughout holds nothing');
-    assert.equal(cellsOf({ console: 'ps2', functions: [] }, Object.assign(() => new Uint8Array(0), { disc: path })), count);
-    assert.equal(discCells(join(work, 'made-up.iso')), discCells(path), 'worked out once for a disc');
+    await prepareCopy(path, 'ps2');
+    const cartridge = cartridgeOf(path, 'ps2');
+    assert.equal(cellsOf({ console: 'ps2', functions: [] }, cartridge), count);
+    assert.deepEqual(cartridge(LOAD_AT, 4), read(LOAD_AT, 4), 'and its bytes where the program runs');
+    assert.equal(await loadCopy(join(work, 'made-up.iso')), await loadCopy(path), 'read once for a disc');
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

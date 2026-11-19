@@ -25,7 +25,7 @@ import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { REPO, LOCAL, resultFolder } from './lib/paths.mjs';
-import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, watchesOf, cartridgeOf } from './lib/proof-files.mjs';
+import { readOriginal, readRecordings, readCodeMap, readProgress, writeProgress, readParts, watchesOf, cartridgeOf, prepareCopy } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { originalPlay, namesNeverInPlay, readRecording, startSavesOf } from './lib/recording.mjs';
 import { serveRepository } from './lib/server.mjs';
@@ -110,6 +110,7 @@ export async function run(args) {
   if (!recordings.length) throw new Error(`games/${game}/proof/recordings/ has no recordings yet: make one with npm run dp -- play ${game} --record <name>.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`The proof uses ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
+  await prepareCopy(copy.path, original.console);
   const codeMap = readCodeMap(game);
   if (codeMap && codeMap.original !== original.sha1) throw new Error(`games/${game}/proof/code-map.json is for another copy than original.json names.`);
   reference.ensureOriginal(console.log);
@@ -312,6 +313,8 @@ async function laneFor({ game, quick, paced, asked, askedState, before }) {
   const main = quick ? null : mainProof(game);
   const kinds = kindsOf(original, `games/${versionOf(game).game}/proof/original.json`);
   const reference = await referenceOf(original), copy = copyWith(original.sha1).path, codeMap = readCodeMap(game), parts = readParts(game);
+  // what a disc's console needs read before its bytes are given at once (lib/proof-files.mjs)
+  await prepareCopy(copy, original.console);
   // the work memory a game that keeps it at the console's addresses asks to have compared (lib/memory.mjs)
   const memory = workMemoryOf(original, `games/${versionOf(game).game}/proof/original.json`);
   if (memory && reference.seesMemory !== true) throw new Error(`${reference.machine.name}'s emulator can't have its work memory compared yet, which this game asks for (original.json).`);

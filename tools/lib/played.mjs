@@ -43,7 +43,7 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
-import { SECTOR, discCells, mipsInstructionsOf, processorOf } from '../ps2/ledger.mjs';
+import { SECTOR, loadedCopy, mipsInstructionsOf, processorOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
 export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
@@ -71,7 +71,7 @@ export const followsContent = codeMap => !isNes(codeMap);
 // the cells of the cartridge's or disc's data, and those that hold anything: { count, holds }
 function cellsHeld(codeMap, cartridge) {
   if (isPs2(codeMap)) {
-    const disc = cartridge.disc ? discCells(cartridge.disc) : null;
+    const disc = cartridge.disc ? loadedCopy(cartridge.disc).cells : null;
     return disc ? { count: disc.sectors, holds: disc.holds } : { count: 0, holds: new Uint8Array(0) };
   }
   const rom = cartridge(CARTRIDGE, 0x02000000);

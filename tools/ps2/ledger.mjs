@@ -1,14 +1,16 @@
 // What gameplay proven needs to know of a PlayStation 2 game (lib/played.mjs): where the instructions of its functions
 // are and which are conditional branches, on the EE and the IOP (MIPS) and on the vector units (pairs of an upper and a
 // lower instruction), by the same rules as the tools' change to Play! that says what ran (libretro/play.patch); the
-// bytes of the program its disc boots, where it runs; and the disc's sectors that hold anything.
+// bytes of the program its disc boots, where it runs; and the disc's sectors that hold anything, read once a copy
+// (loadCopy) from whatever file its disc is in.
 //
 // A branch whose way the code alone decides, as `beq $zero, $zero`, which is how `b` is written, or `bgez $zero`, is
 // no conditional branch: it always goes, and only the conditional ones count each of their two ways.
 
-import { closeSync, openSync, readFileSync, readSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { extname } from 'node:path';
-import { bootFileSync, discLayout, readDiscFileSync } from '../lib/read-copy.mjs';
+import { openDisc } from '../lib/read-copy.mjs';
+import { ps2Program } from './functions.mjs';
 
 /** What kind of conditional branch an EE or IOP instruction is: 0 none, 1 one, 2 a likely one, whose delay slot runs
  *  only when it's taken. As play.patch's DreamportsBranchKind says. */
@@ -135,14 +137,6 @@ export function vuInstructionsOf(bytes, seeds = [], never = new Map()) {
   return { instructions, branches };
 }
 
-/** The program a PlayStation 2 copy boots: an ELF file as it is, or the one its disc's SYSTEM.CNF names. */
-export function bootProgram(path) {
-  if (extname(path).toLowerCase() === '.elf') return readFileSync(path);
-  const name = bootFileSync(path), program = name && readDiscFileSync(path, name);
-  if (!program) throw new Error(`The tools couldn't find the program ${path} boots: its SYSTEM.CNF names ${name ?? 'none'}.`);
-  return program;
-}
-
 /** What a program holds where it runs: `read(address, count)` gives its bytes there, from its segments as they're
  *  loaded, zeros past what the file holds of one, and nothing outside every segment. */
 export function programReader(program) {
@@ -166,33 +160,51 @@ export function programReader(program) {
 /** How many bytes of the disc's data a sector is, the disc's content counted a sector at a time. */
 export const SECTOR = 2048;
 
-// what's been worked out of each disc, by its path, size and time, as reading a disc takes a few seconds
-const known = new Map();
+// what's been read of each copy, by its path, size and time, as reading a disc takes a few seconds
+const loaded = new Map();
+const keyOf = path => {
+  const { size, mtimeMs } = statSync(path);
+  return `${path} ${size} ${mtimeMs}`;
+};
 
-/** The disc's sectors that hold anything, as a set of bits, one a sector, those whose 2048 bytes are all the same left
- *  out, and how many sectors it has: { sectors, holds }, or null for a copy that's no disc, such as an ELF file. */
-export function discCells(path) {
-  const layout = discLayout(path);
-  if (!layout) return null;
-  const { mtimeMs, size } = statSync(layout.file), key = `${layout.file} ${size} ${mtimeMs}`;
-  if (known.has(key)) return known.get(key);
-  const holds = new Uint8Array(Math.ceil(layout.sectors / 8)), fd = openSync(layout.file, 'r');
-  const chunk = 512, buffer = Buffer.alloc(chunk * layout.sector);
-  try {
-    for (let first = 0; first < layout.sectors; first += chunk) {
-      const count = Math.min(chunk, layout.sectors - first);
-      readSync(fd, buffer, 0, count * layout.sector, first * layout.sector);
-      for (let n = 0; n < count; n++) {
-        const from = n * layout.sector + layout.data, value = buffer[from];
-        let same = true;
-        for (let at = from + 1; at < from + SECTOR; at++) if (buffer[at] !== value) { same = false; break; }
-        if (!same) holds[(first + n) >> 3] |= 1 << ((first + n) & 7);
+/**
+ * Reads what gameplay proven needs of a PlayStation 2 copy, once, from whatever file the disc is in (lib/read-copy.mjs):
+ * the program it boots, or the ELF file it is, and its disc's sectors that hold anything, as a set of bits, one a
+ * sector, those whose 2048 bytes are all the same left out. Resolves to { program, read, cells }, `read(address,
+ * count)` being programReader's and `cells` { sectors, holds }, or null for a copy that's no disc. Once it has,
+ * loadedCopy gives it at once.
+ */
+export async function loadCopy(path) {
+  const key = keyOf(path);
+  if (loaded.has(key)) return loaded.get(key);
+  const program = await ps2Program(path);
+  let cells = null;
+  const disc = extname(path).toLowerCase() === '.elf' ? null : await openDisc(path);
+  if (disc) {
+    try {
+      const holds = new Uint8Array(Math.ceil(disc.sectors / 8)), chunk = 256;
+      for (let first = 0; first < disc.sectors; first += chunk) {
+        const count = Math.min(chunk, disc.sectors - first), data = await disc.data(first, count);
+        for (let n = 0; n < count; n++) {
+          const from = n * SECTOR, value = data[from];
+          for (let at = from + 1; at < from + SECTOR; at++) {
+            if (data[at] !== value) { holds[(first + n) >> 3] |= 1 << ((first + n) & 7); break; }
+          }
+        }
       }
+      cells = { sectors: disc.sectors, holds };
+    } finally {
+      await disc.close();
     }
-  } finally {
-    closeSync(fd);
   }
-  const found = { sectors: layout.sectors, holds };
-  known.set(key, found);
+  const found = { program, read: programReader(program), cells };
+  loaded.set(key, found);
+  return found;
+}
+
+/** What loadCopy has read of a copy already, at once: it says so when nothing has. */
+export function loadedCopy(path) {
+  const found = loaded.get(keyOf(path));
+  if (!found) throw new Error(`The tools haven't read the PlayStation 2 copy at ${path} yet: lib/proof-files.mjs's prepareCopy reads it first.`);
   return found;
 }
