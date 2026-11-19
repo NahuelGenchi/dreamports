@@ -20,6 +20,7 @@
     "test:match": "node tools/test/match.mjs",
     "test:rebuild": "node tools/test/rebuild.mjs",
     "test:nes-twin": "node tools/test/nes-twin.mjs",
+    "test:ps1-call": "node tools/test/ps1-call.mjs",
     "test:same-memory": "node tools/test/same-memory.mjs",
     "test:function-tasks": "node tools/test/function-tasks.mjs",
     "test:libraries": "node tools/test/libraries.mjs",
