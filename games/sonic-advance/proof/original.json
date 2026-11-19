@@ -8,7 +8,6 @@
     "name": "agbcc",
     "flags": ["-mthumb-interwork", "-O2", "-fprologue-bugfix"],
     "stretches": [
-      { "from": "080976BC", "to": "08098C53", "name": "old_agbcc", "flags": ["-mthumb-interwork", "-O2"] },
       { "from": "08098C54", "to": "080997D7", "name": "agbcc", "flags": ["-mthumb-interwork", "-O1", "-fprologue-bugfix"] }
     ]
   },

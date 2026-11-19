@@ -215,12 +215,6 @@ void SoftReset(u32 flags) {
   console_start();
 }
 
-// ---------------------------------------------------------------------------------------------------------------
-// The sound library's assembly, which is the kit's work: its mixer, SoundMain, and what it runs from the V-blank,
-// m4aSoundVSync. Not written yet: the sound is silent, and what the mixer keeps in the work memory isn't kept.
-void SoundMain(void) {}
-void m4aSoundVSync(void) {}
-
 /** The console from power-on: the link cable's registers as its BIOS leaves them, and the lines' callbacks. */
 void console_power_on(void) {
   console_io[IO_RCNT >> 1] = 0x8000;

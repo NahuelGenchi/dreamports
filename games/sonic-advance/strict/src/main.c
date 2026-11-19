@@ -22,16 +22,15 @@
 #include "logos.h"
 #include "malloc.h"
 #include "flash.h"
-#include "m4a_internal.h"
 #include "save.h"
 #include "spotlight.h"
 #include "sprite.h"
 #include "task.h"
+// the shared sound engine the trial takes from the kit (kit/gba/c/lib/m4a/, proof/libraries.json)
+#include "m4a_internal.h"
 
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
-void MP2K_event_null(void);
-void SoundMainBTM(void *at);
 
 // the console's start and what the page gives it each frame (hardware.c)
 void console_power_on(void);
