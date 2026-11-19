@@ -52,7 +52,10 @@ u32 console_vcount_at(void) {
 
 u16 console_read16(u32 at) {
   if (at == IO_DISPSTAT) {
-    u16 status = (console_in_vblank ? STAT_VBLANK : 0) | ((gba_io[IO_DISPSTAT >> 1] >> 8) == console_line ? STAT_VCOUNT : 0);
+    // in the V-blank as the frame's time says, or as the console was when the function check gives its registers in
+    // console_io, which play never writes there, the display's being the kit's
+    u16 status = (console_in_vblank || (console_io[IO_DISPSTAT >> 1] & STAT_VBLANK) ? STAT_VBLANK : 0)
+      | ((gba_io[IO_DISPSTAT >> 1] >> 8) == console_line ? STAT_VCOUNT : 0);
     // the V-blank's end comes as soon as the game looks for it: the frame's drawing waits for the game's next step
     console_in_vblank = 0;
     return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
@@ -76,7 +79,7 @@ void console_write16(u32 at, u16 value) {
 // lines run those (console_vblank, console_hblank) and the sound's never run here, as the sound is the kit's. One to
 // start now runs at once, each address going up, down or nowhere as its control says, and is then off unless it
 // repeats. A value of the Dreamport's own, as a fill's is, is read where it is, as the console reads its stack.
-struct console_dma { u32 src, dest, count; u16 control; const u8 *own; };
+struct console_dma { u32 src, dest, count; u16 control; const u8 *own; u8 *into; };
 static struct console_dma dma[4];
 
 static void dma_run(struct console_dma *d) {
@@ -86,8 +89,15 @@ static void dma_run(struct console_dma *d) {
   // a count of none is the most the channel takes
   if (count == 0) count = d == &dma[3] ? 0x10000 : 0x4000;
   for (i = 0; i < count; i++) {
-    const u8 *from = d->own ? d->own + (int)i * from_step : console_at(d->src + i * from_step, 0);
-    u8 *to = console_at(d->dest + i * to_step, 1);
+    u32 at = d->src + i * from_step;
+    const u8 *from = d->own ? d->own + (int)i * from_step : console_at(at, 0);
+    u8 *to = d->into ? d->into + (int)i * to_step : console_at(d->dest + i * to_step, 1);
+    // past the cartridge's end the console reads what its bus is left holding: each halfword the address's own, halved
+    u8 bus[4];
+    if (from == NULL && at >> 24 >= 0x08 && at >> 24 <= 0x0D) {
+      for (b = 0; b < wide; b += 2) { bus[b] = (u8)((at + b) >> 1); bus[b + 1] = (u8)((at + b) >> 9); }
+      from = bus;
+    }
     if (from != NULL && to != NULL) for (b = 0; b < wide; b++) to[b] = from[b];
   }
   // a repeating channel goes on from where it got to, its destination back where it started if its control says so
@@ -96,7 +106,7 @@ static void dma_run(struct console_dma *d) {
   if (!(d->control & 0x0200) || !(d->control >> 12 & 3)) d->control &= ~0x8000;
 }
 
-static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u32 control) {
+static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 control) {
   struct console_dma *d = &dma[n & 3];
   u16 was = d->control;
   u32 wide;
@@ -105,15 +115,26 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u32 control) {
   wide = d->control >> 10 & 1 ? 4 : 2;
   d->src = src & ~(wide - 1);
   d->own = own;
+  d->into = into;
   d->dest = dest & ~(wide - 1);
   d->count = control & (n == 3 ? 0xFFFF : 0x3FFF);
   if (!(d->control >> 12 & 3)) dma_run(d);
 }
 
-void console_dma(u32 n, u32 src, u32 dest, u32 control) { dma_start(n, src, NULL, dest, control); }
-void console_dma_own(u32 n, const void *src, u32 dest, u32 control) { dma_start(n, 0, (const u8 *)src, dest, control); }
-void console_dma3(u32 src, u32 dest, u32 control) { dma_start(3, src, NULL, dest, control); }
-void console_dma3_own(const void *src, u32 dest, u32 control) { dma_start(3, 0, (const u8 *)src, dest, control); }
+void console_dma(u32 n, u32 src, u32 dest, u32 control) { dma_start(n, src, NULL, dest, NULL, control); }
+void console_dma_own(u32 n, const void *src, u32 dest, u32 control) { dma_start(n, 0, (const u8 *)src, dest, NULL, control); }
+void console_dma3(u32 src, u32 dest, u32 control) { dma_start(3, src, NULL, dest, NULL, control); }
+void console_dma3_own(const void *src, u32 dest, u32 control) { dma_start(3, 0, (const u8 *)src, dest, NULL, control); }
+/** DMA channel 3 copying into a value of the Dreamport's own, as a twin's local is where the console's function has
+ *  its stack: the channel starts, or doesn't, as the console's does, and what it copies lands there. */
+void console_dma3_into(u32 src, void *dest, u32 control) { dma_start(3, src, NULL, 0, (u8 *)dest, control); }
+
+/** A halfword stored at an address of the console's, as its processor stores one: at the address with its lowest bit
+ *  dropped, in whichever memory is there, and nowhere for the cartridge. */
+void console_store16(u32 at, u16 value) {
+  u8 *to = console_at(at & ~1u, 1);
+  if (to != NULL) { to[0] = (u8)value; to[1] = (u8)(value >> 8); }
+}
 void console_dma_stop(u32 n) { dma[n & 3].control &= ~(0x3000 | 0x0800 | 0x0200 | 0x8000); }
 
 // the channels waiting for this moment: 1 the V-blank, 2 a line's H-blank
