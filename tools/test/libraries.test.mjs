@@ -64,22 +64,57 @@ test('a library is named by its console, or c for kit/c/lib/, and nothing else',
 
 test('a console\'s map has a block for each library and a cell for each function, coloured by where it stands', async () => {
   const { sharedMap, sharedText, STATES } = await import('../../src/lib/shared-map.mjs');
-  const cells = states => states.map((state, i) => ({ name: `F${i}`, size: 10, state }));
+  const cells = (states, size = 10) => states.map((state, i) => ({ name: `F${i}`, size, state }));
+  const library = (id, states) => {
+    const made = cells(states), proven = made.filter(cell => cell.state === 'bytes' || cell.state === 'memory');
+    return { id, functions: made.length, proven: proven.length, bytes: made.length * 10, provenBytes: proven.length * 10, versions: ['a/c'], cells: made };
+  };
   const console = {
     id: 'gba', name: 'Game Boy Advance', functions: 6, bytes: 60, proven: 3, provenBytes: 30, versions: 2, games: 2,
-    libraries: [
-      { id: 'gba/sound', functions: 4, proven: 2, bytes: 40, provenBytes: 20, versions: ['a/c', 'b/c'], cells: cells(['bytes', 'memory', 'written', 'unwritten']) },
-      { id: 'gba/save', functions: 2, proven: 1, bytes: 20, provenBytes: 10, versions: ['a/c'], cells: cells(['bytes', 'unwritten']) },
-    ],
+    libraries: [library('gba/sound', ['bytes', 'memory', 'written', 'unwritten']), library('gba/save', ['bytes', 'unwritten'])],
   };
   const { svg, alt } = sharedMap(console);
   assert.equal(alt, 'Game Boy Advance: 50% of its known shared code proven, 30 of 60 bytes and 3 of 6 functions, in 2 libraries, taken by 2 games.');
   assert.equal(sharedText(console), alt.slice(0, -1));
-  for (const { colour } of Object.values(STATES)) assert.ok(svg.includes(`fill="${colour}" d="`), `a path of ${colour}`);
-  // one square for each function: four sides each, in the paths of the four colours
-  const squares = [...svg.matchAll(/<path fill="[^"]+" d="([^"]+)"/g)].reduce((sum, [, d]) => sum + (d.match(/M/g) ?? []).length, 0);
-  assert.equal(squares, 6);
-  assert.ok(svg.includes('gba/sound 2/4') && svg.includes('gba/save 1/2'));
+  // one square for each function, in a path of its state's class
+  const squares = state => (new RegExp(`<path class="${state}" d="([^"]*)"`).exec(svg)?.[1].match(/M/g) ?? []).length;
+  assert.deepEqual(Object.keys(STATES).map(squares), [2, 1, 1, 2]);
+  // each library by its own name, with how many of its functions are written, and a bar of what's proven
+  assert.ok(svg.includes('>sound</text>') && svg.includes('>3/4 written</text>') && svg.includes('>save</text>') && svg.includes('>1/2 written</text>'));
+  assert.ok(!svg.includes('gba/sound</text>'));
+  assert.equal((svg.match(/<rect class="track"/g) ?? []).length, 2);
+  // the reader's theme: dark, and light where the reader asks for it, each state's colour in both
+  assert.match(svg, /@media \(prefers-color-scheme:light\)\{/);
+  for (const { dark, light } of Object.values(STATES)) assert.ok(svg.includes(dark) && svg.includes(light));
+});
+
+test('a map\'s labels are always whole, and its cells on one grid, at any width', async () => {
+  const { sharedMap } = await import('../../src/lib/shared-map.mjs');
+  const library = (id, size, states) => ({ id, functions: size, proven: 0, bytes: size * 20, provenBytes: 0, versions: [], cells: [...Array(size)].map((_, i) => ({ name: `F${i}`, size: 20, state: states[i % states.length] })) });
+  const console = {
+    id: 'gba', name: 'Game Boy Advance', functions: 0, bytes: 0, proven: 0, provenBytes: 0, versions: 0, games: 0,
+    libraries: [library('gba/a-long-library-name', 140, ['bytes', 'written']), library('gba/x', 3, ['unwritten']), library('gba/medium', 30, ['memory']), library('gba/tiny', 1, ['written'])],
+  };
+  for (const width of [480, 390, 320]) {
+    const { svg } = sharedMap(console, { width });
+    const blocks = [...svg.matchAll(/<rect class="block" x="([\d.]+)" y="([\d.]+)" width="([\d.]+)"/g)].map(([, x, y, w]) => ({ x: +x, y: +y, w: +w }));
+    assert.equal(blocks.length, 4);
+    for (const block of blocks) assert.ok(block.x >= 0 && block.x + block.w <= width, `a block inside ${width} pixels`);
+    // a label is no wider than its block, at the width the map measures text by
+    const blockAt = (x, y) => blocks.find(each => x >= each.x && x <= each.x + each.w && y >= each.y && y <= each.y + 40);
+    for (const [, x, y, rest, text] of svg.matchAll(/<text class="(?:text|dim)" x="([\d.]+)" y="([\d.]+)" font-size="(?:1[01]|22)"([^>]*)>([^<]+)<\/text>/g)) {
+      const wide = text.length * 11 * 0.62, [from, to] = /text-anchor="end"/.test(rest) ? [+x - wide, +x] : [+x, +x + wide];
+      const block = blockAt(+x, +y) ?? { x: 0, w: width };
+      assert.ok(from >= block.x && to <= block.x + block.w, `"${text}" fits ${block.w === width ? 'the map' : 'its block'} at ${width} pixels`);
+    }
+    // every cell on one grid, across and down
+    const corners = [...svg.matchAll(/M([\d.]+) ([\d.]+)h/g)].map(([, x, y]) => [+x % 10, +y % 10]);
+    assert.equal(new Set(corners.map(([x]) => x)).size, 1);
+    assert.equal(new Set(corners.map(([, y]) => y)).size, 1);
+  }
+  // at a phone's width the blocks take more rows than on a wide screen
+  const tops = width => new Set([...sharedMap(console, { width }).svg.matchAll(/<rect class="block" x="[\d.]+" y="([\d.]+)"/g)].map(([, y]) => y)).size;
+  assert.ok(tops(320) > tops(480));
 });
 
 test('docs/STATUS.md keeps one section of shared code after its table, written again in place', async () => {
