@@ -53,9 +53,10 @@ export const trialsOf = game => Object.keys(TRIALS).filter(trial => existsSync(j
 /** Every version whose proofs are kept, and so checked: each game's versions, and its trials. */
 export const keptVersions = () => proofGames().flatMap(game => [...versionsOf(game), ...trialsOf(game)]);
 
-// what a version asks of the proof for itself alone, in its own proof/original.json: only the work memory to compare
-// (lib/memory.mjs), which a version made in the console's memory asks and the game's other versions don't
-const OWN = ['workMemory'];
+// what a version asks of the proof for itself alone, in its own proof/original.json: the work memory to compare
+// (lib/memory.mjs), which a version made in the console's memory asks and the game's other versions don't, and
+// keysAfterVBlank, as such a version reads its buttons when the original does, a frame apart from the others
+const OWN = ['workMemory', 'keysAfterVBlank'];
 function ownOriginal(version) {
   const file = join(proofFolder(version), 'original.json');
   if (versionOf(version).language === 'js' || !existsSync(file)) return {};
