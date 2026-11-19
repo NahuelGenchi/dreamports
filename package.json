@@ -16,6 +16,7 @@
     "test:real-ps2": "node tools/test/real-ps2.mjs",
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",
     "test:ps2-kit": "node tools/test/ps2-kit.mjs",
+    "test:ps2-sound": "node tools/test/ps2-sound.mjs",
     "test:ps2-gs": "node tools/test/ps2-gs.mjs",
     "test:big-copy": "node tools/test/big-copy.mjs",
     "test:twin": "node tools/test/twin.mjs",
