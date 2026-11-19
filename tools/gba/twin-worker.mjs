@@ -74,6 +74,12 @@ parentPort.on('message', message => {
   }
   putBack();
   for (const [where, bytes, value] of message.changes) {
+    // a hardware register, as the display's status a call starts outside the V-blank with, goes where the version
+    // keeps the console's registers, or nowhere for one that doesn't
+    if (where >= 0x04000000 && where < 0x05000000) {
+      if (registers && where - 0x04000000 + 2 <= registers.length) view.setUint16(exports.console_io.value + where - 0x04000000, value, true);
+      continue;
+    }
     // a value of the palette, the video memory or the sprites' list goes where the kit keeps that memory
     const region = REGIONS.findIndex(r => where >= r.address && where < r.address + r.bytes);
     const address = region < 0 ? where : regions[region].address + where - REGIONS[region].address;

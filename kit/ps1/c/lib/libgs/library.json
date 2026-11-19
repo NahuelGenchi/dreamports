@@ -1,0 +1,8 @@
+{
+  "about": "Sony's PsyQ extended graphics library for the PlayStation, libgs",
+  "functions": [
+    ["GsInitVcount", 56, null],
+    ["GsGetVcount", 36, null],
+    ["GsClearVcount", 36, null]
+  ]
+}

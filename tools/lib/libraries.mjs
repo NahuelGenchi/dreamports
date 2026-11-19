@@ -122,6 +122,10 @@ export function readLibrary(id) {
   return { id, folder, about: found.about, consoles, compilers, files: files.map(name => join(folder, name)), variants, functions };
 }
 
+/** Whether a library is its functions' names alone, with none written yet and no C to build, as a library can be
+ *  before anyone writes its twins (#1508). */
+export const namesOnly = library => !library.files.length && library.functions.every(f => f.file === null);
+
 /** Where a version keeps the libraries it takes. */
 export const librariesFile = version => join(proofFolder(version), LIBRARIES);
 
