@@ -24,7 +24,7 @@ import { formatCodeMap, hex } from '../lib/proof-files.mjs';
 import { buildGame } from '../lib/c.mjs';
 import { sharedCode } from '../libraries.mjs';
 import { sharedMapOf, writeReadme } from '../readme.mjs';
-import { sharedMap, STATES } from '../../src/lib/shared-map.mjs';
+import { sharedMap } from '../../src/lib/shared-map.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { compiler, place } from './twin/cartridge.mjs';
 
@@ -172,7 +172,7 @@ try {
   check(/0x08000800  LibAdd: proven by the same bytes/.test(run.out), 'and with a version, where each function it takes stands');
   const gba = sharedCode().find(each => each.id === 'gba'), drawn = writeReadme({ check: true }).files;
   check(drawn.includes(sharedMapOf('gba')) && drawn.includes('docs/STATUS.md'), `readme draws the console's map, ${sharedMapOf('gba')}, and puts it in docs/STATUS.md`);
-  check((sharedMap(gba).svg.match(new RegExp(`<path fill="${STATES.bytes.colour}" d="[^"]*`))?.[0].match(/M/g) ?? []).length === 2, 'with a green cell for each function proven by the same bytes');
+  check((sharedMap(gba).svg.match(/<path class="bytes" d="[^"]*/)?.[0].match(/M/g) ?? []).length === 2, 'with a green cell for each function proven by the same bytes');
   const listed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8'));
   writeFileSync(join(FOLDER, 'library.json'), JSON.stringify({ ...listed, functions: [...listed.functions, ['LibLater', 40, null]] }));
   run = dp('libraries');
