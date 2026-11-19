@@ -171,7 +171,7 @@ A game's `proof/saves.json` lists the bytes of its save memory that aren't its s
 
 ### What it can't do
 
-It searches for a way, not for a good one: the presses it finds look like nobody's play, with hops that do nothing, and it takes hits. A part with nothing to reach, such as a menu, is still written by hand. It needs the reference emulator to copy its state out and bring it back, which mGBA does and nearly every libretro core does, and on those other consoles it searches with one console at a time. It has been run on the Game Boy Advance and on the made-up console of the tools' tests only.
+It searches for a way, not for a good one: the presses it finds look like nobody's play, with hops that do nothing, and it takes hits. A part with nothing to reach, such as a menu, is still written by hand. It needs the reference emulator to copy its state out and bring it back, which mGBA does and nearly every libretro core does, and on those other consoles it searches with one console at a time. It has been run on the Game Boy Advance, on the made-up console of the tools' tests, and on the PlayStation 2, where Play! copies its state out with its own save states, about 60 frames a second on The Sims: `npm run test:ps2-memory` searches a program of the project's own there, its values read from the EE's main memory. The PlayStation 2's state is all of the console's, as Play!'s save states keep it, so a search there goes on from the same place as play does.
 
 ## What a recording shows
 

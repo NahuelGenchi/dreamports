@@ -10,7 +10,9 @@
 // Then the program is a game of its own, in a folder of its own that it removes after, whose Dreamport in C keeps a
 // stretch of main memory where the console does (kit/ps2/c/memory.c), and `prove` compares it after every frame: a
 // stretch neither writes is the same in every frame, and the program's own code, which the Dreamport doesn't hold, is
-// found differing at once, at its first byte. Like the other checks on the real emulator, it isn't run on every pull
+// found differing at once, at its first byte. And `route` searches it, saving the console's state and bringing it back
+// at every step, as Play! does with its own save states, until the flat program's square reaches a place: it gets
+// there at the frame the program does. Like the other checks on the real emulator, it isn't run on every pull
 // request, as the emulator takes minutes to build, and runs on Linux and macOS alone (docs/CONSOLES.md).
 
 import { spawnSync } from 'node:child_process';
@@ -24,7 +26,7 @@ import { programReader } from '../ps2/ledger.mjs';
 import { cardBytes, cardEntries } from '../../kit/ps2/card.js';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
-import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
+import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
 
 const FRAMES = 90, LOOKED_AT = 60;
 const WORK = join(LOCAL, 'test-ps2-memory');
@@ -133,6 +135,26 @@ async function main() {
   const read = await cardRun(reordered);
   check(read.saves.length === 1 && read.saves[0].frame === 0 && same(read.saves[0].bytes, canonical), 'and the emulator\'s cards come back in the order kit/ps2/card.js writes them, a name with ":" and all');
   check(cardEntries(canonical).map(e => e.path).join() === 'mc0/BADATA-SYSTEM,mc0/BADATA-SYSTEM/DATA,mc0/BADATA-SYSTEM/icon.sys,mc0/EMPTY,mc1/BAMADE-UP:1', 'each folder before what it holds, in the order of the names\' bytes');
+
+  console.log("route, with the console's state saved and brought back at every step");
+  {
+    const { elf: flat } = madeUpPs2(), words = new Uint32Array(flat.buffer.slice(flat.byteOffset + 0x80, flat.byteOffset + flat.length));
+    // where the square's first corner is in the packet the program sends each frame: its place across, in sixteenths
+    const packet = words.findIndex((word, i) => word === 0x800D && words[i + 1] === 0x10000000 && words[i + 2] === 0xE);
+    const corner = LOAD_AT + packet * 4 + 16 + 11 * 16, across = 300, goal = across * 16;
+    const folder = join(WORK, 'route');
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(join(folder, 'flat.elf'), flat);
+    writeFileSync(join(folder, 'prefix.bin'), Buffer.alloc(0));
+    writeFileSync(join(folder, 'spec.txt'), [`prefix ${join(folder, 'prefix.bin')}`, 'sets -', `archive ${join(folder, 'archive.bin')}`, `out ${join(folder, 'out.bin')}`, `value ${corner} 2 0`, 'cell 0 320', `goal 0 0 5 ${goal}`, 'buttons 0', 'buttons 8', 'seed 1', 'seconds 120', 'threads 1', ''].join('\n'));
+    const search = reference.searchOriginal({ copy: join(folder, 'flat.elf'), spec: join(folder, 'spec.txt') });
+    const found = spawnSync(search.program, search.args, { cwd: join(LOCAL, 'tmp'), env: { ...process.env, ...search.env }, encoding: 'utf8', timeout: 300000 });
+    search.done();
+    const said = found.stdout.trim().split('\n'), reached = Number(said.at(-1).match(/^goal (\d+)/)?.[1] ?? -1);
+    // the square moves two pixels a frame from frame 1, and a frame's packet is what the frame before worked out
+    const expected = across / STEP + 2, tries = Number(said.at(-2)?.match(/tries (\d+)/)?.[1] ?? 0);
+    check(found.status === 0 && reached === expected && readFileSync(join(folder, 'out.bin')).length === expected * 4, `the search reaches the square at ${across} across at frame ${reached}, where the program gets there, through ${tries} states brought back: ${said.at(-1)}`);
+  }
 
   console.log('The program as a game of its own, whose Dreamport keeps 64 KB of main memory where the console does');
   try {
