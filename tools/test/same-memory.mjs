@@ -5,7 +5,9 @@
 // pass that lets its C wait from inside a function. Then prove plays both, the cartridge in mGBA and the Dreamport in
 // a browser, and has to find every frame the same, picture and sound, and every byte of the work memory the same after
 // every frame. And it has to find a line written wrong: one that shows on the screen, one that only the work memory
-// shows, a wait a frame short, and a byte written to video memory as if it were any other memory.
+// shows, a wait a frame short, a byte written to video memory as if it were any other memory, and a call to a function
+// of the cartridge with no C yet, which stops the Dreamport and names it. A function kept and called as plain C, with
+// no CODE or CALL, is kept by its address in the cartridge and called as its twin all the same.
 //
 // The Dreamport is in a folder of its own, games/test-same-memory/, which is removed after.
 
@@ -204,6 +206,9 @@ async function main() {
   const module = new WebAssembly.Module(readFileSync(join(gameFolder(C_GAME), 'src', 'game.wasm')));
   check(WebAssembly.Module.imports(module).every(each => each.module === 'dreamports'), 'the pass that lets it wait leaves nothing for the page to give it');
   check(existsSync(join(proofFolder(C_GAME), 'played.json')), 'a version with no proof folder yet gets one');
+  const { twinsFolder } = await import('../lib/c.mjs');
+  const built = await twinsFolder(gameFolder(C_GAME));
+  check(built.addressOf('gUnknown_03000040') === 0x03000040 && built.addressOf('gWave') === DATA && built.addressOf('nothing_named') === null, 'the build places a name that is a label at its own address, as match and the function check do, and one the game names at its address');
 
   console.log('A line of the Dreamport written wrong');
   const wrong = async (what, change, expects) => {
@@ -225,9 +230,15 @@ async function main() {
   await wrong('a byte written to video memory as to any other memory is found on the screen, at the first frame',
     { from: '#define VRAM_BYTE(at, value) gba_vram_write8(at, value)', to: '#define VRAM_BYTE(at, value) (gba_vram[at] = (value))', inHeader: true },
     r => r.firstDifference?.frame === 0 && r.firstDifference.pixels > 0 && r.memory.differs.length === 0);
-  await wrong('a function kept in memory as the Dreamport\'s own, not by its address in the cartridge, is found in the work memory at the first frame',
-    { from: '#define CODE(function) TWIN_ADDRESS(function)\n#define CALL(pointer) TWIN(pointer)', to: '#define CODE(function) function\n#define CALL(pointer) pointer', inHeader: true },
-    r => r.memory.firstDifference?.frame === 0 && r.firstDifference?.frame === 0 && r.firstDifference.pixels === 0);
+  await wrong('a call to a function of the cartridge with no C yet stops the Dreamport there and names it, at frame 340',
+    { from: '    Flash();', to: '    { void sub_8000800(void); sub_8000800(); }' },
+    r => r.firstDifference?.frame === 340 && /sub_8000800/.test(r.stopped?.error ?? '') && /no code in it yet/.test(r.stopped?.error ?? ''));
+
+  console.log('A function kept and called as plain C');
+  writeProgram({ from: '#define CODE(function) TWIN_ADDRESS(function)\n#define CALL(pointer) TWIN(pointer)', to: '#define CODE(function) function\n#define CALL(pointer) pointer', inHeader: true });
+  run = dp('prove', C_GAME, 'buttons');
+  found = report();
+  check(run.status === 0 && found.matched === 600 && found.memory?.differs.length === 0, `is kept by its address in the cartridge and called as its twin, as with CODE and CALL, so every frame and its work memory are the same: ${found.matched} of ${found.frames}, ${JSON.stringify(found.memory?.firstDifference ?? null)}`);
 
   writeProgram();
   run = dp('prove', C_GAME, 'buttons', '--quick');

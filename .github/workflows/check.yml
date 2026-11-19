@@ -43,20 +43,23 @@ jobs:
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; and test:same-memory, which builds a program of the project's own
           # as a cartridge and as a Dreamport from the same C, and has prove find every frame and the whole work memory
-          # the same in mGBA and in a browser (tools/README.md)
+          # the same in mGBA and in a browser (tools/README.md); and an NES library of the project's own, found in a
+          # second made-up program by its short hash and proven there
           - part: functions
             run: |
               npm run test:twin
               npm run test:match
               npm run test:nes-twin
               npm run test:same-memory
+              npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
-          # them; and a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub
-          # holds under one
+          # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
+          # under one; and a shared library of the project's own, proven in two made-up games at addresses of their own
           - part: tasks
             run: |
               npm run test:function-tasks
               npm run test:function-homes
+              npm run test:libraries
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
