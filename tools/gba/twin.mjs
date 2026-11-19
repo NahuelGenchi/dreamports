@@ -70,6 +70,13 @@ const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
+// the display's status, and its bit that says the display is in the V-blank
+const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1;
+// whether some code keeps a word beside it, where words start
+const holdsWord = (bytes, word) => {
+  for (let at = 0; at + 4 <= bytes.length; at += 4) if (bytes.readUInt32LE(at) === word) return true;
+  return false;
+};
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -785,7 +792,7 @@ const write = (image, where, bytes, value) => {
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map() }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
@@ -880,10 +887,15 @@ export async function compareCalls({ original, twins, start, functions, options,
         changed.push([address, bytes, (value & mask) >>> 0]);
       }
     }
+    // a function that may read whether the display is in the V-blank, as it keeps the status's address beside its
+    // code or a call of it used the hardware, now and then started the other way: in a call the display's status stays
+    // as it started, the clock a twin doesn't have stopped on both sides (#1569)
+    if (!aim && changing && !asPlayed && status !== null && f.status && !choose.below(4)) changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
     const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
+    if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
     if (theirs.ended === 0 && changing && options.aim !== false && bytesOf && f.span) {
@@ -898,7 +910,7 @@ export async function compareCalls({ original, twins, start, functions, options,
       }
     }
     const expected = Buffer.from(mirror);
-    for (const [address, bytes, value] of changed) write(expected, inImage(address), bytes, value);
+    for (const [address, bytes, value] of changed) if (inImage(address) >= 0) write(expected, inImage(address), bytes, value);
     // each value it read, by what it held: one that was compared with something is worth setting to that, and to
     // the numbers beside it
     const holding = new Map();
@@ -1170,9 +1182,12 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   let rom = null;
   const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
-    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers: await original.registers() });
+    const registers = await original.registers();
+    // a function whose code keeps the display status's address beside it reads whether the display is in the V-blank
+    for (const f of functions) f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
+    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut });
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000) });
     } finally {
       runner.stop();
     }
