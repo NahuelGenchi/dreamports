@@ -156,6 +156,7 @@ try {
   check(shifted.by.Shift?.kind === 'same' && shifted.by.Shift.compared === CALLS, `each call of the twin starts from the hardware the original's does, as the kit's registers are put back${shifted.by.Shift?.kind === 'same' ? '' : `: ${shifted.by.Shift?.line ?? shifted.error}`}`);
   check(shifted.by.Bias?.kind === 'same' && shifted.by.Bias.compared === CALLS, `a twin that keeps the console's registers itself, in console_io, starts each call from the original's${shifted.by.Bias?.kind === 'same' ? '' : `: ${shifted.by.Bias?.line ?? shifted.error}`}`);
   check(shifted.by.Await?.kind === 'unchecked' && /a DMA the console's clock started wrote memory/.test(shifted.by.Await.line), `and a call in which a DMA the V-blank started writes memory is set aside, as a twin has no clock: ${shifted.by.Await?.line ?? shifted.error}`);
+  check(shifted.by.Fetch?.kind !== 'same' && /left for 0x00000100, where a twin can't follow/.test(shifted.by.Fetch?.line ?? ''), `and so is one whose DMA copies from the BIOS, which a DMA can't read: ${shifted.by.Fetch?.line ?? shifted.error}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
