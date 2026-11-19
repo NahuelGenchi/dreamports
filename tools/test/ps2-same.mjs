@@ -15,6 +15,7 @@ import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { LOAD_AT, madeUpPs2, madeUpPs2In3d, madeUpPs2OnVu1, madeUpPs2Textured } from './made-up-ps2.mjs';
+import { madeUpPs2Layout } from './made-up-ps2-gs.mjs';
 
 // each program, and what it's proven by
 const PROGRAMS = {
@@ -22,6 +23,9 @@ const PROGRAMS = {
   '3d': [madeUpPs2In3d, 'draw lists'],
   vu1: [madeUpPs2OnVu1, 'draw lists'],
   textured: [madeUpPs2Textured, 'pictures'],
+  // pictures moved into the GS's memory in one format and read in another, and read back into the console's memory
+  layout32: [() => madeUpPs2Layout(32), 'pictures'],
+  layout16: [() => madeUpPs2Layout(16), 'pictures'],
 };
 const FRAMES = 300, MEMORY_EVERY = 30;
 const WORK = join(LOCAL, 'test-ps2-same');

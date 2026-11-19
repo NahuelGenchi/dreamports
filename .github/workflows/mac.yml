@@ -3,7 +3,7 @@ name: Mac
 # The PlayStation 2's tools and kit on a Mac with Apple's chip, as a person starting a PlayStation 2 game on a MacBook
 # will have them (#1592), on GitHub's Mac: Getting ready as tools/README.md has it, with Homebrew's Node.js, GitHub CLI and
 # CMake; Play! built for arm64 from its makers' source, its JIT under Apple's rules, drawing with Apple's OpenGL;
-# npm run test:real-ps2, test:ps2-3d and test:ps2-kit; and npm run test:ps2-flow, which goes through what /dreamport
+# npm run test:real-ps2, test:ps2-3d, test:ps2-kit and test:ps2-gs; and npm run test:ps2-flow, which goes through what /dreamport
 # does with a new PlayStation 2 game, rom, codemap, new, capture and prove, with a stand-in for GitHub, and plays its
 # page in Safari and in Chrome. A job on Linux and the Mac each run npm run test:ps2-same on the same small programs, and
 # a third compares the two: every draw list, sound and memory the same on both, as a Mac's proofs have to be Linux's.
@@ -151,6 +151,7 @@ jobs:
       - run: npm run test:real-ps2
       - run: npm run test:ps2-3d
       - run: npm run test:ps2-kit
+      - run: npm run test:ps2-gs
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for

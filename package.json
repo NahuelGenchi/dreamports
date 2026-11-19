@@ -16,6 +16,7 @@
     "test:real-ps2": "node tools/test/real-ps2.mjs",
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",
     "test:ps2-kit": "node tools/test/ps2-kit.mjs",
+    "test:ps2-gs": "node tools/test/ps2-gs.mjs",
     "test:ps2-flow": "node tools/test/ps2-flow.mjs",
     "test:ps2-same": "node tools/test/ps2-same.mjs",
     "test:twin": "node tools/test/twin.mjs",
