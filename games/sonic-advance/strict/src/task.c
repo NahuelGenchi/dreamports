@@ -1,6 +1,7 @@
 // The task list of Sonic Advance's engine: every screen and object of the game is a task, run once a frame in the
 // order of its priority, with memory of its own from a small heap in the fast work memory.
 #include "task.h"
+#include "time.h"
 
 /** TasksInit, 0x080014A8: an empty list between its two ends, every slot free, and the tasks' memory one free stretch. */
 bool32 TasksInit(void) {
@@ -11,7 +12,18 @@ bool32 TasksInit(void) {
   gNextTask = NULL;
   gNumTasks = 0;
   DMA3_FILL32(0, gTasks, 0x200);
+  // every slot's task: the console's compiler turns this loop around and fills them from the last down, which the
+  // kit's compiler doesn't, so the Dreamport's says so, as a frame of power-on ends in the middle of it
+#ifdef MATCHING
   for (i = 0; i < MAX_TASKS; i++) gTaskPtrs[i] = &gTasks[i];
+#else
+  for (i = MAX_TASKS - 1; i >= 0; i--) {
+    gTaskPtrs[i] = &gTasks[i];
+    if (i == MAX_TASKS - 1) TIME(0x080014A8, 0x080014E0, 0x080014D9, IW, IW, IW, DMA3, IW);
+    else if (i != 0) TIME(0x080014D8, 0x080014E0, 0x080014D9, IW);
+    else TIME(0x080014D8, 0x080014E4, 0x08001931, IW);
+  }
+#endif
 
   cur = TaskGetNextSlot();
   if (cur == NULL) return FALSE;
@@ -20,6 +32,7 @@ bool32 TasksInit(void) {
   cur->flags = 0;
   cur->parent = 0;
   cur->prev = 0;
+  TIME(0x080014E6, 0x080014FC, 0x08001931, IW, IW, IW, IW, IW);
   cur->next = (u32)TaskGetNextSlot();
   if (TASK_AT(cur->next) == TASK_AT(0)) return FALSE;
   TASK_AT(cur->next)->prev = (u32)cur;
@@ -38,6 +51,8 @@ bool32 TasksInit(void) {
 
   gIwramHeap.next = 0;
   gIwramHeap.size = 0x2204;
+  TIME(0x080014FE, 0x0800153C, 0x0800157F, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW, IW);
+  TIME(0x0800157E, 0x08001584, 0x080006B1);
   return TRUE;
 }
 
@@ -229,8 +244,12 @@ void IwramDefrag(void) {
 
 /** TaskGetNextSlot, 0x08001930: a free task, or NULL when all 128 are taken. */
 struct Task *TaskGetNextSlot(void) {
+  struct Task *slot;
   if (gNumTasks >= MAX_TASKS) return NULL;
-  return gTaskPtrs[gNumTasks++];
+  slot = gTaskPtrs[gNumTasks++];
+  TIME(0x08001930, 0x08001944, 0x08001953, IW, IW, IW);
+  TIME(0x08001952, 0x08001952, BACK);
+  return slot;
 }
 
 /** TasksDestroyInPriorityRange, 0x08001954: destroys the tasks from the first of priority `lowest` or more, up to one of `highest` or more. */

@@ -45,8 +45,16 @@ static int console_handling;
 
 void console_set_keys(u16 keys) { console_keys = keys; }
 
-// where the line count is, a line on: time goes on while the game waits for a line by reading it from memory
+// whether the console's time is power-on's, which the clock keeps, until the game first waits for a frame
+static int console_timed;
+
+// where the line count is, a line on: time goes on while the game waits for a line by reading it from memory. On
+// power-on, it's the line the console's time has reached
 u32 console_vcount_at(void) {
+  if (console_timed) {
+    console_io[IO_VCOUNT >> 1] = gba_clock_vcount();
+    return (u32)&console_io[IO_VCOUNT >> 1];
+  }
   console_line = (console_line + 1) % LINES;
   console_io[IO_VCOUNT >> 1] = (u16)console_line;
   return (u32)&console_io[IO_VCOUNT >> 1];
@@ -214,6 +222,8 @@ void console_hblank(int y) {
 void VBlankIntrWait(void) {
   // from the game's first wait on, its waits end its frames, not the console's time
   gba_clock_on_frame_end(NULL);
+  gba_clock_stop();
+  console_timed = 0;
   *(vu16 *)0x03007FF8 &= ~1;
   console_io[IO_IME >> 1] = 1;
   do {
@@ -229,16 +239,36 @@ static u8 *bios_at(u32 address) {
   return address >> 24 >= 0x05 && address >> 24 <= 0x07 ? console_at(address, 1) : (u8 *)address;
 }
 
+// whether an address is the console's: its work memory, its registers and video memory, or the cartridge
+static int console_memory(u32 address) {
+  return (address >= 0x02000000u && address < 0x02040000u) || (address >= 0x03000000u && address < 0x03008000u)
+    || (address >= 0x04000000u && address < 0x08000000u) || (address >= 0x08000000u && address - 0x08000000u < gba_rom_size);
+}
+
 /** CpuSet: `control`'s count of halfwords, or words with bit 26, from `src` to `dest`, or the one at `src` over all of
  *  them with bit 24, as the BIOS copies them, one at a time. */
+// CpuSet's work, a halfword or a word at a time, as the console's time reaches each of the BIOS's stores
+static struct { u32 from, to, wide, fixed; } cpu_set;
+static void cpu_set_unit(u32 i) {
+  const u8 *in = bios_at(cpu_set.from + (cpu_set.fixed ? 0 : i * cpu_set.wide));
+  u8 *out = bios_at(cpu_set.to + i * cpu_set.wide);
+  u32 b;
+  for (b = 0; b < cpu_set.wide; b++) out[b] = in[b];
+}
+
+// the cartridge's stub for CpuSet: swi 0x0B, then back
+#define CPU_SET_STUB 0x080997E0u
+
 void CpuSet(const void *src, void *dest, u32 control) {
-  u32 count = control & 0x1FFFFF, wide = control >> 26 & 1 ? 4 : 2, fixed = control >> 24 & 1, i, b;
-  u32 from = (u32)src & ~(wide - 1), to = (u32)dest & ~(wide - 1);
-  for (i = 0; i < count; i++) {
-    const u8 *in = bios_at(from + (fixed ? 0 : i * wide));
-    u8 *out = bios_at(to + i * wide);
-    for (b = 0; b < wide; b++) out[b] = in[b];
-  }
+  u32 count = control & 0x1FFFFF, i;
+  cpu_set.wide = control >> 26 & 1 ? 4 : 2;
+  cpu_set.fixed = control >> 24 & 1;
+  cpu_set.from = (u32)src & ~(cpu_set.wide - 1);
+  cpu_set.to = (u32)dest & ~(cpu_set.wide - 1);
+  // in the console's time, from the console's addresses: a value of the Dreamport's own, as a fill's, which the C keeps
+  // on its own stack outside the console's memory, is where the console's function has its stack
+  if (gba_clock_swi(CPU_SET_STUB, 0x0B, console_memory((u32)src) ? (u32)src : 0x03007F00u, (u32)dest, control, cpu_set_unit) == 0) return;
+  for (i = 0; i < count; i++) cpu_set_unit(i);
 }
 
 void AgbMain(void);
@@ -275,8 +305,12 @@ static void console_frame_end(void) {
 void console_power_on(void) {
   // the console's time from power-on, which ends power-on's frames where the console's end
   gba_clock_start();
+  console_timed = 1;
   gba_clock_on_frame_end(console_frame_end);
+  gba_clock_registers(console_io);
   console_io[IO_RCNT >> 1] = 0x8000;
+  // the display in forced blank, as the BIOS leaves it, until the game first sets it
+  gba_io[0] = 0x0080;
   gba_on_hblank(console_hblank);
 }
 

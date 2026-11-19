@@ -1,5 +1,6 @@
 // The heap in the slow work memory and the heap of the sprites' tiles.
 #include "malloc.h"
+#include "time.h"
 
 /** EwramInitHeap, 0x08006A74: the slow work memory's heap as one free stretch. */
 void EwramInitHeap(void) {
@@ -7,10 +8,14 @@ void EwramInitHeap(void) {
 
   root->next = NULL;
   root->state = EWRAM_HEAP_SIZE;
+  TIME(0x08006A74, 0x08006A7E, BACK, EW, EW);
 }
 
 /** VramResetHeapState, 0x08006C0C: every stretch of the sprites' tiles free. */
-void VramResetHeapState(void) { DMA3_FILL16(0, gVramHeapState, sizeof(gVramHeapState)); }
+void VramResetHeapState(void) {
+  DMA3_FILL16(0, gVramHeapState, sizeof(gVramHeapState));
+  TIME(0x08006C0C, 0x08006C26, BACK, IW, DMA3);
+}
 
 /** VramMalloc, 0x08006B54: the first run of free stretches of the sprites' tiles that holds `numTiles`, taken, or
  *  the heap's none when there's no such run. */
