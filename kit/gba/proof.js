@@ -44,8 +44,9 @@ function createProof(mode) {
   const slots = [];   // each player's screen and input, when a page has several of them on one link (watch())
   // the game's sound, which fills two lists of samples at `rate` with what plays next, and what the last frame played
   let sound = null, rate = 0, played = 0, heard = null, frameTime = FRAME_CYCLES / CPU_HZ;
-  // what the frames wait for, such as the sound engine starting (wait())
-  let waiting = 0;
+  // what the frames wait for, such as the sound engine starting (wait()), and what the frame running now waits for to
+  // end, such as its disc's sectors (hold())
+  let waiting = 0, holding = null;
   const frames = [];
   let replays = [];   // in record mode, the frames a tool gave to run before the player's own (replay())
   const ready = new Promise(resolve => { started = resolve; });
@@ -103,14 +104,22 @@ function createProof(mode) {
       wanted = null;
       const done = drawn;
       drawn = null;
-      // once the loop that runs it has drawn it: a microtask runs when that loop's callback has returned. The sound
-      // the frame queued then plays for a frame's time
-      queueMicrotask(() => { heard = hear(); done(picture()); });
+      // once the loop that runs it has drawn it: a microtask runs when that loop's callback has returned, or once the
+      // frame has ended, when it was held up (hold()). The sound the frame queued then plays for a frame's time
+      holding = null;
+      queueMicrotask(() => {
+        const end = () => { heard = hear(); done(picture()); };
+        if (holding) holding.then(end, end);
+        else end();
+      });
       return 1;
     },
     /** In play mode, names what plays the game's sound: `play(left, right)` fills both with its next samples, at
      *  `sampleRate` (sound/audio.js), a frame lasting `seconds` on a console that isn't the Game Boy Advance. */
     listen(play, sampleRate, seconds = frameTime) { sound = play; rate = sampleRate; frameTime = seconds; },
+    /** In play mode, says the frame running now ends, and is drawn, once `promise` settles: a game that paused
+     *  partway through it, as one waiting for its disc's sectors does (kit/c/game.js). */
+    hold(promise) { holding = promise; },
     /** In play mode, holds the game's frames until `promise` settles, such as the sound engine starting. */
     wait(promise) {
       waiting++;
