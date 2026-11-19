@@ -8,7 +8,8 @@
 // and `twin` by the same memory on the other, each on its own copy at its own addresses; `libraries` says how much of
 // the console's shared code is proven, and the console's map in docs/STATUS.md colours each function by where it
 // stands; a change to the library's C makes its proofs stale in both games at once; a stop in it holds it back in both; and `libraries --check` refuses a library that names an address, a function it
-// doesn't list, and a version that puts a function where its code map has another.
+// doesn't list, and a version that puts a function where its code map has another. Then each library the kit has
+// builds, as match builds it and as a Dreamport does, so none breaks before a game takes it.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,12 +18,13 @@ import { spawnSync } from 'node:child_process';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
-import { matchFile } from '../gba/match.mjs';
+import { compileFile, matchFile } from '../gba/match.mjs';
 import { ensureCaller } from '../gba/twin.mjs';
 import { firstFiles } from '../lib/new-game.mjs';
 import { formatCodeMap, hex } from '../lib/proof-files.mjs';
-import { buildGame } from '../lib/c.mjs';
+import { buildGame, buildWasm, cKit } from '../lib/c.mjs';
 import { sharedCode } from '../libraries.mjs';
+import { libraryIds, readLibrary } from '../lib/libraries.mjs';
 import { sharedMapOf, writeReadme } from '../readme.mjs';
 import { sharedMap } from '../../src/lib/shared-map.mjs';
 import { madeUpGame } from './made-up-game.mjs';
@@ -135,7 +137,7 @@ try {
   console.log('Two games that have it, each at its own addresses:');
   for (const game of GAMES) makeGame(game, assembly, sizes);
   let run = dp('libraries', '--check');
-  check(run.status === 0 && /1 shared library and the 2 versions that take them keep their rules/.test(run.out), `libraries --check passes: ${last(run)}`);
+  check(run.status === 0 && /\d+ shared librar(y|ies) and the 2 versions that take them keep their rules/.test(run.out), `libraries --check passes: ${last(run)}`);
   for (const game of GAMES) {
     run = dp('portmap', version(game));
     check(run.status === 0 && /2 functions named, 0 names inside a function but not at its start, 0 stops/.test(run.out), `${game.name}'s port map names both of the library's functions: ${last(run)}`);
@@ -187,7 +189,8 @@ try {
   run = dp('proofs', version(GAMES[1]), '08000900');
   check(/0x08000900 +\d+ bytes  LibPick, kit\/gba\/c\/lib\/test-made-up\/test-made-up\.c:\d+: proven by the same bytes/.test(run.out), 'proofs names the twin by its place in the kit');
   run = dp('libraries');
-  check(run.status === 0 && /Game Boy Advance: 100% of its known shared code proven, \d+ of \d+ bytes and 2 of 2 functions, in 1 library, taken by 2 games/.test(run.out), `libraries says how much of the console's shared code is proven: ${run.out.trim().split('\n')[0]}`);
+  // the kit's own libraries count too, so the test's is looked at by itself, as libraries lists each
+  check(run.status === 0 && /Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, \d+ of [\d,]+ bytes and \d+ of \d+ functions, in \d+ librar(y|ies), taken by \d+ games/.test(run.out) && /gba\/test-made-up  2 of 2 functions proven, taken by /.test(run.out), `libraries says how much of the console's shared code is proven, and of each library: ${run.out.trim().split('\n')[0]}`);
   run = dp('libraries', version(GAMES[0]));
   check(/0x08000800  LibAdd: proven by the same bytes/.test(run.out), 'and with a version, where each function it takes stands');
   const gba = sharedCode().find(each => each.id === 'gba'), drawn = writeReadme({ check: true }).files;
@@ -196,7 +199,8 @@ try {
   const listed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8'));
   writeFileSync(join(FOLDER, 'library.json'), JSON.stringify({ ...listed, functions: [...listed.functions, ['LibLater', 40, null]] }));
   run = dp('libraries');
-  check(/Game Boy Advance: 54\.54% of its known shared code proven, 48 of 88 bytes and 2 of 3 functions/.test(run.out) && JSON.stringify(cellsOf()) === '["bytes","bytes","unwritten"]', `a function the library has that nobody has written yet counts as known, and as not written: ${run.out.trim().split('\n')[0]}`);
+  const ours = sharedCode().find(each => each.id === 'gba').libraries.find(library => library.id === LIBRARY);
+  check(ours.provenBytes === 48 && ours.bytes === 88 && ours.proven === 2 && ours.functions === 3 && JSON.stringify(cellsOf()) === '["bytes","bytes","unwritten"]', `a function the library has that nobody has written yet counts as known, and as not written: ${ours.provenBytes} of ${ours.bytes} bytes, ${ours.proven} of ${ours.functions} functions`);
   writeFileSync(join(FOLDER, 'library.json'), `${JSON.stringify(listed, null, 2)}\n`);
 
   console.log('One library, held to its C in every game at once:');
@@ -204,7 +208,7 @@ try {
   run = dp('proofs', '--check');
   check(run.status === 1 && GAMES.every(game => run.out.includes(version(game))) && /LibAdd/.test(run.out), 'a change to the library\'s code makes its proofs stale in both games');
   run = dp('libraries');
-  check(/Game Boy Advance: \d+(\.\d+)?% of its known shared code proven, \d+ of \d+ bytes and 1 of 2 functions/.test(run.out) && cellsOf().includes('written'), `and the console's number falls, with the function written and not proven: ${run.out.trim().split('\n')[0]}`);
+  check(/gba\/test-made-up  1 of 2 functions proven/.test(run.out) && cellsOf().includes('written'), `and the library's number falls, with the function written and not proven: ${run.out.trim().split('\n')[0]}`);
   writeLibrary(TEXT.replace('    return gLibTable[i];', '    return gLibTable[i]; // dp:stop'));
   run = dp('portmap', version(GAMES[1]));
   check(/1 stop/.test(run.out), `a stop in the library is a stop of each game that has it: ${last(run)}`);
@@ -247,6 +251,31 @@ try {
   tidy();
   if (copies) writeFileSync(COPIES, copies);
   else rmSync(COPIES, { force: true });
+}
+
+// each library the kit has, as match builds it, from its folder alone with the compiler its library.json names, and
+// for a Dreamport, on its console's kit, with what a version gives it left to the version
+console.log('The kit\'s libraries:');
+for (const id of libraryIds()) {
+  const library = readLibrary(id);
+  for (const [console_, given] of Object.entries(library.compilers)) {
+    if (console_ !== 'gba') continue;
+    if (!isCompilerBuilt(given.name)) withBuildTools(console.log, tools => buildCompilers([given.name], console.log, tools));
+    const built = [];
+    for (const file of library.files) built.push(await compileFile({ file, root: library.folder, includes: [library.folder], compiler: given, work: join(work, 'kit', id, file.split('/').pop().replace(/\.c$/, '')) }));
+    const wrong = built.find(one => one.error);
+    check(!wrong, `${id} builds with ${given.name}, as match builds it${wrong ? `: ${wrong.error}` : ''}`);
+  }
+  for (const each of library.consoles) {
+    const kit = cKit(each);
+    let error = null;
+    try {
+      await buildWasm(library.files, join(work, 'kit', `${id.replace('/', '-')}.wasm`), { ...kit, folders: [...kit.folders, library.folder], flags: [...(kit.twinFlags ?? []), '-Wl,--allow-undefined'] });
+    } catch (e) {
+      error = e.message;
+    }
+    check(!error, `${id} builds to WebAssembly on the ${each} kit, as a Dreamport that takes it does${error ? `: ${error}` : ''}`);
+  }
 }
 
 if (failures.length) {
