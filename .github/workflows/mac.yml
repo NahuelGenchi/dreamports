@@ -1,0 +1,147 @@
+name: Mac
+
+# The PlayStation 2's tools and kit on a Mac with Apple's chip, as a person starting a PlayStation 2 game on a MacBook
+# will have them (#1592), on GitHub's Mac: Getting ready as docs/MAKING.md has it, with Homebrew's Node.js, GitHub CLI and
+# CMake; Play! built for arm64 from its makers' source, its JIT under Apple's rules, drawing with Apple's OpenGL;
+# npm run test:real-ps2, test:ps2-3d and test:ps2-kit; and npm run test:ps2-flow, which goes through what /dreamport
+# does with a new PlayStation 2 game, rom, codemap, new, capture and prove, with a stand-in for GitHub, and plays its
+# page in Safari and in Chrome. Nothing from any game is needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, as building Play! takes a while. It runs on pull requests that touch what the PlayStation 2's
+# games need, after they merge, every week, so the newest Mac GitHub has tries it too, and by hand. A built Play! is kept
+# between runs, by the commit and patch it's built from, except every week's, which builds it again.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mac.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/ps2/**'
+      - 'tools/consoles.mjs'
+      - 'tools/libretro/**'
+      - 'tools/lib/draw-lists.mjs'
+      - 'tools/ps2/**'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-ps2*'
+      - 'tools/test/ps2-*'
+      - 'tools/test/real-ps2.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mac.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/ps2/**'
+      - 'tools/consoles.mjs'
+      - 'tools/libretro/**'
+      - 'tools/lib/draw-lists.mjs'
+      - 'tools/ps2/**'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-ps2*'
+      - 'tools/test/ps2-*'
+      - 'tools/test/real-ps2.mjs'
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: Mac (PlayStation 2)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, Homebrew gives
+      # Node.js, the GitHub CLI and CMake, and Chrome and Safari are there
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          cc --version | head -1
+          git --version
+          brew --version | head -1
+          brew install --quiet node@22 gh cmake
+          echo "$(brew --prefix node@22)/bin" >> "$GITHUB_PATH"
+          cmake --version | head -1
+          gh --version | head -1
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          test -d /Applications/Safari.app
+          sudo safaridriver --enable
+      - name: The tools' packages
+        run: |
+          node --version
+          npm --version
+          npm ci
+
+      - name: Apple's OpenGL here
+        run: |
+          mkdir -p .dreamports/tmp
+          cat > .dreamports/tmp/renderers.c <<'EOF'
+          #include <OpenGL/OpenGL.h>
+          #include <OpenGL/gl3.h>
+          #include <stdio.h>
+          static void try(const char* what, CGLPixelFormatAttribute* wanted) {
+            CGLPixelFormatObj format = NULL; CGLContextObj context = NULL; GLint count = 0;
+            CGLError error = CGLChoosePixelFormat(wanted, &format, &count);
+            if (error || !format) { printf("%s: no pixel format (%d)\n", what, error); return; }
+            error = CGLCreateContext(format, NULL, &context);
+            if (error || !context) { printf("%s: no context (%d)\n", what, error); return; }
+            CGLSetCurrentContext(context);
+            printf("%s: %s, %s\n", what, glGetString(GL_RENDERER), glGetString(GL_VERSION));
+          }
+          int main(void) {
+            CGLRendererInfoObj info; GLint count = 0;
+            if (!CGLQueryRendererInfo(0xFFFFFFFF, &info, &count)) for (GLint i = 0; i < count; i++) {
+              GLint id = 0, accelerated = 0; CGLDescribeRenderer(info, i, kCGLRPRendererID, &id); CGLDescribeRenderer(info, i, kCGLRPAccelerated, &accelerated);
+              printf("renderer 0x%08X, accelerated %d\n", id, accelerated);
+            }
+            CGLPixelFormatAttribute any[] = { kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute) kCGLOGLPVersion_3_2_Core, kCGLPFAColorSize, 24, kCGLPFAAlphaSize, 8, kCGLPFADepthSize, 24, kCGLPFAStencilSize, 8, 0 };
+            CGLPixelFormatAttribute software[] = { kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute) kCGLOGLPVersion_3_2_Core, kCGLPFAColorSize, 24, kCGLPFAAlphaSize, 8, kCGLPFADepthSize, 24, kCGLPFAStencilSize, 8, kCGLPFARendererID, kCGLRendererGenericFloatID, 0 };
+            try("chosen by the Mac", any);
+            try("software", software);
+            return 0;
+          }
+          EOF
+          cc -Wno-deprecated-declarations -o .dreamports/tmp/renderers .dreamports/tmp/renderers.c -framework OpenGL
+          .dreamports/tmp/renderers
+
+      - name: The tools' own builds
+        run: npm run dp -- setup
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dylib
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+      - name: Play!, built for arm64
+        run: |
+          npm run dp -- setup ps2
+          file .dreamports/libretro/play_libretro-*.dylib .dreamports/libretro/host
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dylib
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+
+      - run: npm run test:real-ps2
+      - run: npm run test:ps2-3d
+      - run: npm run test:ps2-kit
+      - run: npm run test:ps2-flow -- --safari
+
+      # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
+      - name: Nothing left in the person's own folders
+        if: always()
+        run: test ! -e "$HOME/Documents/Play Data Files"

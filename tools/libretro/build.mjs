@@ -20,6 +20,10 @@ const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
 const RAN = join(HERE, 'ran.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
+// On a Mac the host and the emulator are built for the processor Node.js runs as, arm64 on Apple's chip, named to the
+// compiler and to CMake, as Homebrew's CMake runs as arm64 even when Node.js runs as an Intel program through Rosetta,
+// and a host can't load an emulator built for the other
+const MAC_ARCH = process.platform === 'darwin' ? (process.arch === 'arm64' ? 'arm64' : 'x86_64') : null;
 export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
 // a core with a patch of the project's own has the patch's hash in its name too, so a build without it is never used
 const patchHash = core => core.patch ? `-${createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 8)}` : '';
@@ -41,7 +45,7 @@ const isCurrent = (source, target, also) => existsSync(target) && existsSync(sou
 
 function compile(what, source, target, args, tools, also) {
   if (isCurrent(source, target, also)) return;
-  run(what, tools?.gcc ?? 'cc', ['-O2', '-std=gnu11', '-o', target, source, ...args], FOLDER, tools?.env);
+  run(what, tools?.gcc ?? 'cc', ['-O2', '-std=gnu11', ...(MAC_ARCH ? ['-arch', MAC_ARCH] : []), '-o', target, source, ...args], FOLDER, tools?.env);
   writeFileSync(sourceOf(target), textOf(source, also));
 }
 
@@ -72,7 +76,8 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);
+    const mac = MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : [];
+    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...mac, ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
