@@ -77,6 +77,8 @@ async function check(file, originals, named, inFolder, said) {
     return 'none';
   }
   const consoleName = CONSOLES[copy.console].name;
+  // a Dreamport reads its disc as the console's drive does, and an ISO of a CD has lost part of every sector
+  if (copy.whole === false) console.log(`${file}\n  This keeps only the data of the CD's sectors, not their subheaders, which the console's drive reads too. A BIN and its .cue, or a CHD made from them, keep every sector whole.`);
   const header = `a ${consoleName} game (console ${copy.console}), which says "${copy.title}"${copy.code ? `, ${copy.code}` : ''}${copy.region ? `, made for ${copy.region}` : ''}`;
   const exact = originals.find(o => o.sha1 === copy.sha1);
   const same = originals.find(o => o.console === copy.console && o.title === copy.title && o.code.slice(0, 3) === copy.code.slice(0, 3));

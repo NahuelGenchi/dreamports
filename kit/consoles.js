@@ -2,7 +2,8 @@
 // name, the screen a game shows unless its original.json says another (`screen`, width and height), how long a frame lasts (`frame`, that many ticks of a
 // clock of that many a second), how many sound samples it mixes a second (`sound`, as the tools' reference for it does),
 // the files a copy of one of its games comes in (`files`), how large one can be in bytes (`largest`), and its buttons.
-// `provenBy` is how its games are proven when their original.json doesn't say: by their draw lists, on a console whose
+// `disc` says its games come on discs, which the page reads a few sectors at a time (kit/copy/) and gives a game in C
+// through kit/c/disc.h. `provenBy` is how its games are proven when their original.json doesn't say: by their draw lists, on a console whose
 // games are mostly in three dimensions (docs/STANDARD.md), and by their pictures everywhere else.
 
 const MB = 1024 * 1024;
@@ -17,9 +18,9 @@ export const CONSOLES = {
   gbc: { name: 'Game Boy Color', screen: [160, 144], frame: [70224, 4194304], sound: 32768, files: ['.gbc'], largest: 8 * MB, buttons: ['A', 'B', 'SELECT', 'START', ...PAD] },
   md: { name: 'Mega Drive', screen: [320, 224], frame: [128006, 7670454], sound: 44100, files: ['.md', '.gen', '.smd', '.bin'], largest: 8 * MB, buttons: ['A', 'B', 'C', 'X', 'Y', 'Z', 'MODE', 'START', ...PAD] },
   n64: { name: 'Nintendo 64', screen: [640, 240], frame: [811125, 48681812], sound: 44100, files: ['.z64', '.n64', '.v64'], largest: 64 * MB, buttons: ['A', 'B', 'Z', 'L', 'R', 'START', 'C_UP', 'C_DOWN', 'C_LEFT', 'C_RIGHT', ...PAD, ...STICK] },
-  ps1: { name: 'PlayStation', screen: [320, 240], frame: [1, 60], sound: 44100, files: ['.cue', '.bin', '.iso', '.chd', '.pbp', '.exe'], largest: 800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
-  ps2: { name: 'PlayStation 2', screen: [640, 448], frame: [1, 60], sound: 44100, provenBy: 'draw lists', soundBy: 'sound lists', files: ['.iso', '.chd', '.cso', '.zso', '.bin', '.cue', '.elf'], largest: 9000 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
-  psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, files: ['.iso', '.cso', '.zso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
+  ps1: { name: 'PlayStation', screen: [320, 240], frame: [1, 60], sound: 44100, disc: true, files: ['.cue', '.bin', '.iso', '.chd', '.pbp', '.exe'], largest: 800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
+  ps2: { name: 'PlayStation 2', screen: [640, 448], frame: [1, 60], sound: 44100, provenBy: 'draw lists', soundBy: 'sound lists', disc: true, files: ['.iso', '.chd', '.cso', '.zso', '.bin', '.cue', '.elf'], largest: 9000 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
+  psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, disc: true, files: ['.iso', '.cso', '.zso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
   // a console that was never made, whose emulator is tools/test/made-up-core.c: the tools' own test of everything here, on any computer
   'made-up': { name: 'Made-up console', screen: [64, 48], frame: [1, 50], sound: 44100, files: ['.mu'], largest: MB, buttons: ['A', 'B', 'START', ...PAD] },
 };

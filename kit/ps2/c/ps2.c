@@ -42,13 +42,17 @@ EXPORT("dp_start") void dp_start(void) {
   ps2_clock_to_vblank();
   heard();
 }
-/** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). */
+/** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). A frame the
+ *  game paused partway through, as it waited for its disc (kit_pause), goes on with the same draw list. */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
-  gs_list_start();
-  spu2_list_start();
-  iop_vblank();
-  pad_hold(buttons);
+  if (!kit_frame_paused()) {
+    gs_list_start();
+    spu2_list_start();
+    iop_vblank();
+    pad_hold(buttons);
+  }
   game_step(buttons);
+  if (kit_frame_paused()) return;
   ps2_clock_to_vblank();
   frame_hash = gs_list_hash();
   frame_count = gs_list_count();
