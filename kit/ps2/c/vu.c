@@ -16,6 +16,9 @@
 //
 // Vector unit 0 also takes the EE's COP2 instructions one at a time, in macro mode, and a game that writes a unit's
 // program again in C has vu_add and the rest below, on whole vectors with the same rules.
+//
+// Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
+// BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
 #include "ps2-kit.h"
 

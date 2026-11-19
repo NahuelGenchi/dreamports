@@ -10,6 +10,9 @@
 // LO, and division by zero. Where Play! departs from the manual, the function does what Play! does and says so.
 // Play!'s release builds skip eight of them as unknown instructions, PMADDW, PMSUBW, PMSUBH, PADSBH, PMADDUW, PDIVUW,
 // PMFHL.SLW and PMTHL.LW: these follow the manual, so a twin that uses one can't match Play! there.
+//
+// Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
+// BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
 #ifndef DREAMPORTS_PS2_MMI_H
 #define DREAMPORTS_PS2_MMI_H

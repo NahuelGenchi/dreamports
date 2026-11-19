@@ -12,6 +12,9 @@
 // data has a register in each 128 bits, in the shape the register's kind takes it; REGLIST has one in each 64, as it
 // is; IMAGE is a picture's data. A write to SIGNAL that the GS hasn't yet been asked about holds the console's GIF up,
 // which doesn't happen here.
+//
+// Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
+// BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
 #include "ps2-kit.h"
 

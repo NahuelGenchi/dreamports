@@ -11,6 +11,9 @@
 // Dmac_Channel.cpp), so a game's DMA chains give the GS what the original's give it, in the same order.
 //
 // The channels to and from the IPU and the second processor (3 to 7) keep what's written to them and move nothing here.
+//
+// Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
+// BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
 #include "ps2-kit.h"
 

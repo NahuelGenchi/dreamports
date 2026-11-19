@@ -10,6 +10,9 @@
 // command that has to wait for it, or once the transfer's data is all read, so the UNPACKs after an MSCAL are in the
 // unit's memory before it runs. A program runs to its end then and there (vu.c). As on the console, MPG waits for the
 // program before it to end.
+//
+// Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
+// BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
 #include "ps2-kit.h"
 
