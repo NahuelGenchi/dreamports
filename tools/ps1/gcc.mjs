@@ -147,9 +147,9 @@ export const withoutLvalueCasts = text => text.replace(/\*\(\((\w+ \*+)\)(\(h\)-
 // runs a WASI program, `args` after its name, with `folders` as the folders it sees, and its input and its output in
 // files: how it ended. Node.js says WASI is new each time a program starts, which isn't news here.
 async function runWasi(module, args, { name = 'gcc', folders, stdin = null, stdout = null, stderr = null }) {
-  const { WASI } = await import('node:wasi');
   const emit = process.emitWarning;
   process.emitWarning = (warning, ...rest) => { if (!/WASI/.test(String(warning))) emit.call(process, warning, ...rest); };
+  const { WASI } = await import('node:wasi');
   const outFd = stdout ? openSync(stdout, 'w') : 1, inFd = stdin ? openSync(stdin, 'r') : 0, errFd = stderr ? openSync(stderr, 'w') : 2;
   try {
     const wasi = new WASI({ version: 'preview1', args: [name, ...args], preopens: folders, stdin: inFd, stdout: outFd, stderr: errFd, returnOnExit: true });
