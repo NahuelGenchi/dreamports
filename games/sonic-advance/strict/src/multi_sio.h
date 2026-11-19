@@ -5,7 +5,14 @@
 
 #define SIO_MULTI_MODE 0x2000
 #define SIO_INTR_ENABLE 0x4000
+#define SIO_ENABLE 0x0080
+#define SIO_ERROR 0x0040
 #define MULTI_SIO_BAUD_RATE_NO 3
+/** What a console sends to say a packet starts. */
+#define MULTI_SIO_SYNC_DATA 0xFEFE
+
+// the link's registers, and timer 3's control, which paces the packets, by how far each is from 0x04000000
+enum { REG_SIOMULTI0 = 0x120, REG_SIOMLT_SEND = 0x12A, REG_TM3CNT_H = 0x10E };
 
 /** One packet each way. */
 struct MultiSioPacket {
@@ -39,12 +46,15 @@ struct MultiSioArea {
 };
 
 extern struct MultiSioArea gMultiSioArea;
-/** ARM code the link cable's interrupt runs, which MultiSioInit copies to the fast work memory. */
-extern const u32 MultiSioRecvBufChange[0x10];
-extern const u32 MultiSioIntr[0x48];
+/** The ARM code of the two functions below, in the cartridge, which MultiSioInit copies to the fast work memory, where
+ *  the console runs them. */
+extern const u32 MultiSioRecvBufChangeCode[0x10];
+extern const u32 MultiSioIntrCode[0x48];
 extern u32 gMultiSioRecvFuncBuf[0x10];
 extern u32 gMultiSioIntrFuncBuf[0x48];
 
 void MultiSioInit(u32 connectedFlags);
+u32 MultiSioRecvBufChange(void);
+void MultiSioIntr(void);
 
 #endif
