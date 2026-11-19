@@ -343,54 +343,82 @@ const spread = value => [value >>> 0, value & 0x80000000 ? 0xFFFFFFFF : 0];
  * a few values changed. `f` is { name, address, size, params, returns, call }. Answers what the check came to:
  * { compared, aside, ran, result }, `result` null while every call compared was the same, or what wasn't.
  */
-async function checkFunction({ f, original, runner, gp, options, choose }) {
+async function checkFunction({ f, original, runner, gp, options, choose, image, memories = [] }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
   // where each argument goes: the first eight whole numbers and the first eight floats in registers, and the rest on
   // the stack from where sp points, a slot of eight bytes each, in the order they're written
   let integers = 0, floats = 0, slots = 0;
   const places = f.params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
-  // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
-  // call is given and may change
-  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 8 * slots]];
-  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK + 8 * slots) && !(address >= f.code.from && address < f.code.to);
-  let compared = 0, number = 0;
+  // Where the calls start from: the function's own memories of play, a share of the calls from each, one after
+  // another, or the program as the console loads it for a function with none. A memory's first call is the one play
+  // made, with every register and the stack as they were, and the rest change what it was given.
+  const sources = memories.length ? memories : [null];
+  let compared = 0, number = 0, source = -1, made = 0, from = null;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
-    const args = f.params.map(type => choose.value(type, pointers));
+    const turn = Math.min(sources.length - 1, Math.floor((number - 1) * sources.length / options.calls) % sources.length);
+    if (turn !== source) {
+      from?.drop();
+      source = turn;
+      from = sources[source];
+      made = 0;
+      // the image only when it's another than the last call started from
+      if (runner.image !== (from?.image ?? image)) {
+        await original.image(from?.image ?? image);
+        await runner.set(from?.image ?? image);
+      }
+    }
+    const asPlayed = from !== null && made++ === 0;
+    // the stack as the call has it: the program's, or play's as the function started
+    const sp = from ? from.registers[29 * 4] >>> 0 : STACK;
+    // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
+    // call is given and may change
+    const skip = [[inImage(sp - SAVES), inImage(sp) + 8 * slots]];
+    const read = address => inImage(address) >= 0 && !(address >= sp - SAVES && address < sp + 8 * slots) && !(address >= f.code.from && address < f.code.to);
+    const registers = from ? [...from.registers] : Array.from({ length: EE_REGISTERS.words }, () => choose.next());
+    // what play gave the function, read back from where a caller puts it
+    const played = () => f.params.map((type, k) => {
+      const place = places[k], at = place.float !== undefined ? EE_REGISTERS.fpr + 12 + place.float : place.register !== undefined ? (4 + place.register) * 4 : null;
+      const words = at !== null ? [registers[at], registers[at + 1]] : [0, 4].map(n => new DataView(from.image.buffer).getUint32(inImage(sp + 8 * place.slot) + n, true));
+      if (type.bits === 64) return (BigInt(words[1] >>> 0) << 32n) | BigInt(words[0] >>> 0);
+      return type.bits === 32 ? words[0] >>> 0 : (type.signed ? (words[0] << (32 - type.bits)) >> (32 - type.bits) : words[0] & (2 ** type.bits - 1)) >>> 0;
+    });
+    const args = asPlayed ? played() : f.params.map(type => choose.value(type, pointers));
     const changes = [];
-    if (pool.size && choose.below(2)) {
+    if (!asPlayed && pool.size && choose.below(2)) {
       const places = [...pool];
       for (let k = 1 + choose.below(3); k; k--) {
         const [address, bytes] = places[choose.below(places.length)];
         changes.push([address, bytes, choose.sized(bytes, pointers)]);
       }
     }
-    const registers = Array.from({ length: EE_REGISTERS.words }, () => choose.next());
     const gpr = (n, low, high = 0) => {
       registers[n * 4] = low >>> 0;
       registers[n * 4 + 1] = high >>> 0;
     };
-    gpr(0, 0);
-    registers[2] = registers[3] = 0;
-    gpr(29, STACK);
-    registers[29 * 4 + 2] = registers[29 * 4 + 3] = 0;
-    gpr(31, BACK);
-    registers[31 * 4 + 2] = registers[31 * 4 + 3] = 0;
-    gpr(28, ...spread(gp));
-    registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
+    if (!from) {
+      gpr(0, 0);
+      registers[2] = registers[3] = 0;
+      gpr(29, STACK);
+      registers[29 * 4 + 2] = registers[29 * 4 + 3] = 0;
+      gpr(31, BACK);
+      registers[31 * 4 + 2] = registers[31 * 4 + 3] = 0;
+      gpr(28, ...spread(gp));
+      registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
+      registers[EE_REGISTERS.fcsr] = 0x01000001;
+      for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
+    }
     // the arguments, as the caller puts them: whole numbers in a0 to a3 and t0 to t3, floats in f12 on
-    f.params.forEach((type, k) => {
+    if (!asPlayed) f.params.forEach((type, k) => {
       const place = places[k], low = Number(BigInt(args[k]) & 0xFFFFFFFFn), high = Number(BigInt(args[k]) >> 32n);
       if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
       else if (place.register !== undefined) gpr(4 + place.register, ...(type.bits === 64 ? [low, high] : spread(low)));
       else {
         // on the stack a caller stores a word, and the other half of the slot too for 64 bits
-        changes.push([STACK + 8 * place.slot, 4, low]);
-        if (type.bits === 64) changes.push([STACK + 8 * place.slot + 4, 4, high]);
+        changes.push([sp + 8 * place.slot, 4, low]);
+        if (type.bits === 64) changes.push([sp + 8 * place.slot + 4, 4, high]);
       }
     });
-    registers[EE_REGISTERS.fcsr] = 0x01000001;
-    for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
     const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, registers, changes });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
@@ -419,7 +447,7 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
       continue;
     }
     const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
-    const call = { number, args, changes, hardware: answer.hardware };
+    const call = { number, args, changes, hardware: answer.hardware, ...(from ? { from: { play: from.play, number: from.number, asPlayed } } : {}) };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
       aside.unbuilt = (aside.unbuilt ?? 0) + 1;
@@ -443,15 +471,17 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
   }
+  from?.drop();
   return { compared, aside, ran, result: null };
 }
 
 const argText = value => (typeof value === 'bigint' ? `0x${value.toString(16).toUpperCase().padStart(16, '0')}` : at(value));
 
 /** A call as a line says it: its number, the function with what it was given, and what was changed for it. */
-export function callText(name, { number, args, changes }) {
+export function callText(name, { number, args, changes, from }) {
   const set = changes.length ? `, after ${changes.map(([address, bytes, value]) => `${at(address)} was set to 0x${(value >>> 0).toString(16).toUpperCase().padStart(bytes * 2, '0')}`).join(' and ')}` : '';
-  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}`;
+  const played = from ? `, ${from.asPlayed ? 'as play made it, ' : ''}from the memory of ${from.play} at its start ${count(from.number)}` : '';
+  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}${played}`;
 }
 
 /** What a function's check came to, as { kind, line }: `kind` is 'same', 'differs', 'never', 'stopped', 'few' or
@@ -496,10 +526,11 @@ export function openPs2Build({ root, files, shifts, givenOf, includes }) {
 /**
  * Checks the twins of one file of C against a PlayStation 2 program, `elf`, its bytes, with `build`, as openPs2Build
  * gives one, `only` the address of the one function to check or null, `addressOf(name)` where the console keeps a
- * value, and `sizeOf(address)` how long the original's function there is. Answers { error }, { missing }, or
- * { functions }, each { name, address, kind, line, compared, whole, left }.
+ * value, `sizeOf(address)` how long the original's function there is, and `memories`, of play, for the calls to start
+ * from, as twin-memories.mjs's openMemories gives them, or none. Answers { error }, { missing }, or { functions }, each
+ * { name, address, kind, line, compared, whole, left }.
  */
-export async function checkFile({ elf, build, file, only = null, addressOf, sizeOf, original, options = {}, ruledOut = new Map(), log = () => {} }) {
+export async function checkFile({ elf, build, file, only = null, addressOf, sizeOf, original, options = {}, memories = null, ruledOut = new Map(), log = () => {} }) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   const linked = await build.link({ file, only, addressOf });
   if (linked.error) return { error: linked.error };
@@ -531,7 +562,7 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         continue;
       }
       const f = { ...call, params: types.slice(0, call.params.length), returns: call.returns ? types.at(-1) : null, size, code: { from: call.address, to: call.address + size } };
-      const checked = await checkFunction({ f, original, runner, gp, options: all, choose });
+      const checked = await checkFunction({ f, original, runner, gp, options: all, choose, image, memories: memories?.of(f.address) ?? [] });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(elf, f), f.address, checked.ran, ruledOut);
       functions.push({ name: f.name, address: f.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left, total });

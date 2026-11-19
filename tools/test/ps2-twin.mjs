@@ -7,7 +7,8 @@
 // along, a 64-bit sum cut to 32, a product rounded as a computer rounds, one that doesn't clamp what the FPU clamps, a
 // quadword copied from where the console doesn't, an argument in t3 left out, one on the stack left out, a switch with a case too many, a GS
 // register four bytes off, a twin that never comes back, one that takes a struct as it is, and one that calls what
-// nothing built is. Last, the same
+// nothing built is. Then memories of play: each function's start as the program's own play reaches it, a path only
+// play's memory takes, and a slip on it that is found from a memory and not without. Last, the same
 // program as a game of its own, through the tool everyone runs, npm run dp -- twin.
 
 import { spawnSync } from 'node:child_process';
@@ -18,8 +19,9 @@ import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { twinsIn } from '../gba/match.mjs';
-import { checkFile, openPs2Build } from '../ps2/twin.mjs';
-import { buildCaller, Original } from '../ps2/original.mjs';
+import { checkFile, gpOf, imageOf, openPs2Build } from '../ps2/twin.mjs';
+import { buildCaller, EE_REGISTERS, Original } from '../ps2/original.mjs';
+import { memoriesKey, openMemories, takeMemories } from '../ps2/twin-memories.mjs';
 import { madeUpElf } from './ps2-twin/program.mjs';
 
 const GAME = fileURLToPath(new URL('./ps2-twin/game.c', import.meta.url));
@@ -39,8 +41,8 @@ mkdirSync(work, { recursive: true });
 const { elf, labels, functions } = madeUpElf();
 const game = readFileSync(GAME, 'utf8');
 const sizes = new Map(functions.map(f => [f.address, f.size]));
-const named = new Map(['values', 'buffer', 'functions'].map(name => [name, labels[name]]));
-const TWINS = ['sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick', 'hardware', 'shine', 'ten', 'game_main', 'kernel', 'misaligned', 'vu0'];
+const named = new Map(['values', 'buffer', 'functions', 'mode'].map(name => [name, labels[name]]));
+const TWINS = ['sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick', 'hardware', 'shine', 'ten', 'moded', 'game_main', 'kernel', 'misaligned', 'vu0'];
 
 console.log('The twins name the program\'s functions:');
 {
@@ -52,7 +54,7 @@ console.log('The twins name the program\'s functions:');
 const original = new Original(await buildCaller(), 'ee');
 let tries = 0;
 // the twins with `changes` made, each [what's there, what goes there instead], built and checked: every result by name
-async function tried(changes = [], options = {}) {
+async function tried(changes = [], options = {}, memories = null) {
   let text = game;
   for (const [from, to] of changes) {
     if (!text.includes(from)) throw new Error(`ps2-twin/game.c has no "${from}" for the test to change.`);
@@ -63,7 +65,7 @@ async function tried(changes = [], options = {}) {
   const file = join(root, 'game.c');
   writeFileSync(file, text);
   const build = openPs2Build({ root, files: [file], includes: [root] });
-  const result = await checkFile({ elf, build, file, addressOf: name => named.get(name) ?? null, sizeOf: address => sizes.get(address) ?? null, original, options: { calls: CALLS, seconds: 1, ...options } });
+  const result = await checkFile({ elf, build, file, addressOf: name => named.get(name) ?? null, sizeOf: address => sizes.get(address) ?? null, original, memories, options: { calls: CALLS, seconds: 1, ...options } });
   if (result.error) throw new Error(result.error);
   return Object.fromEntries(result.functions.map(f => [f.name, f]));
 }
@@ -73,7 +75,10 @@ try {
   const right = await tried();
   const same = TWINS.filter(name => !['kernel', 'misaligned', 'vu0'].includes(name));
   check(same.every(name => right[name]?.kind === 'same' && right[name].compared === CALLS), `${same.join(', ')}: the same memory on all ${CALLS} calls (${same.filter(name => right[name]?.kind !== 'same').map(name => `${name} ${right[name]?.line}`).join('; ')})`);
-  check(same.every(name => right[name]?.whole), `each over every instruction and both ways of each branch (${same.filter(name => !right[name]?.whole).map(name => `${name}: ${right[name]?.left?.map(([at, how]) => `${at.toString(16)} ${how}`).join(', ')}`).join('; ')})`);
+  // moded's other way needs the mode only play sets
+  const whole = same.filter(name => name !== 'moded');
+  check(whole.every(name => right[name]?.whole), `each over every instruction and both ways of each branch (${whole.filter(name => !right[name]?.whole).map(name => `${name}: ${right[name]?.left?.map(([at, how]) => `${at.toString(16)} ${how}`).join(', ')}`).join('; ')})`);
+  check(right.moded?.kind === 'same' && !right.moded.whole && right.moded.left.some(([, how]) => how === 'always taken'), `but the one whose other way needs what only play sets up: ${right.moded?.left?.map(([at, how]) => `${at.toString(16)} ${how}`).join(', ')}`);
   check(right.kernel?.kind === 'unchecked' && /called the console's kernel \(syscall 60\)/.test(right.kernel.line), `a function whose original calls the kernel isn't checked, and says so: ${right.kernel?.line}`);
   check(right.misaligned?.kind === 'unchecked' && /where none of its size starts/.test(right.misaligned.line), `nor one whose original reads where no word starts: ${right.misaligned?.line}`);
   check(right.vu0?.kind === 'unchecked' && /vector unit 0's registers/.test(right.vu0.line), `nor one whose original leaves vector unit 0's registers changed: ${right.vu0?.line}`);
@@ -101,6 +106,30 @@ try {
   await wrong('shine', [['  return 1;\n}\n\n/** 0x001001F0', '  for (;;) {}\n  return 1;\n}\n\n/** 0x001001F0']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);
   await wrong('shine', [['/** 0x001001E8', 'struct pair { int a, b; };\n\n/** 0x001001E8'], ['int shine(int a) {', 'int shine(struct pair a) {']], 'unchecked', 'a twin that takes a struct as it is isn\'t called, and says so', /no register carries/);
   await wrong('twice', [['return sum(a, a);', 'extern int nowhere(int);\n  return nowhere(a);']], 'unchecked', 'a twin that calls what nothing built is the twin of', /nowhere, which nothing built is the twin of/);
+
+  console.log('From memories of play:');
+  // The program's own play, in the check's processor: each function's start as play reaches it, its registers and the
+  // memory then. On a real game those come from its recordings, played in the emulator.
+  const registers = new Array(EE_REGISTERS.words).fill(0);
+  registers[29 * 4] = 0x01FFFF00;
+  registers[31 * 4] = 0x1000;
+  registers[28 * 4] = gpOf(elf);
+  await original.image(imageOf(elf));
+  const addresses = functions.map(f => f.address);
+  const played = await original.call({ address: labels.play, span: sizes.get(labels.play), registers, watch: addresses });
+  const starts = played.starts.map(start => `${functions.find(f => f.address === start.address).name} ${start.number}`);
+  check(played.end === 0 && starts.join() === 'play 1,moded 1,main 1,sum 1,fill 1,twice 1,lookup 1,wide 1,likely 1,pick 1,shine 1', `play tells of each function's first start, in order: ${starts.join(', ')}`);
+  const folder = join(work, 'memories');
+  const taken = await takeMemories({ plays: [{ name: 'made-up play', starts: played.starts }], addresses, folder, key: memoriesKey({ sha1: 'made-up', addresses, plays: ['made-up play'] }) });
+  const memories = openMemories(folder);
+  check(taken.memories === 11 && memories.of(labels.moded).length === 1 && new DataView(memories.of(labels.moded)[0].image.buffer).getUint32(labels.mode, true) === 0x1234ABCD, `a memory is kept of each, ${taken.memories} in ${taken.bytes} bytes, and moded's has the mode play set`);
+  const fromPlay = await tried([], {}, memories);
+  check(same.every(name => fromPlay[name]?.kind === 'same' && fromPlay[name].whole), `from them every twin is the same over every path, moded too (${same.filter(name => !fromPlay[name]?.whole).map(name => `${name} ${fromPlay[name]?.kind} ${fromPlay[name]?.line}`).join('; ')})`);
+  const slip = [['return mode == 0x1234ABCD ? a + 1 : a;', 'return mode == 0x1234ABCD ? a + 2 : a;']];
+  const unseen = await tried(slip);
+  check(unseen.moded?.kind === 'same' && !unseen.moded.whole, 'a slip on the way only play takes passes unseen from the program as it loads, with its path said to be left out');
+  const seen = await tried(slip, {}, memories);
+  check(seen.moded?.kind === 'differs' && /as play made it, from the memory of made-up play at its start 1/.test(seen.moded.line), `and is found from a memory of play: ${seen.moded?.line}`);
 } finally {
   original.close();
 }
@@ -130,10 +159,10 @@ try {
     let run = dp('rom', copy);
     check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s copy');
     run = dp('codemap', NAME);
-    check(run.status === 0 && /20 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 0 && /22 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--calls', '200');
-    check(run.status === 0 && /15 of 18 functions left the same memory/.test(run.out) && /15 of those 15 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
-    check((run.out.match(/The same memory/g) ?? []).length === 15 && (run.out.match(/Not checked/g) ?? []).length === 3, 'a line for each twin');
+    check(run.status === 0 && /16 of 19 functions left the same memory/.test(run.out) && /15 of those 16 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+    check((run.out.match(/The same memory/g) ?? []).length === 16 && (run.out.match(/Not checked/g) ?? []).length === 3, 'a line for each twin');
     run = dp('twin', '--seed', '9', VERSION, 'func_00100158', '--calls', '200');
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'lookup', '--calls', '200');
@@ -148,7 +177,7 @@ try {
     run = dp('proofs', VERSION, '--check');
     check(run.status === 0, `and its proof holds, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION);
-    check(run.status === 0 && /1 of 20 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
+    check(run.status === 0 && /1 of 22 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;', 'return a - b;'));
     run = dp('proofs', VERSION, '--check');
     check(run.status !== 0 && /sum/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${run.out.trim().split('\n').find(line => /sum/.test(line))}`);
