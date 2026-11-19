@@ -26,7 +26,8 @@
 //
 // What a call answers, in words but for the bytes of what ran and of the memory:
 //   end        0 came back, 1 ran out of instructions, 2 an exception, 3 went where the check can't follow,
-//              4 isolated the cache, as the BIOS does to clear it
+//              4 isolated the cache, as the BIOS does to clear it, 5 read or wrote the console's memory through one
+//              of its mirrors, above its first 2 MB, which a twin's module, folded, doesn't have (../lib/wasm-fold.mjs)
 //   detail     the exception's cause, or the address it went to
 //   pc         where it was when it ended
 //   steps      how many instructions it ran
@@ -55,7 +56,7 @@
 #include "psxinterpreter.h"
 
 enum { RAM = 0x200000, HIGH = 0x3000, IMAGE = RAM + HIGH, CHUNK = 256, CHUNKS = IMAGE / CHUNK, MOST_READS = 1024 };
-enum { END_BACK, END_STEPS, END_EXCEPTION, END_ELSEWHERE, END_CACHE };
+enum { END_BACK, END_STEPS, END_EXCEPTION, END_ELSEWHERE, END_CACHE, END_MIRROR };
 
 // the rest of the emulator, as the three files of it see it
 psxRegisters psxRegs;
@@ -94,7 +95,8 @@ static u32 place(u32 mem) {
   if (mem >= 0x20000000u && mem < 0x80000000u) stop(END_ELSEWHERE, mem);
   if (mem >= 0xC0000000u) stop(END_ELSEWHERE, mem);
   u32 physical = mem & 0x1FFFFFFFu;
-  if (physical < 0x800000u) return physical & (RAM - 1);
+  if (physical < RAM) return physical;
+  if (physical < 0x800000u) stop(END_MIRROR, mem);
   if ((physical & 0xFFFF0000u) == 0x1F800000u) {
     u32 low = physical & 0xFFFF;
     if (low < 0x400) return RAM + low;
@@ -121,10 +123,27 @@ static void keep(u32 at, int bytes, u32 value) {
   }
 }
 
+// the places a call read already, by address and size, kept as a small open table so a loop that reads a lot doesn't
+// look through every one each time
+enum { SEEN = 4 * MOST_READS };
+static u32 seen_key[SEEN];
+static u8 seen_used[SEEN];
+
+static int seen_before(u32 mem, int bytes) {
+  u32 key = mem ^ (u32)bytes << 30, at = (key * 2654435761u) >> 20 & (SEEN - 1);
+  while (seen_used[at]) {
+    if (seen_key[at] == key) return 1;
+    at = (at + 1) & (SEEN - 1);
+  }
+  seen_used[at] = 1;
+  seen_key[at] = key;
+  return 0;
+}
+
 static u32 read_at(u32 mem, int bytes) {
   u32 value = load(place(mem), bytes);
-  for (u32 i = 0; i < read_count; i++) if (reads[i][0] == mem && reads[i][1] == (u32)bytes) return value;
-  if (read_count < MOST_READS) {
+  if (read_count >= MOST_READS || seen_before(mem, bytes)) return value;
+  {
     reads[read_count][0] = mem;
     reads[read_count][1] = bytes;
     reads[read_count++][2] = value;
@@ -276,6 +295,7 @@ static void call(void) {
   memset(psxRegs.dloadReg, 0, sizeof psxRegs.dloadReg);
   memset(psxRegs.dloadVal, 0, sizeof psxRegs.dloadVal);
   read_count = 0;
+  memset(seen_used, 0, sizeof seen_used);
   intApplyConfig();
   their_fetch = psxRegs.ptrs.intFetch;
   psxRegs.ptrs.intFetch = fetch;
