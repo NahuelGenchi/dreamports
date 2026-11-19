@@ -1,13 +1,20 @@
-// Folds the addresses a WebAssembly module reads and writes down to its low bits, as a console's own wiring does with
-// the top ones, for a console that keeps its memory higher than a browser can give a module. The PlayStation keeps its
-// 2 MB at 0x80000000, the same memory again at 0x00000000 and 0xA0000000, and its scratchpad and hardware at
-// 0x1F800000: with the low 26 bits kept, a twin's C can say 0x800D8408, keep 0x80170578 in memory as a pointer and
-// follow it, as the console does, and it all lands in a module of 64 MB, the scratchpad at 0x03800000. The module's own
-// values and stack go below that, where folding leaves an address as it is. #1451's trial found it, and the Nintendo
-// 64 and the Dreamcast keep their memory high too.
+// Folds the addresses a WebAssembly module reads and writes down to where a module can keep them, as a console's own
+// wiring does with the top bits, for a console that keeps its memory higher than a browser can give a module. The
+// PlayStation keeps its 2 MB at 0x80000000, the same memory again at 0x00000000 and 0xA0000000, and its scratchpad and
+// hardware at 0x1F800000: with the low 26 bits kept, a twin's C can say 0x800D8408, keep 0x80170578 in memory as a
+// pointer and follow it, as the console does, and it all lands in a module of 64 MB, the scratchpad at 0x03800000. The
+// module's own values and stack go below that, where folding leaves an address as it is. #1451's trial found it, and the
+// Nintendo 64 and the Dreamcast keep their memory high too.
 //
-// Every load and store gets its address and its offset added and masked, with an offset of 0 left on it, and
-// memory.copy, memory.fill and memory.init have each address masked. It reads only what clang writes for C, as
+// The PlayStation 2's memories are too far apart for one mask: its 32 MB at 0x00000000, the scratchpad at 0x70000000,
+// the hardware at 0x10000000 and 0x12000000, the vector units' memories at 0x11000000 and the IOP's at 0x1C000000, each
+// seen again through other addresses. So the other way of folding takes a table in the module's memory, two words for
+// each value of an address's top byte: what to keep of the address, and where in the module that memory starts. An
+// address is folded to (address & mask) + start, and a byte the console has nothing at points where the check can see
+// what was written there (../ps2/twin.mjs).
+//
+// Every load and store gets its address and its offset added and folded, with an offset of 0 left on it, and
+// memory.copy, memory.fill and memory.init have each address folded. It reads only what clang writes for C, as
 // wasm-addresses.mjs does, and stops with what it met on anything else, never a guess.
 
 import { leb, reader, sectionsOf } from './wasm-addresses.mjs';
@@ -16,8 +23,12 @@ const TYPE = 1, IMPORT = 2, FUNCTION = 3, CODE = 10;
 const I32 = 0x7F, I64 = 0x7E, F32 = 0x7D, F64 = 0x7C;
 // what each store keeps, by its opcode
 const STORED = { 0x36: I32, 0x37: I64, 0x38: F32, 0x39: F64, 0x3A: I32, 0x3B: I32, 0x3C: I64, 0x3D: I64, 0x3E: I64 };
-// the locals the pass adds to every function, in this order: two whole words, and one of each kind a store keeps
-const ADDED = [I32, I32, I64, F32, F64];
+// the locals the pass adds to every function, in this order: two whole words, one of each kind a store keeps, two
+// words a fold by a table works in, and the folded address a write marks its page by
+const ADDED = [I32, I32, I64, F32, F64, I32, I32, I32];
+// with a map of pages written, how big a page is, as a power of two, and the byte after the map's that says a copy or
+// a fill wrote more than two pages
+const PAGE = 12, PAGES = 0x10000;
 
 /** A signed LEB128 number, as i32.const takes it. */
 function sleb(value) {
@@ -58,16 +69,22 @@ function parametersOf(bytes, sections) {
 }
 
 /**
- * The module with every address it reads or writes folded to its low bits, `mask` such as 0x03FFFFFF. Its memory has
- * to reach past the mask's last byte, and its own values and stack to sit below it.
+ * The module with every address it reads or writes folded: to its low bits when `fold` is a mask, such as 0x03FFFFFF,
+ * or by a table when it's { table }, the address of 256 pairs of words in the module's memory, a mask and a start for
+ * each top byte, which whoever runs the module writes there. With a mask the module's memory has to reach past the
+ * mask's last byte, and its own values and stack to sit below it; with a table, the table says where they are. With
+ * { table, written } too, every write also sets a byte of a map at `written`, one for each 4 KB of the module's memory
+ * as folded, and the byte after its 65,536 when a copy or a fill reached more than two of them, so whoever runs the
+ * module compares only what a call wrote.
  */
-export function foldAddresses(module, mask) {
+export function foldAddresses(module, fold) {
+  const table = typeof fold === 'object' ? fold.table : null, mask = table === null ? fold : null;
+  const written = typeof fold === 'object' ? fold.written ?? null : null;
   const bytes = Uint8Array.from(module);
   const sections = sectionsOf(bytes);
   const code = sections.find(s => s.id === CODE);
   if (!code) return bytes;
   const params = parametersOf(bytes, sections);
-  const masked = [0x41, ...sleb(mask), 0x71];
   const r = reader(bytes, code.from);
   const bodies = [];
   for (let n = r.u32(), i = 0; n; n--, i++) {
@@ -85,10 +102,21 @@ export function foldAddresses(module, mask) {
     // the pass's locals: two whole words, for the addresses and counts of memory.copy and memory.fill, and where a
     // store's value waits while its address is folded
     const first = params[i] + locals, [wordA, wordB] = [first, first + 1];
-    const valueOf = { [I32]: first, [I64]: first + 2, [F32]: first + 3, [F64]: first + 4 };
+    const valueOf = { [I32]: first, [I64]: first + 2, [F32]: first + 3, [F64]: first + 4 }, [foldA, foldB, folded] = [first + 5, first + 6, first + 7];
     const set = index => [0x21, ...leb(index)], get = index => [0x20, ...leb(index)];
     const out = [...leb(groups + ADDED.length), ...declared.flatMap(part => [...part]), ...ADDED.flatMap(kind => [1, kind])];
+    // the address on the stack, folded: masked, or masked by its top byte's pair in the table and moved to its start,
+    // the table's own words read as they are
+    const masked = table === null ? [0x41, ...sleb(mask), 0x71]
+      : [0x22, ...leb(foldA), 0x41, 24, 0x76, 0x41, 3, 0x74, 0x22, ...leb(foldB), 0x28, 2, ...leb(table), ...get(foldA), 0x71, ...get(foldB), 0x28, 2, ...leb(table + 4), 0x6A];
     const fold = offset => [...(offset ? [0x41, ...sleb(offset), 0x6A] : []), ...masked];
+    // with a map, the folded address on the stack kept, and its page marked written
+    const marked = written === null ? [] : [0x22, ...leb(folded), 0x20, ...leb(folded), 0x41, PAGE, 0x76, 0x41, 1, 0x3A, 0, ...leb(written)];
+    // and after a copy or a fill of wordA bytes from there, its last page too, or every page when it reached more
+    const markedTo = written === null ? [] : [
+      ...get(folded), ...get(wordA), 0x6A, 0x41, 1, 0x6B, 0x41, PAGE, 0x76, 0x41, 1, 0x3A, 0, ...leb(written),
+      ...get(wordA), 0x41, ...sleb(1 << PAGE), 0x4B, 0x04, 0x40, 0x41, ...sleb(PAGES), 0x41, 1, 0x3A, 0, ...leb(written), 0x0B,
+    ];
     while (r.at < end) {
       const at = r.at, op = r.byte();
       if (op >= 0x28 && op <= 0x3E) {
@@ -96,7 +124,7 @@ export function foldAddresses(module, mask) {
         if (op <= 0x35) out.push(...fold(offset), op, ...leb(align), 0);
         else {
           const kept = valueOf[STORED[op]];
-          out.push(...set(kept), ...fold(offset), ...get(kept), op, ...leb(align), 0);
+          out.push(...set(kept), ...fold(offset), ...marked, ...get(kept), op, ...leb(align), 0);
         }
         continue;
       }
@@ -105,13 +133,13 @@ export function foldAddresses(module, mask) {
         if (sub === 10) {
           r.byte();
           r.byte();
-          out.push(...set(wordA), ...set(wordB), ...masked, ...get(wordB), ...masked, ...get(wordA), 0xFC, ...leb(10), 0, 0);
+          out.push(...set(wordA), ...set(wordB), ...masked, ...marked, ...get(wordB), ...masked, ...get(wordA), 0xFC, ...leb(10), 0, 0, ...markedTo);
           continue;
         }
         if (sub === 11 || sub === 8) {
           const index = sub === 8 ? r.u32() : null;
           r.byte();
-          out.push(...set(wordA), ...set(wordB), ...masked, ...get(wordB), ...get(wordA), 0xFC, ...leb(sub), ...(index === null ? [] : leb(index)), 0);
+          out.push(...set(wordA), ...set(wordB), ...masked, ...marked, ...get(wordB), ...get(wordA), 0xFC, ...leb(sub), ...(index === null ? [] : leb(index)), 0, ...markedTo);
           continue;
         }
         if (sub <= 7) {
