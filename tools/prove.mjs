@@ -871,8 +871,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (fixed.length) log(`  Matches where it differed when last proven: ${listed(fixed)}.`);
     if (page.errors.length) log(`  The page reported ${page.errors.length} errors; ${where}/report.json lists them.`);
     if (codeMap && (first.outside.cartridge || first.outside.memory)) {
-      const where = [first.outside.cartridge && `${first.outside.cartridge} in the cartridge`, first.outside.memory && `${first.outside.memory} ${machine.core ? "outside the cartridge's program" : 'in the work RAM'}`].filter(Boolean).join(' and ');
-      log(`  Instructions that ran outside every function of the code map: ${where}. npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`);
+      // a PlayStation 2 has no cartridge: its processors' memories, where the system's own code, the IOP's modules and
+      // the vector units' programs run too, each instruction counted once for each frame it ran in (libretro/ran-ps2.h)
+      const ps2 = machine.id === 'ps2';
+      const where = [first.outside.cartridge && `${first.outside.cartridge} in ${ps2 ? "the processors' memory, each once a frame" : 'the cartridge'}`, first.outside.memory && `${first.outside.memory} ${ps2 ? 'outside it' : machine.core ? "outside the cartridge's program" : 'in the work RAM'}`].filter(Boolean).join(' and ');
+      log(`  Instructions that ran outside every function of the code map: ${where}. ${ps2 ? "The system's own code, a module of the IOP's and a vector unit's program are among them until the code map lists them." : `npm run dp -- codemap ${versionOf(game).game} --fill adds what the map is missing.`}`);
     }
     if (!quick) log(`  Clip, ${(file.length / 1e6).toFixed(2)} MB, frames ${clip[0]} to ${clip[1]}: ${where}/clip.mp4`);
     if (!quick && file.length > CLIP_LIMIT) log('  The clip is still over 2 MB: a shorter "clip" in the recording makes it lighter.');
