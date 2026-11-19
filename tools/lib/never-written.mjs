@@ -10,11 +10,12 @@
 //     bytes, with what's known of the registers as `--decided` reads a run (lib/decided.mjs): a store to an address
 //     the run knows writes there, with the number it knows or with a value it doesn't; a store relative to the stack
 //     pointer writes the stack, in the fast work memory; and any other writes where the check can't follow
-//   - the BIOS, through a swi: its copies and fills, where the run knows their place and length, its resets, which
-//     clear what they're told to, and its other work, which the check doesn't follow
+//   - the BIOS, through a swi: its copies and fills, where the run knows their place and length, its unpacks, as far
+//     as the pass that follows pointers bounds them, its resets, which clear what they're told to, and its other
+//     work, which the check doesn't follow
 //   - DMA, which a store to a channel's control starts, where the run knows the channel's destination and length
-//   - code the game runs from the work memory: as the copy of a function of the cartridge it is, as the code map's
-//     copies say, or else code the check can't read
+//   - code the game runs from the work memory: as the code map's copies hold it, a copy of a function of the
+//     cartridge or what the BIOS unpacks from it, or else code the check can't read
 // Every function of the code map is read, so a store in code the code map doesn't have isn't seen: the code map is the
 // game's code here, as it is for every number of the proof.
 
@@ -59,7 +60,7 @@ export function writesOf(rom, functions, copies = [], followed = null) {
   if (followed?.complete) {
     // with the pass that follows pointers: the code it couldn't read, and the stores and BIOS calls of the ARM code
     // and of the copies in the work memory it did, as it recorded them
-    for (const at of followed.unread) writes.push({ at, kind: 'unknown', why: `the code at ${hex(at)} runs from the work memory and isn't a copy of the cartridge's the code map knows, so its writes can't be read` });
+    for (const at of followed.unread) writes.push({ at, kind: 'unknown', why: `the code at ${hex(at)} runs from the work memory and no copy the code map knows holds it, so its writes can't be read` });
     const thumbs = inRom.filter(f => !isArm(rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size)));
     const inThumb = at => thumbs.some(f => at >= f.address && at < f.address + f.size);
     for (const [at, store] of followed.stores) if (!inThumb(at)) recorded(writes, followed, at, store.size);
@@ -67,7 +68,7 @@ export function writesOf(rom, functions, copies = [], followed = null) {
     for (const [at, given] of followed.swis) {
       if (inThumb(at)) continue;
       const call = at >= CARTRIDGE && at < CARTRIDGE + rom.length && !isArmAt(rom, functions, at) ? rom[at - CARTRIDGE] : null;
-      biosWrites(call ?? swiOfArm(rom, followed, at), [one(given.r0), one(given.r1), one(given.r2)], at, (pc, from, size, value) => writes.push({ at: pc, kind: 'known', from: u32(from), to: u32(from + size), bytes: value === null ? null : Array.from({ length: Math.min(size, 4) }, (_, i) => value >>> (8 * i) & 0xFF) }), (pc, why) => writes.push({ at: pc, kind: 'unknown', why }));
+      biosWrites(call ?? swiOfArm(rom, followed, at), [one(given.r0), one(given.r1), one(given.r2)], at, given.wrote, (pc, from, size, value) => writes.push({ at: pc, kind: 'known', from: u32(from), to: u32(from + size), bytes: value === null ? null : Array.from({ length: Math.min(size, 4) }, (_, i) => value >>> (8 * i) & 0xFF) }), (pc, why) => writes.push({ at: pc, kind: 'unknown', why }));
     }
     for (const f of thumbs) thumbWrites(rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size), f.address, word, targets, writes, followed);
     return writes;
@@ -200,16 +201,21 @@ function thumbWrites(bytes, address, word, targets, writes, followed) {
     } else if ((op & 0xFF00) === 0xDF00) {
       // what the run doesn't know of the registers the BIOS is given, the pass may
       const given = followed?.swis.get(pc), one = v => { const n = numbers(v ?? ANYWHERE); return n && n.length === 1 ? n[0] : null; };
-      biosWrites(op & 0xFF, given ? r.map((v, i) => (v !== null ? v : i <= 2 ? one(given[`r${i}`]) : null)) : r, pc, known, unknown);
+      biosWrites(op & 0xFF, given ? r.map((v, i) => (v !== null ? v : i <= 2 ? one(given[`r${i}`]) : null)) : r, pc, given?.wrote, known, unknown);
     }
     step(state, op, pc, word);
     if (endsThumb(op)) { state = fresh(); dma = [{}, {}, {}, {}]; }
   }
 }
 
-// what the BIOS writes for a swi, from what the run knows of the registers it's given
-function biosWrites(call, r, pc, known, unknown) {
+// what the BIOS writes for a swi, from what the run knows of the registers it's given, or for an unpack the pass that
+// follows pointers bounds, the places it says it writes, with values the check doesn't follow
+function biosWrites(call, r, pc, wrote, known, unknown) {
   if (QUIET.has(call)) return;
+  if (wrote) {
+    for (const w of wrote) known(pc, w.from, w.size, null);
+    return;
+  }
   // SoftReset clears the top of the fast work memory
   if (call === 0x00) return known(pc, 0x03007E00, 0x200, 0);
   if (call === 0x01) {
