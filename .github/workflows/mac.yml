@@ -1,0 +1,180 @@
+name: Mac
+
+# The PlayStation 2's tools and kit on a Mac with Apple's chip, as a person starting a PlayStation 2 game on a MacBook
+# will have them (#1592), on GitHub's Mac: Getting ready as tools/README.md has it, with Homebrew's Node.js, GitHub CLI and
+# CMake; Play! built for arm64 from its makers' source, its JIT under Apple's rules, drawing with Apple's OpenGL;
+# npm run test:real-ps2, test:ps2-3d, test:ps2-kit, test:ps2-gs and test:ps2-sound; and npm run test:ps2-flow, which goes through what /dreamport
+# does with a new PlayStation 2 game, rom, codemap, new, capture and prove, with a stand-in for GitHub, and plays its
+# page in Safari and in Chrome. A job on Linux and the Mac each run npm run test:ps2-same on the same small programs, and
+# a third compares the two: every draw list, sound and memory the same on both, as a Mac's proofs have to be Linux's.
+# Nothing from any game is needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, as building Play! takes a while. It runs on pull requests that touch what the PlayStation 2's
+# games need, after they merge, every week, so the newest Mac GitHub has tries it too, and by hand. A built Play! is kept
+# between runs, by the commit and patch it's built from, except every week's, which builds it again.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/mac.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/ps2/**'
+      - 'tools/consoles.mjs'
+      - 'tools/libretro/**'
+      - 'tools/lib/draw-lists.mjs'
+      - 'tools/ps2/**'
+      - 'tools/setup.mjs'
+      - 'tools/lib/sound.mjs'
+      - 'tools/test/made-up-ps2*'
+      - 'tools/test/ps2-*'
+      - 'tools/test/real-ps2.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/mac.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/ps2/**'
+      - 'tools/consoles.mjs'
+      - 'tools/libretro/**'
+      - 'tools/lib/draw-lists.mjs'
+      - 'tools/ps2/**'
+      - 'tools/setup.mjs'
+      - 'tools/lib/sound.mjs'
+      - 'tools/test/made-up-ps2*'
+      - 'tools/test/ps2-*'
+      - 'tools/test/real-ps2.mjs'
+  schedule:
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (PlayStation 2)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      # Mesa's EGL with no window and llvmpipe, which the tools draw with on Linux, and the headers Play! is built with
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri
+      - run: npm ci
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/play_libretro-*.so
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+      - run: npm run dp -- setup ps2
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/play_libretro-*.so
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+      - run: npm run test:ps2-same -- --write ps2-same-linux.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ps2-same-linux
+          path: ps2-same-linux.json
+          retention-days: 7
+
+  mac:
+    name: Mac (PlayStation 2)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, Homebrew gives
+      # Node.js, the GitHub CLI and CMake, and Chrome and Safari are there
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          cc --version | head -1
+          git --version
+          brew --version | head -1
+          brew install --quiet node gh cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          cmake --version | head -1
+          gh --version | head -1
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+          test -d /Applications/Safari.app
+          sudo safaridriver --enable
+      - name: The tools' packages
+        run: |
+          test "$(command -v node)" = "$(brew --prefix)/bin/node"
+          node --version
+          npm --version
+          npm ci
+
+      - name: The tools' own builds
+        run: npm run dp -- setup
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dylib
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+      - name: Play!, built for arm64
+        run: |
+          npm run dp -- setup ps2
+          file .dreamports/libretro/play_libretro-*.dylib .dreamports/libretro/host
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dylib
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
+
+      - run: npm run test:ps2-same -- --write ps2-same-mac.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ps2-same-mac
+          path: ps2-same-mac.json
+          retention-days: 7
+
+      - run: npm run test:real-ps2
+      - run: npm run test:ps2-3d
+      - run: npm run test:ps2-kit
+      - run: npm run test:ps2-gs
+      - run: npm run test:ps2-sound
+      - run: npm run test:ps2-flow -- --safari
+
+      # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
+      - name: Nothing left in the person's own folders
+        if: always()
+        run: test ! -e "$HOME/Documents/Play Data Files"
+
+  same:
+    name: Same on Linux and a Mac (PlayStation 2)
+    needs: [linux, mac]
+    # even when a later test on the Mac failed, as its fingerprints are taken before them
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ps2-same-*
+          merge-multiple: true
+      - run: node tools/test/ps2-same.mjs --compare ps2-same-linux.json ps2-same-mac.json

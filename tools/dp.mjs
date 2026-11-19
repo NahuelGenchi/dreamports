@@ -1,7 +1,7 @@
 // The proof tools, started with `npm run dp -- <tool>`. tools/README.md says what each does.
 
 const TOOLS = {
-  setup: 'Builds the reference emulator the original runs in, and the Game Boy Advance\'s compiler, on this computer',
+  setup: 'Builds the reference emulator the original runs in, and the Game Boy Advance\'s compiler, on this computer (<console>: that console\'s emulator, such as ps2)',
   rom: 'Checks a copy of a game, says which game and version it is, and remembers where it is',
   play: 'Opens a game in a browser with your copy, and with --record keeps what you play as a recording (--from: after another\'s presses; --start: at a start point)',
   route: 'Finds the presses that take the original from where a recording leaves it to a goal, such as an act\'s end, and writes them as a recording (--from: after another\'s presses; --minutes: how long it may search)',
