@@ -127,3 +127,35 @@ test('docs/STATUS.md keeps one section of shared code after its table, written a
   assert.equal(sharedPart(once), section('none yet'));
   assert.equal(sharedPart('\n'), null);
 });
+
+test('a GBA function is masked where an address goes, and found by its short hash wherever it is', async () => {
+  const { masked, shortHash, findLibrary } = await import('../gba/libraries.mjs');
+  // push {lr}; bl somewhere; ldr r0, [pc]; pop {pc}; then a word of the work RAM's, as a literal pool holds
+  const routine = (call, pointer) => {
+    const bytes = Buffer.alloc(12);
+    bytes.writeUInt16LE(0xB500, 0);
+    bytes.writeUInt16LE(0xF000 | ((call >> 12) & 0x7FF), 2);
+    bytes.writeUInt16LE(0xF800 | ((call >> 1) & 0x7FF), 4);
+    bytes.writeUInt16LE(0x4800, 6);
+    bytes.writeUInt32LE(pointer, 8);
+    return bytes;
+  };
+  const one = routine(0x40, 0x03000100), two = routine(0x200, 0x03000480);
+  assert.deepEqual([...masked(one)], [0x00, 0xB5, 0, 0, 0, 0, 0x00, 0x48, 0, 0, 0, 0]);
+  assert.equal(shortHash(one), shortHash(two));
+  assert.notEqual(shortHash(one), shortHash(routine(0x40, 0x00000100)));
+  // the same routine in a made-up copy at 0x08000200, and one that differs in an instruction at 0x08000300
+  const rom = Buffer.alloc(0x400);
+  two.copy(rom, 0x200);
+  const other = Buffer.from(two);
+  other.writeUInt16LE(0x4801, 6);
+  other.copy(rom, 0x300);
+  const codeMap = { functions: [{ address: 0x08000200, size: 12 }, { address: 0x08000300, size: 12 }] };
+  const library = { functions: [{ name: 'Routine', size: 12, file: '/lib/routine.c', hash: shortHash(one) }] };
+  const found = findLibrary({ library, files: ['/lib/routine.c'], built: null, rom, codeMap });
+  assert.deepEqual([...found.functions], [['Routine', 0x08000200]]);
+  assert.deepEqual(found.missing, []);
+  // without a hash, and with nothing built, it's said why it can't be found
+  const unhashed = findLibrary({ library: { functions: [{ name: 'Routine', size: 12, file: '/lib/routine.c' }] }, files: ['/lib/routine.c'], built: null, rom, codeMap });
+  assert.match(unhashed.missing[0].why, /no compiler for the Game Boy Advance, and it has no short hash/);
+});

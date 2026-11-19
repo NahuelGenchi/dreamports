@@ -55,6 +55,9 @@ const GAMES = [
   { name: 'test-libraries-a', title: 'LIBRARY A', functions: { LibAdd: 0x08000800, LibPick: 0x08000840 }, values: { gLibCount: 0x03000200, gLibTable: 0x03000210 } },
   { name: 'test-libraries-b', title: 'LIBRARY B', functions: { LibPick: 0x08000900, LibAdd: 0x08000A40 }, values: { gLibCount: 0x03000400, gLibTable: 0x03000500 } },
 ];
+// a third, with no libraries.json, the library's functions in yet other places, and a second copy of LibAdd there too,
+// with nothing but LibPick's call to say which is the library's
+const THIRD = { name: 'test-libraries-c', title: 'LIBRARY C', functions: { LibPick: 0x08000B00, LibAdd: 0x08000C00 }, values: { gLibCount: 0x03000600, gLibTable: 0x03000700 }, again: { LibAdd: 0x08000D40, LibPick: 0x08000E00 } };
 const version = game => `${game.name}/c`;
 
 const failures = [];
@@ -71,12 +74,39 @@ const kept = game => JSON.parse(readFileSync(join(proofFolder(version(game)), 'p
 const writeLibrary = (text = TEXT) => writeFileSync(SOURCE, text);
 const tidy = () => {
   rmSync(FOLDER, { recursive: true, force: true });
-  for (const game of GAMES) for (const path of [gameFolder(game.name), join(LOCAL, 'match', version(game)), join(LOCAL, 'twin', version(game))]) rmSync(path, { recursive: true, force: true });
+  for (const game of [...GAMES, THIRD]) for (const path of [gameFolder(game.name), join(LOCAL, 'match', version(game)), join(LOCAL, 'twin', version(game))]) rmSync(path, { recursive: true, force: true });
+  rmSync(join(LOCAL, 'libraries', 'gba', 'test-made-up'), { recursive: true, force: true });
 };
 const librariesJson = (game, functions = game.functions) => `${JSON.stringify({
   about: 'Where the made-up cartridge has the library, as the test placed it.',
   libraries: { [LIBRARY]: { at: Object.fromEntries([...Object.entries(functions), ...Object.entries(game.values)].map(([name, address]) => [name, hex(address)])) } },
 }, null, 2)}\n`;
+
+// a made-up game that has the library where `game` says, in games/, with its copy, which rom knows; and its
+// libraries.json, unless it's to find it
+function makeGame(game, assembly, sizes) {
+  const { rom } = madeUpGame({ size: 0x1000, title: game.title, code: game.title.slice(-1).repeat(4) });
+  place(rom, assembly, game.functions, new Map(Object.entries(game.values)));
+  if (game.again) place(rom, assembly, game.again, new Map(Object.entries(game.values)));
+  const copy = join(work, `${game.name}.gba`);
+  writeFileSync(copy, rom);
+  const original = { console: 'gba', name: `Test ${game.title} (World)`, title: game.title, code: game.title.slice(-1).repeat(4), sha1: createHash('sha1').update(rom).digest('hex'), compiler };
+  for (const [file, text] of Object.entries(firstFiles(game.name, original, { language: 'c', issue: 900, lead: 'pat-lead', added: '2026-11-18' }))) {
+    mkdirSync(join(gameFolder(game.name), file, '..'), { recursive: true });
+    writeFileSync(join(gameFolder(game.name), file), text);
+  }
+  mkdirSync(proofFolder(game.name), { recursive: true });
+  writeFileSync(join(proofFolder(game.name), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
+  const mapped = [...Object.entries(game.functions), ...(game.again ? [['LibAdd', game.again.LibAdd]] : [])];
+  writeFileSync(join(proofFolder(game.name), 'code-map.json'), formatCodeMap({
+    original: original.sha1, from: 'The test\'s own placing',
+    functions: mapped.map(([name, address]) => ({ address, size: sizes[name] })).sort((a, b) => a.address - b.address),
+  }));
+  mkdirSync(proofFolder(version(game)), { recursive: true });
+  if (!game.again) writeFileSync(join(proofFolder(version(game)), 'libraries.json'), librariesJson(game));
+  const run = dp('rom', copy);
+  check(run.status === 0 && run.out.includes(game.name), `rom knows ${game.name}'s copy`);
+}
 
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
@@ -103,27 +133,7 @@ try {
   const assembly = readFileSync(join(work, 'built', 'library.s'), 'utf8');
 
   console.log('Two games that have it, each at its own addresses:');
-  for (const game of GAMES) {
-    const { rom } = madeUpGame({ size: 0x1000, title: game.title, code: game.title.slice(-1).repeat(4) });
-    place(rom, assembly, game.functions, new Map(Object.entries(game.values)));
-    const copy = join(work, `${game.name}.gba`);
-    writeFileSync(copy, rom);
-    const original = { console: 'gba', name: `Test ${game.title} (World)`, title: game.title, code: game.title.slice(-1).repeat(4), sha1: createHash('sha1').update(rom).digest('hex'), compiler };
-    for (const [file, text] of Object.entries(firstFiles(game.name, original, { language: 'c', issue: 900, lead: 'pat-lead', added: '2026-11-18' }))) {
-      mkdirSync(join(gameFolder(game.name), file, '..'), { recursive: true });
-      writeFileSync(join(gameFolder(game.name), file), text);
-    }
-    mkdirSync(proofFolder(game.name), { recursive: true });
-    writeFileSync(join(proofFolder(game.name), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
-    writeFileSync(join(proofFolder(game.name), 'code-map.json'), formatCodeMap({
-      original: original.sha1, from: 'The test\'s own placing',
-      functions: Object.entries(game.functions).map(([name, address]) => ({ address, size: sizes[name] })).sort((a, b) => a.address - b.address),
-    }));
-    mkdirSync(proofFolder(version(game)), { recursive: true });
-    writeFileSync(join(proofFolder(version(game)), 'libraries.json'), librariesJson(game));
-    const run = dp('rom', copy);
-    check(run.status === 0 && run.out.includes(game.name), `rom knows ${game.name}'s copy`);
-  }
+  for (const game of GAMES) makeGame(game, assembly, sizes);
   let run = dp('libraries', '--check');
   check(run.status === 0 && /1 shared library and the 2 versions that take them keep their rules/.test(run.out), `libraries --check passes: ${last(run)}`);
   for (const game of GAMES) {
@@ -154,12 +164,22 @@ try {
 
   console.log('Proven on each copy, at its own addresses:');
   for (const game of GAMES) check(dp('proofs', version(game), '--start').status === 0, `${game.name} keeps its proofs`);
-  run = dp('match', version(GAMES[0]));
-  check(run.status === 0 && /2 of 2 functions the same/.test(run.out) && /2 functions kept as proven by the same bytes/.test(run.out) && kept(GAMES[0]).length === 2, `match proves the library on the first copy: ${last(run)}`);
   run = dp('twin', version(GAMES[1]), '--frames', '2', '--calls', '1000');
   check(run.status === 0 && /2 of 2 functions left the same memory/.test(run.out) && kept(GAMES[1]).every(line => line[1] === 'memory') && kept(GAMES[1]).length === 2, `twin proves it on the second, where it sits elsewhere: ${last(run)}`);
   const cellsOf = versions => sharedCode(versions).find(each => each.id === 'gba').libraries.find(each => each.id === LIBRARY).cells.map(cell => cell.state);
-  check(JSON.stringify(cellsOf([version(GAMES[1])])) === '["memory","memory"]', 'the second game alone has each function proven by the same memory');
+  check(JSON.stringify(cellsOf([version(GAMES[1])])) === '["memory","memory"]', 'the second game has each function proven by the same memory');
+  const plain = readFileSync(join(FOLDER, 'library.json'), 'utf8');
+  run = dp('libraries', version(GAMES[1]), '--hash');
+  const hashed = JSON.parse(readFileSync(join(FOLDER, 'library.json'), 'utf8')).functions;
+  check(run.status === 0 && /2 short hashes written/.test(run.out) && hashed.every(entry => /^[0-9a-f]{16}$/.test(entry[3] ?? '')), `--hash keeps a short hash of each function proven by the same memory and by no compiler yet: ${last(run)}`);
+  check(dp('libraries', '--check').status === 0, 'which the rules allow');
+  run = dp('match', version(GAMES[0]));
+  check(run.status === 0 && /2 of 2 functions the same/.test(run.out) && /2 functions kept as proven by the same bytes/.test(run.out) && kept(GAMES[0]).length === 2, `match proves the library on the first copy: ${last(run)}`);
+  run = dp('libraries', '--check');
+  check(run.status === 1 && /LibAdd has a short hash in its library\.json, and a version proves it by the same bytes/.test(run.out), 'once a compiler rebuilds a function, its hash breaks the rules');
+  run = dp('libraries', version(GAMES[1]), '--hash');
+  check(/No function test-libraries-b\/c takes from a library is proven by the same memory alone/.test(run.out), 'and --hash writes none of a function a version proves by the same bytes');
+  writeFileSync(join(FOLDER, 'library.json'), plain);
   run = dp('match', version(GAMES[1]));
   check(run.status === 0 && kept(GAMES[1]).every(line => line[1] === 'bytes'), 'and match proves it there by the same bytes too, the stronger proof');
   check(JSON.stringify(kept(GAMES[0]).map(line => line[2]).sort()) === JSON.stringify(kept(GAMES[1]).map(line => line[2]).sort()), 'each twin\'s mark is the same in both, as it\'s the same C');
@@ -193,6 +213,18 @@ try {
   writeLibrary();
   for (const game of GAMES) dp('portmap', version(game));
   check(dp('proofs', '--check').status === 0, 'with the library as it was, every proof holds again');
+
+  console.log('Found in a new game, with nothing to say where:');
+  makeGame(THIRD, assembly, sizes);
+  run = dp('libraries', version(THIRD), '--find');
+  const found = existsSync(join(proofFolder(version(THIRD)), 'libraries.json')) ? JSON.parse(readFileSync(join(proofFolder(version(THIRD)), 'libraries.json'), 'utf8')).libraries[LIBRARY]?.at : null;
+  const expected = Object.fromEntries([...Object.entries(THIRD.functions), ...Object.entries(THIRD.values)].sort((a, b) => a[1] - b[1]).map(([name, address]) => [name, hex(address)]));
+  check(run.status === 0 && /2 of 2 functions found/.test(run.out) && JSON.stringify(found) === JSON.stringify(expected), `--find builds the library and finds both functions and both values, LibAdd by LibPick's call among its two copies: ${JSON.stringify(found)}`);
+  run = dp('match', version(THIRD));
+  check(run.status === 0 && /2 of 2 functions the same/.test(run.out), `and match proves both there: ${last(run)}`);
+  check(dp('libraries', '--check').status === 0, 'its libraries.json keeps the rules');
+  run = dp('libraries', '--shared', GAMES[0].name, THIRD.name);
+  check(run.status === 0 && /2 functions of test-libraries-a are in test-libraries-c too, with every address masked/.test(run.out) && /0x08000800  0x08000C00 0x08000D40/.test(run.out), `--shared lists what two copies share, by address and size: ${last(run)}`);
 
   console.log('The rules:');
   writeLibrary(TEXT.replace('/** Adds two numbers', '/** 0x08000800: adds two numbers'));
