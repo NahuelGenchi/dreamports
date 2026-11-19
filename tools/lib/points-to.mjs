@@ -19,8 +19,9 @@
 //
 // The code it reads: each function of the code map in the cartridge, Thumb or ARM, and each the game runs from its
 // work memory that one of the code map's copies holds, read as those bytes, at the address it runs at: a copy of the
-// cartridge's, or what the BIOS unpacks from it (gba/unpack.mjs), when the copy's bytes there are the function's. Other
-// code at an address it already reads is code it doesn't read. A function's own stack is followed within it: a slot it surely stored before, on every way there, is read back
+// cartridge's, or what the BIOS unpacks from it (gba/unpack.mjs), when the copy's bytes there are the function's, and
+// each copy of the cartridge's functions where it runs. Code at one address at different times is pieces kept apart,
+// each with an id of its own, and a call through that address reaches each piece that can be in place there. A function's own stack is followed within it: a slot it surely stored before, on every way there, is read back
 // as what it stored, and any other, or one of its caller's above it, is "anywhere".
 //
 // Ways in: a function starts where it starts, and a branch of another function may arrive in its middle. A word of the
@@ -179,40 +180,73 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     return number(v);
   };
 
-  // the code it reads: the cartridge's functions, and those the game runs from its work memory that a copy holds, with
-  // the copy's bytes, to read the numbers the code keeps beside itself
+  // the code it reads: the cartridge's functions, those the game runs from its work memory that a copy holds, and each
+  // copy of the cartridge's functions where it runs, each piece with the copy's bytes, to read the numbers the code
+  // keeps beside itself
   const units = [], unread = [];
   const keyOf = bytes => Array.from(bytes.subarray(0, 8), b => b.toString(16).toUpperCase().padStart(2, '0')).join('');
   const held = copies.map(c => ({ ...c, bytes: copyBytes(rom, c) })).filter(c => c.bytes);
+  const piece = (address, size, bytes, copy, source) => units.push({ address, size, bytes, copy, copied: !!copy, ...(source === undefined ? {} : { source }) });
   for (const f of functions) {
-    if (!f.bytes && inRom(f.address) && f.address + f.size <= end) { units.push({ address: f.address, size: f.size, source: f.address, bytes: rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size) }); continue; }
+    if (!f.bytes && inRom(f.address) && f.address + f.size <= end) { piece(f.address, f.size, rom.subarray(f.address - CARTRIDGE, f.address - CARTRIDGE + f.size), null, f.address); continue; }
     const copy = held.find(c => f.address >= c.ram && f.address + f.size <= c.ram + c.size && (!f.bytes || f.bytes.startsWith(keyOf(c.bytes.subarray(f.address - c.ram)))));
     if (!copy) { unread.push(f.address); continue; }
     const at = f.address - copy.ram;
-    units.push({ address: f.address, size: f.size, ...(copy.packed ? {} : { source: copy.cartridge + at }), bytes: copy.bytes.subarray(at, at + f.size), copy, copied: true });
+    piece(f.address, f.size, copy.bytes.subarray(at, at + f.size), copy, copy.packed ? undefined : copy.cartridge + at);
+  }
+  const cartridgeStarts = functions.filter(f => !f.bytes && inRom(f.address));
+  for (const c of held) {
+    if (c.packed) continue;
+    const within = cartridgeStarts.filter(f => f.address >= c.cartridge && f.address < c.cartridge + c.size);
+    // a copy that starts in a function's middle holds code before its first start that the pass can't place
+    if (!within.some(f => f.address === c.cartridge)) { unread.push(c.ram); continue; }
+    for (const f of within) {
+      const at = f.address - c.cartridge, size = Math.min(f.size, c.size - at);
+      piece(c.ram + at, size, c.bytes.subarray(at, at + size), c, f.address);
+    }
   }
   for (const u of units) u.arm = isArm(u.bytes);
-  // one piece of code to an address: other code there at another time is code the pass doesn't read
-  const byAddress = new Map();
+  // the pieces at each address: the same bytes are one piece, and other bytes, there at another time, a piece of their
+  // own, each with an id of its own, the address for the first
+  const sameBytes = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const atAddress = new Map(), byId = new Map();
+  let others = 0;
   for (const u of units.splice(0)) {
-    const there = byAddress.get(u.address);
-    if (!there) {
-      byAddress.set(u.address, u);
-      units.push(u);
-    } else if (keyOf(there.bytes) !== keyOf(u.bytes)) unread.push(u.address);
+    const there = atAddress.get(u.address) ?? [];
+    if (there.some(t => sameBytes(t.bytes, u.bytes))) continue;
+    u.id = there.length ? 2 ** 32 + others++ : u.address;
+    there.push(u);
+    atAddress.set(u.address, there);
+    byId.set(u.id, u);
+    units.push(u);
   }
-  const sorted = [...byAddress.values()].sort((a, b) => a.address - b.address);
-  const inside = a => {
+  // the pieces each address is in
+  const sorted = [...units].sort((a, b) => a.address - b.address);
+  const longest = units.reduce((m, u) => Math.max(m, u.size), 0);
+  const containing = a => {
     let lo = 0, hi = sorted.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid].address + sorted[mid].size <= a) lo = mid + 1; else hi = mid; }
-    const u = sorted[lo];
-    return u && a >= u.address && a < u.address + u.size ? u : null;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid].address <= a) lo = mid + 1; else hi = mid; }
+    const out = [];
+    for (let i = lo - 1; i >= 0 && sorted[i].address > a - longest; i--) if (a < sorted[i].address + sorted[i].size) out.push(sorted[i]);
+    return out;
   };
-  // a number the code keeps beside itself: the cartridge's, or a copy's, as the copy holds it
-  const codeValue = (a, size, signed) => {
+  // the pieces a call to `target` can reach. A copy goes in whole, as the code map's copies are each what the game
+  // copies or unpacks in one go, so while a piece of copy C runs at `pc`, a piece of another copy D can't be at a
+  // target C holds too if D holds `pc` with other bytes: D going in would have put those there. Any other piece at
+  // the target may be in place, and a jump the pass can't place, `from` null, reaches all of them.
+  const pieces = (target, from = null) => {
+    const all = atAddress.get(target) ?? [];
+    if (all.length < 2 || !from?.u.copy) return all;
+    const c = from.u.copy, holds = (k, a, n) => a >= k.ram && a + n <= k.ram + k.size;
+    if (!holds(c, from.pc, 4) || !holds(c, target, 1)) return all;
+    const mine = c.bytes.subarray(from.pc - c.ram, from.pc - c.ram + 4);
+    return all.filter(d => !d.copy || d.copy === c || !holds(d.copy, from.pc, 4) || !holds(d.copy, target, 1)
+      || sameBytes(d.copy.bytes.subarray(from.pc - d.copy.ram, from.pc - d.copy.ram + 4), mine));
+  };
+  // a number the code keeps beside itself: the cartridge's, or its copy's, as the copy holds it
+  const codeValue = (u, a, size, signed) => {
     if (inRom(a)) return romValue(a, size, signed);
-    const u = inside(a);
-    if (!u?.copied) return ANYWHERE;
+    if (!u.copy) return ANYWHERE;
     const at = a - u.copy.ram;
     if (at < 0 || at + size > u.copy.bytes.length) return ANYWHERE;
     let v = 0;
@@ -220,23 +254,27 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     if (signed) v = size === 2 ? (v << 16) >> 16 : (v << 24) >> 24;
     return number(v);
   };
-  const known = new Set(functions.map(f => f.address));
+  const known = new Set([...functions.map(f => f.address), ...atAddress.keys()]);
   const why = [];
   if (unread.length) why.push(`${unread.length} pieces of code in the work memory the code map's copies don't hold, such as ${hex(unread[0])}, which the pass can't read, may store anything anywhere`);
 
-  // what's known before reading: which functions something calls, which escape as values, which branches arrive in
-  // another function's middle, and the words of the cartridge that hold an address in a function's middle
+  // what's known before reading: which pieces something calls, which addresses escape as values, which branches arrive
+  // in a piece's middle, and the words of the cartridge, and of the copies, that hold an address in a piece's middle
   const escaped = new Set(), called = new Set(), into = new Set(), candidates = new Map();
-  for (let at = 0; at + 4 <= rom.length; at += 4) {
-    const w = view.getUint32(at, true), to = w & ~1;
-    if (known.has(to)) escaped.add(to);
-    const u = inside(to);
-    if (u && to !== u.address && !(u.source !== undefined && u.source <= CARTRIDGE + at && CARTRIDGE + at < u.source + u.size)) candidates.set(CARTRIDGE + at, to);
-  }
-  const branchTo = (u, target, isCallTo) => {
-    const g = inside(target);
-    if (target === g?.address || (isCallTo && known.has(target))) called.add(target);
-    else if (g && g !== u) into.add(target);
+  const weighWords = (bytes, base) => {
+    const words = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    for (let at = 0; at + 4 <= bytes.length; at += 4) {
+      const to = words.getUint32(at, true) & ~1;
+      if (known.has(to)) escaped.add(to);
+      if (containing(to).some(u => to !== u.address && !(u.source !== undefined && base === CARTRIDGE && u.source <= base + at && base + at < u.source + u.size))) candidates.set(base + at, to);
+    }
+  };
+  weighWords(rom, CARTRIDGE);
+  for (const c of held) weighWords(c.bytes, c.ram);
+  const branchTo = (u, pc, target, isCallTo) => {
+    const there = pieces(target, { u, pc });
+    for (const g of there) called.add(g.id);
+    if (containing(target).some(g => g !== u && g.address !== target)) into.add(target);
   };
   const keeps = new Map(), callees = new Map(), wrote = new Map(), pushed = new Map();
   const viaRegister = new Map();
@@ -246,54 +284,73 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         const op = (u.bytes[at] | u.bytes[at + 1] << 8 | u.bytes[at + 2] << 16 | u.bytes[at + 3] << 24) >>> 0;
         if ((op & 0x0E000000) === 0x0A000000 && op >>> 28 !== 0xF) {
           const target = u32(u.address + at + 8 + ((op & 0xFFFFFF) << 8 >> 6));
-          if (target < u.address || target >= u.address + u.size) branchTo(u, target, (op & 0x01000000) !== 0);
+          if (target < u.address || target >= u.address + u.size) branchTo(u, u.address + at, target, (op & 0x01000000) !== 0);
         }
       }
-      keeps.set(u.address, new Set());
+      keeps.set(u.id, new Set());
       continue;
     }
     const u16 = at => u.bytes[at] | u.bytes[at + 1] << 8;
-    if (u.size <= 4 && (u16(0) & 0xFF87) === 0x4700 && (u16(0) >> 3 & 15) < 13) viaRegister.set(u.address, u16(0) >> 3 & 15);
+    if (u.size <= 4 && (u16(0) & 0xFF87) === 0x4700 && (u16(0) >> 3 & 15) < 13) viaRegister.set(u.id, u16(0) >> 3 & 15);
     const writes = new Set(), direct = new Set();
     let opaque = false;
     for (let at = 0; at + 2 <= u.bytes.length; at += 2) {
       const op = u16(at);
       if (isCall(u16, at, u.bytes.length)) {
-        const target = callTarget(u16, at, u.address);
-        direct.add(target);
-        branchTo(u, target, true);
+        const target = callTarget(u16, at, u.address), there = pieces(target, { u, pc: u.address + at });
+        for (const g of there) direct.add(g.id);
+        if (!there.length) opaque = true;
+        branchTo(u, u.address + at, target, true);
         at += 2;
         continue;
       }
       if (((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) || (op & 0xF800) === 0xE000) {
         const target = (op & 0xF800) === 0xE000 ? u.address + at + 4 + ((op & 0x7FF) << 21 >> 20) : u.address + at + 4 + ((op & 0xFF) << 24 >> 23);
-        if (target < u.address || target >= u.address + u.size) branchTo(u, target, false);
+        if (target < u.address || target >= u.address + u.size) branchTo(u, u.address + at, target, false);
       }
       for (const r of destinations(op)) writes.add(r);
       if ((op & 0xFF87) === 0x4700 && (op >> 3 & 15) !== 14) opaque = true;
     }
     const first = [0, 2, 4, 6].map(at => (at + 2 <= u.bytes.length ? u16(at) : 0)).find(op => (op & 0xFE00) === 0xB400);
-    pushed.set(u.address, new Set(first === undefined ? [] : [0, 1, 2, 3, 4, 5, 6, 7].filter(r => first >> r & 1)));
-    wrote.set(u.address, writes);
-    callees.set(u.address, opaque ? null : direct);
-    keeps.set(u.address, new Set([4, 5, 6, 7, 8, 9, 10, 11, 12]));
+    pushed.set(u.id, new Set(first === undefined ? [] : [0, 1, 2, 3, 4, 5, 6, 7].filter(r => first >> r & 1)));
+    wrote.set(u.id, writes);
+    callees.set(u.id, opaque ? null : direct);
+    keeps.set(u.id, new Set([4, 5, 6, 7, 8, 9, 10, 11, 12]));
   }
-  for (const [address, direct] of callees) if (direct) for (const c of [...direct]) if (viaRegister.has(c)) callees.set(address, null);
+  for (const [id, direct] of callees) if (direct) for (const c of [...direct]) if (viaRegister.has(c)) callees.set(id, null);
   for (let again = true; again;) {
     again = false;
-    for (const [address, kept] of keeps) {
-      if (byAddress.get(address).arm) continue;
-      const direct = callees.get(address);
+    for (const [id, kept] of keeps) {
+      if (byId.get(id).arm) continue;
+      const direct = callees.get(id);
       for (const r of [...kept]) {
-        if ((r <= 7 && pushed.get(address).has(r)) || (!wrote.get(address).has(r) && direct !== null && [...direct].every(c => keeps.get(c)?.has(r)))) continue;
+        if ((r <= 7 && pushed.get(id).has(r)) || (!wrote.get(id).has(r) && direct !== null && [...direct].every(c => keeps.get(c)?.has(r)))) continue;
         kept.delete(r);
         again = true;
       }
     }
   }
 
-  const args = new Map(), returns = new Map(), cells = new Map(), sites = new Map();
-  const stores = new Map(), loads = new Map(), swis = new Map(), carriers = new Map(), arrivals = new Set(into);
+  // what each piece records at each address, kept apart until the end, where two pieces at one address join
+  const records = { stores: new Map(), loads: new Map(), swis: new Map(), carriers: new Map() };
+  const note = (kind, pc, id, record) => {
+    let by = records[kind].get(pc);
+    if (!by) records[kind].set(pc, by = new Map());
+    by.set(id, record);
+  };
+  const joined = (kind, merge) => {
+    const out = new Map();
+    for (const [pc, by] of records[kind]) out.set(pc, [...by.values()].reduce(merge));
+    return out;
+  };
+  // a store or load two pieces make at one address: the same place, or anywhere when they differ in offset or size
+  const access = (a, b) => (a.offset === b.offset && a.size === b.size
+    ? { ...a, base: join(a.base, b.base), ...('value' in a ? { value: join(a.value, b.value) } : {}) }
+    : { ...a, base: ANYWHERE, offset: 0, size: Math.max(a.size, b.size), ...('value' in a ? { value: ANYWHERE } : {}) });
+  const calls = (a, b) => ({ r0: join(a.r0, b.r0), r1: join(a.r1, b.r1), r2: join(a.r2, b.r2), ...(a.wrote && b.wrote ? { wrote: [...a.wrote, ...b.wrote] } : {}) });
+
+  const args = new Map(), returns = new Map(), cells = new Map();
+  const sites = new Map(), arrivals = new Set(into);
   let anyStore = unread.length ? ANYWHERE : NOTHING, changed = true, complete = true, firstUnbounded = null;
   const widenAll = reason => { if (anyStore !== ANYWHERE) { anyStore = ANYWHERE; changed = true; if (why.length < 8) why.push(reason); } };
   const grow = (key, v) => {
@@ -304,9 +361,9 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
 
   // one function, from its start and every way in, to a fixed point of its own, with what's known of the others
   const analyse = u => {
-    const me = `s${u.address}`, size = u.bytes.length;
-    const open = escaped.has(u.address) || !called.has(u.address);
-    const given = args.get(u.address);
+    const me = `s${u.id}`, size = u.bytes.length;
+    const open = escaped.has(u.address) || !called.has(u.id);
+    const given = args.get(u.id);
     const start = new Array(16).fill(ANYWHERE);
     for (let i = 0; i < 13; i++) start[i] = open ? ANYWHERE : given?.[i] ?? NOTHING;
     start[13] = new Set([`${me}:0`]);
@@ -381,7 +438,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     };
     // a store of `size` bytes of `value` to each place `base` can be, `offset` on
     const store = (s, pc, base, offset, bytes, value) => {
-      stores.set(pc, { base, offset, size: bytes, value });
+      note('stores', pc, u.id, { base, offset, size: bytes, value });
       const whole = bytes === 4 ? value : ANYWHERE;
       const at = base === ANYWHERE ? ANYWHERE : moved(base, offset);
       if (at === ANYWHERE) {
@@ -409,7 +466,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     };
     // the BIOS's work, from the registers it's given
     const bios = (s, pc, call) => {
-      swis.set(pc, { r0: s.r[0], r1: s.r[1], r2: s.r[2] });
+      const given = { r0: s.r[0], r1: s.r[1], r2: s.r[2] };
+      note('swis', pc, u.id, given);
       if ((call === 0x0B || call === 0x0C) && numbers(s.r[1]) && numbers(s.r[2])) {
         for (const d of numbers(s.r[1])) for (const c of numbers(s.r[2])) {
           const length = (c & 0x1FFFFF) * (call === 0x0C || c & 0x04000000 ? 4 : 2);
@@ -437,7 +495,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
             }
           }
         }
-        if (bounded) swis.get(pc).wrote = wrote;
+        if (bounded) given.wrote = wrote;
       } else if (!QUIET.has(call)) widenAll(`the BIOS's work at ${hex(pc)} (swi 0x${call.toString(16).toUpperCase()}) writes where the pass can't bound`);
       for (const i of [0, 1, 2, 3]) s.r[i] = ANYWHERE;
     };
@@ -447,17 +505,19 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       const out = n.map(x => x & ~1);
       return out.every(x => known.has(x)) ? out : null;
     };
-    const call = (s, targets) => {
+    // a call to each of `targets`, addresses, with its pieces: those a direct call at `pc` can reach, or every one
+    // there for a jump through a value (`direct` false)
+    const call = (s, targets, pc, direct) => {
       if (targets === null) return;
-      for (const c of targets) {
-        if (!byAddress.has(c)) continue;
-        const had = args.get(c) ?? new Array(13).fill(NOTHING);
+      for (const t of targets) for (const g of pieces(t, direct ? { u, pc } : null)) {
+        const had = args.get(g.id) ?? new Array(13).fill(NOTHING);
         const now = had.map((v, i) => join(v, s.r[i]));
-        if (now.some((v, i) => !same(v, had[i]))) { args.set(c, now); changed = true; }
+        if (now.some((v, i) => !same(v, had[i]))) { args.set(g.id, now); changed = true; }
       }
     };
-    // what a call leaves: r0 from what it gives back, r4 to r12 where it keeps them, and nothing else known
-    const afterCall = (s, targets, site) => {
+    // what a call leaves: r0 from what each piece it can reach gives back, r4 to r12 where every one keeps them, and
+    // nothing else known
+    const afterCall = (s, targets, site, direct) => {
       const r = s.r.slice();
       for (const i of [1, 2, 3, 14]) r[i] = ANYWHERE;
       if (targets === null) { for (const i of [0, 4, 5, 6, 7, 8, 9, 10, 11, 12]) r[i] = ANYWHERE; return { r, stored: s.stored }; }
@@ -466,21 +526,27 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         if (allocators.has(c)) {
           if (!sites.has(site)) { sites.set(site, { ...allocators.get(c), callee: c }); changed = true; }
           back = join(back, new Set([`h${site}:0`]));
-        } else back = join(back, byAddress.has(c) ? (returns.get(c) ?? NOTHING) : ANYWHERE);
-        for (const i of [4, 5, 6, 7, 8, 9, 10, 11, 12]) if (!keeps.get(c)?.has(i)) r[i] = ANYWHERE;
+          continue;
+        }
+        const there = pieces(c, direct ? { u, pc: site } : null);
+        if (!there.length) { back = ANYWHERE; for (const i of [4, 5, 6, 7, 8, 9, 10, 11, 12]) r[i] = ANYWHERE; }
+        for (const g of there) {
+          back = join(back, returns.get(g.id) ?? NOTHING);
+          for (const i of [4, 5, 6, 7, 8, 9, 10, 11, 12]) if (!keeps.get(g.id)?.has(i)) r[i] = ANYWHERE;
+        }
       }
       r[0] = back;
       return { r, stored: s.stored };
     };
     const giveBack = v => {
-      const before = returns.has(u.address) ? returns.get(u.address) : NOTHING, after = join(before, v);
-      if (!returns.has(u.address) || !same(before, after)) { returns.set(u.address, after); changed = true; }
+      const before = returns.has(u.id) ? returns.get(u.id) : NOTHING, after = join(before, v);
+      if (!returns.has(u.id) || !same(before, after)) { returns.set(u.id, after); changed = true; }
     };
     // a value carried to the program counter, at `pc`: back to the caller, a call or jump to the functions it names,
     // on to the places in this function it names, or anywhere, as each word of the cartridge in a function's middle is
     // weighed against it; `local` is a jump within this function that a table it indexes gives
     const carry = (s, pc, value, { continues = false, local = null } = {}) => {
-      carriers.set(pc, { value, local });
+      note('carriers', pc, u.id, { value, local });
       if (local) { for (const t of local) next(t - u.address, s); return; }
       if (value === ANYWHERE) { giveBack(s.r[0]); return; }
       const others = new Set([...value].filter(e => e !== 'r'));
@@ -488,8 +554,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       if (!others.size) return;
       const targets = functionsIn(others);
       if (targets) {
-        call(s, targets);
-        const after = afterCall(s, targets, pc);
+        call(s, targets, pc, false);
+        const after = afterCall(s, targets, pc, false);
         if (continues) next(pc - u.address + (u.arm ? 4 : 2), after);
         else giveBack(after.r[0]);
         return;
@@ -502,11 +568,25 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const thumbStep = (at, s) => {
       const r = s.r, b = u.bytes, u16 = x => b[x] | b[x + 1] << 8, op = u16(at), pc = u.address + at;
       if (isCall(u16, at, size)) {
-        const target = callTarget(u16, at, u.address);
-        const targets = viaRegister.has(target) ? functionsIn(r[viaRegister.get(target)]) : [target];
-        if (viaRegister.has(target)) carriers.set(pc, { value: r[viaRegister.get(target)] });
-        call(s, targets);
-        next(at + 4, afterCall(s, targets, pc));
+        // a call, to the pieces it can reach there, or on through a register for one that only jumps through it
+        const target = callTarget(u16, at, u.address), there = pieces(target, { u, pc });
+        const via = there.filter(g => viaRegister.has(g.id)), plain = there.filter(g => !viaRegister.has(g.id));
+        if (plain.length) call(s, [target], pc, true);
+        let onward = [];
+        for (const g of via) {
+          const value = r[viaRegister.get(g.id)];
+          note('carriers', pc, g.id, { value });
+          const fs = functionsIn(value);
+          if (fs === null) { onward = null; break; }
+          onward.push(...fs);
+        }
+        if (onward) call(s, onward, pc, false);
+        if (onward === null) { next(at + 4, afterCall(s, null, pc, false)); return; }
+        let after = { r: s.r, stored: s.stored };
+        if (plain.length) after = afterCall(after, [target], pc, true);
+        if (via.length) after = joinStates(after, afterCall(s, onward, pc, false), plain.length > 0);
+        if (!there.length) after = afterCall(s, [target], pc, true);
+        next(at + 4, after);
         return;
       }
       const lo = op & 7, mid = op >> 3 & 7;
@@ -540,15 +620,15 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         else if (kind === 0) r[to] = plus(r[to], value);
         else if (kind === 2) r[to] = value;
       } else if ((op & 0xF800) === 0x4800) {
-        r[op >> 8 & 7] = codeValue(((pc + 4) & ~3) + (op & 0xFF) * 4, 4, false);
+        r[op >> 8 & 7] = codeValue(u, ((pc + 4) & ~3) + (op & 0xFF) * 4, 4, false);
       } else if ((op & 0xF000) === 0x5000) {
         const kind = op >> 9 & 7, bytes = [4, 2, 1, 1, 4, 2, 1, 2][kind], index = numbers(r[op >> 6 & 7]);
         const off = index && index.length === 1 ? index[0] : 0, via = index && index.length === 1 ? r[mid] : plus(r[mid], r[op >> 6 & 7]);
         if (kind <= 2) store(s, pc, via, off, bytes, r[lo]);
-        else { loads.set(pc, { base: via, offset: off, size: bytes }); r[lo] = load(s, via, off, bytes, kind === 3 || kind === 7); }
+        else { note('loads', pc, u.id, { base: via, offset: off, size: bytes }); r[lo] = load(s, via, off, bytes, kind === 3 || kind === 7); }
       } else if ((op & 0xE000) === 0x6000 || (op & 0xF000) === 0x8000) {
         const bytes = (op & 0xF000) === 0x8000 ? 2 : op & 0x1000 ? 1 : 4, offset = (op >> 6 & 31) * bytes;
-        if (op & 0x0800) { loads.set(pc, { base: r[mid], offset, size: bytes }); r[lo] = load(s, r[mid], offset, bytes, false); } else store(s, pc, r[mid], offset, bytes, r[lo]);
+        if (op & 0x0800) { note('loads', pc, u.id, { base: r[mid], offset, size: bytes }); r[lo] = load(s, r[mid], offset, bytes, false); } else store(s, pc, r[mid], offset, bytes, r[lo]);
       } else if ((op & 0xF000) === 0x9000) {
         const rd = op >> 8 & 7, offset = (op & 0xFF) * 4;
         if (op & 0x0800) r[rd] = load(s, r[13], offset, 4, false);
@@ -572,7 +652,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       } else if ((op & 0xF000) === 0xC000) {
         const base = op >> 8 & 7, list = [0, 1, 2, 3, 4, 5, 6, 7].filter(i => op >> i & 1), from = r[base];
         list.forEach((i, n) => {
-          if (op & 0x0800) { loads.set(pc, { base: from, offset: 4 * n, size: 4 }); r[i] = load(s, from, 4 * n, 4, false); } else store(s, pc, from, 4 * n, 4, r[i]);
+          if (op & 0x0800) { note('loads', pc, u.id, { base: from, offset: 4 * n, size: 4 }); r[i] = load(s, from, 4 * n, 4, false); } else store(s, pc, from, 4 * n, 4, r[i]);
         });
         if (!(op & 0x0800 && list.includes(base))) r[base] = moved(from, 4 * list.length);
       } else if ((op & 0xFF00) === 0xDF00) {
@@ -618,10 +698,10 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       if ((op & 0x0E000000) === 0x0A000000) {
         const target = u32(pc + 8 + ((op & 0xFFFFFF) << 8 >> 6));
         if (op & 0x01000000) {
-          call(ran, [target]);
-          next(at + 4, afterCall(ran, [target], pc));
+          call(ran, [target], pc, true);
+          next(at + 4, afterCall(ran, [target], pc, true));
         } else if (target >= u.address && target < u.address + size) next(target - u.address, ran);
-        else { call(ran, [target]); giveBack(afterCall(ran, [target], pc).r[0]); }
+        else { call(ran, [target], pc, true); giveBack(afterCall(ran, [target], pc, true).r[0]); }
         if (conditional) next(at + 4, skipped);
         return;
       }
@@ -644,7 +724,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         const n = numbers(amount), k = n && n.length === 1 ? up * n[0] : null;
         const base = reg(rn), at_ = pre ? (k === null ? plus(base, ANYWHERE) : base) : base, off = pre && k !== null ? k : 0;
         const sh = op >> 5 & 3, bytes = sh === 2 ? 1 : 2;
-        if (load_) { loads.set(pc, { base: at_, offset: off, size: bytes }); r[rd] = load(ran, at_, off, bytes, sh >= 2); } else store(ran, pc, at_, off, 2, reg(rd));
+        if (load_) { note('loads', pc, u.id, { base: at_, offset: off, size: bytes }); r[rd] = load(ran, at_, off, bytes, sh >= 2); } else store(ran, pc, at_, off, 2, reg(rd));
         if (write && rn !== 15 && !(load_ && rd === rn)) r[rn] = k === null ? plus(base, ANYWHERE) : moved(base, k);
         go();
         return;
@@ -700,8 +780,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         const n = numbers(amount), k = n && n.length === 1 ? up * n[0] : null;
         const base = reg(rn), via = pre && k === null ? plus(base, ANYWHERE) : base, off = pre && k !== null ? k : 0;
         if (load_) {
-          loads.set(pc, { base: via, offset: off, size: bytes });
-          const value = rn === 15 && pre && k !== null && bytes === 4 ? codeValue(pc + 8 + k, 4, false) : load(ran, via, off, bytes, false);
+          note('loads', pc, u.id, { base: via, offset: off, size: bytes });
+          const value = rn === 15 && pre && k !== null && bytes === 4 ? codeValue(u, pc + 8 + k, 4, false) : load(ran, via, off, bytes, false);
           if (rd === 15) { carry(ran, pc, value); if (conditional) next(at + 4, skipped); return; }
           r[rd] = value;
         } else store(ran, pc, via, off, bytes, reg(rd));
@@ -716,7 +796,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         const first = up ? (pre ? 4 : 0) : (pre ? -4 * count : -4 * count + 4);
         let back = null;
         list.forEach((i, n) => {
-          if (load_) { loads.set(pc, { base, offset: first + 4 * n, size: 4 }); const v = load(ran, base, first + 4 * n, 4, false); if (i === 15) back = v; else r[i] = v; } else store(ran, pc, base, first + 4 * n, 4, reg(i));
+          if (load_) { note('loads', pc, u.id, { base, offset: first + 4 * n, size: 4 }); const v = load(ran, base, first + 4 * n, 4, false); if (i === 15) back = v; else r[i] = v; } else store(ran, pc, base, first + 4 * n, 4, reg(i));
         });
         if (write && !(load_ && list.includes(rn))) r[rn] = moved(base, (up ? 4 : -4) * count);
         if (load_ && list.includes(15)) { carry(ran, pc, back); if (conditional) next(at + 4, skipped); return; }
@@ -740,10 +820,11 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
   // each word in a function's middle, weighed against what the carriers can hold
   const weigh = () => {
     const words = [];
-    const anyCarrier = [...carriers].find(([, c]) => c.value === ANYWHERE && !c.local);
+    const carriers = [...records.carriers].flatMap(([pc, by]) => [...by.values()].map(c => [pc, c]));
+    const anyCarrier = carriers.find(([, c]) => c.value === ANYWHERE && !c.local);
     for (const [at, to] of candidates) {
       let verdict = 'data', because;
-      const by = [...carriers].find(([, c]) => (c.local ? c.local.has(to) : c.value !== ANYWHERE && (c.value.has(`c${to}`) || c.value.has(`c${to | 1}`))));
+      const by = carriers.find(([, c]) => (c.local ? c.local.has(to) : c.value !== ANYWHERE && (c.value.has(`c${to}`) || c.value.has(`c${to | 1}`))));
       if (unread.length) { verdict = 'open'; because = `code the pass can't read, such as ${hex(unread[0])}, may load it and jump to it`; } else if (by) { verdict = 'target'; because = `the jump at ${hex(by[0])} can carry it to the program counter`; } else if (anyCarrier) { verdict = 'open'; because = `the jump at ${hex(anyCarrier[0])} can carry anything to the program counter`; } else because = 'no code the pass reads can carry it to the program counter';
       words.push({ at, to, verdict, why: because });
     }
@@ -770,12 +851,19 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     changed = true;
   }
   if (!complete) why.unshift(`it ran past its limit of ${seconds} seconds or ${cellLimit.toLocaleString('en')} cells`);
+  const stores = joined('stores', access), loads = joined('loads', access), swis = joined('swis', calls);
   let boundedCount = 0, unbounded = 0;
   for (const st of stores.values()) {
     if (st.base !== ANYWHERE && moved(st.base, st.offset) !== ANYWHERE) boundedCount++;
     else unbounded++;
   }
   return { stores, loads, swis, sites, words, unread, bounded: boundedCount, unbounded, complete, why, passes, rounds, seconds: (Date.now() - began) / 1000, everywhere: anyStore === ANYWHERE };
+}
+
+// two states a call can leave, joined when `both` may happen, or else the second
+function joinStates(a, b, both) {
+  if (!both) return b;
+  return { r: a.r.map((v, i) => join(v, b.r[i])), stored: new Set([...a.stored].filter(k => b.stored.has(k))) };
 }
 
 // an ARM data-processing number: eight bits turned right by twice four
