@@ -458,4 +458,32 @@ void MP2K_event_xswee(struct MP2KPlayerState *, struct MP2KTrack *);
 void MP2K_event_xcmd_0C(struct MP2KPlayerState *, struct MP2KTrack *);
 void MP2K_event_xcmd_0D(struct MP2KPlayerState *, struct MP2KTrack *);
 
+// the rest of the engine's functions, as a game's table of twins names them all
+void m4aSoundInit(void);
+void m4aSoundMain(void);
+void m4aSoundVSync(void);
+void m4aSongNumStart(u16 n);
+void m4aSongNumStartOrChange(u16 n);
+void m4aSongNumStartOrContinue(u16 n);
+void m4aSongNumStop(u16 n);
+void m4aSongNumContinue(u16 n);
+void m4aMPlayAllStop(void);
+void m4aMPlayContinue(struct MP2KPlayerState *mplayInfo);
+void m4aMPlayAllContinue(void);
+void m4aMPlayFadeOut(struct MP2KPlayerState *mplayInfo, u16 speed);
+void m4aMPlayFadeOutTemporarily(struct MP2KPlayerState *mplayInfo, u16 speed);
+void m4aMPlayFadeIn(struct MP2KPlayerState *mplayInfo, u16 speed);
+void m4aMPlayImmInit(struct MP2KPlayerState *mplayInfo);
+void MusicPlayerJumpTableCopy(void);
+void SoundClear(void);
+void MP2K_event_null(void);
+
+// the assembly's routines that take and give values in registers of their own, as C (m4a_sequencer.c)
+u32 chk_adr_r2(const void *at);
+u32 ldrb_r3_r2(const u8 *at);
+u32 ld_r3_tp_adr_i(struct MP2KTrack *track);
+u32 ld_r3_tp_adr_i_unchecked(struct MP2KTrack *track);
+void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track);
+void clear_modM(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track);
+
 #endif // GUARD_GBA_M4A_INTERNAL_H
