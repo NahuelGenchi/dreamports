@@ -120,9 +120,9 @@ static void ps2BlockRan(struct dpBlock* block, uint32_t taken) {
 			if (!place->inside) ran.outside++;
 		}
 		if (!ran.playedFile) continue;
-		struct ranPlayed* now = ps2Played(place, block->processor, address, block->words[i]);
-		ranHappened(now, RAN);
-		if (i == block->count - 2 && way >= 0) ranHappened(now, way);
+		struct ranPlayed* played = ps2Played(place, block->processor, address, block->words[i]);
+		ranHappened(played, RAN);
+		if (i == block->count - 2 && way >= 0) ranHappened(played, way);
 	}
 }
 

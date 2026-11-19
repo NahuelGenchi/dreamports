@@ -69,7 +69,7 @@ function prove(copy, elf, workMemory) {
   const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: '', sha1: createHash('sha1').update(elf).digest('hex'), provenBy: 'draw lists', workMemory };
   mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
-  if (dp('rom', copy).status) return { status: 1, out: 'rom failed' };
+  if (dp('rom', copy).status || dp('codemap', GAME).status) return { status: 1, out: 'rom or codemap failed' };
   for (const [game, language] of [[GAME, undefined], [IN_C, 'c']]) {
     const files = { ...startingFiles(GAME, original, language ? { language } : undefined), ...(language ? {} : { 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) }) };
     for (const [file, text] of Object.entries(files)) {
@@ -165,6 +165,8 @@ async function main() {
     let proven = prove(copy, elf, [{ address: '0010F000', bytes: 0x100 }]);
     check(proven.status === 0 && proven.report.matched === FRAMES, `prove compares a stretch neither writes after every frame, and every frame matches: ${proven.report.matched} of ${proven.report.frames}`);
     if (proven.status) console.log(proven.out);
+    const progress = JSON.parse(readFileSync(join(proofFolder(IN_C), 'progress.json'), 'utf8'));
+    check(progress.played?.played > 0 && progress.content === undefined, `a program given alone, with no disc, has no content to count, so its gameplay proven is its code's: ${JSON.stringify(progress.played)}`);
     proven = prove(copy, elf, [{ address: '00100000', bytes: 0x100 }]);
     const said = proven.out.match(/The console's memory first differs after frame (\d+): [^\n]*/)?.[0] ?? '';
     check(proven.status !== 0 && said.includes('the first at 0x00100000, in main memory') && said.includes(`holds 0x${code[0].toString(16).toUpperCase().padStart(2, '0')} in the original and 0x00 in the Dreamport`), `and finds the program's own code, which the Dreamport doesn't keep, differing at once: ${said}`);

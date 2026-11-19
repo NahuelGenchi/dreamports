@@ -221,7 +221,8 @@ export async function run(args) {
     // Gameplay proven is the lower of the code played and the content used (docs/STANDARD.md), so the code's share
     // alone must not become the number: on a console whose data the tools don't follow yet, as the NES, progress.json
     // gets neither, and the game's gameplay proven stays its parts. played.json still says what ran, for untouched
-    if (content) Object.assign(totals, { played: { total, played, percent }, content });
+    // A copy with no data of its own, as a PlayStation 2 program given alone, with no disc, has no content to count
+    if (content) Object.assign(totals, { played: { total, played, percent }, ...(content.total ? { content } : {}) });
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)
