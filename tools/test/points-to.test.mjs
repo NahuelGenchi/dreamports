@@ -147,3 +147,46 @@ test('one code the pass can\'t read may load stays a possible way in', () => {
   assert.deepEqual(found.followed.unread, [0x03000000]);
   assert.equal(found.with.decided, undefined);
 });
+
+// Copies of the cartridge's code the game runs from its work memory, read where they run (#1547).
+const words = (at, ...values) => [at, 'w', ...values];
+const halves = (at, ...values) => [at, 'h', ...values];
+
+test('a call into a copy of a helper that jumps through r0 keeps a register\'s known address', () => {
+  // Caller, 0x00: push {r4, lr}   ldr r4, =CELL   ldr r0, =Target   bl Helper   mov r1, #5   str r1, [r4]   pop {r4, pc}
+  // Helper, 0x20: bx r0       Target, 0x24: bx lr       and the game runs Caller and Helper from 0x02000000
+  const CELL = 0x02000300;
+  const rom = cartridge([halves(0x00, 0xB510, 0x4C03, 0x4803, ...bl(BASE + 0x06, BASE + 0x20), 0x2105, 0x6021, 0xBD10), words(0x10, CELL, BASE + 0x25),
+    halves(0x20, 0x4700, 0x0000, 0x4770)]);
+  const functions = [{ address: BASE, size: 0x18 }, { address: BASE + 0x20, size: 2 }, { address: BASE + 0x24, size: 2 }];
+  const copies = [{ ram: 0x02000000, cartridge: BASE, size: 0x22 }];
+  const read = pointsTo(rom, functions, { copies, seconds: 10 });
+  assert.deepEqual([...read.stores.get(0x0200000C).base], [`c${CELL}`], 'r4 is kept across the copy, and on to Target, which keeps it');
+  assert.equal(read.everywhere, false);
+  const unread = pointsTo(rom, functions, { seconds: 10 });
+  assert.equal(unread.stores.get(0x0200000C), undefined, 'with no copy named, the work memory\'s code isn\'t read at all');
+});
+
+// Two copies the game puts at 0x03000000 at different times, C and D, each with a helper 0x20 in, which give back 1
+// and 2, and a caller, E, the game runs from 0x03000080, outside both:
+// C, 0x40: push {r4, lr}   ldr r4, =CELL   bl 0x60   str r0, [r4]   pop {r4, pc}    0x60: mov r0, #1   bx lr
+// D, 0x80: bx lr, and nothing to 0xA0: mov r0, #2   bx lr
+// E, 0xC0: as C's caller, its call reaching 0x03000020 where it runs, and C's helper in the cartridge
+const shared = () => {
+  const CELL = 0x02000040;
+  const caller = (at, to) => [halves(at, 0xB510, 0x4C03, ...bl(BASE + at + 4, BASE + to), 0x6020, 0xBD10), words(at + 0x10, CELL)];
+  const rom = cartridge([...caller(0x40, 0x60), halves(0x60, 0x2001, 0x4770), halves(0x80, 0x4770), halves(0xA0, 0x2002, 0x4770), ...caller(0xC0, 0x60)]);
+  const functions = [{ address: BASE + 0x40, size: 0x14 }, { address: BASE + 0x60, size: 4 }, { address: BASE + 0x80, size: 2 }, { address: BASE + 0xA0, size: 4 }, { address: BASE + 0xC0, size: 0x14 }];
+  const copies = [{ ram: 0x03000000, cartridge: BASE + 0x40, size: 0x24 }, { ram: 0x03000000, cartridge: BASE + 0x80, size: 0x24 }, { ram: 0x03000080, cartridge: BASE + 0xC0, size: 0x14 }];
+  return pointsTo(rom, functions, { copies, seconds: 10 });
+};
+
+test('two copies at one address: a call from inside one reaches only its own piece there', () => {
+  // C's call, at 0x03000004, is in both copies with other bytes in D, so while it runs D isn't there
+  assert.deepEqual([...shared().stores.get(0x03000008).value], ['c1']);
+});
+
+test('two copies at one address: a call from outside both reaches either, both joined', () => {
+  const value = shared().stores.get(0x03000088).value;
+  assert.deepEqual([...value].sort(), ['c1', 'c2'], 'E can find either helper at 0x03000020');
+});
