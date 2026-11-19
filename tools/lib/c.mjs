@@ -314,10 +314,12 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
   const kit = cKit(consoleOfFolder(folder)), own = ownSources(folder);
   const libraries = librariesOfFolder(folder, kit.id);
   const sources = [...own, ...libraries.flatMap(library => library.files), ...kit.sources], folders = [...kit.folders, ...libraries.map(library => library.library.folder)];
+  // where the copy keeps each value a library names, as ADDRESS_<name>, on a console whose game has no twins.h to say it
+  const defines = kit.id === 'gba' ? [] : libraries.flatMap(library => [...library.values].map(([name, value]) => `-DADDRESS_${name}=0x${value.toString(16).toUpperCase()}`));
   const twins = await twinsFolder(folder);
   // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
   // with what that compiler takes for granted, and each value it names where the console keeps it
-  return buildWasm(sources, out, twins ? { ...kit, folders: [...folders, twins.folder], flags: [...kit.twinFlags, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : { ...kit, folders });
+  return buildWasm(sources, out, twins ? { ...kit, folders: [...folders, twins.folder], flags: [...kit.twinFlags, ...defines, '-Wl,--export-if-defined=kit_twin'], addressOf: twins.addressOf, codeOf: twins.codeOf } : { ...kit, folders, ...(defines.length ? { flags: defines } : {}) });
 }
 
 // a file of the game's own that includes twins.h

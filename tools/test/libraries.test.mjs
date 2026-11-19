@@ -159,3 +159,20 @@ test('a GBA function is masked where an address goes, and found by its short has
   const unhashed = findLibrary({ library: { functions: [{ name: 'Routine', size: 12, file: '/lib/routine.c' }] }, files: ['/lib/routine.c'], built: null, rom, codeMap });
   assert.match(unhashed.missing[0].why, /no compiler for the Game Boy Advance, and it has no short hash/);
 });
+
+test('an NES function is masked at each address its instructions name, and nowhere else', async () => {
+  const { masked, placesOf, shortHash } = await import('../nes/libraries.mjs');
+  // CLC, ADC $20, STA $0300,X, LDA #$05, BCC +2, JSR $C123, RTS
+  const one = Buffer.from([0x18, 0x65, 0x20, 0x9D, 0x00, 0x03, 0xA9, 0x05, 0x90, 0x02, 0x20, 0x23, 0xC1, 0x60]);
+  assert.deepEqual(placesOf(one), [{ at: 2, bytes: 1 }, { at: 4, bytes: 2 }, { at: 11, bytes: 2 }]);
+  assert.deepEqual([...masked(one)], [0x18, 0x65, 0, 0x9D, 0, 0, 0xA9, 0x05, 0x90, 0x02, 0x20, 0, 0, 0x60]);
+  const elsewhere = Buffer.from(one);
+  elsewhere[2] = 0x40;
+  elsewhere.writeUInt16LE(0x0480, 4);
+  elsewhere.writeUInt16LE(0xC456, 11);
+  assert.equal(shortHash(elsewhere), shortHash(one));
+  // an immediate value or a branch is the routine's own, so one that differs is another routine
+  const other = Buffer.from(one);
+  other[7] = 0x06;
+  assert.notEqual(shortHash(other), shortHash(one));
+});
