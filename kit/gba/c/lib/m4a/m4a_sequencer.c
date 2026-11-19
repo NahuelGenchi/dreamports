@@ -14,6 +14,7 @@ void SoundMainBTM(void *at)
     u32 i;
     for (i = 0; i < 16; i++)
         word[i] = 0;
+    M4A_TIME(SoundMainBTM, 0x0, 0x14, M4A_BACK, M4A_EW, M4A_EW, M4A_EW, M4A_EW);
 }
 
 /** Takes a channel out of its track's chain of channels, if it's in one. */
@@ -52,8 +53,11 @@ void MP2K_event_fine(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track)
  */
 u32 chk_adr_r2(const void *at)
 {
-    if ((u32)at >> 25)
+    if ((u32)at >> 25) {
+        M4A_TIME(chk_adr_r2, 0x0, 0x4, M4A_AT(chk_adr_r2, 0x12));
+        M4A_TIME(chk_adr_r2, 0x12, 0x14, M4A_BACK);
         return TRUE;
+    }
     if ((u32)at < (u32)gMPlayJumpTableTemplate)
         return FALSE;
     return ((u32)at >> 14) == 0;
@@ -86,8 +90,16 @@ void MPlayJumpTableCopy(void **table)
 {
     void *const *from = gMPlayJumpTableTemplate;
     s32 i;
-    for (i = 0x24; i > 0; i--, from++)
+    M4A_TIME(MPlayJumpTableCopy, 0x0, 0xA, M4A_AT(chk_adr_r2, 0), M4A_ROM);
+    for (i = 0x24; i > 0; i--, from++) {
         *table++ = chk_adr_r2(from) ? *from : NULL;
+        // the next command's load and check, or back
+        if (i > 1) {
+            M4A_TIME(MPlayJumpTableCopy, 0xC, 0x12, M4A_AT(MPlayJumpTableCopy, 0x6), M4A_EW);
+            M4A_TIME(MPlayJumpTableCopy, 0x6, 0xA, M4A_AT(chk_adr_r2, 0), M4A_ROM);
+        } else
+            M4A_TIME(MPlayJumpTableCopy, 0xC, 0x14, M4A_BACK, M4A_EW);
+    }
 }
 
 /** Goes on from the address the next four bytes give. */
