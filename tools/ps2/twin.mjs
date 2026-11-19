@@ -365,7 +365,7 @@ async function checkFunction({ f, original, runner, gp, options, choose, image, 
   let compared = 0, number = 0, source = -1, made = 0, from = null;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
-    const turn = Math.min(sources.length - 1, Math.floor((number - 1) * sources.length / options.calls) % sources.length);
+    const turn = Math.floor((number - 1) * sources.length / options.calls) % sources.length;
     if (turn !== source) {
       from?.drop();
       source = turn;
