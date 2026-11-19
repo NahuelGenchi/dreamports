@@ -1004,7 +1004,7 @@ export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
   const never = new Map([...ruledOut].filter(([where]) => where >= address && where < address + bytes.length).map(([where, way]) => [where - address, way]));
   let found;
   for (;;) {
-    found = instructionsOf(bytes, [...seeds], never);
+    found = instructionsOf(bytes, [...seeds], never, { longJumps: true });
     const before = seeds.size;
     for (let word = (4 - address % 4) % 4; word + 4 <= bytes.length; word += 4) {
       if (found.instructions.has(word) || found.instructions.has(word + 2)) continue;
