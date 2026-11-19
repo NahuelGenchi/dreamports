@@ -25,6 +25,7 @@ import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
 import { neverWrittenBranch, neverWrittenWhy, writesOf } from './lib/never-written.mjs';
+import { pointsTo } from './lib/points-to.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { originalPlay } from './lib/recording.mjs';
 import { LOCAL, sharedProofFolder } from './lib/paths.mjs';
@@ -35,8 +36,8 @@ const count = n => n.toLocaleString('en');
 
 export async function run(args) {
   const flagged = flag => (args.includes(flag) ? args[args.indexOf(flag) + 1] ?? '' : null);
-  const all = args.includes('--all'), [game] = args.filter((a, i) => !a.startsWith('--') && !['--why', '--in', '--at-once', '--never-written'].includes(args[i - 1]));
-  if (!game || flagged('--why') === '' || flagged('--in') === '' || flagged('--never-written') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]\n       npm run dp -- untouched <version> --never-written <address> [--write]');
+  const all = args.includes('--all'), [game] = args.filter((a, i) => !a.startsWith('--') && !['--why', '--in', '--at-once', '--never-written', '--allocators'].includes(args[i - 1]));
+  if (!game || flagged('--why') === '' || flagged('--in') === '' || flagged('--never-written') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]\n       npm run dp -- untouched <version> --never-written <address> [--allocators <address>=<from>-<to>,...] [--write]');
   const original = readOriginal(game), codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game.split('/')[0]}/proof/ has no code map yet: npm run dp -- codemap ${game.split('/')[0]} makes one.`);
   const reference = await referenceOf(original);
@@ -45,7 +46,7 @@ export async function run(args) {
   if (flagged('--never-written') !== null) {
     const copy = copyWith(original.sha1);
     if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
-    return neverWritten(game, { original, codeMap, copy, address: flagged('--never-written'), write: args.includes('--write') });
+    return neverWritten(game, { original, codeMap, copy, address: flagged('--never-written'), allocators: flagged('--allocators'), write: args.includes('--write') });
   }
   if (!readPlayed(game).places) throw new Error(`games/${game}/proof/played.json isn't there yet: npm run dp -- prove ${game} writes it.`);
   const copy = copyWith(original.sha1);
@@ -353,11 +354,25 @@ export function kindText(sorted) {
 
 // whether a branch never goes one way in this game because nothing writes another value where it reads, and with
 // `write` that way put in the game's list, as --decided puts the ways the code decides
-async function neverWritten(game, { original, codeMap, copy, address, write }) {
+async function neverWritten(game, { original, codeMap, copy, address, allocators, write }) {
   const base = versionOf(game).game, branch = parseInt(address, 16);
   if (!/^(0x)?[0-9A-Fa-f]{1,8}$/.test(address)) throw new Error(`--never-written takes the branch's address, as 08096ADC, and ${address} isn't one.`);
+  // the allocators, each with the arena it hands out from, as the person names them
+  const arenas = new Map();
+  for (const one of allocators ? allocators.split(',') : []) {
+    const [, at, from, to] = one.match(/^([0-9A-Fa-f]{8})=([0-9A-Fa-f]{8})-([0-9A-Fa-f]{8})$/) ?? [];
+    if (!at) throw new Error(`--allocators takes each allocator as <address>=<arena's first address>-<the address after its last>, as 08001234=02002650-02022650, and ${one} isn't one.`);
+    arenas.set(parseInt(at, 16), { from: parseInt(from, 16), to: parseInt(to, 16) });
+  }
   const rom = new Uint8Array(readFileSync(copy.path));
-  const found = neverWrittenBranch(rom, codeMap.functions, branch, writesOf(rom, codeMap.functions, codeMap.copies ?? []));
+  // where the game's pointers can point, over the whole cartridge (lib/points-to.mjs)
+  const followed = pointsTo(rom, codeMap.functions, { copies: codeMap.copies ?? [], allocators: arenas });
+  if (!followed.complete) console.log(`Following the pointers: ${followed.why[0]}, so nothing it found is used.`);
+  else {
+    console.log(`Following the pointers, in ${followed.seconds.toFixed(1)} seconds: ${count(followed.bounded)} of ${count(followed.bounded + followed.unbounded)} stores bounded, ${count(followed.unbounded)} it still can't follow.`);
+    if (followed.everywhere) console.log(`What it can't follow may land on any value of the work memory, so every pointer read from there can point anywhere: ${followed.why.slice(0, 2).join('; and ')}.`);
+  }
+  const found = neverWrittenBranch(rom, codeMap.functions, branch, writesOf(rom, codeMap.functions, codeMap.copies ?? [], followed), followed);
   if (found.cannot) {
     console.log(`Can't decide ${hex(branch)}: ${found.cannot}. It stays open, as both its ways may happen in ${original.name} for all the check can tell.`);
     return 0;
