@@ -49,11 +49,17 @@ const stack = exports.__stack_pointer?.value;
 const own = exports.__data_end ? { from: exports.__global_base?.value ?? 0, to: exports.__data_end.value } : null;
 const before = own && memory.slice(own.from, own.to);
 const inOwn = regions.filter(({ address, bytes }) => own && address >= own.from && address + bytes <= own.to);
+// A version that keeps the console's registers itself, as a same-memory version does in its console_io, is given the
+// original's as each call starts, as the original's own are as they were before each call (#1527). The kit's display
+// registers are the kit's, and stay as the module starts them.
+const registers = exports.console_io && workerData.registers ? new Uint8Array(workerData.registers) : null;
 function putBack() {
-  if (!own) return;
-  const images = inOwn.map(({ address, bytes }) => memory.slice(address, address + bytes));
-  memory.set(before, own.from);
-  inOwn.forEach(({ address }, i) => memory.set(images[i], address));
+  if (own) {
+    const images = inOwn.map(({ address, bytes }) => memory.slice(address, address + bytes));
+    memory.set(before, own.from);
+    inOwn.forEach(({ address }, i) => memory.set(images[i], address));
+  }
+  if (registers) memory.set(registers, exports.console_io.value);
 }
 
 function give(image) {
