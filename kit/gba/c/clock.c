@@ -475,7 +475,7 @@ void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint3
 
 // what the game wrote to the registers and the runs haven't reached yet, and how many of its stores came after a frame's
 // end in a run the frame ended in
-enum { WAITING = 64 };
+enum { WAITING = 512 };
 static uint32_t waiting_at[WAITING];
 static uint16_t waiting_value[WAITING];
 static int waiting_count, late;
@@ -696,22 +696,25 @@ void gba_clock_written(uint32_t address, uint16_t value) {
   waiting_value[waiting_count++] = value;
 }
 
-// what the game wrote to the registers a store of `bytes` at `address` reaches: WAITCNT's value, which changes the
-// store's own waits, alone (`waitcnt`), or the rest, at the time the store started
+// what the game wrote to the registers a store of `bytes` at `address` reaches, the earliest write of each halfword
+// that waits: WAITCNT's value, which changes the store's own waits, alone (`waitcnt`), or the rest, at the time the
+// store started
 static int take_written(uint32_t address, uint32_t bytes, int waitcnt) {
-  int value = -1, kept = 0;
-  for (int i = 0; i < waiting_count; i++) {
-    int reached = waiting_at[i] >= (address & ~1u) && waiting_at[i] < address + bytes;
-    int is_waitcnt = waiting_at[i] == 0x04000204;
-    if (reached && waitcnt && is_waitcnt) value = waiting_value[i];
-    else if (reached && !waitcnt && !is_waitcnt) gba_clock_write16(waiting_at[i], waiting_value[i]);
-    else {
-      waiting_at[kept] = waiting_at[i];
-      waiting_value[kept++] = waiting_value[i];
-      continue;
+  int value = -1;
+  for (uint32_t half = address & ~1u; half < address + bytes; half += 2) {
+    if ((half == 0x04000204) != (waitcnt != 0)) continue;
+    for (int i = 0; i < waiting_count; i++) {
+      if (waiting_at[i] != half) continue;
+      if (waitcnt) value = waiting_value[i];
+      else gba_clock_write16(waiting_at[i], waiting_value[i]);
+      for (int j = i + 1; j < waiting_count; j++) {
+        waiting_at[j - 1] = waiting_at[j];
+        waiting_value[j - 1] = waiting_value[j];
+      }
+      waiting_count--;
+      break;
     }
   }
-  waiting_count = kept;
   return value;
 }
 
