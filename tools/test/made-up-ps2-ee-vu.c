@@ -11,6 +11,8 @@
 #define IIN @IIN@u
 #define QIN @QIN@u
 #define CONSTANTS @CONSTANTS@u
+#define SPECIAL @SPECIAL@u
+#define FIFOS @FIFOS@u
 #define RESULTS_AT @RESULTS_AT@u
 #define RESULT_CODES @RESULT_CODES@u
 
@@ -43,6 +45,9 @@ static ee_quad quad(uint32_t at) {
 }
 static void put_quad(uint32_t at, ee_quad value) { __builtin_memcpy(ps2_memory() + at, &value, 16); }
 static void put_double(uint32_t at, uint64_t value) { __builtin_memcpy(ps2_memory() + at, &value, 8); }
+// vector unit 0's registers, as LQC2 loads one from memory and SQC2 stores one
+static void load_vector(vu_vector *to, uint32_t at) { __builtin_memcpy(to, ps2_memory() + at, 16); }
+static void put_vector(uint32_t at, const vu_vector *from) { __builtin_memcpy(ps2_memory() + at, from, 16); }
 // waiting for a DMA channel to end, as the program does, by reading its CHCR until STR is clear
 static void wait_for(uint32_t channel) {
   for (long tries = 0; ps2_read32(channel + DMA_CHCR) & 0x100; tries++) if (tries > 1000) __builtin_trap();

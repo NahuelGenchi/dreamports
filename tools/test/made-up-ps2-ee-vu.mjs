@@ -25,7 +25,7 @@ export const LOAD_AT = 0x00100000, DATA_AT = 0x00200000, RESULTS_AT = 0x00300000
 export const FRAMES = 120;
 
 // ---- The EE's instructions, as MIPS and the EE's own encode them ----
-const T0 = 8, T1 = 9, T2 = 10, T3 = 11, S0 = 16, S1 = 17, A0 = 4, A1 = 5, A2 = 6, V0 = 2, V1 = 3, A3 = 7;
+const T0 = 8, T1 = 9, T2 = 10, T3 = 11, T4 = 12, S0 = 16, S1 = 17, A0 = 4, A1 = 5, A2 = 6, V0 = 2, V1 = 3, A3 = 7;
 const imm = (op, rs, rt, value) => (op << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;
 const special = (rs, rt, rd, sa, funct) => (rs << 21 | rt << 16 | rd << 11 | sa << 6 | funct) >>> 0;
 const lui = (rt, value) => imm(0x0F, 0, rt, value), ori = (rt, rs, value) => imm(0x0D, rs, rt, value);
@@ -41,6 +41,12 @@ const fpu = (funct, fd, fs, ft = 0) => (0x11 << 26 | 16 << 21 | ft << 16 | fs <<
 const fpuWord = (funct, fd, fs) => (0x11 << 26 | 20 << 21 | fs << 11 | fd << 6 | funct) >>> 0;
 const mmi = (funct, rd, rs, rt, sa = 0) => (0x1C << 26 | rs << 21 | rt << 16 | rd << 11 | sa << 6 | funct) >>> 0;
 const mtsab = (rs, value) => (0x01 << 26 | rs << 21 | 0x18 << 16 | (value & 0xFFFF)) >>> 0;
+const and = (rd, rs, rt) => special(rs, rt, rd, 0, 0x24);
+const ctc1 = (rt, fs) => (0x11 << 26 | 6 << 21 | rt << 16 | fs << 11) >>> 0;
+// vector unit 0 from the EE: a vector loaded and stored, a control register read and written, and one of its instructions
+const lqc2 = (ft, offset, base) => imm(0x36, base, ft, offset), sqc2 = (ft, offset, base) => imm(0x3E, base, ft, offset);
+const cfc2 = (rt, id) => (0x12 << 26 | 2 << 21 | rt << 16 | id << 11) >>> 0, ctc2 = (rt, id) => (0x12 << 26 | 6 << 21 | rt << 16 | id << 11) >>> 0;
+const cop2 = word => (0x12 << 26 | 1 << 25 | (word & 0x01FFFFFF)) >>> 0;
 const SYSCALL = 0x0C, NOP = 0;
 const li = (rt, value) => [lui(rt, value >>> 16), ori(rt, rt, value & 0xFFFF)];
 const here = name => ({ here: name }), beq = (rs, rt, name) => ({ op: 0x04, rs, rt, name }), bne = (rs, rt, name) => ({ op: 0x05, rs, rt, name });
@@ -122,7 +128,7 @@ const microcode = pairs => pairs.flatMap(([lower, upper]) => [lower >>> 0, upper
 const vif = {
   NOP: 0, stcycl: (cl, wl) => (0x01 << 24 | wl << 8 | cl) >>> 0, offset: value => (0x02 << 24 | value) >>> 0, base: value => (0x03 << 24 | value) >>> 0,
   itop: value => (0x04 << 24 | value) >>> 0, stmod: mode => (0x05 << 24 | mode) >>> 0, mskpath3: on => (0x06 << 24 | (on ? 0x8000 : 0)) >>> 0,
-  mark: value => (0x07 << 24 | value) >>> 0, FLUSHE: 0x10 << 24, FLUSH: 0x11 << 24, FLUSHA: 0x13 << 24, mscal: at => (0x14 << 24 | at) >>> 0,
+  mark: value => (0x07 << 24 | value) >>> 0, FLUSHE: 0x10 << 24, FLUSH: 0x11 << 24, FLUSHA: 0x13 << 24, mscal: at => (0x14 << 24 | at) >>> 0, mscalf: at => (0x15 << 24 | at) >>> 0, MSCNT: 0x17 << 24,
   STMASK: 0x20 << 24, STROW: 0x30 << 24, STCOL: 0x31 << 24, mpg: (at, pairs) => (0x4A << 24 | (pairs & 0xFF) << 16 | at) >>> 0,
   direct: qwords => (0x50 << 24 | qwords) >>> 0,
   unpack: ({ format, count, at, masked = false, unsigned = false, tops = false }) => ((0x60 | (masked ? 0x10 : 0) | format) << 24 | (count & 0xFF) << 16 | (tops ? 0x8000 : 0) | (unsigned ? 0x4000 : 0) | at) >>> 0,
@@ -182,6 +188,152 @@ function vu1Program() {
     [vu.iaddiu(12, 0, PACKET_AT), n], [vu.xgkick(12), n], [L, n], [L, (n | vu.E) >>> 0], [L, n],
   );
   return microcode(pairs);
+}
+
+// Vector unit 1's second program, which VIF1 starts with MSCALF and, after it stops halfway, goes on with MSCNT. It
+// does every upper instruction on vectors of the EE's results, of unpacked patterns and of the floats the console
+// treats its own way (the largest, the smallest, minus zero, one with its exponent all ones), and after each keeps its
+// result and the MAC, status and clip flags it left. Then the division unit with Q read before and after it lands, the
+// EFU, the instructions on whole numbers and on R, every branch taken and not, a branch right after a sum on its
+// register, and the flags read one to four cycles after what sets them.
+function vu1Exercise() {
+  const n = vu.NOP, L = vu.LNOP, pairs = [], OUT = 14, ALL = 15, R = 20;
+  const keep = () => pairs.push([vu.sqi(R, OUT), n]);
+  // the three flags into one quadword's fields
+  const flags = () => pairs.push([vu.fmand(10, ALL), n], [vu.fsand(11, 0xFFF), n], [vu.fcget(12), n],
+    [vu.isw(10, 0, OUT, 8), n], [vu.isw(11, 0, OUT, 4), n], [vu.isw(12, 0, OUT, 2), n], [vu.iaddiu(OUT, OUT, 1), n]);
+  const upper = (...words) => { for (const word of words) pairs.push([L, word]); keep(); flags(); };
+  // the accumulator, seen as itself plus nothing
+  const acc = (...words) => upper(...words, vu.maddbc(0, { fs: 0, ft: 0, fd: R }));
+  const four = (...registers) => { registers.forEach((reg, i) => pairs.push([vu.isw(reg, 0, OUT, 8 >> i), n])); pairs.push([vu.iaddiu(OUT, OUT, 1), n]); };
+  const settle = () => pairs.push([L, n], [L, n], [L, n], [L, n]);
+
+  pairs.push([vu.iaddiu(OUT, 0, EXERCISE_OUT), n], [vu.isubiu(ALL, 0, 1), n],
+    [vu.lq(1, 0x000, 0), n], [vu.lq(2, 0x001, 0), n], [vu.lq(3, 0x002, 0), n], [vu.lq(4, UNPACKS_QUADS, 0), n], [vu.lq(5, GIVEN_AT, 0), n], [vu.lq(6, GIVEN_AT + 1, 0), n], [vu.lq(7, 0x010, 0), n], [vu.lq(8, GIVEN_AT + 2, 0), n]);
+  for (const [fs, ft] of [[1, 2], [5, 6], [4, 7]]) {
+    upper(vu.add({ fs, ft, fd: R })); upper(vu.sub({ fs, ft, fd: R })); upper(vu.mul({ fs, ft, fd: R })); upper(vu.max({ fs, ft, fd: R })); upper(vu.mini({ fs, ft, fd: R }));
+  }
+  upper(vu.mul({ fs: 5, ft: 5, fd: R })); upper(vu.add({ fs: 5, ft: 5, fd: R })); upper(vu.sub({ dest: 9, fs: 5, ft: 1, fd: R }));
+  upper(vu.add({ fs: 8, ft: 6, fd: R })); upper(vu.sub({ fs: 6, ft: 8, fd: R })); upper(vu.mul({ fs: 8, ft: 6, fd: R })); upper(vu.addbc(0, { fs: 8, ft: 0, fd: R })); upper(vu.add({ fs: 8, ft: 8, fd: R })); upper(vu.addbc(1, { fs: 8, ft: 5, fd: R }));
+  [0, 1, 2, 3].forEach(bc => upper(vu.addbc(bc, { fs: 1, ft: 2, fd: R })));
+  upper(vu.subbc(1, { fs: 2, ft: 3, fd: R })); upper(vu.mulbc(2, { fs: 1, ft: 6, fd: R })); upper(vu.maxbc(3, { fs: 1, ft: 2, fd: R })); upper(vu.minibc(0, { fs: 2, ft: 6, fd: R }));
+  upper(vu.addbc(0, { fs: 4, ft: 0, fd: R }));
+  // the accumulator's
+  acc(vu.adda({ fs: 1, ft: 2 })); acc(vu.suba({ fs: 2, ft: 3 })); acc(vu.mula({ fs: 1, ft: 6 }));
+  acc(vu.mula({ fs: 1, ft: 2 }), vu.madda({ fs: 2, ft: 3 })); acc(vu.mula({ fs: 3, ft: 6 }), vu.msuba({ fs: 1, ft: 2 }));
+  acc(vu.addabc(1, { fs: 1, ft: 2 })); acc(vu.subabc(2, { fs: 1, ft: 6 })); acc(vu.mulabc(3, { fs: 2, ft: 6 }));
+  acc(vu.mulabc(0, { fs: 1, ft: 6 }), vu.maddabc(1, { fs: 2, ft: 6 }), vu.msubabc(2, { fs: 3, ft: 6 }));
+  upper(vu.mula({ fs: 1, ft: 2 }), vu.madd({ fs: 2, ft: 3, fd: R })); upper(vu.mula({ fs: 1, ft: 2 }), vu.msub({ fs: 3, ft: 6, fd: R }));
+  upper(vu.mula({ fs: 5, ft: 6 }), vu.maddbc(0, { fs: 1, ft: 6, fd: R })); upper(vu.mula({ fs: 2, ft: 6 }), vu.msubbc(3, { fs: 1, ft: 6, fd: R }));
+  upper(vu.opmula({ dest: 14, fs: 1, ft: 2 }), vu.opmsub({ dest: 14, fs: 2, ft: 1, fd: R }));
+  // with Q, from a division
+  pairs.push([vu.div(1, 0, 6, 0), n], [vu.waitq, n]);
+  upper(vu.mulq({ fs: 1, fd: R })); upper(vu.addq({ fs: 2, fd: R })); upper(vu.subq({ fs: 3, fd: R }));
+  upper(vu.mula({ fs: 1, ft: 2 }), vu.maddq({ fs: 2, fd: R })); upper(vu.mula({ fs: 1, ft: 6 }), vu.msubq({ fs: 3, fd: R }));
+  acc(vu.mulaq({ fs: 1 })); acc(vu.addaq({ fs: 2 })); acc(vu.subaq({ fs: 3 })); acc(vu.mulaq({ fs: 1 }), vu.maddaq({ fs: 2 }), vu.msubaq({ fs: 3 }));
+  // with I, loaded by a pair whose lower half is the float
+  const withI = (float, ...words) => { pairs.push([bitsOf(float), (n | vu.I) >>> 0]); upper(...words); };
+  withI(1.75, vu.muli({ fs: 1, fd: R })); withI(-300.5, vu.addi({ fs: 2, fd: R })); withI(1e-3, vu.subi({ fs: 3, fd: R }));
+  withI(2.5, vu.mula({ fs: 1, ft: 2 }), vu.maddi({ fs: 2, fd: R })); withI(-0.5, vu.mula({ fs: 1, ft: 6 }), vu.msubi({ fs: 3, fd: R }));
+  withI(10, vu.maxi({ fs: 1, fd: R })); withI(10, vu.minii({ fs: 1, fd: R }));
+  pairs.push([bitsOf(3.25), (n | vu.I) >>> 0]);
+  acc(vu.mulai({ fs: 1 })); acc(vu.addai({ fs: 2 })); acc(vu.subai({ fs: 3 })); acc(vu.mulai({ fs: 1 }), vu.maddai({ fs: 2 }), vu.msubai({ fs: 3 }));
+  // whole numbers and floats, and the rest
+  [0, 4, 12, 15].forEach(bits => upper(vu.itof(bits, { fs: 4, ft: R })));
+  [0, 4, 12, 15].forEach(bits => upper(vu.ftoi(bits, { fs: 1, ft: R })));
+  upper(vu.ftoi(4, { fs: 5, ft: R })); upper(vu.ftoi(0, { fs: 4, ft: R })); upper(vu.ftoi(15, { fs: 7, ft: R }));
+  upper(vu.abs({ fs: 6, ft: R })); upper(vu.abs({ dest: 5, fs: 4, ft: R }));
+  upper(vu.clip({ dest: 14, fs: 1, ft: 2 })); upper(vu.clip({ dest: 14, fs: 5, ft: 6 })); upper(vu.clip({ dest: 14, fs: 4, ft: 4 }));
+
+  // both halves of a pair writing one register, and the lower reading what the upper writes
+  pairs.push([vu.lq(21, 0x003, 0), vu.add({ fs: 1, ft: 2, fd: 21 })], [vu.move(R, 21), n]); keep();
+  pairs.push([vu.move(R, 22), vu.sub({ fs: 2, ft: 3, fd: 22 })]); keep(); pairs.push([vu.move(R, 22), n]); keep();
+
+  // the program stops here, and MSCNT goes on from the pair after the next
+  pairs.push([L, (n | vu.E) >>> 0], [L, n]);
+
+  // the division unit: Q read before it lands and after, and the status flag's D and I as they land
+  const q = () => upper(vu.addq({ dest: 8, fs: 0, fd: R }));
+  const wait = count => { for (let i = 0; i < count; i++) pairs.push([L, n]); };
+  pairs.push([vu.div(6, 0, 6, 2), n], [vu.waitq, n], [vu.div(6, 2, 6, 0), n]); wait(5);
+  pairs.push([L, vu.addq({ dest: 8, fs: 0, fd: R })], [L, vu.addq({ dest: 8, fs: 0, fd: 21 })], [vu.sqi(R, OUT), n], [vu.sqi(21, OUT), n]);
+  pairs.push([vu.rsqrt(6, 0, 6, 2), n]); wait(11);
+  pairs.push([L, vu.addq({ dest: 8, fs: 0, fd: R })], [L, vu.addq({ dest: 8, fs: 0, fd: 21 })], [vu.sqi(R, OUT), n], [vu.sqi(21, OUT), n]);
+  pairs.push([vu.div(6, 0, 5, 2), n], [vu.fsand(10, 0xFFF), n]); wait(4); pairs.push([vu.fsand(11, 0xFFF), n], [vu.fsand(12, 0xFFF), n]); four(10, 11, 12);
+  pairs.push([vu.div(6, 0, 6, 2), n], [vu.fsand(10, 0xFFF), n]); wait(4); pairs.push([vu.fsand(11, 0xFFF), n], [vu.fsand(12, 0xFFF), n]); four(10, 11, 12);
+  pairs.push([vu.esadd(1), n]); wait(9); pairs.push([vu.mfp(R, 15), n], [vu.mfp(21, 15), n], [vu.sqi(R, OUT), n], [vu.sqi(21, OUT), n]);
+  // how long WAITP waits, by the flags of a sum made just before it, read just after
+  pairs.push([L, vu.add({ fs: 6, ft: 6, fd: 22 })]); wait(5);
+  pairs.push([vu.esqrt(1, 0), n]); wait(8); pairs.push([L, vu.sub({ fs: 2, ft: 2, fd: 21 })], [vu.waitp, n], [vu.fmand(10, ALL), n], [vu.fmand(11, ALL), n]); four(10, 11);
+  pairs.push([vu.div(1, 0, 2, 1), n]); q(); pairs.push([vu.waitq, n]); q();
+  pairs.push([vu.div(6, 0, 5, 2), n], [vu.fsand(10, 0xFFF), n], [vu.waitq, n], [vu.fsand(11, 0xFFF), n]); q(); four(10, 11);
+  pairs.push([vu.div(5, 2, 5, 2), n], [vu.waitq, n]); q();
+  pairs.push([vu.div(5, 0, 5, 1), n], [vu.waitq, n]); q();
+  pairs.push([vu.sqrt(6, 1), n], [vu.waitq, n]); q();
+  pairs.push([vu.sqrt(1, 0), n], [vu.waitq, n]); q();
+  pairs.push([vu.rsqrt(6, 0, 1, 1), n], [vu.fsand(10, 0xFFF), n], [vu.waitq, n]); q();
+  pairs.push([vu.rsqrt(6, 1, 5, 2), n], [vu.waitq, n]); q();
+  pairs.push([vu.rsqrt(1, 0, 6, 1), n], [vu.waitq, n]); q();
+  // the EFU, P read before it lands and after
+  const p = () => { pairs.push([vu.mfp(R, 15), n]); keep(); };
+  pairs.push([vu.esadd(1), n]); p(); pairs.push([vu.waitp, n]); p();
+  for (const sum of [vu.ersadd(2), vu.eleng(1), vu.erleng(6), vu.esum(1), vu.esqrt(1, 0), vu.ersqrt(6, 0), vu.ercpr(6, 2), vu.esin(6, 2), vu.eexp(6, 2), vu.eatanxy(1), vu.eatanxz(2), vu.esqrt(6, 1), vu.ercpr(5, 2)]) {
+    pairs.push([sum, n], [vu.waitp, n]);
+    p();
+  }
+  // whole numbers, R and the vector moves
+  pairs.push([vu.mtir(5, 4, 0), n], [vu.mtir(6, 1, 2), n], [vu.mfir(R, 5, 15), n]); keep();
+  pairs.push([vu.rinit(1, 0), n], [vu.rnext(R, 15), n]); keep();
+  pairs.push([vu.rxor(2, 1), n], [vu.rget(R, 12), n], [vu.rnext(R, 3), n]); keep();
+  pairs.push([vu.mr32(R, 1, 15), n]); keep();
+  pairs.push([vu.move(R, 2, 10), n]); keep();
+  // loads and stores that step their register, and a whole number loaded and stored through one
+  pairs.push([vu.iaddiu(5, 0, 0x004), n], [vu.lqd(R, 5, 15), n]); keep();
+  pairs.push([vu.lqi(R, 5, 14), n], [vu.lqi(21, 5, 15), n]); keep();
+  pairs.push([vu.iadd(6, OUT, 0), n], [vu.iaddiu(OUT, OUT, 2), n], [vu.sqi(1, 6, 15), n], [vu.sqd(2, OUT, 15), n], [vu.iaddiu(OUT, OUT, 1), n]);
+  pairs.push([vu.ilwr(7, 5, 4), n], [vu.iswr(7, OUT, 15), n], [vu.iaddiu(OUT, OUT, 1), n]);
+  four(5, 6, 7);
+
+  // every branch, taken and not: 9 gets a 1 from each delay slot, a 16 from what a taken branch skips and a 256 from
+  // where it lands
+  const branch = make => pairs.push([make(2), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  pairs.push([vu.iaddiu(9, 0, 0), n], [vu.iaddiu(1, 0, 5), n], [vu.isubiu(2, 0, 5), n], [vu.iaddiu(3, 0, 5), n]);
+  settle();
+  for (const make of [k => vu.ibeq(1, 3, k), k => vu.ibeq(1, 2, k), k => vu.ibne(1, 2, k), k => vu.ibne(1, 3, k), k => vu.ibltz(2, k), k => vu.ibltz(1, k),
+    k => vu.ibgtz(1, k), k => vu.ibgtz(0, k), k => vu.iblez(0, k), k => vu.iblez(1, k), k => vu.ibgez(0, k), k => vu.ibgez(2, k), k => vu.b(k)]) branch(make);
+  // a call and its way back, and a jump through a register
+  pairs.push([vu.bal(4, 2), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  pairs.push([vu.iaddiu(5, 0, EXERCISE_AT + pairs.length + 8), n]); settle();
+  pairs.push([vu.jalr(6, 5), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  pairs.push([vu.iaddiu(5, 0, EXERCISE_AT + pairs.length + 8), n]); settle();
+  pairs.push([vu.jr(5), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  four(9, 4, 6);
+  // a branch right after a sum on its register tests it as it was: 0, so this one is taken
+  pairs.push([vu.iaddiu(9, 0, 0), n], [vu.iaddiu(5, 0, 0), n]); settle();
+  pairs.push([vu.iaddiu(5, 0, 1), n], [vu.ibeq(5, 0, 2), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  // after two sums on it, as it was before the first
+  pairs.push([vu.iaddiu(5, 0, 0), n]); settle();
+  pairs.push([vu.iaddiu(5, 5, 1), n], [vu.iaddiu(5, 5, 1), n], [vu.ibeq(5, 0, 2), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  // after a flag's instruction, as it is
+  settle();
+  pairs.push([vu.fcget(5), n], [vu.ibeq(5, 0, 2), n], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  // and when the branch's pair waits for a float, as it is
+  pairs.push([vu.iaddiu(5, 0, 0), n]); settle();
+  pairs.push([L, vu.add({ fs: 1, ft: 2, fd: 21 })], [vu.iaddiu(5, 0, 1), n], [vu.ibeq(5, 0, 2), vu.add({ fs: 21, ft: 1, fd: 22 })], [vu.iaddiu(9, 9, 1), n], [vu.iaddiu(9, 9, 16), n], [vu.iaddiu(9, 9, 256), n]);
+  four(9, 5);
+
+  // flags one to four cycles after what sets them: a sum's MAC flags, FSSET's sticky flags and FCSET's clip flags
+  settle();
+  pairs.push([L, vu.sub({ fs: 1, ft: 1, fd: 21 })], [vu.fmand(10, ALL), n], [vu.fmand(11, ALL), n], [vu.fmand(12, ALL), n], [vu.fmand(13, ALL), n]); four(10, 11, 12, 13);
+  pairs.push([vu.fsset(0xFC0), n], [vu.fsand(10, 0xFFF), n], [vu.fsand(11, 0xFFF), n], [vu.fsand(12, 0xFFF), n], [vu.fsand(13, 0xFFF), n]); four(10, 11, 12, 13);
+  pairs.push([vu.fsset(0), n], [vu.fsand(10, 0xFFF), n], [vu.fsand(11, 0xFFF), n], [vu.fsand(12, 0xFFF), n], [vu.fsand(13, 0xFFF), n]); four(10, 11, 12, 13);
+  pairs.push([vu.fcset(0xABC123), n], [vu.fcget(10), n], [vu.fcget(11), n], [vu.fcget(12), n], [vu.fcget(13), n]); four(10, 11, 12, 13);
+  // the clip flags' three tests, and the status and MAC flags' others
+  pairs.push([vu.fceq(0xABC123), n], [vu.iadd(10, 1, 0), n], [vu.fcand(0x000100), n], [vu.iadd(11, 1, 0), n], [vu.fcor(0x543EDC), n], [vu.iadd(12, 1, 0), n], [vu.fcor(0x543EDD), n], [vu.iadd(13, 1, 0), n]);
+  four(10, 11, 12, 13);
+  pairs.push([vu.fsor(10, 0x00F), n], [vu.fmeq(11, 0), n], [vu.fmor(12, 0), n], [vu.iaddiu(13, 0, 0x7FF), n]); four(10, 11, 12, 13);
+  pairs.push([L, (n | vu.E) >>> 0], [L, n]);
+  return { code: microcode(pairs), pairs: pairs.length };
 }
 
 // vector unit 0's program: float sums, MAX and MINI, ITOF, MR32, MFIR and R's on the numbers VIF0 put at 0, and XITOP
@@ -266,8 +418,15 @@ export function eeVuProgram() {
   memory.put(IIN, [1, -7, 1000, 123456, -99999, 42, 0x7FFF0000, -1]);
   memory.put(QIN, pattern(16, 3));
   memory.put(CONSTANTS, [bitsOf(0.03125), 0, 0, 0, 0x01030507, 0x090B0D0F, 0xF1F3F5F7, 0x80818283]);
+  // the floats the console treats its own way: the largest, two with their exponent all ones, both zeros, two tinier
+  // than the smallest ordinary one and that one, and one near the largest a computer has
+  const SPECIAL = CONSTANTS + 0x20, FIFOS = SPECIAL + 0x20;
+  memory.put(SPECIAL, [0x7FFFFFFF, 0x7F800000, 0xFF800001, 0x00000000, 0x80000000, 0x00000001, 0x00800000, bitsOf(3.0e38)]);
+  // a packet for the GIF's FIFO, a corner of a sprite, and a quadword of codes for VIF1's, an UNPACK of two words
+  memory.put(FIFOS, [...gifTag({ loops: 1, prim: 6, regs: [0x1, 0x5] }), 0x70, 0x70, 0x10, 0x80, XY(50, 400), 0, 0, 0,
+    vif.stcycl(1, 1), vif.unpack({ format: 0x0, count: 2, at: 0x3F8 }), 0x12345678, 0x9ABCDEF0]);
   // the GS made ready to draw, sent first each frame as PATH3
-  const SETUP = DATA_AT + 0x100, WIDTH = 640, HEIGHT = 448;
+  const SETUP = DATA_AT + 0x200, WIDTH = 640, HEIGHT = 448;
   const setup = [...gifTag({ loops: 6, regs: [0xE] }), ...aPlusD(0x4C, (WIDTH / 64) << 16), ...aPlusD(0x40, (WIDTH - 1) << 16, (HEIGHT - 1) << 16),
     ...aPlusD(0x18, 0), ...aPlusD(0x47, 0x30000), ...aPlusD(0x4E, 0, 1), ...aPlusD(0x1A, 1)];
   memory.put(SETUP, setup);
@@ -346,11 +505,26 @@ export function eeVuProgram() {
   const second = [...padded([vif.mark(2)], 1), vif.direct(packetA.length / 4), ...packetA, ...padded([vif.mskpath3(false)], 1), vif.direct(packetB.length / 4), ...packetB, ...padded([vif.FLUSHA])];
   memory.put(SECOND, second);
 
+  // VIF1's third transfer: the second program, in as many MPGs as its 256-pair pieces, what it's given, MSCALF, and
+  // MSCNT once it has stopped halfway
+  const THIRD = DATA_AT + 0x10000, exercise = vu1Exercise();
+  const pieces = [];
+  for (let from = 0; from < exercise.pairs; from += 256) {
+    const count = Math.min(256, exercise.pairs - from);
+    pieces.push(vif.mpg(EXERCISE_AT + from, count), ...exercise.code.slice(from * 2, (from + count) * 2));
+  }
+  const third = padded([vif.FLUSHE, ...pieces, vif.stcycl(4, 4), vif.stmod(0), vif.unpack({ format: 0xC, count: 3, at: GIVEN_AT }),
+    0x7FFFFFFF, 0x00800000, 0x80000000, 0x7F800001, bitsOf(2), bitsOf(-3.5), bitsOf(0.25), bitsOf(1e10), 0x00000001, 0x807FFFFF, 0x00400000, bitsOf(1), vif.mscalf(EXERCISE_AT), vif.FLUSHE, vif.MSCNT, vif.FLUSHE]);
+  memory.put(THIRD, third);
+
   // VIF0: vector unit 0's program, its numbers, ITOP and MSCAL, in normal mode
   const VIF0 = DATA_AT + 0xA000, code0 = vu0Program();
   const numbers = [1.5, -2.25, 3, 0.5, 100, -0.125, 7, 2].map(bitsOf).concat([0x12345, -42, 7, 1000]);
   const vif0 = padded([vif.FLUSHE, vif.mpg(0, code0.length / 2), ...code0, vif.stcycl(1, 1), vif.stmod(0), vif.unpack({ format: 0xC, count: 3, at: 0 }), ...numbers, vif.itop(0x2A), vif.mscal(0), vif.FLUSHE]);
-  memory.put(VIF0, vif0);
+  // as a chain that a tag's interrupt bit ends, with TIE: the tag after it, whose UNPACK would mark the unit's memory,
+  // is never read
+  memory.put(VIF0, [(vif0.length / 4 | TAG.CNT << 28 | 1 << 31) >>> 0, 0, 0, 0, ...vif0,
+    ...dmaTag(TAG.END, 2), vif.stcycl(1, 1), vif.unpack({ format: 0x0, count: 1, at: 0x30 }), 0xDEADBEEF, vif.NOP, vif.NOP, vif.NOP, vif.NOP, vif.NOP]);
 
   // the scratchpad's round trip
   const SPR = DATA_AT + 0xC000, SPR_BACK = DATA_AT + 0xD000;
@@ -358,9 +532,9 @@ export function eeVuProgram() {
   memory.put(SPR, sprPacket);
 
   // the math's results go to vector unit 1's memory from quadword 0, through VIF1, after a quadword of its codes
-  const steps = frameSteps({ FIN, IIN, QIN, CONSTANTS, SETUP, setupQwc: setup.length / 4, CHAIN, GIF_CHAIN, SECOND, secondQwc: second.length / 4,
-    VIF0, vif0Qwc: vif0.length / 4, SPR, SPR_BACK, sprQwc: sprPacket.length / 4, bumps, SPLIT_FIRST, splitFirstQwc: splitFirst.length / 4, SPLIT_REST, splitRestQwc: splitRest.length / 4 });
-  return { memory: memory.blocks, steps, names: { FIN, IIN, QIN, CONSTANTS, RESULTS_AT, RESULT_CODES: RESULTS_AT - 16 } };
+  const steps = frameSteps({ FIN, IIN, QIN, CONSTANTS, SPECIAL, FIFOS, SETUP, setupQwc: setup.length / 4, CHAIN, GIF_CHAIN, SECOND, secondQwc: second.length / 4,
+    VIF0, vif0Qwc: vif0.length / 4, SPR, SPR_BACK, sprQwc: sprPacket.length / 4, bumps, SPLIT_FIRST, splitFirstQwc: splitFirst.length / 4, SPLIT_REST, splitRestQwc: splitRest.length / 4, THIRD, thirdQwc: third.length / 4 });
+  return { memory: memory.blocks, steps, names: { FIN, IIN, QIN, CONSTANTS, SPECIAL, FIFOS, RESULTS_AT, RESULT_CODES: RESULTS_AT - 16 } };
 }
 
 // One frame's work as steps, each made into MIPS by `mips` and into C by `c`. Registers: S0 the frame's number, S1
@@ -395,6 +569,30 @@ function frameSteps(p) {
       const compare = (0x11 << 26 | 16 << 21 | (funct === 0x32 ? 0 : 1) << 16 | 0 << 11 | funct) >>> 0;
       step([compare, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_fcsr >> 23 & 1)`));
     }
+    step([], '}');
+  }
+  // the same on the floats the console treats its own way, each against another of them and against one of the others,
+  // each result with the flags it leaves in FCSR, which starts each frame clear
+  const FLAGS = 0x0083C078;
+  step([ctc1(0, 31), ...li(T4, FLAGS)], 'ee_fcsr = 0;');
+  for (let i = 0; i < 8; i++) {
+    const other = i & 1 ? [p.FIN, i * 4, `FIN + ${i * 4}`] : [p.SPECIAL, ((i + 3) & 7) * 4, `SPECIAL + ${((i + 3) & 7) * 4}`];
+    step([...li(T0, p.SPECIAL), lwc1(0, i * 4, T0), ...li(T0, other[0]), lwc1(1, other[1], T0)], `{ float a = word_float(SPECIAL + ${i * 4}), b = word_float(${other[2]});`);
+    for (const [mips, c, kind] of FPU_OPS) {
+      step([...mips, swc1(2, result, S1)], put(kind === 'int' ? `(uint32_t)${c}` : `float_word(${c})`));
+      step([cfc1(T2, 31), and(T2, T2, T4), sw(T2, result, S1)], put(`ee_fcsr & ${FLAGS}u`));
+    }
+    for (const [mips, c] of [[[fpu(0x16, 2, 0, 1)], 'ee_rsqrt(a, b)'], [[fpu(0x03, 2, 1, 0)], 'ee_div(b, a)'], [[fpu(0x04, 2, 0, 1)], 'ee_sqrt(b)']]) {
+      step([...mips, swc1(2, result, S1)], put(`float_word(${c})`));
+      step([cfc1(T2, 31), and(T2, T2, T4), sw(T2, result, S1)], put(`ee_fcsr & ${FLAGS}u`));
+    }
+    // and against a third, compared, and the larger and the smaller
+    step([...li(T0, p.SPECIAL), lwc1(1, ((i + 6) & 7) * 4, T0)], `b = word_float(SPECIAL + ${((i + 6) & 7) * 4});`);
+    for (const [funct, c] of [[0x34, 'ee_c_lt(a, b)'], [0x36, 'ee_c_le(a, b)'], [0x32, 'ee_c_eq(a, b)']]) {
+      step([(0x11 << 26 | 16 << 21 | 1 << 16 | 0 << 11 | funct) >>> 0, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_fcsr >> 23 & 1)`));
+    }
+    step([fpu(0x28, 2, 0, 1), swc1(2, result, S1)], put('float_word(ee_max(a, b))'));
+    step([fpu(0x29, 2, 0, 1), swc1(2, result, S1)], put('float_word(ee_min(a, b))'));
     step([], '}');
   }
   result = (result + 15) & ~15;
@@ -434,7 +632,44 @@ function frameSteps(p) {
   step([mmi(0x04, V0, A0, 0), sd(V0, result, S1)], `put_double(next + ${result}, ee_plzcw(a.d[0]));`);
   result += 16;
   step([], '}');
+  // vector unit 0 from the EE, an instruction at a time: its registers loaded, sums, a division, CLIP, whole numbers
+  // and R, with the vectors, Q through a sum and the flags kept
+  {
+    const macro = word => step([cop2(word)], `vu0_macro(${cop2(word)}u);`);
+    const lowerWord = word => word & 0x01FFFFFF;
+    const keepVector = reg => { step([sqc2(reg, result, S1)], `put_vector(next + ${result}, vu0_vf(${reg}));`); result += 16; };
+    const keepFlags = () => {
+      [16, 17, 18].forEach((id, i) => step([cfc2(T2, id), sw(T2, result + i * 4, S1)], `put_word(next + ${result + i * 4}, vu0_cfc2(${id}));`));
+      step([sw(0, result + 12, S1)], `put_word(next + ${result + 12}, 0);`);
+      result += 16;
+    };
+    step([...li(T0, p.FIN), lqc2(1, 0, T0), lqc2(2, 16, T0), ...li(T0, p.SPECIAL), lqc2(3, 0, T0), lqc2(4, 16, T0)],
+      'load_vector(vu0_vf(1), FIN); load_vector(vu0_vf(2), FIN + 16); load_vector(vu0_vf(3), SPECIAL); load_vector(vu0_vf(4), SPECIAL + 16);');
+    for (const word of [vu.add({ fs: 1, ft: 2, fd: 5 }), vu.mul({ fs: 1, ft: 3, fd: 6 }), vu.sub({ dest: 14, fs: 3, ft: 4, fd: 7 })]) macro(word);
+    [5, 6, 7].forEach(keepVector); keepFlags();
+    for (const word of [vu.mulabc(0, { fs: 1, ft: 2 }), vu.maddabc(1, { fs: 2, ft: 1 }), vu.maddbc(3, { fs: 1, ft: 2, fd: 5 }), vu.opmula({ dest: 14, fs: 1, ft: 2 }), vu.opmsub({ dest: 14, fs: 2, ft: 1, fd: 6 }),
+      vu.ftoi(4, { fs: 1, ft: 7 }), vu.itof(12, { fs: 7, ft: 8 }), vu.clip({ dest: 14, fs: 1, ft: 2 }), vu.clip({ dest: 14, fs: 3, ft: 1 })]) macro(word);
+    [5, 6, 7, 8].forEach(keepVector); keepFlags();
+    // a division, by zero the second time, each waited for, with Q seen through a sum, and a root
+    for (const [divide, into] of [[vu.div(1, 0, 2, 1), 5], [vu.div(1, 0, 3, 3), 6], [vu.sqrt(2, 1), 7], [vu.rsqrt(1, 2, 2, 0), 8]]) {
+      macro(lowerWord(divide)); macro(lowerWord(vu.waitq)); macro(vu.addq({ fs: 0, fd: into }));
+      keepVector(into); keepFlags();
+    }
+    // whole numbers, R and the moves, and the control registers written and read back
+    for (const word of [vu.iaddi(1, 0, 7), vu.iaddi(2, 1, -3), vu.iadd(3, 1, 2), vu.isub(4, 1, 2), vu.iand(5, 1, 2), vu.ior(6, 1, 2)]) macro(lowerWord(word));
+    for (const word of [vu.mtir(7, 1, 0), vu.mfir(5, 3, 15), vu.rinit(1, 1), vu.rnext(6, 15), vu.rxor(2, 0), vu.rget(7, 10), vu.mr32(8, 1, 15), vu.move(9, 2, 5)]) macro(lowerWord(word));
+    [5, 6, 7, 8, 9].forEach(keepVector);
+    [1, 2, 3, 4, 5, 6, 7, 20].forEach((id, i) => step([cfc2(T2, id), sw(T2, result + i * 4, S1)], `put_word(next + ${result + i * 4}, vu0_cfc2(${id}));`));
+    result += 32;
+    step([...li(T2, 0xFC0), ctc2(T2, 16), ...li(T2, 0x123456), ctc2(T2, 18), ...li(T2, 0x4D2), ctc2(T2, 8)], 'vu0_ctc2(16, 0xFC0); vu0_ctc2(18, 0x123456); vu0_ctc2(8, 0x4D2);');
+    keepFlags();
+    step([cfc2(T2, 8), sw(T2, result, S1), sw(0, result + 4, S1), sw(0, result + 8, S1), sw(0, result + 12, S1)], `put_word(next + ${result}, vu0_cfc2(8)); put_word(next + ${result + 4}, 0); put_word(next + ${result + 8}, 0); put_word(next + ${result + 12}, 0);`);
+    result += 16;
+    step([ctc2(0, 16)], 'vu0_ctc2(16, 0);');
+  }
   const resultQuads = result / 16;
+  if (resultQuads > 255) throw new Error(`The results are ${resultQuads} quadwords, more than one UNPACK takes.`);
+  if (process.env.DP_TEST_SIZES) console.log(`results: ${resultQuads} quadwords`);
   // the results to vector unit 1's memory
   step([...li(T0, RESULT_CODES), ...li(T1, vif.stcycl(4, 4)), sw(T1, 0, T0), ...li(T1, vif.stmod(0)), sw(T1, 4, T0), sw(0, 8, T0),
     ...li(T1, vif.unpack({ format: 0xC, count: resultQuads & 0xFF, at: RESULTS_QUADS })), sw(T1, 12, T0)],
@@ -465,8 +700,12 @@ function frameSteps(p) {
   send(VIF1, { madr: p.SECOND, qwc: p.secondQwc, chcr: 0x101 }, 'second');
   send(VIF1, { madr: p.SPLIT_FIRST, qwc: p.splitFirstQwc, chcr: 0x101 }, 'split');
   send(VIF1, { madr: p.SPLIT_REST, qwc: p.splitRestQwc, chcr: 0x101 }, 'rest');
+  send(VIF1, { madr: p.THIRD, qwc: p.thirdQwc, chcr: 0x101 }, 'third');
   step([...li(T0, GIF), here('waitgif'), lw(T3, 0, T0), andi(T3, T3, 0x100), bne(T3, 0, 'waitgif'), NOP], `wait_for(${GIF});`);
-  send(VIF0, { madr: p.VIF0, qwc: p.vif0Qwc, chcr: 0x101 }, 'vif0');
+  send(VIF0, { tadr: p.VIF0, chcr: 0x185 }, 'vif0');
+  // a packet written to the GIF's FIFO, a quadword at a time, and a quadword of codes to VIF1's
+  step([...li(T0, p.FIFOS), lq(A0, 0, T0), lq(A1, 16, T0), lq(A2, 32, T0), lq(A3, 48, T0), ...li(T1, 0x10006000), sq(A0, 0, T1), sq(A1, 0, T1), sq(A2, 0, T1), ...li(T1, 0x10005000), sq(A3, 0, T1)],
+    '{ ee_quad a = quad(FIFOS), b = quad(FIFOS + 16), c = quad(FIFOS + 32), d = quad(FIFOS + 48); ps2_write128(GIF_FIFO, &a); ps2_write128(GIF_FIFO, &b); ps2_write128(GIF_FIFO, &c); ps2_write128(VIF1_FIFO, &d); }');
   send(TO_SPR, { madr: p.SPR, qwc: p.sprQwc, sadr: 0, chcr: 0x100 }, 'tospr');
   send(GIF, { madr: 0x80000000, qwc: p.sprQwc, chcr: 0x101 }, 'fromspr');
   send(FROM_SPR, { madr: p.SPR_BACK, qwc: p.sprQwc, sadr: 0, chcr: 0x100 }, 'back');

@@ -554,6 +554,8 @@ void vu_start(int number, uint32_t address) {
     }
     ending = ends;
   }
+  land(u, UINT64_MAX);
+  u->running = 0;
   u->stopped_at = u->pc;
 }
 
@@ -569,10 +571,9 @@ void vu0_macro(uint32_t instruction) {
   struct unit *u = &units[0];
   uint32_t funct = instruction & 0x3F, lower = 0x8000033C, upper = 0x000002FF;
   if (funct >= 0x3C) {
-    uint32_t index = (funct & 3) | (instruction >> 6 & 31) << 2;
-    if (index < 0x30) upper = instruction & 0x01FFFFFF;
-    // VMOVE to VRXOR: the lower instructions of the extra tables, VMOVE's being 0x30
-    else lower = 0x80000000 | (instruction & 0x01FFF800) | (0x0C + ((index - 0x30) >> 2)) << 6 | 0x3C | (index & 3);
+    // the extra tables: the upper instructions' first, and from VMOVE on the lower ones', each encoded as in a program
+    if ((instruction >> 6 & 31) < 0x0C) upper = instruction & 0x01FFFFFF;
+    else lower = 0x80000000 | (instruction & 0x01FFFFFF);
   } else if (funct >= 0x30 && funct <= 0x35) {
     // VIADD, VISUB, VIADDI, VIAND, VIOR
     lower = 0x80000000 | (instruction & 0x01FFFFC0) | funct;

@@ -17,10 +17,13 @@ then vector unit 1's, for the tools to compare with a Dreamport's (kit/ps2/c/vu.
 
 Its FPU and its vector units do their float sums by the console's rules, not a computer's: Source/ee/dreamports/floats.h
 and floats.cpp are kit/ps2/c/floats.h and floats.c, word for word (tools/test/ps2-floats.test.mjs checks they are), and
-Glue.cpp is what the recompiled code calls to reach them. With them the FPU keeps its flags, the vector units' MAC and
-status flags have underflow, overflow, invalid and division by zero with their sticky flags, a division's flags land with
-its Q, FSSET and FCSET are seen four cycles on, a division and WAITQ take the cycles they wait, and everything a vector
-unit's program left on its way lands as it ends (kit/ps2/c/README.md says where each rule comes from).
+Glue.cpp is what the recompiled code calls to reach them. With them the FPU keeps its flags, and the vector units' MAC
+and status flags have underflow, overflow, invalid and division by zero with their sticky flags. The vector units'
+timing follows the console's where Play! took a shortcut: a division's flags land with its Q, FSSET and FCSET are seen
+four cycles on, a division and WAITQ take the cycles they wait and WAITP one fewer than P takes, every sum's MAC flags
+are kept, the upper half's result is the one kept when both halves of a pair write a register, and everything a
+program left on its way lands as it ends. SUBAq, which Play! left out, is there (kit/ps2/c/README.md says where each
+rule comes from, and what the emulator still does its own way).
 
 diff --git a/Source/CMakeLists.txt b/Source/CMakeLists.txt
 index 0eb6a2e..1216ff7 100644
@@ -437,10 +440,22 @@ index fc28a8f..b5db527 100644
  
  	uint32 nCOP2VI[16];
 diff --git a/Source/ee/COP_VU.cpp b/Source/ee/COP_VU.cpp
-index e6c36f8..ec439c3 100644
+index e6c36f8..bfe36ad 100644
 --- a/Source/ee/COP_VU.cpp
 +++ b/Source/ee/COP_VU.cpp
-@@ -852,7 +852,7 @@ void CCOP_VU::VMULA()
+@@ -684,6 +684,11 @@ void CCOP_VU::VMULAq()
+ }
+ 
+ //08
++void CCOP_VU::VSUBAq()
++{
++	VUShared::SUBAq(m_codeGen, m_nDest, m_nFS, 0, 0);
++}
++
+ void CCOP_VU::VADDAq()
+ {
+ 	VUShared::ADDAq(m_codeGen, m_nDest, m_nFS, 0, 0);
+@@ -852,7 +857,7 @@ void CCOP_VU::VMULA()
  //0B
  void CCOP_VU::VOPMULA()
  {
@@ -449,6 +464,27 @@ index e6c36f8..ec439c3 100644
  }
  
  //0D
+@@ -1036,7 +1041,7 @@ CCOP_VU::InstructionFuncConstant CCOP_VU::m_pOpVx0[0x20] =
+ 	//0x00
+ 	&CCOP_VU::VADDAbc,		&CCOP_VU::VSUBAbc,		&CCOP_VU::VMADDAbc,		&CCOP_VU::VMSUBAbc,		&CCOP_VU::VITOF0,		&CCOP_VU::VFTOI0,		&CCOP_VU::VMULAbc,		&CCOP_VU::VMULAq,
+ 	//0x08
+-	&CCOP_VU::VADDAq,		&CCOP_VU::Illegal,		&CCOP_VU::VADDA,		&CCOP_VU::VSUBA,		&CCOP_VU::VMOVE,		&CCOP_VU::VLQI,			&CCOP_VU::VDIV,			&CCOP_VU::VMTIR,
++	&CCOP_VU::VADDAq,		&CCOP_VU::VSUBAq,		&CCOP_VU::VADDA,		&CCOP_VU::VSUBA,		&CCOP_VU::VMOVE,		&CCOP_VU::VLQI,			&CCOP_VU::VDIV,			&CCOP_VU::VMTIR,
+ 	//0x10
+ 	&CCOP_VU::VRNEXT,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,		&CCOP_VU::Illegal,
+ 	//0x18
+diff --git a/Source/ee/COP_VU.h b/Source/ee/COP_VU.h
+index e6d64d7..1697e0e 100644
+--- a/Source/ee/COP_VU.h
++++ b/Source/ee/COP_VU.h
+@@ -122,6 +122,7 @@ private:
+ 	void VFTOI0();
+ 	void VMULAq();
+ 	void VADDAq();
++	void VSUBAq();
+ 	void VADDA();
+ 	void VSUBA();
+ 	void VMOVE();
 diff --git a/Source/ee/Ee_SubSystem.cpp b/Source/ee/Ee_SubSystem.cpp
 index ba72195..a23433e 100644
 --- a/Source/ee/Ee_SubSystem.cpp
@@ -483,19 +519,56 @@ index ba72195..a23433e 100644
  	dst.m_State.nCOP2CF = src.m_State.nCOP2CF;
  	dst.m_State.pipeQ.counter = 0;
  	dst.m_State.pipeQ.heldValue = src.m_State.nCOP2Q;
+diff --git a/Source/ee/MA_VU.h b/Source/ee/MA_VU.h
+index 9df6066..685fc66 100644
+--- a/Source/ee/MA_VU.h
++++ b/Source/ee/MA_VU.h
+@@ -123,6 +123,7 @@ private:
+ 		void MULAi();
+ 		void ADDAi();
+ 		void SUBAi();
++		void SUBAq();
+ 		void MULA();
+ 		void OPMULA();
+ 
 diff --git a/Source/ee/MA_VU_Lower.cpp b/Source/ee/MA_VU_Lower.cpp
-index 62b3f2c..f12245a 100644
+index 62b3f2c..57b1c00 100644
 --- a/Source/ee/MA_VU_Lower.cpp
 +++ b/Source/ee/MA_VU_Lower.cpp
-@@ -5,6 +5,7 @@
+@@ -5,18 +5,20 @@
  #include "Vpu.h"
  #include "VUShared.h"
  #include "offsetof_def.h"
+-
+-#define LATENCY_EATAN 53
+-#define LATENCY_EEXP 43
+-#define LATENCY_ELENG 17
+-#define LATENCY_ERCPR 11
+-#define LATENCY_ERLENG 23
+-#define LATENCY_ERSADD 17
+-#define LATENCY_ERSQRT 17
+-#define LATENCY_ESADD 10
+-#define LATENCY_ESIN 28
+-#define LATENCY_ESQRT 11
+-#define LATENCY_ESUM 11
 +#include "dreamports/Glue.h"
++
++//Dreamports: when P has an EFU sum's result, which is a cycle after WAITP has waited for it (VuBasicBlock.cpp)
++#define LATENCY_EATAN 54
++#define LATENCY_EEXP 44
++#define LATENCY_ELENG 18
++#define LATENCY_ERCPR 12
++#define LATENCY_ERLENG 24
++#define LATENCY_ERSADD 18
++#define LATENCY_ERSQRT 18
++#define LATENCY_ESADD 11
++#define LATENCY_ESIN 29
++#define LATENCY_ESQRT 12
++#define LATENCY_ESUM 12
  
- #define LATENCY_EATAN 53
- #define LATENCY_EEXP 43
-@@ -108,6 +109,20 @@ void CMA_VU::CLower::ApplySumSeries(size_t target, const uint32* seriesConstants
+ CMA_VU::CLower::CLower(uint32 vuMemAddressMask)
+     : CMIPSInstructionFactory(MIPS_REGSIZE_32)
+@@ -108,6 +110,20 @@ void CMA_VU::CLower::ApplySumSeries(size_t target, const uint32* seriesConstants
  	}
  }
  
@@ -516,7 +589,7 @@ index 62b3f2c..f12245a 100644
  void CMA_VU::CLower::GenerateEATAN()
  {
  	auto destination = VUShared::g_pipeInfoP.heldValue;
-@@ -257,10 +272,7 @@ void CMA_VU::CLower::FCEQ()
+@@ -257,10 +273,7 @@ void CMA_VU::CLower::FCEQ()
  void CMA_VU::CLower::FCSET()
  {
  	m_codeGen->PushCst(m_nImm24);
@@ -528,7 +601,7 @@ index 62b3f2c..f12245a 100644
  }
  
  //12
-@@ -296,9 +308,7 @@ void CMA_VU::CLower::FCOR()
+@@ -296,9 +309,7 @@ void CMA_VU::CLower::FCOR()
  //15
  void CMA_VU::CLower::FSSET()
  {
@@ -539,7 +612,7 @@ index 62b3f2c..f12245a 100644
  }
  
  //16
-@@ -643,88 +653,25 @@ void CMA_VU::CLower::XGKICK()
+@@ -643,88 +654,25 @@ void CMA_VU::CLower::XGKICK()
  //1C
  void CMA_VU::CLower::ESADD()
  {
@@ -632,7 +705,7 @@ index 62b3f2c..f12245a 100644
  }
  
  //////////////////////////////////////////////////
-@@ -779,65 +726,19 @@ void CMA_VU::CLower::XITOP()
+@@ -779,65 +727,19 @@ void CMA_VU::CLower::XITOP()
  //1C
  void CMA_VU::CLower::ERSADD()
  {
@@ -701,7 +774,7 @@ index 62b3f2c..f12245a 100644
  }
  
  //////////////////////////////////////////////////
-@@ -871,108 +772,25 @@ void CMA_VU::CLower::RINIT()
+@@ -871,108 +773,25 @@ void CMA_VU::CLower::RINIT()
  //1C
  void CMA_VU::CLower::ELENG()
  {
@@ -814,7 +887,7 @@ index 62b3f2c..f12245a 100644
  }
  
  //////////////////////////////////////////////////
-@@ -1006,36 +824,7 @@ void CMA_VU::CLower::RXOR()
+@@ -1006,36 +825,7 @@ void CMA_VU::CLower::RXOR()
  //1C
  void CMA_VU::CLower::ERLENG()
  {
@@ -853,10 +926,22 @@ index 62b3f2c..f12245a 100644
  
  //1E
 diff --git a/Source/ee/MA_VU_Upper.cpp b/Source/ee/MA_VU_Upper.cpp
-index 7200729..2aa1364 100644
+index 7200729..c8ebd3a 100644
 --- a/Source/ee/MA_VU_Upper.cpp
 +++ b/Source/ee/MA_VU_Upper.cpp
-@@ -454,7 +454,7 @@ void CMA_VU::CUpper::MULA()
+@@ -440,6 +440,11 @@ void CMA_VU::CUpper::ADDAi()
+ }
+ 
+ //09
++void CMA_VU::CUpper::SUBAq()
++{
++	VUShared::SUBAq(m_codeGen, m_nDest, m_nFS, m_relativePipeTime, m_compileHints);
++}
++
+ void CMA_VU::CUpper::SUBAi()
+ {
+ 	VUShared::SUBAi(m_codeGen, m_nDest, m_nFS, m_relativePipeTime, m_compileHints);
+@@ -454,7 +459,7 @@ void CMA_VU::CUpper::MULA()
  //0B
  void CMA_VU::CUpper::OPMULA()
  {
@@ -865,8 +950,39 @@ index 7200729..2aa1364 100644
  }
  
  //////////////////////////////////////////////////
+@@ -526,7 +531,7 @@ CMA_VU::CUpper::InstructionFuncConstant CMA_VU::CUpper::m_pOpVector0[0x20] =
+ 	//0x00
+ 	&CMA_VU::CUpper::ADDAbc,		&CMA_VU::CUpper::SUBAbc,		&CMA_VU::CUpper::MADDAbc,		&CMA_VU::CUpper::MSUBAbc,		&CMA_VU::CUpper::ITOF0,			&CMA_VU::CUpper::FTOI0,			&CMA_VU::CUpper::MULAbc,		&CMA_VU::CUpper::MULAq,
+ 	//0x08
+-	&CMA_VU::CUpper::ADDAq,			&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::ADDA,			&CMA_VU::CUpper::SUBA,			&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,
++	&CMA_VU::CUpper::ADDAq,			&CMA_VU::CUpper::SUBAq,			&CMA_VU::CUpper::ADDA,			&CMA_VU::CUpper::SUBA,			&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,
+ 	//0x10
+ 	&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,		&CMA_VU::CUpper::Illegal,
+ 	//0x18
+diff --git a/Source/ee/MA_VU_UpperReflection.cpp b/Source/ee/MA_VU_UpperReflection.cpp
+index a0afcf4..80a849a 100644
+--- a/Source/ee/MA_VU_UpperReflection.cpp
++++ b/Source/ee/MA_VU_UpperReflection.cpp
+@@ -105,7 +105,7 @@ INSTRUCTION CMA_VU::CUpper::m_cReflVX0[32] =
+ 	{	"MULA",		NULL,			CopyMnemonic,		ReflOpAccFsQ,		NULL,				NULL			},
+ 	//0x08
+ 	{	"ADDA",		NULL,			CopyMnemonic,		ReflOpAccFsQ,		NULL,				NULL			},
+-	{	NULL,		NULL,			NULL,				NULL,				NULL,				NULL			},
++	{	"SUBA",		NULL,			CopyMnemonic,		ReflOpAccFsQ,		NULL,				NULL			},
+ 	{	"ADDA",		NULL,			CopyMnemonic,		ReflOpAccFsFt,		NULL,				NULL			},
+ 	{	"SUBA",		NULL,			CopyMnemonic,		ReflOpAccFsFt,		NULL,				NULL			},
+ 	{	NULL,		NULL,			NULL,				NULL,				NULL,				NULL			},
+@@ -341,7 +341,7 @@ VUINSTRUCTION CMA_VU::CUpper::m_cVuReflVX0[32] =
+ 	{	"MULA",		NULL,			ReflOpAffWrAMfRdFsQ		},
+ 	//0x08
+ 	{	"ADDA",		NULL,			ReflOpAffWrAMfRdFsQ		},
+-	{	NULL,		NULL,			NULL					},
++	{	"SUBA",		NULL,			ReflOpAffWrAMfRdFsQ		},
+ 	{	"ADDA",		NULL,			ReflOpAffWrAMfRdFsFt	},
+ 	{	"SUBA",		NULL,			ReflOpAffWrAMfRdFsFt	},
+ 	{	NULL,		NULL,			NULL					},
 diff --git a/Source/ee/VUShared.cpp b/Source/ee/VUShared.cpp
-index 52360eb..8718abd 100644
+index 52360eb..81ca372 100644
 --- a/Source/ee/VUShared.cpp
 +++ b/Source/ee/VUShared.cpp
 @@ -5,9 +5,14 @@
@@ -884,7 +1000,16 @@ index 52360eb..8718abd 100644
  #define STATUS_I 0x10
  #define STATUS_D 0x20
  #define STATUS_ZS 0x40
-@@ -252,6 +257,68 @@ void VUShared::MakeComparableFromFloat(CMipsJitter* codeGen)
+@@ -55,6 +60,8 @@ const VUShared::FLAG_PIPEINFO VUShared::g_pipeInfoClip =
+ 
+ using namespace VUShared;
+ 
++static void DpSettleDivisionFlags(CMipsJitter*, uint32);
++
+ bool VUShared::DestinationHasElement(uint8 nDest, unsigned int nElement)
+ {
+ 	return (nDest & (1 << (nElement ^ 0x03))) != 0;
+@@ -252,6 +259,68 @@ void VUShared::MakeComparableFromFloat(CMipsJitter* codeGen)
  	codeGen->PullTop();
  }
  
@@ -953,7 +1078,7 @@ index 52360eb..8718abd 100644
  void VUShared::TestSZFlags(CMipsJitter* codeGen, uint8 dest, size_t regOffset, uint32 relativePipeTime, uint32 compileHints)
  {
  	codeGen->MD_PushRel(regOffset);
-@@ -362,18 +429,68 @@ void VUShared::GetStatus(CMipsJitter* codeGen, size_t dstOffset, uint32 relative
+@@ -362,18 +431,68 @@ void VUShared::GetStatus(CMipsJitter* codeGen, size_t dstOffset, uint32 relative
  	}
  	codeGen->EndIf();
  
@@ -963,17 +1088,16 @@ index 52360eb..8718abd 100644
 +	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2MF));
 +	codeGen->PushCst(0x0F00);
 +	codeGen->And();
- 	codeGen->PushCst(0);
- 	codeGen->BeginIf(Jitter::CONDITION_NE);
- 	{
- 		codeGen->PushRel(dstOffset);
--		codeGen->PushCst(STATUS_D);
++	codeGen->PushCst(0);
++	codeGen->BeginIf(Jitter::CONDITION_NE);
++	{
++		codeGen->PushRel(dstOffset);
 +		codeGen->PushCst(STATUS_U);
- 		codeGen->Or();
- 		codeGen->PullRel(dstOffset);
- 	}
- 	codeGen->EndIf();
- 
++		codeGen->Or();
++		codeGen->PullRel(dstOffset);
++	}
++	codeGen->EndIf();
++
 +	//Check O flag
 +	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2MF));
 +	codeGen->PushCst(0xF000);
@@ -1006,16 +1130,17 @@ index 52360eb..8718abd 100644
 +	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2SF));
 +	codeGen->PushCst(0xF000);
 +	codeGen->And();
-+	codeGen->PushCst(0);
-+	codeGen->BeginIf(Jitter::CONDITION_NE);
-+	{
-+		codeGen->PushRel(dstOffset);
+ 	codeGen->PushCst(0);
+ 	codeGen->BeginIf(Jitter::CONDITION_NE);
+ 	{
+ 		codeGen->PushRel(dstOffset);
+-		codeGen->PushCst(STATUS_D);
 +		codeGen->PushCst(STATUS_OS);
-+		codeGen->Or();
-+		codeGen->PullRel(dstOffset);
-+	}
-+	codeGen->EndIf();
-+
+ 		codeGen->Or();
+ 		codeGen->PullRel(dstOffset);
+ 	}
+ 	codeGen->EndIf();
+ 
 +	//Dreamports: I, D, IS and DS, as the division and the FSSET on their way have made them by now
 +	PushDivisionFlags(codeGen, relativePipeTime);
 +	codeGen->PushRel(dstOffset);
@@ -1025,7 +1150,7 @@ index 52360eb..8718abd 100644
  	//TODO: Check other flags
  }
  
-@@ -411,218 +528,96 @@ void VUShared::SetStatus(CMipsJitter* codeGen, size_t srcOffset)
+@@ -411,218 +530,97 @@ void VUShared::SetStatus(CMipsJitter* codeGen, size_t srcOffset)
  	}
  	codeGen->EndIf();
  
@@ -1055,7 +1180,8 @@ index 52360eb..8718abd 100644
 +	}
 +	codeGen->EndIf();
 +
-+	//Dreamports: IS and DS, with nothing left on its way
++	//Dreamports: IS and DS, once the division before has left its own, with no FSSET left on its way
++	DpSettleDivisionFlags(codeGen, LATENCY_MAC);
 +	codeGen->PushRel(offsetof(CMIPS, m_State.nCOP2DF));
 +	codeGen->PushCst(0x30);
 +	codeGen->And();
@@ -1292,7 +1418,7 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::MINI_base(CMipsJitter* codeGen, uint8 dest, size_t fd, size_t fs, size_t ft, bool expand)
-@@ -708,59 +703,20 @@ void VUShared::ADD(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 f
+@@ -708,59 +706,20 @@ void VUShared::ADD(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 f
  
  void VUShared::ADDbc(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 ft, uint8 bc, uint32 relativePipeTime, uint32 compileHints)
  {
@@ -1362,7 +1488,7 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::ADDq(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint32 relativePipeTime, uint32 compileHints)
-@@ -822,117 +778,153 @@ void VUShared::CLIP(CMipsJitter* codeGen, uint8 nFs, uint8 nFt, uint32 relativeP
+@@ -822,117 +781,153 @@ void VUShared::CLIP(CMipsJitter* codeGen, uint8 nFs, uint8 nFt, uint32 relativeP
  		codeGen->Shl(6);
  	}
  
@@ -1597,7 +1723,7 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::IADD(CMipsJitter* codeGen, uint8 id, uint8 is, uint8 it)
-@@ -1475,64 +1467,49 @@ void VUShared::MULAq(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint32 relative
+@@ -1475,64 +1470,49 @@ void VUShared::MULAq(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint32 relative
  	          true, relativePipeTime, compileHints);
  }
  
@@ -1697,7 +1823,7 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::RINIT(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf)
-@@ -1586,33 +1563,7 @@ void VUShared::RNEXT(CMipsJitter* codeGen, uint8 dest, uint8 ft)
+@@ -1586,33 +1566,7 @@ void VUShared::RNEXT(CMipsJitter* codeGen, uint8 dest, uint8 ft)
  
  void VUShared::RSQRT(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
  {
@@ -1732,7 +1858,7 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::RXOR(CMipsJitter* codeGen, uint8 nFs, uint8 nFsf)
-@@ -1695,37 +1646,16 @@ void VUShared::SQI(CMipsJitter* codeGen, uint8 dest, uint8 is, uint8 it, uint32
+@@ -1695,37 +1649,16 @@ void VUShared::SQI(CMipsJitter* codeGen, uint8 dest, uint8 is, uint8 it, uint32
  
  void VUShared::SQRT(CMipsJitter* codeGen, uint8 nFt, uint8 nFtf, uint32 relativePipeTime)
  {
@@ -1776,8 +1902,47 @@ index 52360eb..8718abd 100644
  }
  
  void VUShared::SUBbc(CMipsJitter* codeGen, uint8 dest, uint8 fd, uint8 fs, uint8 ft, uint8 bc, uint32 relativePipeTime, uint32 compileHints)
+@@ -1771,6 +1704,15 @@ void VUShared::SUBAbc(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint8 ft, uint
+ 	          true, relativePipeTime, compileHints);
+ }
+ 
++//Dreamports: SUBAq, which was missing
++void VUShared::SUBAq(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint32 relativePipeTime, uint32 compileHints)
++{
++	SUBA_base(codeGen, dest,
++	          offsetof(CMIPS, m_State.nCOP2[fs]),
++	          offsetof(CMIPS, m_State.nCOP2Q),
++	          true, relativePipeTime, compileHints);
++}
++
+ void VUShared::SUBAi(CMipsJitter* codeGen, uint8 dest, uint8 fs, uint32 relativePipeTime, uint32 compileHints)
+ {
+ 	SUBA_base(codeGen, dest,
+@@ -1798,9 +1740,12 @@ void VUShared::FlushPipeline(const REGISTER_PIPEINFO& pipeInfo, CMipsJitter* cod
+ 	codeGen->PullRel(pipeInfo.value);
+ }
+ 
+-void VUShared::SyncPipeline(const REGISTER_PIPEINFO& pipeInfo, CMipsJitter* codeGen, uint32 relativePipeTime)
++void VUShared::SyncPipeline(const REGISTER_PIPEINFO& pipeInfo, CMipsJitter* codeGen, uint32 relativePipeTime, uint32 early)
+ {
++	//Dreamports: `early` is how many cycles before the value arrives the wait ends, 1 for P
+ 	codeGen->PushRel(pipeInfo.counter);
++	codeGen->PushCst(early);
++	codeGen->Sub();
+ 
+ 	codeGen->PushRel(offsetof(CMIPS, m_State.pipeTime));
+ 	codeGen->PushCst(relativePipeTime);
+@@ -1811,7 +1756,7 @@ void VUShared::SyncPipeline(const REGISTER_PIPEINFO& pipeInfo, CMipsJitter* code
+ 	codeGen->BeginIf(Jitter::CONDITION_GE);
+ 	{
+ 		codeGen->PushRel(pipeInfo.counter);
+-		codeGen->PushCst(relativePipeTime);
++		codeGen->PushCst(relativePipeTime + early);
+ 		codeGen->Sub();
+ 		codeGen->PullRel(offsetof(CMIPS, m_State.pipeTime));
+ 	}
 diff --git a/Source/ee/VUShared.h b/Source/ee/VUShared.h
-index a2991f1..4262b5e 100644
+index a2991f1..6105934 100644
 --- a/Source/ee/VUShared.h
 +++ b/Source/ee/VUShared.h
 @@ -129,6 +129,8 @@ namespace VUShared
@@ -1798,6 +1963,20 @@ index a2991f1..4262b5e 100644
  	void RINIT(CMipsJitter*, uint8, uint8);
  	void RGET(CMipsJitter*, uint8, uint8);
  	void RNEXT(CMipsJitter*, uint8, uint8);
+@@ -228,11 +230,12 @@ namespace VUShared
+ 	void SUBA(CMipsJitter*, uint8, uint8, uint8, uint32, uint32);
+ 	void SUBAbc(CMipsJitter*, uint8, uint8, uint8, uint8, uint32, uint32);
+ 	void SUBAi(CMipsJitter*, uint8, uint8, uint32, uint32);
++	void SUBAq(CMipsJitter*, uint8, uint8, uint32, uint32);
+ 	void WAITP(CMipsJitter*);
+ 	void WAITQ(CMipsJitter*);
+ 
+ 	void FlushPipeline(const REGISTER_PIPEINFO&, CMipsJitter*);
+-	void SyncPipeline(const REGISTER_PIPEINFO&, CMipsJitter*, uint32);
++	void SyncPipeline(const REGISTER_PIPEINFO&, CMipsJitter*, uint32, uint32 = 0);
+ 	void CheckPipeline(const REGISTER_PIPEINFO&, CMipsJitter*, uint32);
+ 	void QueueInPipeline(const REGISTER_PIPEINFO&, CMipsJitter*, uint32, uint32);
+ 	void CheckFlagPipeline(const FLAG_PIPEINFO&, CMipsJitter*, uint32);
 diff --git a/Source/ee/Vpu.cpp b/Source/ee/Vpu.cpp
 index e21dc8b..9239f40 100644
 --- a/Source/ee/Vpu.cpp
@@ -1827,10 +2006,20 @@ index e21dc8b..9239f40 100644
  	m_ctx->m_State.pipeTime = 0;
  	m_ctx->m_State.pipeFmacWrite[0] = {};
 diff --git a/Source/ee/VuBasicBlock.cpp b/Source/ee/VuBasicBlock.cpp
-index a1ca3ca..7cee254 100644
+index a1ca3ca..44a9b36 100644
 --- a/Source/ee/VuBasicBlock.cpp
 +++ b/Source/ee/VuBasicBlock.cpp
-@@ -121,7 +121,8 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
+@@ -41,7 +41,8 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
+ 	std::vector<uint32> hints;
+ 	hints.resize(maxInstructions);
+ 
+-	ComputeSkipFlagsHints(fmacPipelineInfo.stallDelays, hints);
++	//Dreamports: every sum's MAC flags are kept. Which ones a later instruction reads can't be told ahead, as WAITQ and
++	//WAITP take as many cycles as the division or the EFU sum before them has left
+ 
+ 	uint32 relativePipeTime = 0;
+ 	uint32 instructionIndex = 0;
+@@ -121,11 +122,12 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
  
  		if(loOps.syncQ)
  		{
@@ -1840,6 +2029,22 @@ index a1ca3ca..7cee254 100644
  		}
  		if(loOps.syncP)
  		{
+-			VUShared::SyncPipeline(VUShared::g_pipeInfoP, jitter, relativePipeTime);
++			VUShared::SyncPipeline(VUShared::g_pipeInfoP, jitter, relativePipeTime, 1);
+ 		}
+ 
+ 		auto fmacStallDelay = fmacPipelineInfo.stallDelays[instructionIndex];
+@@ -144,8 +146,9 @@ void CVuBasicBlock::CompileRange(CMipsJitter* jitter)
+ 
+ 		if(hiOps.writeF != 0)
+ 		{
+-			assert(hiOps.writeF != loOps.writeF);
++			//Dreamports: when both halves write one register, the upper's result is the one kept
+ 			if(
++			    (hiOps.writeF == loOps.writeF) ||
+ 			    (hiOps.writeF == loOps.readF0) ||
+ 			    (hiOps.writeF == loOps.readF1))
+ 			{
 diff --git a/Source/ee/dreamports/Glue.cpp b/Source/ee/dreamports/Glue.cpp
 new file mode 100644
 index 0000000..914a233

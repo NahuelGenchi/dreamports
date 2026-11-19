@@ -70,7 +70,7 @@ static void align_word(struct stream *s) {
   if (s->used & 3) read(s, dummy, 4 - (s->used & 3));
 }
 // where DIRECT's data starts, read in place, and moving past what the GIF took of it
-static const uint8_t *in_place(const struct stream *s) { return s->source + s->next + (s->used == QWORD ? 0 : s->used) - (s->used == QWORD ? 0 : QWORD); }
+static const uint8_t *in_place(const struct stream *s) { return s->used == QWORD ? s->source + s->next : s->source + s->next - QWORD + s->used; }
 static void advance(struct stream *s, uint32_t size) {
   if (s->used == 0) size -= QWORD, s->used = QWORD;
   s->next += size;
