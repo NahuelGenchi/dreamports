@@ -52,7 +52,7 @@ export function libretroReference(machine) {
     // a core that keeps its settings and memory cards in the person's home folder, as Play! does, finds them in that empty
     // one instead, so nothing carries from one run to the next
     const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves };
-    const env = { DP_SYSTEM: system, DP_SAVES: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
@@ -65,13 +65,20 @@ export function libretroReference(machine) {
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
     // went by (DP_WHY, libretro/ran-ps2.h)
     saysWhy: core.ran === 'blocks',
+    // and one that says where it keeps the console's memory and its memory cards, as the PlayStation 2's does with the
+    // tools' patch, has its memory compared after every frame, its cards' files each time they change, and can start from
+    // cards a player's report carries (libretro/held.h)
+    seesMemory: core.holds === true,
+    seesSaves: core.holds === true,
+    startsFromSave: core.holds === true,
+    isSaveMemory: () => core.holds === true,
     ensureOriginal: log => buildReference(machine, log),
     async runOriginal({ copy, ...rest }) {
       const named = forRun(copy);
       let result;
       try {
         result = await runReference({
-          ...rest, program: HOST, env: { ...named.env, ...rest.env }, width, height, buttonBytes: 4,
+          ...rest, program: HOST, env: { ...named.env, ...rest.env, ...(rest.startSave ? { DP_SAVE_START: resolve(rest.startSave) } : {}) }, width, height, buttonBytes: 4,
           args: names => [coreFile(core), named.path, String(rest.frames), names.buttons, core.ran ? names.functions : '-', names.pictures, names.sound, names.sets, '-', String(width), String(height), ...options],
         });
       } finally {

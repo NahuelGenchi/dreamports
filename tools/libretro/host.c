@@ -31,6 +31,10 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
+// The environment's DP_MEMORY and DP_SAVES, when they're set, ask for the console's memory after every frame and its
+// memory cards' files each time they change, from a core that says where it keeps them, as the PlayStation 2's does with
+// the tools' patch (held.h).
+//
 // The environment's DP_DRAWS, when it's set, names a file for each frame's draw list, from a core that keeps one, as the
 // PlayStation 2's does with the tools' patch (play.patch): a hash of everything the console gave its graphics chip that
 // frame, and how many things that was, 32 bits each. That's what a 3D game is proven by (docs/STANDARD.md).
@@ -152,6 +156,7 @@ static size_t sizeCount, sizeRoom;
 
 #include "ran.h"
 #include "ran-ps2.h"
+#include "held.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -607,7 +612,7 @@ int main(int argc, char** argv) {
 	settingCount = argc - at - 2;
 	picture = malloc(wantedW * wantedH * 2 + 2);
 	systemFolder = getenv("DP_SYSTEM") ? getenv("DP_SYSTEM") : ".";
-	saveFolder = getenv("DP_SAVES") ? getenv("DP_SAVES") : ".";
+	saveFolder = getenv("DP_SAVE_FOLDER") ? getenv("DP_SAVE_FOLDER") : ".";
 
 	void* library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	if (!library) {
@@ -658,6 +663,9 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
+
+	// the memory cards the game starts from, before it loads (held.h)
+	if (!live && !route) heldStart(dlsym(library, "dreamports_memory_card"));
 
 	struct system_info info = { 0 };
 	retro_get_system_info(&info);
@@ -728,6 +736,7 @@ int main(int argc, char** argv) {
 		fprintf(err, "The core keeps no draw lists, which this game is proven by.\n");
 		return 2;
 	}
+	heldOpen(dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_memory_card"));
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
@@ -751,6 +760,7 @@ int main(int argc, char** argv) {
 			for (uint32_t i = 0; i < bytes; i++) value |= (uint32_t) memory[address + i] << (i * 8);
 			readValues[nextRead] = value;
 		}
+		heldFrame(frame);
 		uint32_t hash, plain, ranCount;
 		hashOf(&hash, &plain);
 		const uint32_t* ranNow = ranInFrame(&ranCount);
@@ -777,6 +787,7 @@ int main(int argc, char** argv) {
 	if (drawsFile) fclose(drawsFile);
 	ranClose();
 	ps2Close();
+	heldClose();
 	fflush(out);
 	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);

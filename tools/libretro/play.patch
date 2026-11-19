@@ -18,8 +18,14 @@ way its branch went and the words it was compiled from, on the EE and the IOP ea
 hold before it runs, and every sector of the disc read. A block that runs only says so, so the console does the same
 with it or without; while the tools watch, the processors compile each block for itself rather than reuse the code of
 another block of the same bytes, which would name that one.
+
+It says where the console's memories are (dreamports_memory: the EE's, the IOP's and the SPU2's, each the console's size)
+and its memory cards' files (dreamports_memory_card), with how many times the game has changed a card, for the tools to
+compare with a Dreamport's (tools/libretro/held.h). And it gives the console a clock of its own, the same in every run:
+midnight on 1 January 2001, Coordinated Universal Time, as it starts, going on as its V-blanks do, for the time the game
+reads and for the times of a card's files, which Play! took from the computer's clock.
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
-index 4c460e6..1c27549 100644
+index 4c460e6..7a0c6ef 100644
 --- a/Source/BasicBlock.cpp
 +++ b/Source/BasicBlock.cpp
 @@ -3,6 +3,8 @@
@@ -31,7 +37,7 @@ index 4c460e6..1c27549 100644
  
  #if defined(AOT_BUILD_CACHE) || defined(AOT_USE_CACHE)
  #define AOT_ENABLED
-@@ -42,6 +44,113 @@ extern "C"
+@@ -42,6 +44,116 @@ extern "C"
  
  #define INVALID_LINK_SLOT (~0U)
  
@@ -41,6 +47,9 @@ index 4c460e6..1c27549 100644
 +void (*Dreamports::g_blockRan)(DREAMPORTS_BLOCK*, uint32) = nullptr;
 +void (*Dreamports::g_step)(DREAMPORTS_BLOCK*, uint32, const void*) = nullptr;
 +void (*Dreamports::g_sectorRead)(uint32) = nullptr;
++uint64 Dreamports::g_vblanks = 0;
++uint32 Dreamports::g_vblankMilliHertz = 59940;
++uint32 Dreamports::g_memoryCardChanges = 0;
 +static std::vector<DREAMPORTS_BLOCK*> g_dreamportsBlocks;
 +
 +extern "C" void DreamportsBlockRan(CMIPS* context, uint32 index)
@@ -145,7 +154,7 @@ index 4c460e6..1c27549 100644
  CBasicBlock::CBasicBlock(CMIPS& context, uint32 begin, uint32 end, BLOCK_CATEGORY category)
      : m_begin(begin)
      , m_end(end)
-@@ -76,6 +185,7 @@ void CBasicBlock::SetAotBlockOutputStream(Framework::CStdStream* outputStream)
+@@ -76,6 +188,7 @@ void CBasicBlock::SetAotBlockOutputStream(Framework::CStdStream* outputStream)
  
  void CBasicBlock::Compile()
  {
@@ -153,7 +162,7 @@ index 4c460e6..1c27549 100644
  #ifndef AOT_USE_CACHE
  
  	Framework::CMemStream stream;
-@@ -225,6 +335,7 @@ void CBasicBlock::CompileRange(CMipsJitter* jitter)
+@@ -225,6 +338,7 @@ void CBasicBlock::CompileRange(CMipsJitter* jitter)
  
  	for(uint32 address = m_begin; address <= m_end; address += 4)
  	{
@@ -161,7 +170,7 @@ index 4c460e6..1c27549 100644
  		m_context.m_pArch->CompileInstruction(
  		    address,
  		    jitter,
-@@ -257,6 +368,15 @@ void CBasicBlock::CompileProlog(CMipsJitter* jitter)
+@@ -257,6 +371,15 @@ void CBasicBlock::CompileProlog(CMipsJitter* jitter)
  
  void CBasicBlock::CompileEpilog(CMipsJitter* jitter, bool loopsOnItself)
  {
@@ -179,16 +188,17 @@ index 4c460e6..1c27549 100644
  	jitter->PushCst(((m_end - m_begin) / 4) + 1);
 diff --git a/Source/DreamportsWatch.h b/Source/DreamportsWatch.h
 new file mode 100644
-index 0000000..b50d550
+index 0000000..fa5a952
 --- /dev/null
 +++ b/Source/DreamportsWatch.h
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,59 @@
 +#pragma once
 +
 +// Dreamports: what the tools' program is told of the console as it plays (tools/libretro/play.patch, ran-ps2.h). Nothing
 +// here changes what the console does: a block that runs only says so, and a sector read only says which it was.
 +
 +#include "Types.h"
++#include <ctime>
 +
 +// A block of instructions as the processor compiled it, the same as ran-ps2.h's struct dpBlock
 +struct DREAMPORTS_BLOCK
@@ -224,6 +234,22 @@ index 0000000..b50d550
 +	{
 +		if(g_sectorRead) g_sectorRead(sector);
 +	}
++
++	// The console's clock, the same in every run: midnight on 1 January 2001, Coordinated Universal Time, as the console
++	// starts, going on as its V-blanks do, which the frontend counts, with how many thousand a second (main_libretro.cpp)
++	enum : time_t
++	{
++		CLOCK_START = 978307200
++	};
++	extern uint64 g_vblanks;
++	extern uint32 g_vblankMilliHertz;
++	inline time_t ConsoleTime()
++	{
++		return CLOCK_START + static_cast<time_t>(g_vblanks * 1000 / g_vblankMilliHertz);
++	}
++
++	// how many times a memory card has been changed, for the tools to read its files again (Iop_McServ.cpp)
++	extern uint32 g_memoryCardChanges;
 +}
 diff --git a/Source/ISO9660/BlockProvider.h b/Source/ISO9660/BlockProvider.h
 index 3ca3d52..6f98142 100644
@@ -435,6 +461,122 @@ index 66bfe59..478f3d1 100644
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
+diff --git a/Source/iop/Iop_Cdvdman.cpp b/Source/iop/Iop_Cdvdman.cpp
+index 71aed53..949e209 100644
+--- a/Source/iop/Iop_Cdvdman.cpp
++++ b/Source/iop/Iop_Cdvdman.cpp
+@@ -5,6 +5,7 @@
+ #include "../TimeUtils.h"
+ #include "IopBios.h"
+ #include "Iop_Cdvdman.h"
++#include "../DreamportsWatch.h"
+ 
+ #define LOG_NAME "iop_cdvdman"
+ 
+@@ -88,8 +89,9 @@ static uint8 Uint8ToBcd(uint8 input)
+ 
+ uint32 CCdvdman::CdReadClockDirect(uint8* clockBuffer)
+ {
+-	auto currentTime = time(0);
+-	auto localTime = localtime(&currentTime);
++	//Dreamports: the console's own clock, the same in every run, not the computer's (DreamportsWatch.h)
++	auto currentTime = Dreamports::ConsoleTime();
++	auto localTime = gmtime(&currentTime);
+ 	clockBuffer[0] = 0;                                                        //Status (0 = ok, anything else = error)
+ 	clockBuffer[1] = Uint8ToBcd(static_cast<uint8>(localTime->tm_sec));        //Seconds
+ 	clockBuffer[2] = Uint8ToBcd(static_cast<uint8>(localTime->tm_min));        //Minutes
+diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
+index 4ef7854..2655295 100644
+--- a/Source/iop/Iop_McServ.cpp
++++ b/Source/iop/Iop_McServ.cpp
+@@ -18,6 +18,8 @@
+ #include "StringUtils.h"
+ #include "MIPSAssembler.h"
+ #include "FilesystemUtils.h"
++#include "../DreamportsWatch.h"
++#include <map>
+ 
+ using namespace Iop;
+ 
+@@ -204,6 +206,32 @@ void CMcServ::Invoke(CMIPS& context, unsigned int functionId)
+ 	}
+ }
+ 
++//Dreamports: when each entry of a memory card last changed by the console's clock, as its file's own time is the
++//computer's: by its path, the computer's time it was seen with and the console's. What's there as the game starts the
++//cards is from the clock's start
++static std::map<std::string, std::pair<fs::file_time_type, time_t>> g_dreamportsStamps;
++
++static void DreamportsStamp(const fs::path& card, time_t now)
++{
++	std::error_code error;
++	if(!fs::exists(card, error)) return;
++	auto stamp = [now](const fs::path& path) {
++		std::error_code error;
++		auto hostTime = fs::last_write_time(path, error);
++		if(error) return;
++		auto found = g_dreamportsStamps.find(path.generic_string());
++		if(found == g_dreamportsStamps.end() || found->second.first != hostTime) g_dreamportsStamps[path.generic_string()] = {hostTime, now};
++	};
++	stamp(card);
++	for(const auto& element : fs::recursive_directory_iterator(card, error)) stamp(element.path());
++}
++
++static time_t DreamportsStampOf(const fs::path& path)
++{
++	auto found = g_dreamportsStamps.find(path.generic_string());
++	return found == g_dreamportsStamps.end() ? Dreamports::CLOCK_START : found->second.second;
++}
++
+ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
+ {
+ 	bool isDirectCall = (method & CMD_FLAG_DIRECT) != 0;
+@@ -285,6 +313,33 @@ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret,
+ 		return true;
+ 	}
+ 
++	//Dreamports: what a call changed of a card is stamped with the console's clock, and the tools are told
++	switch(method)
++	{
++	case 0xFE:
++	case 0x70:
++		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::CLOCK_START);
++		break;
++	case CMD_ID_OPEN:
++	case 0x71:
++	case CMD_ID_CLOSE:
++	case 0x72:
++	case CMD_ID_WRITE:
++	case 0x74:
++	case 0x0A:
++	case 0x7A:
++	case CMD_ID_SETFILEINFO:
++	case 0x7C:
++	case CMD_ID_DELETE:
++	case 0x79:
++	case 0x1B:
++		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::ConsoleTime());
++		Dreamports::g_memoryCardChanges++;
++		break;
++	default:
++		break;
++	}
++
+ 	if(!isDirectCall)
+ 	{
+ 		// Delay all commands a bit (except ReadFast, which has a different mecanism)
+@@ -1308,8 +1363,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+ 
+ 			//Fill in modification date info
+ 			{
+-				auto changeSystemTime = Framework::ConvertFsTimeToSystemTime(element.last_write_time());
+-				auto localChangeDate = std::localtime(&changeSystemTime);
++				//Dreamports: by the console's clock, as the card's entry was stamped
++				auto changeSystemTime = DreamportsStampOf(element.path());
++				auto localChangeDate = std::gmtime(&changeSystemTime);
+ 
+ 				entry.modificationTime.second = localChangeDate->tm_sec;
+ 				entry.modificationTime.minute = localChangeDate->tm_min;
 diff --git a/Source/ui_libretro/PH_Libretro_Input.cpp b/Source/ui_libretro/PH_Libretro_Input.cpp
 index 3f9a1ea..46ec710 100644
 --- a/Source/ui_libretro/PH_Libretro_Input.cpp
@@ -485,7 +627,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..9b53459 100644
+index 8a07c26..09e320c 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,10 @@
@@ -499,7 +641,7 @@ index 8a07c26..9b53459 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +41,79 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +41,121 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -537,6 +679,9 @@ index 8a07c26..9b53459 100644
 +		gs->m_drawListCount = 0;
 +	}
 +	g_vblanksReached++;
++	// the console's clock goes on as its V-blanks do: 59.94 a second, or 50 on a PAL screen (DreamportsWatch.h)
++	Dreamports::g_vblanks = g_vblanksReached;
++	if(auto gs = m_virtualMachine ? m_virtualMachine->GetGSHandler() : nullptr) Dreamports::g_vblankMilliHertz = gs->GetCrtFrameRate() == 50 ? 50000 : 59940;
 +	g_vblankCondition.notify_all();
 +	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
 +}
@@ -563,6 +708,45 @@ index 8a07c26..9b53459 100644
 +	Dreamports::g_sectorRead = sectorRead;
 +}
 +
++// The console's memories, as the tools compare them (tools/lib/memory.mjs): `memory` 0 the EE's, at its own addresses (main
++// memory from 0, the scratchpad at 0x70000000, vector unit 0's code and data at 0x11000000 and 0x11004000, vector unit
++// 1's at 0x11008000 and 0x1100C000), 1 the IOP's (its memory from 0, its scratchpad at 0x1F800000) and 2 the SPU2's.
++// Each is the console's size, though Play! keeps more of some. Where `bytes` from `address` are, or none when they
++// aren't all in one of them. Read as the console waits at a V-blank
++extern "C" RETRO_API const uint8_t* dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++{
++	auto& ee = m_virtualMachine->m_ee;
++	auto& iop = m_virtualMachine->m_iop;
++	const struct
++	{
++		uint32_t memory, from, size;
++		uint8* at;
++	} regions[] = {
++	    {0, 0, 0x02000000, ee->m_ram}, {0, 0x70000000, PS2::EE_SPR_SIZE, ee->m_spr},
++	    {0, PS2::MICROMEM0ADDR, PS2::MICROMEM0SIZE, ee->m_microMem0}, {0, PS2::VUMEM0ADDR, PS2::VUMEM0SIZE, ee->m_vuMem0},
++	    {0, PS2::MICROMEM1ADDR, PS2::MICROMEM1SIZE, ee->m_microMem1}, {0, PS2::VUMEM1ADDR, PS2::VUMEM1SIZE, ee->m_vuMem1},
++	    {1, 0, 0x00200000, iop->m_ram}, {1, 0x1F800000, 0x400, iop->m_scratchPad}, {2, 0, PS2::SPU_RAM_SIZE, iop->m_spuRam},
++	};
++	for(const auto& region : regions)
++	{
++		if(region.memory == memory && address >= region.from && static_cast<uint64_t>(address) + bytes <= static_cast<uint64_t>(region.from) + region.size)
++		{
++			return region.at + (address - region.from);
++		}
++	}
++	return nullptr;
++}
++
++// Where a memory card's files are, for port 0 or 1, and how many times the game has changed a card so far, for the tools
++// to read them again when it has (Iop_McServ.cpp)
++extern "C" RETRO_API const char* dreamports_memory_card(uint32_t port, uint32_t* changes)
++{
++	static std::string folders[2];
++	folders[port & 1] = CAppConfig::GetInstance().GetPreferencePath(port & 1 ? PREF_PS2_MC1_DIRECTORY : PREF_PS2_MC0_DIRECTORY).string();
++	*changes = Dreamports::g_memoryCardChanges;
++	return folders[port & 1].c_str();
++}
++
 +static void AllowVBlanks(uint64_t count)
 +{
 +	std::lock_guard<std::mutex> lock(g_vblankMutex);
@@ -579,7 +763,7 @@ index 8a07c26..9b53459 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +523,24 @@ void retro_run()
+@@ -446,15 +565,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -607,7 +791,7 @@ index 8a07c26..9b53459 100644
  	}
  }
  
-@@ -554,7 +640,7 @@ void retro_init()
+@@ -554,7 +682,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -616,7 +800,7 @@ index 8a07c26..9b53459 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +660,7 @@ void retro_deinit()
+@@ -574,6 +702,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{

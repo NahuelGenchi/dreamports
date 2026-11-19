@@ -80,6 +80,8 @@ So the tools patch Play!'s libretro front as they build it, with [`tools/libretr
 
 **What ran, and what was read.** The same patch has Play! tell the tools of every block of instructions it runs on the EE, the IOP and both vector units, with which way its branch went, and of every sector of the disc the game reads, so a PlayStation 2 game's gameplay proven counts its code and its disc's data, and `untouched` lists what's left of both ([On the PlayStation 2](../tools/README.md#the-code-map-and-the-two-numbers)). `npm run test:ps2-ledger` checks it on a disc of the project's own, then proves the program on it and asks `untouched`.
 
+**What it holds.** The same patch says where Play! keeps the console's memories, the EE's, the IOP's and the sound chip's, and its memory cards, so `prove` compares a game's memory after every frame and what it saves to its cards, file by file ([The same-memory build](../tools/README.md#the-same-memory-build)). Play! read the computer's clock for the console's, and for the times of a card's files, so the patch gives it a clock of its own instead: midnight on 1 January 2001, Coordinated Universal Time, as the console starts, going on as its V-blanks do, the same in every run. A kit's clock starts at the same moment. `npm run test:ps2-memory` checks it on the real emulator.
+
 ## What's different from the Game Boy Advance
 
 A few things the tools do rest on mGBA, and stay with it for now.

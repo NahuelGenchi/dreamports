@@ -110,7 +110,16 @@ export async function loadGame(url, bytes, { console: id, save = null, query } =
   if (!machine) throw new Error(`There's no console called ${id} in kit/consoles.js.`);
   const { game } = await openGame(url, bytes, { save, ...(query === undefined ? {} : { query }) });
   const sound = createSound(game, machine.sound, machine.frame[0] / machine.frame[1]);
+  // the console's memory, on a console whose kit says where a game keeps it, for the proof tools (kit/ps2/c/memory.c):
+  // the bytes there now, or null where the game keeps none of them
+  if (globalThis.dreamportsProof && game.dp_console_memory) {
+    dreamportsProof.memory = (address, bytes, memory = 0) => {
+      const at = game.dp_console_memory(memory, address, bytes) >>> 0;
+      return at ? new Uint8Array(game.memory.buffer, at, bytes) : null;
+    };
+  }
   game.dp_start();
+  let cardChanges = game.dp_memory_cards_changes?.() >>> 0;
   sound.started();
   return {
     step(buttons) {
@@ -123,6 +132,15 @@ export async function loadGame(url, bytes, { console: id, save = null, query } =
           const size = game.dp_draw_list_size() >>> 0;
           return size === 0xFFFFFFFF ? null : new Uint8Array(game.memory.buffer, game.dp_draw_list_bytes(), size).slice();
         };
+      }
+      // what the game wrote to its memory cards this frame, on a console whose kit keeps them, as kit/ps2/card.js writes
+      // them, for the proof tools to compare with the original's (tools/lib/saves.mjs)
+      if (globalThis.dreamportsProof && game.dp_memory_cards_changes) {
+        const changes = game.dp_memory_cards_changes() >>> 0;
+        if (changes !== cardChanges) {
+          cardChanges = changes;
+          dreamportsProof.saved = new Uint8Array(game.memory.buffer, game.dp_memory_cards(), game.dp_memory_cards_size() >>> 0).slice();
+        }
       }
       sound.frameDone();
     },

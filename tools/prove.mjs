@@ -39,7 +39,7 @@ import { compareMemory, describeMemory, memoryBytes, memorySpec, workMemoryOf } 
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
-import { compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
+import { compareCardSaves, compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
 import { cellsOf, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
@@ -568,7 +568,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // a write the original made before the Dreamport's first frame, on its way to a start point, isn't the Dreamport's to
     // make, and then neither is one the Dreamport made as it started, before that frame
     const theirSaves = first.saves ? fromFrame(first.saves, originalOf[0]) : null;
-    const saved = first.saves ? compareSaves(theirSaves.changes, theirSaves.before ? ownSaves.filter(change => change.frame >= 0) : ownSaves, readLeftover(game)) : null;
+    // a PlayStation 2's memory cards are compared file by file (kit/ps2/card.js)
+    const ownChanges = theirSaves?.before ? ownSaves.filter(change => change.frame >= 0) : ownSaves;
+    const saved = !first.saves ? null : machine.id === 'ps2' ? compareCardSaves(theirSaves.changes, ownChanges) : compareSaves(theirSaves.changes, ownChanges, readLeftover(game));
     // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
     let played = null;
     if (seesPlayed) {
@@ -708,7 +710,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       say('playing the original to the frame whose work memory differs…');
       const at = originalOf[frame] + 1;
       const theirs = await runOriginal({ copy, startSave, frames: at + 1, buttons: masks, sets, memory: { spec: memorySpec(memory, at) } });
-      memoryApart = { frame, ...(ours?.frame === frame && theirs.memory.bytes ? compareMemory(memory, theirs.memory.bytes, Buffer.from(ours.bytes, 'base64')) ?? { unknown: true } : { unknown: true }) };
+      memoryApart = { frame, ...(ours?.frame === frame && theirs.memory.bytes ? compareMemory(memory, theirs.memory.bytes, Buffer.from(ours.bytes, 'base64'), machine.id) ?? { unknown: true } : { unknown: true }) };
     }
     // where the first frame whose sound differs is furthest from the original's
     const firstSound = soundDifferent.length ? { frame: soundDifferent[0], ...sounds[soundDifferent[0]] } : null;
@@ -798,7 +800,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       if (before.length) log(`    after the same ${before.length === 1 ? 'write' : `${before.length} writes`}: ${before.join('; ')}`);
     }
     if (memoryApart) {
-      log(`  ${memoryApart.unknown ? describeMemory(memoryApart.frame, null) : describeMemory(memoryApart.frame, memoryApart, memoryBytes(memory))}`);
+      log(`  ${memoryApart.unknown ? describeMemory(memoryApart.frame, null) : describeMemory(memoryApart.frame, memoryApart, memoryBytes(memory), machine.id)}`);
       if (memoryDifferent.length > 1) log(`  Frames whose work memory differs: ${listed(stretchesOf(memoryDifferent))}.`);
     }
     if (stopped) log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.error}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
@@ -867,8 +869,11 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (!quick) log(`  What this step changed: ${changedText(changed)}${changed ? (changed.heard ? ', so share leaves this clip out when another shows a change that can be seen' : '') : ', so share leaves this clip out'}.`);
     if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);
     if (saved?.first) {
-      const { write, frame, at, original: theirs, dreamport: mine } = saved.first;
-      log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${at === null ? (frame === null ? '' : ', which the Dreamport never made') : `, from byte ${at} of the save memory, where the original's holds ${theirs ?? 'nothing'} and the Dreamport's ${mine ?? 'nothing'}`}.`);
+      const { write, frame, at, file, original: theirs, dreamport: mine } = saved.first;
+      // on a memory card, the file that differs, and where in it
+      const where = file === undefined ? `, from byte ${at} of the save memory, where the original's holds ${theirs ?? 'nothing'} and the Dreamport's ${mine ?? 'nothing'}`
+        : file === null ? (frame === null ? '' : ', which the Dreamport never made') : at === null ? `, at ${file}, which is ${theirs} in the original's card and ${mine} in the Dreamport's` : `, from byte ${at} of ${file}, where the original's holds ${theirs ?? 'nothing'} and the Dreamport's ${mine ?? 'nothing'}`;
+      log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${file === undefined && at === null ? (frame === null ? '' : ', which the Dreamport never made') : where}.`);
     }
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
     return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(saved && (saved.original || saved.dreamport) ? { saves: { original: saved.original, dreamport: saved.dreamport, same: saved.same } } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
