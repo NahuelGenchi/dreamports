@@ -311,10 +311,16 @@ function bound(taken, on, reg, other, cond, otherReg = -1, marks = null) {
   on[otherReg] = narrow(b, a, SWAPPED[cond] ^ 1, marks?.[otherReg]);
 }
 
-// a function in ARM instructions, by its first words
+// a function in ARM instructions, by its first words: most of them run always, as ARM code's do, or the first can't be
+// Thumb, its second half 0xE800 to 0xEFFF, which Thumb has only after a call's first half, after an instruction that
+// goes on
 export function isArm(bytes) {
-  if (bytes.length < 16 || bytes.length % 4) return false;
+  if (bytes.length < 4 || bytes.length % 4) return false;
   const word = at => (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0;
+  const low = word(0) & 0xFFFF, high = word(0) >>> 16;
+  const stops = (low & 0xF800) === 0xE000 || (low & 0xFF00) === 0x4700 || (low & 0xFF00) === 0xBD00 || (low & 0xF000) === 0xF000;
+  if (high >= 0xE800 && high <= 0xEFFF && !stops) return true;
+  if (bytes.length < 16) return false;
   return [0, 4, 8, 12].map(word).filter(w => w >>> 28 === 0xE).length >= 3;
 }
 const isCall = (u16, at, size) => (u16(at) & 0xF800) === 0xF000 && at + 4 <= size && (u16(at + 2) & 0xF800) === 0xF800;
@@ -461,63 +467,159 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     if (containing(target).some(g => g !== u && g.address !== target)) into.add(target);
   };
   const keeps = new Map(), callees = new Map(), wrote = new Map(), pushed = new Map();
-  const viaRegister = new Map(), returnSites = [];
-  for (const u of units) {
+  const viaRegister = new Map(), returnSites = new Map(), summaries = new Map();
+  // Where code flow reaches in a piece, from its entries: its start, and the places other code is shown to branch or
+  // jump into. Only that is read as instructions, so data beside the code, a literal pool or a header, makes no
+  // branches. A jump through a register the scan can't place, other than a return or a call, may land anywhere in the
+  // piece, and then all of it is read, as before. Null for that.
+  const entriesOf = new Map(units.map(u => [u.id, new Set([0])]));
+  const reachThumb = (u, entries) => {
+    const size = u.bytes.length, u16 = at => u.bytes[at] | u.bytes[at + 1] << 8, seen = new Set(), todo = [...entries];
+    while (todo.length) {
+      const at = todo.pop();
+      if (at < 0 || at + 2 > size || at % 2 || seen.has(at)) continue;
+      seen.add(at);
+      const op = u16(at);
+      if (isCall(u16, at, size)) {
+        seen.add(at + 2);
+        const to = callTarget(u16, at, u.address) - u.address;
+        todo.push(at + 4, to);
+        continue;
+      }
+      if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) { todo.push(at + 4 + ((op & 0xFF) << 24 >> 23), at + 2); continue; }
+      if ((op & 0xF800) === 0xE000) { todo.push(at + 4 + ((op & 0x7FF) << 21 >> 20)); continue; }
+      if ((op & 0xFF00) === 0xBD00 || (op & 0xFF00) === 0xDE00 || (op & 0xF000) === 0xF000 || (op & 0xF800) === 0xE800) continue;
+      if ((op & 0xFC00) === 0x4400 && (op >> 8 & 3) !== 1 && ((op & 7) | (op >> 4 & 8)) === 15 || (op & 0xFF00) === 0x4700) {
+        const from = op >> 3 & 15, kind = op >> 8 & 3;
+        // a return: to lr, or to the return address it popped; a piece that only jumps on through a register
+        if (from === 14 && kind !== 0) continue;
+        if (kind === 3 && from < 8 && at >= 2 && u16(at - 2) === (0xBC00 | 1 << from)) continue;
+        if (kind === 3 && at === 0 && size <= 4) continue;
+        return null;
+      }
+      todo.push(at + 2);
+    }
+    return seen;
+  };
+  const reachArm = (u, entries) => {
+    const size = u.bytes.length, word = at => (u.bytes[at] | u.bytes[at + 1] << 8 | u.bytes[at + 2] << 16 | u.bytes[at + 3] << 24) >>> 0;
+    const seen = new Set(), todo = [...entries];
+    while (todo.length) {
+      const at = todo.pop();
+      if (at < 0 || at + 4 > size || at % 4 || seen.has(at)) continue;
+      seen.add(at);
+      const op = word(at), cond = op >>> 28, conditional = cond !== 0xE, rd = op >> 12 & 15;
+      if (cond === 0xF) { todo.push(at + 4); continue; }
+      if ((op & 0x0FFFFFF0) === 0x012FFF10) {
+        // BX: back with lr, a call when lr was set just before, or a jump the scan can't place
+        if ((op & 15) === 14 || (at >= 4 && (word(at - 4) & 0x0FFFFFFF) === 0x01A0E00F)) { if (conditional || (op & 15) !== 14) todo.push(at + 4); continue; }
+        return null;
+      }
+      if ((op & 0x0E000000) === 0x0A000000) {
+        const to = at + 8 + ((op & 0xFFFFFF) << 8 >> 6);
+        if (op & 0x01000000) todo.push(to, at + 4); else { todo.push(to); if (conditional) todo.push(at + 4); }
+        continue;
+      }
+      // LDM into pc: back, popped from the stack; any other, and LDR or arithmetic into pc but mov pc, lr, can't be placed
+      if ((op & 0x0E000000) === 0x08000000 && (op & 0x00108000) === 0x00108000) { if ((op >> 16 & 15) !== 13) return null; if (conditional) todo.push(at + 4); continue; }
+      if ((op & 0x0C100000) === 0x04100000 && rd === 15) return null;
+      const dataProcessing = (op & 0x0C000000) === 0x00000000 && !(!(op & 0x02000000) && (op & 0x90) === 0x90)
+        && (op & 0x0DB0F000) !== 0x0120F000 && (op & 0x0FBF0FFF) !== 0x010F0000 && !((op >> 21 & 15) >= 8 && (op >> 21 & 15) <= 11);
+      if (dataProcessing && rd === 15) {
+        if ((op & 0x0FFFFFFF) === 0x01A0F00E) { if (conditional) todo.push(at + 4); continue; }
+        return null;
+      }
+      todo.push(at + 4);
+    }
+    return seen;
+  };
+  // what a piece's code reached does: the places it branches to elsewhere, and for Thumb, the registers it writes,
+  // what it calls directly, and whether it jumps where the summary can't follow
+  const scan = u => {
+    const size = u.bytes.length, step = u.arm ? 4 : 2;
+    const reached = (u.arm ? reachArm : reachThumb)(u, entriesOf.get(u.id)) ?? new Set(Array.from({ length: Math.floor(size / step) }, (_, i) => i * step));
+    const offsets = [...reached].sort((a, b) => a - b);
     if (u.arm) {
-      for (let at = 0; at + 4 <= u.bytes.length; at += 4) {
+      for (const at of offsets) {
+        if (at + 4 > size) continue;
         const op = (u.bytes[at] | u.bytes[at + 1] << 8 | u.bytes[at + 2] << 16 | u.bytes[at + 3] << 24) >>> 0;
         if ((op & 0x0E000000) === 0x0A000000 && op >>> 28 !== 0xF) {
           const target = u32(u.address + at + 8 + ((op & 0xFFFFFF) << 8 >> 6));
           if (target < u.address || target >= u.address + u.size) branchTo(u, u.address + at, target, (op & 0x01000000) !== 0);
         }
       }
-      keeps.set(u.id, new Set());
-      continue;
+      return;
     }
     const u16 = at => u.bytes[at] | u.bytes[at + 1] << 8;
     if (u.size <= 4 && (u16(0) & 0xFF87) === 0x4700 && (u16(0) >> 3 & 15) < 13) viaRegister.set(u.id, u16(0) >> 3 & 15);
-    const writes = new Set(), direct = new Set();
+    const writes = new Set(), direct = new Set(), sites = [];
     let opaque = false;
-    // the words its pc-relative loads read, data beside the code and never instructions, unless the pass finds one run
+    // the words its pc-relative loads read, data beside the code, which the pass checks it never runs (doubt)
     u.pools = new Set();
-    for (let at = 0; at + 2 <= u.bytes.length; at += 2) {
-      if ((u16(at) & 0xF800) !== 0x4800) continue;
+    for (const at of offsets) {
+      if (at + 2 > size || (u16(at) & 0xF800) !== 0x4800) continue;
       const word = ((u.address + at + 4) & ~3) + (u16(at) & 0xFF) * 4 - u.address;
-      if (word >= 0 && word + 4 <= u.bytes.length) { u.pools.add(word); u.pools.add(word + 2); }
+      if (word >= 0 && word + 4 <= size) { u.pools.add(word); u.pools.add(word + 2); }
     }
-    for (let at = 0; at + 2 <= u.bytes.length; at += 2) {
-      if (u.pools.has(at)) continue;
+    for (const at of offsets) {
+      if (at + 2 > size || u.pools.has(at)) continue;
       const op = u16(at);
-      if (isCall(u16, at, u.bytes.length)) {
+      if (isCall(u16, at, size)) {
         const target = callTarget(u16, at, u.address), there = pieces(target, { u, pc: u.address + at });
         for (const g of there) direct.add(g.id);
         if (!there.length) opaque = true;
         branchTo(u, u.address + at, target, true);
-        at += 2;
         continue;
       }
+      if (at >= 2 && reached.has(at - 2) && isCall(u16, at - 2, size)) continue;
       if (((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) || (op & 0xF800) === 0xE000) {
         const target = (op & 0xF800) === 0xE000 ? u.address + at + 4 + ((op & 0x7FF) << 21 >> 20) : u.address + at + 4 + ((op & 0xFF) << 24 >> 23);
         if (target < u.address || target >= u.address + u.size) branchTo(u, u.address + at, target, false);
       }
       for (const r of destinations(op)) writes.add(r);
       // a jump through a register, but the return a function makes by popping its return address and jumping to it,
-      // which the pass checks once it has run (returnsHold)
+      // which the pass checks once it has run
       if ((op & 0xFF87) === 0x4700 && (op >> 3 & 15) !== 14) {
         const reg = op >> 3 & 15;
-        if (reg < 8 && at >= 2 && !u.pools.has(at - 2) && u16(at - 2) === (0xBC00 | 1 << reg)) returnSites.push({ pc: u.address + at, id: u.id });
+        if (reg < 8 && at >= 2 && !u.pools.has(at - 2) && u16(at - 2) === (0xBC00 | 1 << reg)) sites.push({ pc: u.address + at, id: u.id });
         else opaque = true;
       }
     }
-    const first = [0, 2, 4, 6].map(at => (at + 2 <= u.bytes.length ? u16(at) : 0)).find(op => (op & 0xFE00) === 0xB400);
-    pushed.set(u.id, new Set(first === undefined ? [] : [0, 1, 2, 3, 4, 5, 6, 7].filter(r => first >> r & 1)));
-    wrote.set(u.id, writes);
-    callees.set(u.id, opaque ? null : direct);
-    keeps.set(u.id, new Set([4, 5, 6, 7, 8, 9, 10, 11, 12]));
-  }
-  for (const [id, direct] of callees) if (direct) for (const c of [...direct]) if (viaRegister.has(c)) callees.set(id, null);
-  // the registers each piece keeps: those it pushes, or neither it nor what it calls writes
+    returnSites.set(u.id, sites);
+    const first = [0, 2, 4, 6].map(at => (at + 2 <= size ? u16(at) : 0)).find(op => (op & 0xFE00) === 0xB400);
+    summaries.set(u.id, { writes, direct, opaque, pushed: new Set(first === undefined ? [] : [0, 1, 2, 3, 4, 5, 6, 7].filter(r => first >> r & 1)) });
+  };
+  for (const u of units) scan(u);
+  // each place code is shown to arrive at in a piece's middle is an entry of that piece, whose code is scanned from
+  // there too, until no more come
+  const enter = places => {
+    let more = [...places];
+    while (more.length) {
+      const now = more;
+      more = [];
+      for (const t of now) for (const g of containing(t)) {
+        const entries = entriesOf.get(g.id);
+        if (entries.has(t - g.address)) continue;
+        entries.add(t - g.address);
+        const before = new Set(into);
+        scan(g);
+        for (const x of into) if (!before.has(x)) more.push(x);
+      }
+    }
+  };
+  enter(into);
+  // the registers each piece keeps, worked out again from the summaries: those it pushes, or neither it nor what it
+  // calls writes
+  const doubted = new Set();
   const settle = () => {
+    for (const u of units) {
+      if (u.arm) { keeps.set(u.id, new Set()); continue; }
+      const s = summaries.get(u.id);
+      wrote.set(u.id, s.writes);
+      pushed.set(u.id, s.pushed);
+      callees.set(u.id, s.opaque || doubted.has(u.id) || [...s.direct].some(c => viaRegister.has(c)) ? null : s.direct);
+      keeps.set(u.id, new Set([4, 5, 6, 7, 8, 9, 10, 11, 12]));
+    }
     for (let again = true; again;) {
       again = false;
       for (const [id, kept] of keeps) {
@@ -534,11 +636,9 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
   settle();
   // a piece whose summary the pass finds wrong, as one that runs a word of its pool or jumps on where it was taken to
   // return: it keeps only what it pushes, and the pass goes again
-  const doubted = new Set();
   const doubt = id => {
     if (doubted.has(id)) return;
     doubted.add(id);
-    callees.set(id, null);
     settle();
     changed = true;
   };
@@ -1124,7 +1224,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     // each pop and jump taken for a return carries only the return address, or a value the pass can't bound, which it
     // takes as a return everywhere
     let wrong = false;
-    for (const { pc, id } of returnSites) {
+    for (const { pc, id } of [...returnSites.values()].flat()) {
       const value = records.carriers.get(pc)?.get(id)?.value;
       if (value && value !== ANYWHERE && [...value].some(e => e !== 'r') && !doubted.has(id)) { doubt(id); wrong = true; }
     }
@@ -1134,6 +1234,11 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     const more = words.filter(w => w.verdict !== 'data' && !arrivals.has(w.to));
     if (!more.length) break;
     for (const w of more) arrivals.add(w.to);
+    // and the code they reach is scanned, which may show more places code arrives at
+    const before = new Set(into);
+    enter(more.map(w => w.to));
+    for (const x of into) if (!before.has(x)) arrivals.add(x);
+    settle();
     changed = true;
   }
   if (!complete) why.unshift(`it ran past its limit of ${seconds} seconds or ${cellLimit.toLocaleString('en')} cells`);
