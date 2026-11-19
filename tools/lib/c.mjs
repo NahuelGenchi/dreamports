@@ -390,7 +390,7 @@ void *kit_twin(uint32_t address);
     __builtin_trap(); \\
   }
 #define TWIN_CASE(name) case ADDRESS_##name: return (void *)name;
-#define TWIN_COPY(name, from, size) if (address - 0x08000000u >= 0x02000000u && kit_twin_copy_of(address & ~1u, from, size)) return (void *)name;
+#define TWIN_COPY(name, from, size) if (kit_twin_copy_of(address & ~1u, from, size)) return (void *)name;
 
 #endif
 `;
