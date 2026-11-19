@@ -20,7 +20,7 @@
 // game's code here, as it is for every number of the proof.
 
 import { holds, step, arrivals } from './decided.mjs';
-import { ANYWHERE, moved, numbers } from './points-to.mjs';
+import { ANYWHERE, elements, moved, numbers } from './points-to.mjs';
 
 const CARTRIDGE = 0x08000000;
 const IWRAM = 0x03000000, IWRAM_END = 0x03008000;
@@ -93,7 +93,7 @@ export function writesOf(rom, functions, copies = [], followed = null) {
 function recorded(writes, followed, at, size, extra = 0) {
   const known = (from, bytes, value) => writes.push({ at, kind: 'known', from: u32(from), to: u32(from + bytes), bytes: value === null ? null : Array.from({ length: Math.min(bytes, 4) }, (_, i) => value >>> (8 * i) & 0xFF) });
   const found = followed?.stores.get(at);
-  const where = found ? moved(found.base, found.offset + extra) : ANYWHERE;
+  const where = found ? elements(moved(found.base, found.offset + extra)) : ANYWHERE;
   if (where === ANYWHERE) return writes.push({ at, kind: 'unknown', why: `the store at ${hex(at)} writes through a pointer the check can't follow` });
   const values = numbers(found.value);
   for (const e of where) {
