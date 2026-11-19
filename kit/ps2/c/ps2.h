@@ -82,4 +82,20 @@ void vu_msubf(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, float wi
 void vu_ftoi(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 
+// The IOP, the console's second processor, for twins of a game's own IOP modules (iop.c): its memory, 4 MB as the
+// emulator has it, and its hardware as a module's loads and stores reach it, at the addresses the module uses. The
+// sound chip, the SPU2, is there from 0x1F900000, both its cores as the emulator mixes them (spu2.c), and the DMA
+// channels that move sound to it, 4 for core 0 at 0x1F8010C0 and 7 for core 1 at 0x1F801500. What the chip is given
+// each frame is the frame's sound list, which a PlayStation 2 game's sound is proven by, with its samples.
+uint8_t *iop_memory(void);
+void iop_write8(uint32_t address, uint8_t value);
+void iop_write16(uint32_t address, uint16_t value);
+void iop_write32(uint32_t address, uint32_t value);
+uint8_t iop_read8(uint32_t address);
+uint16_t iop_read16(uint32_t address);
+uint32_t iop_read32(uint32_t address);
+/** Lets `ee_ticks` of the EE's clock pass within the frame, the sound chip mixing what's due in them, for a game whose
+ *  IOP code writes the chip later in a frame than as it starts. Time past the frame's end is dropped. */
+void ps2_time_pass(uint32_t ee_ticks);
+
 #endif

@@ -454,13 +454,18 @@ static void videoRefresh(const void* data, unsigned width, unsigned height, size
 	}
 }
 
+static int16_t* exactSamples;
+static size_t exactRoom;
 static void keepSamples(const int16_t* data, size_t frames) {
 	if (sampleCount + frames * 2 > sampleRoom) {
 		sampleRoom = (sampleCount + frames * 2) * 2;
 		samples = realloc(samples, sampleRoom * 2);
+		if (exactRoom) exactSamples = realloc(exactSamples, (exactRoom = sampleRoom) * 2);
 	}
 	// 10-bit units, 512 being as loud as the mix goes, so that "quieter than one step" means the same on every console
 	for (size_t i = 0; i < frames * 2; i++) samples[sampleCount + i] = data[i] >> 6;
+	// and the core's own 16 bits, for a game whose samples the tools compare exactly, as a PlayStation 2's (DP_SOUND_EXACT)
+	if (exactRoom) memcpy(exactSamples + sampleCount, data, frames * 4);
 	sampleCount += frames * 2;
 }
 
@@ -716,6 +721,17 @@ int main(int argc, char** argv) {
 		fprintf(err, "The core keeps no draw lists, which this game is proven by.\n");
 		return 2;
 	}
+	// and the sound list, what the console gave its sound chip, on a console whose emulator keeps one, with each frame's
+	// samples as the core made them
+	void (*soundList)(uint32_t*, uint32_t*) = dlsym(library, "dreamports_sound_list");
+	FILE* exactFile = getenv("DP_SOUND_EXACT") ? fopen(getenv("DP_SOUND_EXACT"), "wb") : NULL;
+	if (exactFile) exactSamples = malloc((exactRoom = sampleRoom ? sampleRoom : 1) * 2);
+	if (exactFile && sampleRoom > exactRoom) exactSamples = realloc(exactSamples, (exactRoom = sampleRoom) * 2);
+	FILE* soundsFile = getenv("DP_SOUNDS") ? fopen(getenv("DP_SOUNDS"), "wb") : NULL;
+	if (soundsFile && !soundList) {
+		fprintf(err, "The core keeps no sound lists, which this game's sound is proven by.\n");
+		return 2;
+	}
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
@@ -772,7 +788,19 @@ int main(int argc, char** argv) {
 			drawList(&drawn[0], &drawn[1]);
 			fwrite(drawn, 4, 2, drawsFile);
 		}
+		if (soundsFile) {
+			uint32_t heard[2];
+			soundList(&heard[0], &heard[1]);
+			fwrite(heard, 4, 2, soundsFile);
+		}
+		if (exactFile) {
+			uint32_t count = sampleCount / 2;
+			fwrite(&count, 4, 1, exactFile);
+			fwrite(exactSamples, 2, sampleCount, exactFile);
+		}
 	}
+	if (soundsFile) fclose(soundsFile);
+	if (exactFile) fclose(exactFile);
 	if (soundFile) fclose(soundFile);
 	if (drawsFile) fclose(drawsFile);
 	ranClose();
