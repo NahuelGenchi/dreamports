@@ -234,6 +234,35 @@ void HBlankIntr(void) {
   REG_WRITE16(REG_IF, INTR_FLAG_HBLANK);
 }
 
+// The interrupts the game has nothing to do at, in its table from power-on: each only says it was seen to.
+
+/** VCountIntr, 0x08001364: the line count's interrupt seen to. */
+void VCountIntr(void) { REG_WRITE16(REG_IF, 0x0004); }
+
+/** Dma0Intr, 0x08001370: DMA channel 0's interrupt seen to. */
+void Dma0Intr(void) { REG_WRITE16(REG_IF, 0x0100); }
+
+/** Dma1Intr, 0x08001380: DMA channel 1's interrupt seen to. */
+void Dma1Intr(void) { REG_WRITE16(REG_IF, 0x0200); }
+
+/** Dma2Intr, 0x08001390: DMA channel 2's interrupt seen to. */
+void Dma2Intr(void) { REG_WRITE16(REG_IF, 0x0400); }
+
+/** Dma3Intr, 0x080013A0: DMA channel 3's interrupt seen to. */
+void Dma3Intr(void) { REG_WRITE16(REG_IF, 0x0800); }
+
+/** Timer0Intr, 0x080013B0: timer 0's interrupt seen to. */
+void Timer0Intr(void) { REG_WRITE16(REG_IF, 0x0008); }
+
+/** Timer2Intr, 0x080013C8: timer 2's interrupt seen to. */
+void Timer2Intr(void) { REG_WRITE16(REG_IF, 0x0020); }
+
+/** KeypadIntr, 0x080013D4: the buttons' interrupt seen to. */
+void KeypadIntr(void) { REG_WRITE16(REG_IF, 0x1000); }
+
+/** GamepakIntr, 0x080013E4: the cartridge's interrupt seen to. */
+void GamepakIntr(void) { REG_WRITE16(REG_IF, 0x2000); }
+
 /** AgbMain, 0x08001494: where the cartridge's start hands over. The engine, then the game, then the loop. */
 void AgbMain(void) {
   EngineInit();
