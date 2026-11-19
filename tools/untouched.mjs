@@ -8,7 +8,10 @@
 // from one recording to another, something that was the same everywhere, and numbers the code set on the way there, with the
 // values most branches wait on. `npm run dp -- untouched <version> --decided` lists the branches the code itself
 // decides, worked out from the cartridge alone (lib/decided.mjs), one way of which can't happen, and with --write
-// puts them in the game's unreachable.json, for a person to read before they go in. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
+// puts them in the game's unreachable.json, for a person to read before they go in. `npm run dp -- untouched <version>
+// --never-written <address>` says whether the branch there never goes one way in this game because nothing in it ever
+// writes another value where it reads (lib/never-written.mjs), or why the check can't say, and with --write puts a
+// way it decides in the same list. `npm run dp -- untouched <version> --why <address> [--in <recording>]` says what the branch at an address went
 // by in a recording that ran it: what the original compared, where each side came from in its memory, and what it
 // held each time, so that what has to be different for the other way is known before anyone looks for it: a value the
 // buttons change is found by playing or by `route`, and one they don't, such as the character or a setting, by a
@@ -21,6 +24,7 @@ import { referenceOf } from './lib/reference.mjs';
 import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
+import { neverWrittenBranch, neverWrittenWhy, writesOf } from './lib/never-written.mjs';
 import { versionOf } from '../src/lib/languages.mjs';
 import { originalPlay } from './lib/recording.mjs';
 import { LOCAL, sharedProofFolder } from './lib/paths.mjs';
@@ -31,13 +35,18 @@ const count = n => n.toLocaleString('en');
 
 export async function run(args) {
   const flagged = flag => (args.includes(flag) ? args[args.indexOf(flag) + 1] ?? '' : null);
-  const all = args.includes('--all'), [game] = args.filter((a, i) => !a.startsWith('--') && !['--why', '--in', '--at-once'].includes(args[i - 1]));
-  if (!game || flagged('--why') === '' || flagged('--in') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]');
+  const all = args.includes('--all'), [game] = args.filter((a, i) => !a.startsWith('--') && !['--why', '--in', '--at-once', '--never-written'].includes(args[i - 1]));
+  if (!game || flagged('--why') === '' || flagged('--in') === '' || flagged('--never-written') === '') throw new Error('Usage: npm run dp -- untouched <version> [--all]\n       npm run dp -- untouched <version> --why <address> [--in <recording>]\n       npm run dp -- untouched <version> --sort [--all] [--at-once <how many>]\n       npm run dp -- untouched <version> --decided [--write]\n       npm run dp -- untouched <version> --never-written <address> [--write]');
   const original = readOriginal(game), codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game.split('/')[0]}/proof/ has no code map yet: npm run dp -- codemap ${game.split('/')[0]} makes one.`);
   const reference = await referenceOf(original);
   if (reference.seesInstructions !== true) throw new Error("The tools don't see this console's instructions run yet, so they can't say what's untouched.");
-  if (reference.saysWhy !== true && ['--decided', '--sort', '--why'].some(flag => args.includes(flag))) throw new Error("The tools say what a branch went by, and work out which can only go one way, on the Game Boy Advance so far.");
+  if (reference.saysWhy !== true && ['--decided', '--sort', '--why', '--never-written'].some(flag => args.includes(flag))) throw new Error("The tools say what a branch went by, and work out which can only go one way, on the Game Boy Advance so far.");
+  if (flagged('--never-written') !== null) {
+    const copy = copyWith(original.sha1);
+    if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
+    return neverWritten(game, { original, codeMap, copy, address: flagged('--never-written'), write: args.includes('--write') });
+  }
   if (!readPlayed(game).places) throw new Error(`games/${game}/proof/played.json isn't there yet: npm run dp -- prove ${game} writes it.`);
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`It reads ${original.name}, SHA-1 ${original.sha1}. Show the tools your copy first: npm run dp -- rom <file>.`);
@@ -340,4 +349,36 @@ export function kindText(sorted) {
   const [side] = sorted.sides;
   const tested = side && sorted.kind !== 'moves' ? `: the ${sized(side.bytes)} at \`${hex(side.address)}\` held ${some(side.held, 3)} against ${some(side.against, 3)}` : '';
   return `${words[sorted.kind] ?? sorted.kind}${tested}`;
+}
+
+// whether a branch never goes one way in this game because nothing writes another value where it reads, and with
+// `write` that way put in the game's list, as --decided puts the ways the code decides
+async function neverWritten(game, { original, codeMap, copy, address, write }) {
+  const base = versionOf(game).game, branch = parseInt(address, 16);
+  if (!/^(0x)?[0-9A-Fa-f]{1,8}$/.test(address)) throw new Error(`--never-written takes the branch's address, as 08096ADC, and ${address} isn't one.`);
+  const rom = new Uint8Array(readFileSync(copy.path));
+  const found = neverWrittenBranch(rom, codeMap.functions, branch, writesOf(rom, codeMap.functions, codeMap.copies ?? []));
+  if (found.cannot) {
+    console.log(`Can't decide ${hex(branch)}: ${found.cannot}. It stays open, as both its ways may happen in ${original.name} for all the check can tell.`);
+    return 0;
+  }
+  const d = found.decided;
+  // nothing of it may ever have been played: a way that happened in a recording is one that can happen
+  const versions = proofVersions().filter(version => versionOf(version).game === base && readCodeMap(version));
+  if (versions.some(version => ranIn(version, readCodeMap(version), d.address).some(each => (d.way === 'taken' ? each.taken : each.notTaken)))) {
+    throw new Error(`The tools worked out that ${hex(d.address)} is never ${d.way}, and a recording has played it so: that's the tools' fault, so nothing was written. Say so in an issue, with this line.`);
+  }
+  console.log(`${hex(d.address)} is never ${d.way} in ${original.name}: ${neverWrittenWhy(d)}`);
+  if (!write) {
+    console.log(`--write puts it in games/${base}/proof/unreachable.json, where a person reads it before it goes in.`);
+    return 0;
+  }
+  const file = join(sharedProofFolder(game), 'unreachable.json');
+  const listed = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { about: `What of ${original.name}'s cartridge nothing can reach, each with why (docs/STANDARD.md#done)` };
+  listed.code ??= [];
+  listed.content ??= [];
+  listed.ways = [...(listed.ways ?? []).filter(([at]) => at !== hex(d.address)), [hex(d.address), d.way, neverWrittenWhy(d)]].sort((a, b) => a[0].localeCompare(b[0]));
+  writeFileSync(file, `${JSON.stringify(listed, null, 2)}\n`);
+  console.log(`Written: games/${base}/proof/unreachable.json, ${listed.ways.length} ways. twin and prove leave that way out of what a proof asks.`);
+  return 0;
 }
