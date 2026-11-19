@@ -1,7 +1,9 @@
 // npm run dp -- readme [--check]: writes the table of Dreamports in docs/STATUS.md from each Dreamport's entry,
 // games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead, and each
 // Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links, and a row and a map for each
-// of its versions in other languages, such as <game>-c.svg (src/lib/languages.mjs). .github/workflows/readme.yml
+// of its versions in other languages, such as <game>-c.svg (src/lib/languages.mjs), and below the table the shared code
+// of each console with a library in the kit, as a map in .github/readme/progress/shared.<console>.svg (#1508), whose
+// name has a dot, which no game's has. .github/workflows/readme.yml
 // runs it on main, so pull requests leave them alone and can't conflict over them. With --check it changes nothing and
 // fails when an entry doesn't agree with its folder, which `npm run check` uses.
 
@@ -13,12 +15,21 @@ import { versionsOf } from './lib/proof-files.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { ENTRY, gameplayText, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
+import { sharedMap } from '../src/lib/shared-map.mjs';
+import { sharedCode } from './libraries.mjs';
 
 export const STATUS = 'docs/STATUS.md';
 const STATUS_FILE = join(REPO, STATUS);
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
 const END = '<!-- End of the table of Dreamports. -->';
 const SUMMARY_MOST = 80;
+// the maps of shared code, after the table of Dreamports
+const SHARED = '## Shared code';
+const SHARED_START = '<!-- The proof tools draw these maps from the kit\'s shared libraries: npm run dp -- readme. -->';
+const SHARED_END = '<!-- End of the maps of shared code. -->';
+const SHARED_ABOUT = 'Some code is in many games of a console without any of them having written it: the console maker\'s libraries, sound drivers and the helpers its compiler adds. It\'s written once in the kit, and each Dreamport that has it takes it from there and proves it on its own copy ([Shared libraries](../tools/README.md#shared-libraries)). Each console\'s map shows its libraries as blocks and their functions as cells: green once proven by the same bytes, blue once proven by the same memory, amber while written and not proven yet, and grey while nobody has written it.';
+/** Where a console's map of shared code is kept. */
+export const sharedMapOf = id => `.github/readme/progress/shared.${id}.svg`;
 
 export async function run(args) {
   if (args.includes('--check')) {
@@ -68,7 +79,9 @@ export function writeReadme({ check = false } = {}) {
   const start = text.indexOf(START), end = text.indexOf(END);
   if (start < 0 || end < start) throw new Error(`${STATUS} has lost the lines that mark its table of Dreamports:\n${START}\n${END}`);
   // blank lines around the table, so GitHub doesn't read the lines that mark it as part of it
-  const files = new Map([[STATUS_FILE, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${text.slice(end)}`]]);
+  const consoles = sharedCode();
+  const files = new Map([[STATUS_FILE, `${text.slice(0, start + START.length)}\n\n${table(list)}\n\n${END}${withShared(text.slice(end + END.length), sharedSection(consoles))}`]]);
+  for (const each of consoles) files.set(join(REPO, sharedMapOf(each.id)), sharedMap(each).svg);
   for (const { name: main, entry, versions } of list) {
     files.set(join(REPO, mapOf(main)), progressMap(main, readProofFiles(main), entry.title).svg);
     for (const { name } of versions) files.set(join(REPO, mapOf(name)), progressMap(name, readProofFiles(name), entry.title).svg);
@@ -90,6 +103,26 @@ export function writeReadme({ check = false } = {}) {
     if (!check) rmSync(file);
   }
   return { changed: changed.length > 0, files: changed.map(file => relative(REPO, file)) };
+}
+
+// the maps of shared code, with their heading and the lines that mark them
+function sharedSection(consoles) {
+  const maps = consoles.length ? consoles.map(each => `![${sharedMap(each).alt}](../${sharedMapOf(each.id)})`).join('\n\n') : 'No console has a shared library in the kit yet, so there\'s no map yet.';
+  return [SHARED, '', SHARED_ABOUT, '', SHARED_START, '', maps, '', SHARED_END].join('\n');
+}
+
+/** What docs/STATUS.md has after its table of Dreamports, as it has it or as `main` does: the maps of shared code, from
+ *  their heading to the line that ends them, or null when it has none yet. */
+export function sharedPart(after) {
+  const from = after.indexOf(SHARED), to = after.indexOf(SHARED_END);
+  return from >= 0 && to > from ? after.slice(from, to + SHARED_END.length) : null;
+}
+
+// what docs/STATUS.md has after its table of Dreamports, `tail`, with the maps of shared code as `shared` says them
+export function withShared(tail, shared) {
+  const now = sharedPart(tail);
+  if (now !== null) return tail.replace(now, () => shared);
+  return `\n\n${shared}${tail.startsWith('\n') ? '' : '\n'}${tail}`;
 }
 
 /** Every Dreamport's entry and what its proof measures, newest first, as the site lists them: `name`, `language` and

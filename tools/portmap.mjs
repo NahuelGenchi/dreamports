@@ -28,10 +28,17 @@
 // On the NES, where the program is in banks the cartridge switches, a name is a label with the bank in it: sub_04_923F
 // is $923F with bank 4 switched in at $8000, and sub_C39C, with no bank, is in the last bank, always at $C000. The code
 // map numbers each by its offset in the program (nes/functions.mjs).
+//
+// A version that takes a shared library from the kit (lib/libraries.mjs) names each of its twins through its
+// proof/libraries.json, which gives where its copy has each one, and the port map lists them with their place in the
+// kit, as kit/gba/c/lib/<name>/<file>.c:<line>. A library's code names no address, so a stop in it is the words
+// dp:stop alone, and holds back the function of the library it's in.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
-import { gameFolder, proofFolder, sharedProofFolder } from './lib/paths.mjs';
+import { gameFolder, proofFolder, REPO, sharedProofFolder } from './lib/paths.mjs';
+import { librariesFile, versionLibraries } from './lib/libraries.mjs';
+import { twinsIn } from './gba/match.mjs';
 import { proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { nesNames } from './nes/functions.mjs';
@@ -149,6 +156,30 @@ export function portMap(game) {
         }
       }
     });
+  }
+  // the shared libraries it takes: each twin the version gives an address to, and each stop, in the function it's in
+  const libraries = existsSync(librariesFile(game)) ? versionLibraries(game, original.console) : [];
+  for (const library of libraries) {
+    for (const file of library.files) {
+      const where = relative(REPO, file).split(sep).join('/'), text = readFileSync(file, 'utf8');
+      const twins = twinsIn(text, [], library.functions).sort((a, b) => a.line - b.line);
+      for (const twin of twins.filter(each => each.address !== null)) {
+        const found = starts.get(twin.address);
+        if (!found && !inside(twin.address)) continue;
+        for (const key of found ? found.map(f => f.key) : [twin.name]) {
+          const list = found ? functions : unmatched;
+          if (!list.has(key)) list.set(key, `${where}:${twin.line}`);
+        }
+      }
+      text.split('\n').forEach((line, i) => {
+        if (!STOP.test(line)) return;
+        // a stop in a function this version's copy doesn't have isn't one of its stops
+        const twin = twins.findLast(each => each.line <= i + 1);
+        if (twin && twin.address === null) return;
+        const found = twin ? starts.get(twin.address) ?? [] : [];
+        for (const key of found.length ? found.map(f => f.key) : [null]) stops.push([key, `${where}:${i + 1}`, twin?.name ?? 'dp:stop']);
+      });
+    }
   }
   return {
     original: original.sha1,

@@ -109,6 +109,8 @@ If this works, no game ever has to disappear again, and the gaming industry chan
 
 See the [status of every Dreamport](docs/STATUS.md): how much of each game is ported and proven, who leads it and where to play it.
 
+Code that many games of a console share is written once and proven in each: [the maps of shared code](docs/STATUS.md#shared-code) show how much of each console's is proven.
+
 The work on Dreamports itself is tracked in [milestones](https://github.com/NahuelGenchi/dreamports/milestones).
 
 ## The golden rule: bring your own game
