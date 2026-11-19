@@ -18,10 +18,11 @@ export const GAIN = 0.5;
 /**
  * Loads the game's WebAssembly from `url` and gives it the player's copy, `bytes`, its save memory kept in the browser
  * under `save` (save.js), and the words of the page's address in `query`, which kit_start_point reads (a recording's
- * start point under the proof tools, such as ?proof&unlocked=1). It returns { game, code }: the module's exports, which
- * the console's kit starts with game.dp_start(), and its code, for a second copy on an audio thread.
+ * start point under the proof tools, such as ?proof&unlocked=1). A disc is given as `disc` instead (kit/copy/disc.js),
+ * read a few sectors at a time as the game asks for them (discOf). It returns { game, code }: the module's exports,
+ * which the console's kit starts with game.dp_start(), and its code, for a second copy on an audio thread.
  */
-export async function openGame(url, bytes, { save = null, query = globalThis.location?.search ?? '' } = {}) {
+export async function openGame(url, bytes, { save = null, query = globalThis.location?.search ?? '', disc = null } = {}) {
   // the proof tools play a game as a player who has never saved, as JavaScript games do, but for a player's report,
   // which starts from the save it carries
   const kept = save ? cartridgeSave(save, proof ? proofStorage() : undefined) : null;
@@ -44,8 +45,15 @@ export async function openGame(url, bytes, { save = null, query = globalThis.loc
   const game = instance.exports;
   memory = game.memory;
   // room for the copy first, as making it can grow the memory, which leaves an earlier view of it empty
-  const at = game.dp_rom(bytes.length);
-  new Uint8Array(memory.buffer, at, bytes.length).set(bytes);
+  if (bytes) {
+    const at = game.dp_rom(bytes.length);
+    new Uint8Array(memory.buffer, at, bytes.length).set(bytes);
+  }
+  if (disc) {
+    if (!game.dp_disc) throw new Error("This console's kit in C reads no disc.");
+    game.dp_disc(disc.kind === 'cd' ? 1 : 2, disc.sectors, disc.layerBreak);
+    for (const t of disc.tracks) game.dp_disc_track(t.number, TRACK_TYPES[t.type], t.first, t.pregap, t.sectors);
+  }
   const words = new TextEncoder().encode(query);
   new Uint8Array(memory.buffer, game.dp_start_point(words.length), words.length).set(words);
   return { game, code };
@@ -91,6 +99,30 @@ export function createAudio({ module, processor, sampleRate = 0, first }) {
   };
 }
 
+// a track's kind as kit/c/disc.h numbers it
+const TRACK_TYPES = { audio: 0, mode1: 1, mode2: 2 };
+
+/**
+ * The disc's side of a game in C (kit/c/disc.c): `serve()` gives the game the sectors it asked for, read from the disc
+ * a few at a time, and resolves once there are none left to give. The game asks after any call the page makes, as its
+ * drive is told to seek or as it finds a sector it doesn't have, and in that case it pauses partway through its frame
+ * (game.dp_paused()) until the page calls its frame again.
+ */
+export function discOf(game, disc) {
+  return {
+    /** Whether the game has asked for sectors, or waits for them. */
+    get wanted() { return !!(game.dp_disc_wanted() || game.dp_paused()); },
+    async serve() {
+      for (let count; (count = game.dp_disc_wanted());) {
+        const bytes = await disc.read(game.dp_disc_wanted_lba(), count);
+        // where they go is asked only now, as nothing in the game ran while they were read
+        new Uint8Array(game.memory.buffer, game.dp_disc_buffer(), bytes.length).set(bytes);
+        game.dp_disc_have();
+      }
+    },
+  };
+}
+
 /** The buttons `input` (input.js) holds, as a console with no kit in C of its own gives them to game_step: a bit for
  *  each of its buttons in kit/consoles.js, in that order (console.h). */
 export function buttonsOf(input, id) {
@@ -100,31 +132,49 @@ export function buttonsOf(input, id) {
 }
 
 /**
- * Loads the game's WebAssembly from `url` and starts it with the player's copy, `bytes`, on console `console` (an id in
- * kit/consoles.js) with no kit in C of its own, and returns { step(buttons), draw(), sound }. `step` runs a frame with
- * buttonsOf's buttons held, and `draw` draws the last one, as { pixels, width, height }, the words an ImageData of that
- * size holds, at the size the game shows now. `save` and `query` are openGame's.
+ * Loads the game's WebAssembly from `url` and starts it with the player's copy, `bytes`, or its disc, `disc`, on console
+ * `console` (an id in kit/consoles.js) with no kit in C of its own, and returns { step(buttons), draw(), sound }.
+ * `step` runs a frame with buttonsOf's buttons held, and `draw` draws the last one, as { pixels, width, height }, the
+ * words an ImageData of that size holds, at the size the game shows now. With a disc, `step` returns a promise when
+ * the frame needs sectors the page hasn't given it yet: the page then runs no other frame, and draws none, until it
+ * settles. `save` and `query` are openGame's.
  */
-export async function loadGame(url, bytes, { console: id, save = null, query } = {}) {
+export async function loadGame(url, bytes, { console: id, save = null, query, disc = null } = {}) {
   const machine = CONSOLES[id];
   if (!machine) throw new Error(`There's no console called ${id} in kit/consoles.js.`);
-  const { game } = await openGame(url, bytes, { save, ...(query === undefined ? {} : { query }) });
+  const { game } = await openGame(url, bytes, { save, disc, ...(query === undefined ? {} : { query }) });
   const sound = createSound(game, machine.sound, machine.frame[0] / machine.frame[1]);
+  const sectors = disc && discOf(game, disc);
   game.dp_start();
+  // what the game asked for as it started, before its first frame
+  if (sectors?.wanted) await sectors.serve();
   sound.started();
+  // a frame paused for its disc goes on, with the same buttons, once its sectors are there
+  const goOn = async buttons => {
+    for (;;) {
+      await sectors.serve();
+      if (!game.dp_paused()) return;
+      game.dp_step(buttons);
+    }
+  };
+  // what follows a frame once it has ended
+  const frameDone = () => {
+    // the frame's draw list, on a console whose kit keeps one, for the proof tools (kit/ps2/c/ps2.c)
+    if (globalThis.dreamportsProof && game.dp_draw_list) {
+      dreamportsProof.drawList = game.dp_draw_list() >>> 0;
+      // the frame's whole list, read only when it's wanted, as it's the last frame's until the next one runs
+      dreamportsProof.drawListBytes = () => {
+        const size = game.dp_draw_list_size() >>> 0;
+        return size === 0xFFFFFFFF ? null : new Uint8Array(game.memory.buffer, game.dp_draw_list_bytes(), size).slice();
+      };
+    }
+    sound.frameDone();
+  };
   return {
     step(buttons) {
       game.dp_step(buttons);
-      // the frame's draw list, on a console whose kit keeps one, for the proof tools (kit/ps2/c/ps2.c)
-      if (globalThis.dreamportsProof && game.dp_draw_list) {
-        dreamportsProof.drawList = game.dp_draw_list() >>> 0;
-        // the frame's whole list, read only when it's wanted, as it's the last frame's until the next one runs
-        dreamportsProof.drawListBytes = () => {
-          const size = game.dp_draw_list_size() >>> 0;
-          return size === 0xFFFFFFFF ? null : new Uint8Array(game.memory.buffer, game.dp_draw_list_bytes(), size).slice();
-        };
-      }
-      sound.frameDone();
+      if (sectors?.wanted) return goOn(buttons).then(frameDone);
+      frameDone();
     },
     draw() {
       const at = game.dp_draw(), width = game.dp_width(), height = game.dp_height();

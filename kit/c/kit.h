@@ -52,8 +52,20 @@ void kit_memory_keep(uintptr_t from, uintptr_t to);
  */
 void kit_wait_frame(void);
 /** Runs `game`, from its start the first time and from where it last waited after that, until it next waits. Call it
- *  once from game_start or game_step for each of the console's frames, always with the same function. */
-void kit_run(void (*game)(void));
+ *  once from game_start or game_step for each of the console's frames, always with the same function. It returns 1
+ *  when the game ended its frame, and 0 when it paused partway through it (kit_pause): then game_step returns at once,
+ *  doing nothing it does after a frame, and the page calls it again, with the same buttons, once it has what the game
+ *  waits for, so the same frame goes on. */
+int kit_run(void (*game)(void));
+/**
+ * Pauses the game where it is, partway through its frame, until the page has what it waits for, such as its disc's
+ * sectors (disc.h): the page fetches it and calls dp_step again, and the game goes on from here. Unlike kit_wait_frame
+ * it doesn't end the frame. Only as WebAssembly, under kit_run.
+ */
+void kit_pause(void);
+/** Whether the game is paused partway through its frame. A console's kit does its own work before and after a frame,
+ *  such as starting and ending its draw list, only when it isn't, as the frame goes on in the page's next call. */
+int kit_frame_paused(void);
 
 /**
  * The picture the page shows this frame, `width` × `height` words, red in the lowest byte and 0xFF above blue, as an

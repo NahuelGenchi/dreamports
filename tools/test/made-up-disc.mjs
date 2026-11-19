@@ -30,16 +30,23 @@ export function madeUpProgram(size = 4096, seed = 1) {
  * and `files` ({ name: bytes }), each at the sector its `at` says or after the last. `dvd` adds the UDF's marks a DVD
  * has. `sectors` makes it that long. As a file when `path` is given, its gaps left for the file system to fill with
  * zeros, so a disc of gigabytes takes none of them on the computer: `place(lba, bytes)` then writes more into it.
+ * `console` makes it a PlayStation's ('ps1'), booting with BOOT, or a PlayStation Portable's ('psp'), its code in
+ * UMD_DATA.BIN, instead.
  */
-export function madeUpPs2Disc({ dvd = false, sectors = 64, files = {}, at = {}, path = null, code = 'SLUS_999.99' } = {}) {
-  const all = { 'SYSTEM.CNF': Buffer.from(`BOOT2 = cdrom0:\\${code};1\r\nVER = 1.00\r\nVMODE = NTSC\r\n`), [code]: madeUpProgram(), ...files };
+export function madeUpPs2Disc({ dvd = false, sectors = 64, files = {}, at = {}, path = null, code = 'SLUS_999.99', console: id = 'ps2' } = {}) {
+  const boots = {
+    ps2: { 'SYSTEM.CNF': Buffer.from(`BOOT2 = cdrom0:\\${code};1\r\nVER = 1.00\r\nVMODE = NTSC\r\n`), [code]: madeUpProgram() },
+    ps1: { 'SYSTEM.CNF': Buffer.from(`BOOT = cdrom:\\${code};1\r\nTCB = 4\r\nEVENT = 10\r\n`), [code]: Buffer.concat([Buffer.from('PS-X EXE'), Buffer.alloc(2040)]) },
+    psp: { 'UMD_DATA.BIN': Buffer.from('ULUS99999|0000000000000000|0001|G') },
+  };
+  const all = { ...boots[id], ...files };
   const parts = [];
   const put = (lba, bytes) => parts.push([lba, bytes]);
   const volume = Buffer.alloc(DATA);
   volume[0] = 1;
   volume.write('CD001', 1, 'latin1');
   volume[6] = 1;
-  volume.write('PLAYSTATION'.padEnd(32), 8, 'latin1');
+  volume.write((id === 'psp' ? 'PSP GAME' : 'PLAYSTATION').padEnd(32), 8, 'latin1');
   volume.write('MADE UP DISC'.padEnd(32), 40, 'latin1');
   volume.writeUInt32LE(sectors, 80);
   volume.writeUInt32BE(sectors, 84);
@@ -51,7 +58,7 @@ export function madeUpPs2Disc({ dvd = false, sectors = 64, files = {}, at = {}, 
   end[0] = 255;
   end.write('CD001', 1, 'latin1');
   put(17, end);
-  if (dvd) ['BEA01', 'NSR02', 'TEA01'].forEach((mark, i) => { const s = Buffer.alloc(DATA); s.write(mark, 1, 'latin1'); put(18 + i, s); });
+  if (dvd && id !== 'psp') ['BEA01', 'NSR02', 'TEA01'].forEach((mark, i) => { const s = Buffer.alloc(DATA); s.write(mark, 1, 'latin1'); put(18 + i, s); });
   const folder = Buffer.alloc(DATA);
   let write = entry(folder, 0, '\0', rootAt, DATA, true);
   write += entry(folder, write, '\x01', rootAt, DATA, true);

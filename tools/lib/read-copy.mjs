@@ -169,6 +169,12 @@ const wholeFiles = paths => ({
   },
 });
 
+/** The files a copy is, to give a page: a .cue and the tracks it names, or the file itself. */
+export async function copyFiles(path) {
+  const files = await cueFiles(path);
+  return files[0] === path ? files : [path, ...files];
+}
+
 // the files a .cue names, in order, or the file itself
 async function cueFiles(path) {
   if (extname(path).toLowerCase() !== '.cue') return [path];
@@ -238,7 +244,7 @@ export async function readAnyCopy(path, said = null) {
     // a file with a name of its own can still hold a Game Boy Advance game, whose header says so; another console's file can't
     if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
     const { sha1, tracks, size } = await sha1Of(disc ?? wholeFiles(files));
-    return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format } : {}) };
+    return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format, kind: disc.kind, whole: disc.whole } : {}) };
   } finally {
     await disc?.close();
   }

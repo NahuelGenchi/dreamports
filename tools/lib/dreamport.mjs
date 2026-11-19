@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { go, until, giveFile } from './chrome.mjs';
 import { gameFolder } from './paths.mjs';
 import { otherVersions } from './proof-files.mjs';
+import { copyFiles } from './read-copy.mjs';
 
 /** Builds the game's or version's C, if its src/ has any, to src/game.wasm. */
 export async function buildIfC(game) {
@@ -39,7 +40,8 @@ export async function openDreamport(page, server, game, copy, { query = '', star
   await page.evaluate(`window.__copyRead = false; new MutationObserver(records => { if (records.some(r => r.target.matches('.rom') && r.target.dataset.state !== 'reading')) window.__copyRead = true; }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-state'] })`);
   // nothing is kept with the proof modes, as the game starts from power-on with nothing saved
   if (query.includes('proof')) await page.evaluate(`{ const keep = document.querySelector('.remember input'); if (keep) keep.checked = false; }`);
-  await giveFile(page, '.rom input[type=file]', copy);
+  // a .cue with the tracks it names, as a player chooses them together
+  await giveFile(page, '.rom input[type=file]', await copyFiles(copy));
   const wrong = `document.querySelector('[data-kind="error"]')?.textContent.trim()`;
   await until(page, `window.__copyRead || !!${wrong}`, 'the game to read the copy');
   const refused = await page.evaluate(wrong);
