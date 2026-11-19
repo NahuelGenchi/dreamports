@@ -44,7 +44,7 @@ import { sharedText } from '../src/lib/shared-map.mjs';
 
 const USAGE = 'Usage: npm run dp -- libraries [<version>] [--find | --hash] [--shared <game> <game>] [--check]';
 // each console's way of finding a library in a game, for the consoles that have one
-const FINDERS = { gba: './gba/libraries.mjs' };
+const FINDERS = { gba: './gba/libraries.mjs', nes: './nes/libraries.mjs' };
 const count = n => n.toLocaleString('en');
 const plural = (n, word, words = `${word}s`) => `${count(n)} ${n === 1 ? word : words}`;
 const inRepo = path => relative(REPO, path).split(sep).join('/');
@@ -166,7 +166,7 @@ async function findIn(version) {
   const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { about: '', libraries: {} };
   let any = false;
   for (const library of libraryIds().map(readLibrary).filter(each => each.consoles.includes(original.console))) {
-    const found = await finder.find({ library, rom, codeMap });
+    const found = await finder.find({ library, rom, codeMap, version });
     const written = library.functions.filter(f => f.file && (found.variant === null || library.variants.get(found.variant).includes(f.file))).length;
     console.log(`${library.id}${found.variant ? `, variant ${found.variant}` : ''}: ${count(found.functions.size)} of ${plural(written, 'function')} found`);
     for (const [name, address] of [...found.functions].sort((a, b) => a[1] - b[1])) console.log(`  0x${hex(address)}  ${name}`);

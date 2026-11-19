@@ -202,7 +202,8 @@ function buildProcessor(log) {
 
 /**
  * Builds the check for the C in `sources` (a folder), with the files of the shared libraries the version takes,
- * `libraries`, each { file, given } as contractsIn takes `placed`, against the copy `rom` (its bytes), in the folder `work`, and
+ * `libraries`, each { file, given, values }, `given` as contractsIn takes `placed` and `values` a Map of each value
+ * the library names to where the copy keeps it, which its C reads as ADDRESS_<name>, against the copy `rom` (its bytes), in the folder `work`, and
  * gives { program, contracts, notes }: the program, each contract with `file`, `line` and its place among them,
  * `index`, and what to say of them. `functions`, a code map's, says where the original's functions start, when there's one.
  */
@@ -214,6 +215,7 @@ export function buildCheck({ rom, sources: folder, work, functions = null, libra
   const files = readdirSync(sources).filter(name => name.endsWith('.c')).sort().map(name => join(sources, name));
   if (!files.length) throw new Error(`${inRepo(sources)} has no C.`);
   const given = new Map(libraries.map(({ file, given: at }) => [file, at]));
+  const defines = [...new Map(libraries.flatMap(({ values = new Map() }) => [...values])).entries()].map(([name, value]) => `-DADDRESS_${name}=0x${value.toString(16).toUpperCase()}`);
   files.push(...given.keys());
   const contracts = [], errors = [], notes = [];
   let bank = null;
@@ -249,7 +251,7 @@ export function buildCheck({ rom, sources: folder, work, functions = null, libra
   writeFileSync(join(made, 'dp-contracts.c'), tableFor(contracts, bank));
   const out = join(work, process.platform === 'win32' ? 'check.exe' : 'check');
   const folders = [HERE, core, sources, ...cKit('nes').folders];
-  compile('The check', [...FLAGS, ...folders.flatMap(folder => ['-I', folder]), '-o', out, ...built, join(made, 'dp-contracts.c'), ...['check.c', 'original.c', 'kit.c'].map(name => join(HERE, name)), object], work);
+  compile('The check', [...FLAGS, ...defines, ...folders.flatMap(folder => ['-I', folder]), '-o', out, ...built, join(made, 'dp-contracts.c'), ...['check.c', 'original.c', 'kit.c'].map(name => join(HERE, name)), object], work);
   return { program: out, contracts, bank, notes };
 }
 
@@ -359,7 +361,7 @@ export async function twin(game, options = {}) {
     log(`${count(taken)} memories kept in ${inRepo(kept)}. They come from your copy of the game: never put them in a commit, an issue or a pull request.`);
   }
   // the shared libraries the version takes, whose twins are checked as its own, unless another folder is tried
-  const libraries = from ? [] : versionLibraries(version.language === 'c' ? game : `${version.game}/c`, 'nes').flatMap(library => library.files.map(file => ({ file, given: library.functions })));
+  const libraries = from ? [] : versionLibraries(version.language === 'c' ? game : `${version.game}/c`, 'nes').flatMap(library => library.files.map(file => ({ file, given: library.functions, values: library.values })));
   const built = buildCheck({ rom: readFileSync(copy.path), sources, work, functions: readCodeMap(game)?.functions ?? null, libraries, log });
   const has = existsSync(kept);
   for (const note of built.notes) log(note);
