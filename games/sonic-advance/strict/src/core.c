@@ -193,8 +193,19 @@ void EngineMainLoop(void) {
     if (gFlags & FLAGS_PAUSE_GAME) gFlags |= FLAGS_PAUSED;
     else gFlags &= ~FLAGS_PAUSED;
 
-    // until the blank lines are over
+    // until the blank lines are over: each look at the display's status at its load's time
+#ifdef MATCHING
     while (REG_READ16(REG_DISPSTAT) & DISPSTAT_VBLANK) {}
+#else
+    TIME(0x0800095E, 0x0800095E, 0x08000961);
+    if (REG_READ16(REG_DISPSTAT) & DISPSTAT_VBLANK) {
+      TIME(0x08000960, 0x0800096A, 0x0800096D, 0x04000004);
+      while (REG_READ16(REG_DISPSTAT) & DISPSTAT_VBLANK) TIME(0x0800096C, 0x08000974, 0x0800096D, 0x04000004);
+      TIME(0x0800096C, 0x08000976, 0x080008A5, 0x04000004);
+    } else {
+      TIME(0x08000960, 0x08000968, 0x080008A5, 0x04000004);
+    }
+#endif
   }
 }
 
