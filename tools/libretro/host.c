@@ -41,7 +41,8 @@
 //
 // A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window: on Linux from EGL,
 // on Mesa's llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card, and on
-// a Mac from CGL, on Apple's OpenGL. It stops with a sentence on a computer that can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
+// a Mac from CGL, on Apple's software renderer, which does the same there. It stops with a sentence on a computer that
+// can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
 
@@ -215,20 +216,22 @@ static void* procAddress(const char* name) {
 
 #if defined(__APPLE__)
 // A Mac's: Apple's OpenGL, a core profile with no window, from CGL, found when it's wanted so the host builds with a
-// compiler alone. It draws on the Mac's graphics chip, so its pictures can differ from Linux's in small ways, which a
-// game proven by draw lists, as a PlayStation 2 game is, doesn't depend on (docs/CONSOLES.md). Untried on a Mac so far.
+// compiler alone. It asks for Apple's software renderer, which draws on the processor, so a picture is the same on
+// every Mac whatever its graphics chip, as llvmpipe's is on Linux. Apple's and Mesa's still draw some things
+// differently, which a game proven by draw lists, as a PlayStation 2 game is, doesn't depend on (docs/CONSOLES.md).
 #define CGL_PFA_OPENGL_PROFILE 99
 #define CGL_OPENGL_CORE_3_2 0x3200
 #define CGL_PFA_COLOR_SIZE 8
 #define CGL_PFA_ALPHA_SIZE 11
 #define CGL_PFA_DEPTH_SIZE 12
 #define CGL_PFA_STENCIL_SIZE 13
+#define CGL_PFA_RENDERER_ID 70
+#define CGL_RENDERER_SOFTWARE 0x00020400
 static void* openGl;
 static void* frameworkFunction(const char* name) {
 	return dlsym(openGl, name);
 }
 static const char* makeContext(bool any) {
-	(void) any;
 	if (graphics->contextType != CONTEXT_OPENGL_CORE && graphics->contextType != CONTEXT_OPENGL) return "of OpenGL ES, which a Mac has none of";
 	openGl = dlopen("/System/Library/Frameworks/OpenGL.framework/OpenGL", RTLD_NOW | RTLD_LOCAL);
 	if (!openGl) return "which needs Apple's OpenGL, and this Mac's wouldn't load";
@@ -236,7 +239,8 @@ static const char* makeContext(bool any) {
 	int (*create)(void*, void*, void**) = dlsym(openGl, "CGLCreateContext");
 	int (*makeCurrent)(void*) = dlsym(openGl, "CGLSetCurrentContext");
 	if (!choose || !create || !makeCurrent) return "which needs CGL, and this Mac's OpenGL has none";
-	const int wanted[] = { CGL_PFA_OPENGL_PROFILE, CGL_OPENGL_CORE_3_2, CGL_PFA_COLOR_SIZE, 24, CGL_PFA_ALPHA_SIZE, 8, CGL_PFA_DEPTH_SIZE, 24, CGL_PFA_STENCIL_SIZE, 8, 0 };
+	// with DP_ANY_GRAPHICS, the renderer the Mac would choose, on its graphics chip
+	const int wanted[] = { CGL_PFA_OPENGL_PROFILE, CGL_OPENGL_CORE_3_2, CGL_PFA_COLOR_SIZE, 24, CGL_PFA_ALPHA_SIZE, 8, CGL_PFA_DEPTH_SIZE, 24, CGL_PFA_STENCIL_SIZE, 8, any ? 0 : CGL_PFA_RENDERER_ID, CGL_RENDERER_SOFTWARE, 0 };
 	void* format = NULL;
 	void* context = NULL;
 	int count = 0;
@@ -297,7 +301,9 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	const char* renderer = getString(GL_RENDERER);
 	// what drew it, with nothing in it that would end the JSON it's said in
 	for (size_t i = 0; renderer && renderer[i] && i < sizeof drawnBy - 1; i++) drawnBy[i] = renderer[i] == '"' || renderer[i] == '\\' ? '\'' : renderer[i];
-#ifndef __APPLE__
+#ifdef __APPLE__
+	if (!any && (!renderer || !strstr(renderer, "Software"))) return "and this Mac's draws on its graphics chip, not with Apple's software renderer, so its pictures could differ from every other Mac's";
+#else
 	if (!any && (!renderer || !strstr(renderer, "llvmpipe"))) return "and this computer's draws on its graphics card, not with Mesa's llvmpipe, so its pictures could differ from everyone else's";
 #endif
 	void (*genFramebuffers)(int, unsigned*) = glFunction("glGenFramebuffers");
