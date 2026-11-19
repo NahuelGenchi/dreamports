@@ -501,7 +501,20 @@ static int bios_block(int words, int writes) { return block_time(0, BIOS_STACK, 
 static int bios_load(uint32_t address, int bytes) { return access_time(0, address, bytes, 0); }
 static int bios_store(uint32_t address, int bytes) { return access_time(0, address, bytes, 1); }
 
+
+// whether the game's runs are timed: from power-on until the game first waits for a frame, after which they cost nothing
+static int running;
+// the return addresses of the calls the timed runs made, as the link register and the stack keep them, for a run that
+// goes back to whichever call came to it
+enum { CALLS = 32 };
+static uint32_t calls[CALLS];
+static int depth;
+
+void gba_clock_stop(void) { running = 0; }
+
 void gba_clock_start(void) {
+  running = 1;
+  depth = 0;
   memset(&wait, 0, sizeof wait);
   memcpy(wait.n16, RESET_N16, 16);
   memcpy(wait.n32, RESET_N32, 16);
@@ -533,7 +546,7 @@ void gba_clock_start(void) {
 // A swi from the Thumb instruction at `pc`: into the BIOS, its dispatcher to the call's code, and back. CpuSet copies or
 // fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs, `index` from 0.
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
-  if (number != 0x0B) return -1;
+  if (number != 0x0B || !running) return -1;
   // the swi itself: its fetch, and the jump to the BIOS's vector
   begin();
   wait.region = (pc >> 24) & 15;
@@ -667,6 +680,7 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
 // A run of the original's Thumb instructions, read from the player's copy, whose work the game has just done. What it
 // wrote to the registers waits here until the run's store of each, which takes it at that store's own time.
 
+
 #ifndef GBA_CLOCK_CODE
 // the code at `at`: the player's copy in the cartridge, or what the game copied to the console's memory, where the
 // same-memory build keeps it (gba_console_memory)
@@ -696,6 +710,27 @@ void gba_clock_written(uint32_t address, uint16_t value) {
   waiting_value[waiting_count++] = value;
 }
 
+// a game's own copy of the registers, where it keeps what it writes there without telling the clock
+static const volatile uint16_t *register_file;
+void gba_clock_registers(const volatile uint16_t *file) { register_file = file; }
+
+// a halfword of the game's copy of the registers, as the console's would hold it: a DMA channel's address that points
+// into the copy itself, as a sound channel's to its FIFO does, is the console's register there
+static uint16_t register_held(uint32_t half) {
+  uint32_t at = half - 0x04000000u;
+  uint16_t now = register_file[at >> 1];
+  if (at >= 0xB0 && at < 0xE0 && (at - 0xB0) % 12 < 8) {
+    uint32_t word = (at & ~3u) >> 1;
+    uint32_t value = (uint32_t)register_file[word] | (uint32_t)register_file[word + 1] << 16;
+    uint32_t file = (uint32_t)(uintptr_t)register_file;
+    if (value - file < 0x400) {
+      value = 0x04000000u + (value - file);
+      now = (uint16_t)(half & 2 ? value >> 16 : value);
+    }
+  }
+  return now;
+}
+
 // what the game wrote to the registers a store of `bytes` at `address` reaches, the earliest write of each halfword
 // that waits: WAITCNT's value, which changes the store's own waits, alone (`waitcnt`), or the rest, at the time the
 // store started
@@ -703,7 +738,8 @@ static int take_written(uint32_t address, uint32_t bytes, int waitcnt) {
   int value = -1;
   for (uint32_t half = address & ~1u; half < address + bytes; half += 2) {
     if ((half == 0x04000204) != (waitcnt != 0)) continue;
-    for (int i = 0; i < waiting_count; i++) {
+    int found = 0;
+    for (int i = 0; i < waiting_count && !found; i++) {
       if (waiting_at[i] != half) continue;
       if (waitcnt) value = waiting_value[i];
       else gba_clock_write16(waiting_at[i], waiting_value[i]);
@@ -712,13 +748,20 @@ static int take_written(uint32_t address, uint32_t bytes, int waitcnt) {
         waiting_value[j - 1] = waiting_value[j];
       }
       waiting_count--;
-      break;
+      found = 1;
+    }
+    // none waits: what the game's copy of the registers holds now
+    if (!found && register_file && half - 0x04000000u < 0x400) {
+      uint16_t now = register_held(half);
+      if (waitcnt) value = now;
+      else gba_clock_write16(half, now);
     }
   }
   return value;
 }
 
 int gba_clock_late(void) { return late; }
+
 
 // whether a Thumb instruction writes memory: a store, a push, a block store
 static int thumb_writes(uint16_t op) {
@@ -727,8 +770,19 @@ static int thumb_writes(uint16_t op) {
   return (op & 0xF600) == 0xB400;
 }
 
+// A Thumb instruction that goes back from a call: bx, a pop into the program counter or a mov to it.
+static int thumb_returns(uint16_t op) { return (op & 0xFF80) == 0x4700 || (op & 0xFF00) == 0xBD00 || (op & 0xFF87) == 0x4687; }
+
 void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
+  if (!running) return;
   int k = 0, ended = 0;
+  // the call it goes back to, the latest one's: a run whose return the game names goes back from that call too
+  if (thumb_returns(code16(to))) {
+    if (next == GBA_CLOCK_BACK) next = depth ? calls[--depth % CALLS] : 0x08000001u;   // none timed: the cartridge's
+    else if (depth && (calls[(depth - 1) % CALLS] & ~1u) == (next & ~1u)) depth--;
+  }
+  // a bl's second half, which is the run's last instruction, keeps where the call goes back to
+  if ((code16(to) & 0xF800) == 0xF800) calls[depth++ % CALLS] = to + 3;
   for (uint32_t pc = from; pc <= to; pc += 2) {
     uint16_t op = code16(pc);
     gba_access a[1] = { { 0, 0, 0, 0 } };
@@ -783,6 +837,7 @@ void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at
 static uint32_t code32(uint32_t at) { return (uint32_t)code16(at) | (uint32_t)code16(at + 2) << 16; }
 
 void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count) {
+  if (!running) return;
   int k = 0, ended = 0;
   for (uint32_t pc = from; pc <= to; pc += 4) {
     uint32_t op = code32(pc);
@@ -799,4 +854,75 @@ void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t
   }
   while (ended-- > 0)
     if (frame_wait) frame_wait();
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// What a game's C does in one line and the original does in the libraries every game of the console's compiler has.
+
+uint16_t gba_clock_vcount(void) {
+  // the events due before the next instruction, which is the one that reads it
+  run_events();
+  int64_t now = NOW, first = 117 + HBLANK;   // the second line's start, after power-on's first H-blank
+  if (now < first) return 126;
+  return (uint16_t)((127 + (now - first) / LINE) % 228);
+}
+
+// libgcc's __divsi3, at `at`, as the console's compiler's library has it: the signs taken off, the divisor moved up
+// four bits at a time and then one, the quotient's bits found four at a time, and the sign put back. Its path is the
+// numbers' own, so it's worked out here, a run at a time, back to `back`; dividing by 0 calls __div0 and gives 0.
+void gba_clock_divsi3(uint32_t at, int32_t numerator, int32_t denominator, uint32_t back) {
+  uint32_t r0 = (uint32_t)numerator, r1 = (uint32_t)denominator, r3 = 1, r4, from = at;
+#define DIVIDE_GOES(last, to)                              \
+  do {                                                     \
+    gba_clock_run(from, at + (last), at + (to) + 1, NULL, 0); \
+    from = at + (to);                                      \
+  } while (0)
+  if (!r1) {
+    DIVIDE_GOES(0x02, 0x88);
+    DIVIDE_GOES(0x8C, 0x94);                               // __div0, which comes straight back
+    DIVIDE_GOES(0x94, 0x8E);
+    gba_clock_run(from, at + 0x90, back, NULL, 0);
+    return;
+  }
+  if ((int32_t)r1 >= 0) DIVIDE_GOES(0x12, 0x16);
+  else r1 = 0u - r1;
+  if ((int32_t)r0 >= 0) DIVIDE_GOES(0x18, 0x1C);
+  else r0 = 0u - r0;
+  if (r0 < r1) DIVIDE_GOES(0x1E, 0x7A);
+  else {
+    r4 = 1u << 28;
+    for (;;) {
+      if (r1 >= r4) { DIVIDE_GOES(0x26, 0x32); break; }
+      if (r1 >= r0) { DIVIDE_GOES(0x2A, 0x32); break; }
+      r1 <<= 4;
+      r3 <<= 4;
+      DIVIDE_GOES(0x30, 0x24);
+    }
+    r4 <<= 3;
+    for (;;) {
+      if (r1 >= r4) { DIVIDE_GOES(0x36, 0x42); break; }
+      if (r1 >= r0) { DIVIDE_GOES(0x3A, 0x42); break; }
+      r1 <<= 1;
+      r3 <<= 1;
+      DIVIDE_GOES(0x40, 0x34);
+    }
+    for (;;) {
+      if (r0 < r1) DIVIDE_GOES(0x44, 0x4A);
+      else r0 -= r1;
+      if (r0 < (r1 >> 1)) DIVIDE_GOES(0x4E, 0x56);
+      else r0 -= r1 >> 1;
+      if (r0 < (r1 >> 2)) DIVIDE_GOES(0x5A, 0x62);
+      else r0 -= r1 >> 2;
+      if (r0 < (r1 >> 3)) DIVIDE_GOES(0x66, 0x6E);
+      else r0 -= r1 >> 3;
+      if (!r0) { DIVIDE_GOES(0x70, 0x7A); break; }
+      r3 >>= 4;
+      if (!r3) { DIVIDE_GOES(0x74, 0x7A); break; }
+      r1 >>= 4;
+      DIVIDE_GOES(0x78, 0x42);
+    }
+  }
+  if ((int32_t)((uint32_t)numerator ^ (uint32_t)denominator) >= 0) DIVIDE_GOES(0x80, 0x84);
+  gba_clock_run(from, at + 0x86, back, NULL, 0);
+#undef DIVIDE_GOES
 }
