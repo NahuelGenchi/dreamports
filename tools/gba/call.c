@@ -19,7 +19,8 @@
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
 //   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
-//                       changes those values, then calls the function at the address, odd for Thumb code, `span`
+//                       changes those values, the display's status at 0x04000004 among them, then calls the
+//                       function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
 //                       lets it run up to `limit` instructions. Answers:
 //                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow,
@@ -367,16 +368,36 @@ static void aligned(uint32_t address, uint32_t bytes) {
 	}
 }
 
+// A twin has no clock, so in a call the console's has none either: the display's status bits, which say whether it's
+// in the V-blank, an H-blank or the line asked for, and the line it's on, read as they were as the call started, or as
+// the check set the status, to start a call outside the V-blank (#1569). What the function writes to the status's
+// other bits it reads back.
+#define DISPSTAT_AT 0x04000004u
+#define VCOUNT_AT 0x04000006u
+static uint16_t heldStatus, heldLine;
+static uint32_t held(uint32_t address, int bytes, uint32_t value) {
+	if (!watching || address >= VCOUNT_AT + 2 || address + bytes <= DISPSTAT_AT) return value;
+	uint32_t both = (uint32_t) heldLine << 16 | heldStatus;
+	for (int i = 0; i < bytes; i++) {
+		uint32_t at = address + i, shift = 8 * i;
+		if (at < DISPSTAT_AT || at >= VCOUNT_AT + 2) continue;
+		uint32_t keep = at == DISPSTAT_AT ? 0xF8u : at == DISPSTAT_AT + 1 ? 0xFFu : 0u;
+		uint32_t byte = (value >> shift & keep) | (both >> 8 * (at - DISPSTAT_AT) & ~keep & 0xFFu);
+		value = (value & ~(0xFFu << shift)) | byte << shift;
+	}
+	return value;
+}
+
 static uint32_t load32(struct ARMCore* c, uint32_t address, int* cycles) {
 	aligned(address, 4);
 	touched(address & ~3u, 4, 0);
-	uint32_t value = memory.load32(c, address, cycles);
+	uint32_t value = held(address & ~3u, 4, memory.load32(c, address, cycles));
 	// a number the code keeps beside itself
 	if (watching && address >= CARTRIDGE) number(value);
 	return value;
 }
-static uint32_t load16(struct ARMCore* c, uint32_t address, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 0); return memory.load16(c, address, cycles); }
-static uint32_t load8(struct ARMCore* c, uint32_t address, int* cycles) { touched(address, 1, 0); return memory.load8(c, address, cycles); }
+static uint32_t load16(struct ARMCore* c, uint32_t address, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 0); return held(address & ~1u, 2, memory.load16(c, address, cycles)); }
+static uint32_t load8(struct ARMCore* c, uint32_t address, int* cycles) { touched(address, 1, 0); return held(address, 1, memory.load8(c, address, cycles)); }
 static void store32(struct ARMCore* c, uint32_t address, int32_t value, int* cycles) {
 	asked(address & ~3u, (uint32_t) value, 4);
 	aligned(address, 4);
@@ -470,8 +491,15 @@ static void call(void* state) {
 	if (onStack > 16) onStack = 16;
 	takeImage(undo);
 	memcpy(before, undo, IMAGE);
+	heldStatus = gba->memory.io[(DISPSTAT_AT - 0x04000000u) >> 1];
+	heldLine = gba->memory.io[(VCOUNT_AT - 0x04000000u) >> 1];
 	for (uint32_t changes = in32(); changes; changes--) {
 		uint32_t where = in32(), bytes = in32(), value = in32();
+		// the display's status, as the call starts: only its bits that say where the display is
+		if (where == DISPSTAT_AT && bytes == 2) {
+			heldStatus = (uint16_t) ((heldStatus & ~7u) | (value & 7u));
+			continue;
+		}
 		long at = inImage(where);
 		if (at < 0 || bytes > 4 || inImage(where + bytes - 1) < 0) continue;
 		for (uint32_t i = 0; i < bytes; i++) before[at + i] = value >> 8 * i & 0xFF;
