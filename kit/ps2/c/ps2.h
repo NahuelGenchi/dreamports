@@ -20,13 +20,21 @@ enum {
   GS_FRAME_2 = 0x4D, GS_ZBUF_1 = 0x4E, GS_ZBUF_2 = 0x4F, GS_BITBLTBUF = 0x50, GS_TRXPOS = 0x51, GS_TRXREG = 0x52,
   GS_TRXDIR = 0x53, GS_HWREG = 0x54, GS_SIGNAL = 0x60, GS_FINISH = 0x61, GS_LABEL = 0x62,
 };
-// where the EE sees the GS's privileged registers, which say what the screen shows: each is 64 bits, written as two halves
-enum { GS_PMODE = 0x12000000, GS_SMODE2 = 0x12000020, GS_DISPFB1 = 0x12000070, GS_DISPLAY1 = 0x12000080, GS_DISPFB2 = 0x12000090, GS_DISPLAY2 = 0x120000A0, GS_BGCOLOR = 0x120000E0 };
+// where the EE sees the GS's privileged registers, which say what the screen shows, and its status, interrupts and the
+// way its bus faces: each is 64 bits, written as two halves
+enum {
+  GS_PMODE = 0x12000000, GS_SMODE2 = 0x12000020, GS_DISPFB1 = 0x12000070, GS_DISPLAY1 = 0x12000080, GS_DISPFB2 = 0x12000090,
+  GS_DISPLAY2 = 0x120000A0, GS_BGCOLOR = 0x120000E0, GS_CSR = 0x12001000, GS_IMR = 0x12001010, GS_BUSDIR = 0x12001040,
+  GS_SIGLBLID = 0x12001080,
+};
 
 /** Writes one of the GS's registers, as a GIF packet's address and data does. */
 void gs_write(uint8_t reg, uint64_t value);
 /** Sends the GS a picture's data, `length` bytes, as a GIF packet in IMAGE mode does. */
 void gs_image(const void *data, uint32_t length);
+/** Takes the next `length` bytes of the picture TRXDIR = 1 started moving out of the GS's memory, as a DMA transfer from
+ *  VIF1 does once BUSDIR is 1: each pixel's bits after the last's, as a picture moved in has them, and 0 past its end. */
+void gs_read_image(void *data, uint32_t length);
 /** Writes half of a privileged register: the 32 bits at `address`, the low half at the register's own or the high 4 on. */
 void gs_screen(uint32_t address, uint32_t value);
 /** Paints the page's picture with what the screen shows of the framebuffer, at the console's size. For game_draw. */
@@ -73,5 +81,60 @@ void vu_msubf(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, float wi
 /** FTOI0, 4, 12 and 15: floats as whole numbers with `bits` bits after the point. ITOF is the other way. */
 void vu_ftoi(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest);
+
+// The IOP, the console's second processor, for twins of a game's own IOP modules (iop.c): its memory, 4 MB as the
+// emulator has it, and its hardware as a module's loads and stores reach it, at the addresses the module uses. The
+// sound chip, the SPU2, is there from 0x1F900000, both its cores as the emulator mixes them (spu2.c), and the DMA
+// channels that move sound to it, 4 for core 0 at 0x1F8010C0 and 7 for core 1 at 0x1F801500. What the chip is given
+// each frame is the frame's sound list, which a PlayStation 2 game's sound is proven by, with its samples.
+uint8_t *iop_memory(void);
+void iop_write8(uint32_t address, uint8_t value);
+void iop_write16(uint32_t address, uint16_t value);
+void iop_write32(uint32_t address, uint32_t value);
+uint8_t iop_read8(uint32_t address);
+uint16_t iop_read16(uint32_t address);
+uint32_t iop_read32(uint32_t address);
+/** Lets `ee_ticks` of the EE's clock pass within the frame, the sound chip mixing what's due in them and the SIF's
+ *  packets reaching the EE, for a game whose IOP code writes the chip later in a frame than as it starts. Time past the
+ *  frame's end is dropped. ps2_time_to_slice lets it pass to the end of the emulator's slice of 4,800 ticks, which is
+ *  when the IOP runs: what the EE does as it waits for the IOP. ps2_ee_time is the EE's ticks since power-on. */
+void ps2_time_pass(uint32_t ee_ticks);
+void ps2_time_to_slice(void);
+uint64_t ps2_ee_time(void);
+
+// The SIF, between the EE and the IOP (sif.c), as the emulator has it. The EE's memory, 32 MB, which the SIF reads what
+// the EE sends from and writes the IOP's replies into, at the EE's own addresses. The EE kernel's SIF calls: SifSetDma,
+// giving the transfer's id, SifDmaStat, iSifSetDChain (from_interrupt 1) or SifSetDChain, SifGetReg and SifSetReg. And
+// what the EE runs as each of the IOP's packets arrives, its DMA channel 5's handler, which says it took it with
+// sif_set_dchain(1); with none, the EE's code waits for the packet in its memory and says so itself.
+uint8_t *ee_memory(void);
+typedef struct { uint32_t from, to, size, flags; } sif_transfer;
+uint32_t sif_set_dma(const sif_transfer *transfers, uint32_t count);
+int32_t sif_dma_stat(uint32_t id);
+void sif_set_dchain(int from_interrupt);
+uint32_t sif_get_reg(uint32_t which);
+void sif_set_reg(uint32_t which, uint32_t value);
+void sif_ee_handler(void (*handler)(void));
+/** An RPC server on the IOP, as a twin of a game's module registers one (sceSifRegisterRpc): called with the call's
+ *  number, its arguments and where its answer goes, in the EE's memory. It gives 1 for the answer to go back now, or 0
+ *  for the server to give it later with sif_call_reply, with what goes in the EE's place for it. */
+typedef int sif_server(uint32_t number, uint8_t *arguments, uint32_t arguments_size, uint8_t *returned, uint32_t returned_size);
+void sif_register_server(uint32_t id, sif_server *serve);
+/** A server as a game's own module registers it, its twin's function called as the module's is: with the call's
+ *  number, the IOP address of its buffer, where the call's arguments were copied, and their size, giving the IOP address
+ *  of its answer. It runs when the IOP next does, at the end of the EE's slice. A number the kit already answers stays
+ *  the kit's, as in the emulator. */
+typedef uint32_t sif_rpc(uint32_t number, uint32_t buffer, uint32_t size);
+void sif_register_rpc(uint32_t id, sif_rpc *function, uint32_t buffer);
+int sif_server_registered(uint32_t id);
+void sif_call_reply(uint32_t id, const void *data);
+
+// The IOP's kernel, as the kit answers it (iop-bios.c). A Dreamport's twin of a game's own IOP module, started when the
+// EE has the loader load it, by the name its file gives itself or the path it's loaded from, with its argc and argv.
+// A thread a module makes that waits for each V-blank's start runs when the IOP first runs in each frame, at the end
+// of the EE's first slice.
+typedef int iop_start(int argc, char **argv);
+void iop_module_twin(const char *name, iop_start *start);
+void iop_each_vblank(void (*thread)(void));
 
 #endif

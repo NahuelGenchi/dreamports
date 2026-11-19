@@ -48,6 +48,10 @@ void console_set_keys(u16 keys) { console_keys = keys; }
 
 // whether the console's time is power-on's, which the clock keeps, until the game first waits for a frame
 static int console_timed;
+// whether it's the V-blank's work's, from the frame's end the game waited for until the blank lines are over, and
+// which of the console's frames ends next
+static int console_blank_timed;
+static u32 console_frame;
 
 // where the line count is, a line on: time goes on while the game waits for a line by reading it from memory. On
 // power-on, it's the line the console's time has reached
@@ -63,6 +67,17 @@ u32 console_vcount_at(void) {
 
 
 u16 console_read16(u32 at) {
+  if (at == IO_DISPSTAT && console_blank_timed) {
+    // in the V-blank's work, the blank lines are over when the console's time says: lines 160 to 226
+    u16 line = gba_clock_vcount();
+    u16 status = (line >= 160 && line < 227 ? STAT_VBLANK : 0) | ((gba_io[IO_DISPSTAT >> 1] >> 8) == line ? STAT_VCOUNT : 0);
+    if (!(status & STAT_VBLANK) && !console_handling) {
+      console_blank_timed = 0;
+      console_in_vblank = 0;
+      gba_clock_stop();
+    }
+    return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
+  }
   if (at == IO_DISPSTAT) {
     // in the V-blank as the frame's time says, or as the console was when the function check gives its registers in
     // console_io, which play never writes there, the display's being the kit's
@@ -73,7 +88,7 @@ u16 console_read16(u32 at) {
     if (!console_handling) console_in_vblank = 0;
     return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
   }
-  if (at == IO_VCOUNT) return (u16)console_line;
+  if (at == IO_VCOUNT) return console_blank_timed ? gba_clock_vcount() : (u16)console_line;
   if (at == IO_KEYINPUT) return ~console_keys & 0x3FF;
   if (at < sizeof gba_io) return gba_io[at >> 1];
   return at < sizeof console_io ? console_io[at >> 1] : 0;
@@ -114,6 +129,11 @@ static void dma_run(struct console_dma *d) {
       from = bus;
     }
     if (from != NULL && to != NULL) for (b = 0; b < wide; b++) to[b] = from[b];
+    // a register is written as the processor writes one, a halfword at a time
+    else if (from != NULL && !d->into && (d->dest + i * to_step) >> 24 == 0x04) {
+      u32 reg = (d->dest + i * to_step) & 0x00FFFFFE;
+      for (b = 0; b < wide; b += 2) console_write16(reg + b, (u16)(from[b] | from[b + 1] << 8));
+    }
   }
   // a repeating channel goes on from where it got to, its destination back where it started if its control says so
   if (!d->own) d->src += count * from_step;
@@ -223,12 +243,18 @@ void console_hblank(int y) {
 void VBlankIntrWait(void) {
   // from the game's first wait on, its waits end its frames, not the console's time
   gba_clock_on_frame_end(NULL);
+  if (console_timed) console_frame = gba_clock_frame();
   gba_clock_stop();
   console_timed = 0;
+  console_blank_timed = 0;
   *(vu16 *)0x03007FF8 &= ~1;
   console_io[IO_IME >> 1] = 1;
   do {
     kit_wait_frame();
+    // the console's time from this frame's end, where its V-blank starts: what the game does in it is timed, as it
+    // asks the display whether the blank lines are over
+    gba_clock_resume(gba_clock_frame_end(console_frame++));
+    console_blank_timed = 1;
     console_vblank();
   } while (!(*(vu16 *)0x03007FF8 & 1));
   *(vu16 *)0x03007FF8 &= ~1;
