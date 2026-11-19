@@ -1,9 +1,9 @@
 {
   "original": "d842afa7dd1e84de08addb94a51506f1bcafd551",
-  "percent": 87.27,
-  "codeMap": {"functions":2489,"bytes":689456},
+  "percent": 87.94,
+  "codeMap": {"functions":2481,"bytes":684228},
   "proven": {"functions":2013,"bytes":601678},
-  "played": {"total":328045,"played":241838,"percent":73.72},
+  "played": {"total":326407,"played":241838,"percent":74.09},
   "content": {"total":200999,"read":135680,"percent":67.5},
   "recordings": {
     "amy-angel-island": {
