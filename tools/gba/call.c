@@ -126,6 +126,12 @@ static int left;
 // whether a DMA the console's clock started wrote to the image
 static int clocked;
 static uint8_t wasRead[IMAGE];
+// each byte of the work memory the original ran as code in this call, and where each mark is to take it off after:
+// the code's, and never a value to change, however the function came to read it (#1518)
+#define CODE_MARKS 65536
+static uint8_t ranAsCode[IMAGE];
+static long codeMarks[CODE_MARKS];
+static size_t codeMarkCount;
 static uint32_t reads[NOTED][2], numbers[NOTED], pairs[NOTED][2];
 static size_t readCount, numberCount, pairCount;
 // which of the called function's own instructions ran in this call, a place for every two bytes of it, and how each
@@ -272,6 +278,22 @@ static void pair(uint32_t one, uint32_t other) {
 	}
 }
 
+// Whether the instruction running loads the word or halfword at `address` through the program counter, as a Thumb
+// ldr rd, [pc, #n] or an ARM ldr rd, [pc, #±n] does: a constant the code keeps beside itself, which is the code's and
+// no value the function was given, wherever the code runs, as code a game copied to work memory does (#1518).
+static int besideTheCode(uint32_t address) {
+	uint32_t pc = cpu->gprs[ARM_PC];
+	if (cpu->executionMode == MODE_THUMB) {
+		uint32_t op = core->rawRead16(core, pc - WORD_SIZE_THUMB * 2, -1);
+		return (op & 0xF800) == 0x4800 && address == (pc & ~3u) + (op & 0xFF) * 4;
+	}
+	uint32_t op = core->rawRead32(core, pc - WORD_SIZE_ARM * 2, -1);
+	// a load of a word or a byte, with an offset written in the instruction, from the program counter
+	if ((op & 0x0E1F0000) != 0x041F0000) return 0;
+	uint32_t target = op & (1u << 23) ? pc + (op & 0xFFF) : pc - (op & 0xFFF);
+	return address == (target & ~3u);
+}
+
 // every read and write the processor, the BIOS and DMA make comes through here
 static void touched(uint32_t address, int bytes, int write) {
 	if (!watching) return;
@@ -286,6 +308,12 @@ static void touched(uint32_t address, int bytes, int write) {
 	long at = inImage(address);
 	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;
 	if (at >= 0 && inImage(address + bytes - 1) >= 0) {
+		// a constant the code keeps beside itself, in work memory, or code it ran there, is the code's and not a value
+		// to change
+		if (!write && !gba->performingDMA && (ranAsCode[at] || ranAsCode[at + bytes - 1] || besideTheCode(address))) {
+			number(bytes == 4 ? core->rawRead32(core, address, -1) : core->rawRead16(core, address, -1));
+			return;
+		}
 		// a value the function read from memory, and not from its own stack, is one the check can change
 		if (!write && !gba->performingDMA) {
 			lastRead = address;
@@ -460,6 +488,11 @@ static void call(void* state) {
 		}
 		if (left) { ended = LEFT; break; }
 		uint32_t opcode = 0, was[16];
+		long codeAt = inImage(pc);
+		if (codeAt >= 0 && !ranAsCode[codeAt]) {
+			memset(ranAsCode + codeAt, 1, inThumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
+			if (codeMarkCount < CODE_MARKS) codeMarks[codeMarkCount++] = codeAt;
+		}
 		if (inThumb) {
 			// what a function compares, a value with a number or with another value, says which numbers are worth giving it
 			LOAD_16(opcode, pc & cpu->memory.activeMask, cpu->memory.activeRegion);
@@ -490,6 +523,19 @@ static void call(void* state) {
 	watching = 0;
 	uint32_t gave = cpu->gprs[0];
 	for (size_t i = 0; i < readCount; i++) wasRead[inImage(reads[i][0])] = 0;
+	// what it read of code it ran from the work memory, as through a pointer it was given, isn't a value to change
+	size_t kept = 0;
+	for (size_t i = 0; i < readCount; i++) {
+		long at = inImage(reads[i][0]);
+		int code = 0;
+		for (uint32_t b = 0; b < reads[i][1]; b++) code |= ranAsCode[at + b];
+		if (!code) { reads[kept][0] = reads[i][0]; reads[kept++][1] = reads[i][1]; }
+	}
+	readCount = kept;
+	// each call marks only the code it ran itself, so the same calls make the same marks
+	if (codeMarkCount < CODE_MARKS) for (size_t i = 0; i < codeMarkCount; i++) memset(ranAsCode + codeMarks[i], 0, WORD_SIZE_ARM);
+	else memset(ranAsCode, 0, IMAGE);
+	codeMarkCount = 0;
 
 	takeImage(after);
 	core->loadState(core, state);
