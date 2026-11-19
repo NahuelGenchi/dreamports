@@ -30,7 +30,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, sep } from 'node:path';
 import { REPO } from './lib/paths.mjs';
-import { cartridgeOf, hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { cartridgeOf, hex, inBootProgram, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { librariesFile, LIBRARY, libraryIds, readLibrary, versionLibraries } from './lib/libraries.mjs';
 import { asksForProofs, stateOf, stateText } from './lib/proofs.mjs';
@@ -328,7 +328,7 @@ export function checkLibraries(versions = keptVersions()) {
       continue;
     }
     const codeMap = readCodeMap(version);
-    const sizes = new Map((codeMap?.functions ?? []).filter(f => !f.bytes).map(f => [f.address, f.size]));
+    const sizes = new Map((codeMap?.functions ?? []).filter(inBootProgram).map(f => [f.address, f.size]));
     for (const each of taken) {
       for (const [name, address] of each.functions) {
         const f = each.library.functions.find(one => one.name === name && each.files.includes(one.file));

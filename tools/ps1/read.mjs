@@ -36,12 +36,21 @@ export function ps1Resolve(game, codeMap, what) {
  */
 export function listing(exe, start, length, nameOf) {
   const { load, text } = exeOf(exe);
+  return listingOf({ wordAt: at => text.readUInt32LE(at - load), start, end: Math.min(start + length, load + text.length), decode, nameOf });
+}
+
+/**
+ * The lines of MIPS code from `start` to `end`, as listing gives them, for any MIPS processor's code, as a PlayStation
+ * 2 game's are (../ps2/read.mjs): `wordAt(address)` reads a word, `decode(word, address)` is the processor's decoder,
+ * and `adds` the instructions that add to a lui's half to make an address.
+ */
+export function listingOf({ wordAt, start, end, decode, nameOf, adds = ['addiu', 'ori'] }) {
   // what each register is known to hold, from a lui and what adds to it, until anything else writes it, a branch's
   // target is reached, or a call is made
   const known = new Map(), targets = new Set();
   const lines = [];
-  for (let at = start; at < start + length && at + 4 <= load + text.length; at += 4) {
-    const word = text.readUInt32LE(at - load), found = decode(word, at);
+  for (let at = start; at + 4 <= end; at += 4) {
+    const word = wordAt(at), found = decode(word, at);
     if (found?.target !== undefined) targets.add(found.target);
     lines.push({ address: at, word, found });
   }
@@ -53,7 +62,7 @@ export function listing(exe, start, length, nameOf) {
     if (found.target !== undefined) notes.push(nameOf(found.target) ?? (found.kind === 'call' ? 'no function of the code map starts there' : null));
     let made = null;
     if (found.name === 'lui') made = { register: found.rt, value: (found.imm << 16) >>> 0 };
-    else if ((found.name === 'addiu' || found.name === 'ori') && known.has(found.rs)) made = { register: found.rt, value: found.name === 'ori' ? (known.get(found.rs) | found.imm) >>> 0 : (known.get(found.rs) + found.imm) >>> 0 };
+    else if (adds.includes(found.name) && known.has(found.rs)) made = { register: found.rt, value: found.name === 'ori' ? (known.get(found.rs) | found.imm) >>> 0 : (known.get(found.rs) + found.imm) >>> 0 };
     else if ((found.kind === 'load' || found.kind === 'store') && known.has(found.rs)) {
       const place = (known.get(found.rs) + found.imm) >>> 0;
       notes.push(`0x${hex(place)}${nameOf(place) ? ` ${nameOf(place)}` : ''}`);
