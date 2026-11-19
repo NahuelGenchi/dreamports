@@ -123,16 +123,29 @@ export function readCodeMap(game) {
   return { ...parseCodeMap(JSON.parse(readFileSync(file, 'utf8'))), ...(existsSync(original) ? { console: JSON.parse(readFileSync(original, 'utf8')).console } : {}) };
 }
 
-/** A code map's JSON, read as readCodeMap gives it. */
+// a key's parts: the address, the first bytes of a function made in RAM, the program it's in when a game has several,
+// as a PlayStation 2 disc does, and ~vu for a vector unit's program (ps2/functions.mjs)
+const KEY = /^([0-9A-F]{8})(?:\/([0-9A-F]{16}))?(?:@(.+?))?(~vu)?$/;
+
+/** A code map's JSON, read as readCodeMap gives it. A function in another program than the one the game boots has its
+ *  `program`, and a vector unit's program `vu`. */
 export function parseCodeMap(map) {
-  const functions = map.functions.map(([key, size, name]) => ({ key, address: parseInt(key, 16), size, name, ...(key.includes('/') ? { bytes: key.split('/')[1] } : {}) }));
+  const functions = map.functions.map(([key, size, name]) => {
+    const [, , bytes, program, vu] = KEY.exec(key) ?? [];
+    return { key, address: parseInt(key, 16), size, name, ...(bytes ? { bytes } : {}), ...(program ? { program } : {}), ...(vu ? { vu: true } : {}) };
+  });
   functions.sort((a, b) => a.address - b.address || a.key.localeCompare(b.key));
   const copies = (map.copies ?? []).map(([ram, cartridge, size, packed, from]) => ({ ram: parseInt(ram, 16), cartridge: parseInt(cartridge, 16), size, ...(packed ? { packed } : {}), ...(from ? { from } : {}) }));
   return { ...map, functions, copies };
 }
 
-/** A function's key in the proof files: its address, and for one the game makes in its work RAM, its first bytes. */
-export const functionKey = f => hex(f.address) + (f.bytes ? `/${f.bytes}` : '');
+/** A function's key in the proof files: its address, and for one the game makes in its work RAM, its first bytes, for
+ *  one in another program, @ and the program, and for a vector unit's, ~vu. */
+export const functionKey = f => hex(f.address) + (f.bytes ? `/${f.bytes}` : '') + (f.program ? `@${f.program}` : '') + (f.vu ? '~vu' : '');
+
+/** Whether a function is one of the code the game boots runs where its address says: not one it makes in RAM, nor
+ *  another program's, nor a vector unit's. */
+export const inBootProgram = f => !f.bytes && !f.program && !f.vu;
 
 /** Writes a code map, a function to a line, and the copies after. */
 export function writeCodeMap(game, map) {
