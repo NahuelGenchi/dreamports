@@ -40,7 +40,7 @@ import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '..
 import { readProof } from './readme.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { compareCardSaves, compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
-import { cellsOf, contentIn, finderOf, layoutOf, playedIn, writePlayed } from './lib/played.mjs';
+import { cellsOf, contentIn, finderOf, layoutOf, playedIn, startedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
 import { notesAbout } from './notes.mjs';
 import { proveLinked } from './prove-linked.mjs';
@@ -583,6 +583,12 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     if (seesPlayed) {
       const made = new Map(first.played.made.filter(m => codeMap.functions[m.index]?.bytes).map(m => [m.index, m.bytes]));
       played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, made)), made: [...made], used: contentIn(first.played.content, matchedInOriginal, cellsOf(codeMap, cartridge)) };
+      // on the PlayStation 2 a function of another program, or a vector unit's program, is found running from what
+      // ran where its bytes are, as it's at an address of its own that the program playing the original isn't given
+      if (machine.id === 'ps2') {
+        const places = new Map(codeMap.functions.map((f, index) => [f.key, index]));
+        for (const key of startedIn(played.set, codeMap)) proven.add(places.get(key));
+      }
     }
     const differing = stretchesOf(different), soundDiffers = stretchesOf(soundDifferent);
     // the frames the game says no player could ever see, which fail however they compare: { from, to, why }

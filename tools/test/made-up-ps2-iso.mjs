@@ -28,7 +28,7 @@ function entry(name, sector, size, folder) {
  * The disc, as bytes, and where each file is on it: `files` maps each file's name in the top folder to its bytes, in the
  * order they go on the disc. Returns { disc, sectors }, `sectors` each file's first sector and how many it takes, by name.
  */
-export function madeUpPs2Disc(files) {
+export function madeUpPs2Iso(files) {
   let next = ROOT + 1;
   const placed = Object.entries(files).map(([name, bytes]) => {
     const at = next, count = Math.max(1, Math.ceil(bytes.length / SECTOR));

@@ -11,7 +11,9 @@
 // top three bits left out, which is where it is in their memory, and on a vector unit, where it is in the unit's code
 // memory. FUNCTIONS, a file, lists where the code map's functions are, as ran.h reads it, with the processor in the
 // fourth word's second byte (0 the EE, 1 the IOP, 2 vector unit 0, 3 vector unit 1): a function runs when its first
-// instruction does, with the first word of its fifth and sixth when its fourth word's first byte says it has them.
+// instruction does, with the first word of its fifth and sixth when its fourth word's first byte says it has them. The
+// tools list the functions of the program the disc boots there, the EE's: what else a disc holds is at addresses of
+// its own, and is found from what ran (lib/played.mjs).
 //
 // DP_PLAYED's records are ran.h's five words, with the processor in the second byte of the third word: the address, its
 // word (the lower instruction of a vector unit's pair), what happened, and the first and last frame of a stretch of

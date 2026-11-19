@@ -73,7 +73,7 @@ const word = (bytes, at) => (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 1
  * the program holds, data and code. A Set of addresses.
  */
 export function arrivalsOf(functions, read, words) {
-  const arrivals = new Set(), ranges = functions.filter(f => !f.cpu).map(f => [f.address, f.address + f.size]).sort((x, y) => x[0] - y[0]);
+  const arrivals = new Set(), ranges = functions.filter(f => !f.program && !f.vu).map(f => [f.address, f.address + f.size]).sort((x, y) => x[0] - y[0]);
   const inCode = address => {
     let low = 0, high = ranges.length - 1;
     while (low <= high) {
@@ -85,7 +85,7 @@ export function arrivalsOf(functions, read, words) {
     return false;
   };
   for (const f of functions) {
-    if (f.cpu) continue;
+    if (f.program || f.vu) continue;
     const bytes = read(f.address, f.size);
     arrivals.add(f.address);
     for (let at = 0; at + 4 <= bytes.length; at += 4) {
@@ -107,7 +107,7 @@ export function arrivalsOf(functions, read, words) {
 export function decidedMipsBranches(functions, read, words) {
   const arrivals = arrivalsOf(functions, read, words), found = [];
   for (const f of functions) {
-    if (f.cpu) continue;
+    if (f.program || f.vu) continue;
     const bytes = read(f.address, f.size), { instructions, branches } = mipsInstructionsOf(bytes, [], new Map(), f.address);
     for (const at of [...branches].sort((a, b) => a - b)) {
       // the run back from the branch to the last place anything arrives, or a jump or a call it can't see past

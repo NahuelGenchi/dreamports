@@ -9,8 +9,8 @@
 
 import { statSync } from 'node:fs';
 import { extname } from 'node:path';
-import { openDisc } from '../lib/read-copy.mjs';
-import { ps2Program } from './functions.mjs';
+import { discFiles, openDisc } from '../lib/read-copy.mjs';
+import { moduleCode, ps2Disc, sectionOf } from './functions.mjs';
 
 /** What kind of conditional branch an EE or IOP instruction is: 0 none, 1 one, 2 a likely one, whose delay slot runs
  *  only when it's taken. As play.patch's DreamportsBranchKind says. */
@@ -36,10 +36,6 @@ export function vuBranches(lower) {
   const op = lower >>> 25, it = lower >>> 16 & 31, is = lower >>> 11 & 31;
   return (op === 0x29 || (op >= 0x2C && op <= 0x2F) || op === 0x28) && !(op === 0x28 && it === is);
 }
-
-/** The processor a function of the code map runs on, as the program that plays the original numbers them
- *  (libretro/ran-ps2.h): 0 the EE, where a function with no "cpu" runs, 1 the IOP, 2 and 3 the vector units. */
-export const processorOf = f => ({ iop: 1, vu0: 2, vu1: 3 })[f.cpu] ?? 0;
 
 const TAKEN = 1, NOT_TAKEN = 2;
 const signed16 = word => (word & 0xFFFF) << 16 >> 16;
@@ -166,18 +162,35 @@ const keyOf = path => {
   const { size, mtimeMs } = statSync(path);
   return `${path} ${size} ${mtimeMs}`;
 };
+const NOTHING = new Uint8Array(0);
 
 /**
  * Reads what gameplay proven needs of a PlayStation 2 copy, once, from whatever file the disc is in (lib/read-copy.mjs):
- * the program it boots, or the ELF file it is, and its disc's sectors that hold anything, as a set of bits, one a
- * sector, those whose 2048 bytes are all the same left out. Resolves to { program, read, cells }, `read(address,
- * count)` being programReader's and `cells` { sectors, holds }, or null for a copy that's no disc. Once it has,
- * loadedCopy gives it at once.
+ * every piece of code on it, as the code map lists it (functions.mjs), and its disc's sectors that hold anything, as a
+ * set of bits, one a sector, those whose 2048 bytes are all the same left out. Resolves to { program, read, cells,
+ * codeOf }: the program it boots, `read(address, count)` its bytes where it runs, `cells` { sectors, holds }, or null
+ * for a copy that's no disc, and `codeOf(f)` what a function of the code map is made of, { kind, bytes, vuAddress }:
+ *
+ * - `kind` 'ee' for a function of the program the disc boots or of another EE program, with its `bytes` from that
+ *   program, where it runs at its address;
+ * - 'iop' for one of a module, with its bytes from the module's code, which the IOP loads wherever it has room;
+ * - 'vu' for a vector unit's program, with the bytes of its pairs and `vuAddress`, where the MPG command before them
+ *   puts them in the unit's code memory, or null when no command is there.
+ *
+ * Once it has, loadedCopy gives it at once.
  */
 export async function loadCopy(path) {
   const key = keyOf(path);
   if (loaded.has(key)) return loaded.get(key);
-  const program = await ps2Program(path);
+  const code = await ps2Disc(path), boot = code.boot, read = programReader(boot);
+  // the boot program's bytes at an address: a section's, as a vector unit's program is in one of its own, or a segment's
+  const bootBytes = (address, count) => {
+    const s = sectionOf(boot, address);
+    return s && address + count <= s.address + s.size ? boot.subarray(s.offset + address - s.address, s.offset + address - s.address + count) : read(address, count);
+  };
+  const programs = new Map(code.programs.map(p => [p.path, p.kind === 'iop' ? { kind: 'iop', ...moduleCode(p.bytes) } : { kind: 'ee', read: programReader(p.bytes) }]));
+  // the vector unit programs in the disc's other files, each read from its file with the command before it
+  const inFiles = [];
   let cells = null;
   const disc = extname(path).toLowerCase() === '.elf' ? null : await openDisc(path);
   if (disc) {
@@ -196,8 +209,34 @@ export async function loadCopy(path) {
     } finally {
       await disc.close();
     }
+    const uploads = code.uploads.filter(u => u.path);
+    if (uploads.length) {
+      const files = await discFiles(path);
+      try {
+        for (const u of uploads) inFiles.push({ path: u.path, at: u.at, bytes: await files.read(u.path, u.at - 4, u.size + 4) });
+      } finally {
+        await files.close();
+      }
+    }
   }
-  const found = { program, read: programReader(program), cells };
+  const word = bytes => (bytes.length >= 4 ? (bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24) >>> 0 : 0);
+  // where an MPG command puts the pairs after it: its last byte says it's one, and its low half the place, in pairs
+  const placed = command => ((command >>> 24 & 0x7F) === 0x4A ? (command & 0xFFFF) * 8 : null);
+  const codeOf = f => {
+    if (f.vu && f.program) {
+      const held = inFiles.find(u => u.path === f.program && f.address >= u.at && f.address + f.size <= u.at + u.bytes.length - 4);
+      if (!held) return { kind: 'vu', bytes: NOTHING, vuAddress: null };
+      const from = placed(word(held.bytes));
+      return { kind: 'vu', bytes: held.bytes.subarray(4 + f.address - held.at, 4 + f.address - held.at + f.size), vuAddress: from === null ? null : from + f.address - held.at };
+    }
+    if (f.vu) return { kind: 'vu', bytes: bootBytes(f.address, f.size), vuAddress: placed(word(bootBytes(f.address - 4, 4))) };
+    if (!f.program) return { kind: 'ee', bytes: read(f.address, f.size) };
+    const program = programs.get(f.program);
+    if (!program) return { kind: 'ee', bytes: NOTHING };
+    if (program.kind === 'ee') return { kind: 'ee', bytes: program.read(f.address, f.size) };
+    return { kind: 'iop', bytes: program.text.subarray(f.address - program.load, f.address - program.load + f.size) };
+  };
+  const found = { program: boot, read, cells, codeOf };
   loaded.set(key, found);
   return found;
 }

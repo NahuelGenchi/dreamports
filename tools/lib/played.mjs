@@ -28,13 +28,16 @@
 // data isn't followed yet, so an NES game's file has no "cells" and no "content", and its gameplay proven stays its
 // parts' share: prove keeps this file's total out of its progress.json until the data is followed (prove.mjs).
 //
-// On the PlayStation 2 a place is four bytes, an instruction of the EE or the IOP, or half a pair of a vector unit's,
-// and a function of the code map that isn't the EE's says which processor's it is ("cpu": "iop", "vu0" or "vu1").
+// On the PlayStation 2 a place is four bytes, an instruction of the EE or the IOP, or half a pair of a vector unit's.
 // Play! says what ran a block at a time (libretro/ran-ps2.h), each record with its processor in the second byte of its
-// third word. The program the disc boots holds the EE's code, and an instruction counts only where the program's word
-// is what ran, so code loaded later at the same address doesn't. Its content is the disc: a cell is a sector, 2048
-// bytes of the disc's data, counted once the game has read it in a frame that matched, and a game's unreachable.json
-// names sectors, not addresses, under "content".
+// third word, and the code map lists every piece of code on the disc (ps2/functions.mjs): the program it boots, its
+// other EE programs, its modules for the IOP and its vector unit programs. An instruction of the EE counts for the
+// function of whichever program holds, at its address, the word that ran, the program the disc boots first, so code
+// loaded over other code at the same address counts as itself. A vector unit's pair counts for the program whose
+// upload puts it at that place in the unit's memory, as the MPG command before it says, and holds that word. A module of
+// the IOP's is loaded wherever the IOP has room, which the tools don't follow yet: its instructions count, and stay
+// unplayed. Its content is the disc: a cell is a sector, 2048 bytes of the disc's data, counted once the game has read
+// it in a frame that matched, and a game's unreachable.json names sectors, not addresses, under "content".
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -43,7 +46,7 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
-import { SECTOR, loadedCopy, mipsInstructionsOf, processorOf } from '../ps2/ledger.mjs';
+import { SECTOR, loadedCopy, mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
 export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
@@ -231,26 +234,38 @@ export function finderOf(codeMap, cartridge, made) {
   };
   // an NES address is a place in the program, and its code runs from nowhere else that counts
   if (isNes(codeMap)) return address => inCartridge(address);
-  // a PlayStation 2 address is in its processor's own memory, and the EE's code counts where the program holds what ran
+  // a PlayStation 2 address is in its processor's own memory: the EE's code counts where a program of the disc holds
+  // what ran, and a vector unit's where the program an upload put there does (ps2/ledger.mjs)
   if (isPs2(codeMap)) {
-    const byProcessor = [[], [], [], []];
-    codeMap.functions.forEach((f, index) => byProcessor[processorOf(f)].push({ ...f, index }));
-    for (const list of byProcessor) list.sort((a, b) => a.address - b.address);
-    const word = (bytes, at) => (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0;
-    return (address, code, processor) => {
-      const list = byProcessor[processor] ?? [];
+    const programs = new Map(), units = [];
+    codeMap.functions.forEach((f, index) => {
+      const { kind, bytes, vuAddress } = cartridge.code(f);
+      if (kind === 'vu' && vuAddress !== null) units.push({ index, address: vuAddress, size: f.size, bytes });
+      if (kind !== 'ee') return;
+      if (!programs.has(f.program ?? '')) programs.set(f.program ?? '', []);
+      programs.get(f.program ?? '').push({ index, address: f.address, size: f.size, bytes });
+    });
+    // the program the disc boots first, then the others
+    const lists = [...programs].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))).map(([, list]) => list.sort((a, b) => a.address - b.address));
+    const word = (bytes, at) => (at + 4 <= bytes.length ? (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0 : null);
+    const holding = (list, address) => {
       let low = 0, high = list.length - 1;
       while (low <= high) {
         const middle = (low + high) >> 1, f = list[middle];
         if (address < f.address) high = middle - 1;
         else if (address >= f.address + f.size) low = middle + 1;
-        else {
-          const at = address - f.address;
-          if (f.bytes) return at || word(Buffer.from(f.bytes, 'hex'), 0) === code ? [f.index, at] : null;
-          if (processor) return [f.index, at];
-          const held = cartridge(address, 4);
-          return held.length === 4 && word(held, 0) === code ? [f.index, at] : null;
+        else return f;
+      }
+      return null;
+    };
+    return (address, code, processor) => {
+      if (processor === 0) {
+        for (const list of lists) {
+          const f = holding(list, address);
+          if (f && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
         }
+      } else if (processor >= 2) {
+        for (const f of units) if (address >= f.address && address < f.address + f.size && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
       }
       return null;
     };
@@ -371,7 +386,8 @@ export function provenUnits(game, codeMap) {
 }
 
 /**
- * What's left to play of a PlayStation 2 version's EE code, for a search for it (libretro/ran-ps2.h, DP_UNPLAYED): for
+ * What's left to play of a PlayStation 2 version's EE code, in the program its disc boots, for a search for it
+ * (libretro/ran-ps2.h, DP_UNPLAYED): for
  * each thing, the instruction's address plus what it is, 0 an instruction that never ran in a matching frame, 1 a
  * branch never taken and 2 one never not taken, a way the game's unreachable.json rules out left out. Where the
  * Game Boy Advance's search is given what's been played and counts the rest of the cartridge, a PlayStation 2's
@@ -386,7 +402,7 @@ export function unplayedUnits(game, codeMap) {
     for (let i = 0; i < set.length; i++) ran[i] |= set[i];
   }
   codeMap.functions.forEach((f, index) => {
-    if (f.cpu || f.bytes) return;
+    if (f.program || f.vu || f.bytes) return;
     for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
       const at = f.address + (place - layout.first[index]) * layout.unit;
       if (has(code, place * 3 + INSTRUCTION) && !has(ran, place * 3 + RAN)) units.push((at | RAN) >>> 0);
@@ -590,12 +606,13 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : null, ps2 = isPs2(codeMap);
   codeMap.functions.forEach((f, index) => {
     const first = layout.first[index], places = layout.first[index + 1] - first;
-    // a PlayStation 2 function on another processor than the EE is loaded as the game runs, from no bytes the tools read yet
-    const bytes = ps2 && f.cpu ? null : f.bytes ? made.get(index) : cartridge(f.address, f.size);
+    // a PlayStation 2 function's bytes are its own program's, a module's or a vector unit's among them (ps2/ledger.mjs)
+    const own = ps2 ? cartridge.code(f) : null;
+    const bytes = own ? own.bytes : f.bytes ? made.get(index) : cartridge(f.address, f.size);
     if (bytes) {
       const seeds = [];
       for (let place = 0; place < places; place++) if (has(ran, (first + place) * 3 + RAN)) seeds.push(place * unit);
-      const { instructions, branches } = nesCode ? nesCode(f) : ps2 ? mipsInstructionsOf(bytes, seeds, new Map(), f.address) : instructionsOf(bytes, seeds);
+      const { instructions, branches } = nesCode ? nesCode(f) : own?.kind === 'vu' ? vuInstructionsOf(bytes, seeds) : own ? mipsInstructionsOf(bytes, seeds, new Map(), f.address) : instructionsOf(bytes, seeds);
       for (const at of instructions) put(code, (first + Math.floor(at / unit)) * 3 + INSTRUCTION);
       for (const at of branches) put(code, (first + Math.floor(at / unit)) * 3 + BRANCH);
     } else {

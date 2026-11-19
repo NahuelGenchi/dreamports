@@ -22,14 +22,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { cartridgeOf, bytesText, prepareCopy, watchesOf } from '../lib/proof-files.mjs';
+import { cartridgeOf, prepareCopy, watchesOf } from '../lib/proof-files.mjs';
 import { RAN, TAKEN, NOT_TAKEN, layoutOf, finderOf, playedIn, contentIn, cellsOf } from '../lib/played.mjs';
 import { mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { findFunctions } from '../ps2/functions.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
-import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-iso.mjs';
+import { SECTOR, madeUpPs2Iso, systemCnf } from './made-up-ps2-iso.mjs';
 
 const FRAMES = 120;
 const WORK = join(LOCAL, 'test-ps2-ledger');
@@ -126,7 +126,7 @@ async function main() {
   mkdirSync(WORK, { recursive: true });
   const { elf } = madeUpPs2OnVu1();
   const never = Buffer.alloc(5000, 7).fill(9, 100, 200);
-  const { disc, sectors } = madeUpPs2Disc({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'NEVER.BIN': never, 'ZEROS.BIN': Buffer.alloc(3 * SECTOR) });
+  const { disc, sectors } = madeUpPs2Iso({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'NEVER.BIN': never, 'ZEROS.BIN': Buffer.alloc(3 * SECTOR) });
   const copy = join(WORK, 'made-up.iso');
   writeFileSync(copy, disc);
   const machine = consoleOf('ps2'), reference = libretroReference(machine);
@@ -136,7 +136,9 @@ async function main() {
   await prepareCopy(copy, 'ps2');
   const cartridge = cartridgeOf(copy, 'ps2');
   const vuBytes = new Uint8Array(Uint32Array.from(VU1_PROGRAM).buffer);
-  const codeMap = { console: 'ps2', functions: [...findFunctions(elf).map(f => ({ key: `sub_${f.address.toString(16)}`, ...f })), { key: 'vu1_0000', address: 0, size: vuBytes.length, cpu: 'vu1', bytes: bytesText(vuBytes) }] };
+  // where the program keeps the unit's pairs, after the MPG command that says where they go in the unit's memory
+  const vuAt = LOAD_AT + elf.subarray(0x80).indexOf(Buffer.from(vuBytes));
+  const codeMap = { console: 'ps2', functions: [...findFunctions(elf).map(f => ({ key: `sub_${f.address.toString(16)}`, ...f })), { key: `${vuAt.toString(16).toUpperCase().padStart(8, '0')}~vu`, address: vuAt, size: vuBytes.length, vu: true }] };
   const functions = watchesOf(codeMap, cartridge), buttons = new Array(FRAMES).fill(0);
 
   console.log(`What runs and what's read of a made-up disc on ${machine.name}'s real emulator, ${FRAMES} frames`);
@@ -169,8 +171,9 @@ async function main() {
   check(count(vuIndex, RAN) === vu.instructions.size && count(vuIndex, TAKEN) === 1 && count(vuIndex, NOT_TAKEN) === 1, 'gameplay proven finds the vector unit program\'s pairs and its branch\'s two ways in its function');
   const eeCounted = codeMap.functions.slice(0, -1).reduce((sum, _, i) => sum + count(i, RAN), 0);
   check(eeCounted === eeRan.size, `and every instruction the EE ran in the program's functions: ${eeCounted}`);
-  const moved = { ...codeMap, functions: codeMap.functions.map(f => (f.cpu ? f : { ...f, address: f.address + 4 })) };
-  const elsewhere = playedIn(first.played.records, matched, layoutOf(moved), finderOf(moved, (address, n) => cartridge(address - 4, n), new Map()));
+  // the same functions said to be four bytes on: what ran at each place is another word than the map's function has there
+  const moved = { ...codeMap, functions: codeMap.functions.map(f => (f.vu ? f : { ...f, address: f.address + 4 })) };
+  const elsewhere = playedIn(first.played.records, matched, layoutOf(moved), finderOf(moved, { code: f => (f.vu ? cartridge.code(f) : { kind: 'ee', bytes: cartridge(f.address - 4, f.size) }) }, new Map()));
   check(elsewhere.slice(0, Math.ceil(layoutOf(moved).first[vuIndex] * 3 / 8) - 1).every(byte => !byte), 'an instruction counts only where the program holds the word that ran: none does where every word is another');
 
   // the disc: what's read to boot it, and the file nothing reads

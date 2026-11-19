@@ -15,7 +15,9 @@ import { cartridgeOf, prepareCopy } from '../lib/proof-files.mjs';
 import { decidedMipsBranches } from '../ps2/decided.mjs';
 import { testedValues } from '../untouched.mjs';
 import { LOAD_AT, VU1_PROGRAM, madeUpPs2 } from './made-up-ps2.mjs';
-import { SECTOR, madeUpPs2Disc, systemCnf } from './made-up-ps2-iso.mjs';
+import { SECTOR, madeUpPs2Iso, systemCnf } from './made-up-ps2-iso.mjs';
+import { VU_PROGRAMS, madeUpPs2Disc as wholeDisc } from './made-up-ps2-disc.mjs';
+import { discFunctions, ps2Disc } from '../ps2/functions.mjs';
 
 // the EE's instructions, as MIPS encodes them
 const I = (op, rs, rt, value) => (op << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;
@@ -71,7 +73,7 @@ test('the program\'s bytes are where it runs, and a disc\'s sectors that hold an
   const work = join(LOCAL, 'test-ps2-ledger-unit');
   mkdirSync(work, { recursive: true });
   try {
-    const { disc, sectors } = madeUpPs2Disc({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'ZEROS.BIN': Buffer.alloc(2 * SECTOR), 'DATA.BIN': Buffer.alloc(SECTOR, 1).fill(2, 10) });
+    const { disc, sectors } = madeUpPs2Iso({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'ZEROS.BIN': Buffer.alloc(2 * SECTOR), 'DATA.BIN': Buffer.alloc(SECTOR, 1).fill(2, 10) });
     const path = join(work, 'made-up.iso');
     writeFileSync(path, disc);
     const { cells: { sectors: count, holds }, program } = await loadCopy(path);
@@ -90,28 +92,55 @@ test('the program\'s bytes are where it runs, and a disc\'s sectors that hold an
   }
 });
 
-test('what a run says counts for its processor\'s functions, and the EE\'s only where the program holds what ran', () => {
-  const program = [addiu(V0, 0, 1), beq(V0, 0, 2), NOP, jr(RA), NOP];
-  const held = bytesOf(program), cartridge = (address, count) => (address >= LOAD_AT && address < LOAD_AT + held.length ? held.subarray(address - LOAD_AT, address - LOAD_AT + count) : new Uint8Array(0));
-  const vu = Buffer.from(Uint32Array.from([0x8000033C, 0x000002FF]).buffer).toString('hex').toUpperCase();
-  const codeMap = { console: 'ps2', functions: [{ key: 'ee', address: LOAD_AT, size: held.length }, { key: 'vu', address: 0, size: 16, cpu: 'vu1', bytes: vu }] };
-  const layout = layoutOf(codeMap), find = finderOf(codeMap, cartridge, new Map());
+test('what a run says counts for the function whose bytes are what ran: the EE\'s in each program, a vector unit\'s where its upload puts it', () => {
+  const program = [addiu(V0, 0, 1), beq(V0, 0, 2), NOP, jr(RA), NOP], other = [addiu(V0, 0, 7), jr(RA)];
+  const held = bytesOf(program), vuPairs = bytesOf([0x8000033C, 0x000002FF, 0x8000033C, 0x400002FF]);
+  // what the code map lists (ps2/functions.mjs): the boot program's function, another program's at the same address, a
+  // vector unit's program, known by where its pairs are in the boot program, and a module's, from 0
+  const codeMap = { console: 'ps2', functions: [
+    { key: 'ee', address: LOAD_AT, size: held.length }, { key: 'other', address: LOAD_AT, size: 8, program: 'OTHER.ELF' },
+    { key: 'vu', address: 0x00200008, size: 16, vu: true }, { key: 'module', address: 0, size: 8, program: 'MADE_UP.IRX' },
+  ] };
+  const code = f => (f.vu ? { kind: 'vu', bytes: vuPairs, vuAddress: 0x40 } : f.program === 'OTHER.ELF' ? { kind: 'ee', bytes: bytesOf(other) } : f.program ? { kind: 'iop', bytes: bytesOf(other) } : { kind: 'ee', bytes: held });
+  const layout = layoutOf(codeMap), find = finderOf(codeMap, { code }, new Map());
   // records as ran-ps2.h writes them: address, word, what with the processor in its second byte, first and last frame
   const records = Uint32Array.from([
     LOAD_AT, program[0], RAN, 0, 1,
     LOAD_AT + 4, program[1], TAKEN, 1, 1,
     LOAD_AT + 4, program[1], NOT_TAKEN, 0, 0,
-    LOAD_AT + 8, 0x12345678, RAN, 0, 1,        // another word at the same place: code loaded over the program's
-    0, 0x8000033C, RAN | 3 << 8, 0, 1,
-    8, 0x8000033C, RAN | 1 << 8, 0, 1,          // the IOP's, where no function of the IOP is
+    LOAD_AT + 8, 0x12345678, RAN, 0, 1,        // a word neither program holds there: code from nowhere the map knows
+    LOAD_AT, other[0], RAN, 1, 1,              // the other program, loaded over the first
+    0x40, 0x8000033C, RAN | 3 << 8, 0, 1,      // vector unit 1, where the upload put the program
+    0x48, 0x8000033C, RAN | 2 << 8, 1, 1,      // and vector unit 0, given the same one
+    0, 0x8000033C, RAN | 3 << 8, 1, 1,         // the same word elsewhere in the unit's memory is another program's
+    0, other[0], RAN | 1 << 8, 0, 1,           // the IOP's, whose modules aren't followed to where they're loaded yet
   ]);
   const set = playedIn(records, Uint8Array.of(0, 1), layout, find);
   const has = (index, offset, what) => (set[((layout.first[index] + offset / 4) * 3 + what) >> 3] >> (((layout.first[index] + offset / 4) * 3 + what) & 7) & 1) === 1;
   assert.ok(has(0, 0, RAN) && has(0, 4, TAKEN), 'what ran in the frame that matched');
   assert.ok(!has(0, 4, NOT_TAKEN), 'a way gone only in a frame that didn\'t match doesn\'t count');
-  assert.ok(!has(0, 8, RAN), 'another word than the program holds there doesn\'t count');
-  assert.ok(has(1, 0, RAN), 'the vector unit\'s function, with its first word there');
-  assert.equal(set.reduce((sum, byte) => sum + [...byte.toString(2)].filter(bit => bit === '1').length, 0), 3);
+  assert.ok(!has(0, 8, RAN), 'another word than a program holds there doesn\'t count');
+  assert.ok(has(1, 0, RAN), 'the other program\'s function, where its own word ran');
+  assert.ok(has(2, 0, RAN) && has(2, 8, RAN), 'the vector unit\'s program, on either unit');
+  assert.equal(set.reduce((sum, byte) => sum + [...byte.toString(2)].filter(bit => bit === '1').length, 0), 5, 'and nothing else, the module\'s least of all');
+});
+
+test('every piece of code on a disc is read as what it is: its programs, its modules and its vector unit programs', async () => {
+  const work = join(LOCAL, 'test-ps2-ledger-code');
+  mkdirSync(work, { recursive: true });
+  try {
+    const made = wholeDisc(), path = join(work, 'made-up.iso');
+    writeFileSync(path, made.disc);
+    const { codeOf } = await loadCopy(path), functions = discFunctions(await ps2Disc(path));
+    const kinds = functions.map(f => `${f.program ?? 'boot'}${f.vu ? '~vu' : ''} ${codeOf(f).kind}`);
+    assert.deepEqual([...new Set(kinds)].sort(), ['DATA/MODELS.BIN:0xC4 ee', 'DATA/MODELS.BIN~vu vu', 'IOPRP.IMG:SECOND iop', 'MADE_UP.IRX iop', 'OTHER.ELF ee', 'boot ee', 'boot~vu vu'], 'a program inside a file of data among them');
+    assert.ok(functions.every(f => codeOf(f).bytes.length === f.size), 'each with all its bytes');
+    const uploads = functions.filter(f => f.vu && !f.program).map(f => codeOf(f).vuAddress);
+    assert.deepEqual(uploads, VU_PROGRAMS.map(p => p.vuAddress), 'a vector unit program goes where the MPG command before it says');
+    assert.ok(functions.filter(f => f.vu && f.program).every(f => codeOf(f).vuAddress !== null), 'one in a file of data too');
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 });
 
 test('the branches the code decides are found from the program alone, and nothing anything can reach into', () => {
