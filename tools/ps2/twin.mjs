@@ -38,7 +38,7 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
-import { hex, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { hex, inBootProgram, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
 import { originalPlay } from '../lib/recording.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
@@ -666,7 +666,8 @@ export async function twin(asked, options = {}, log = console.log) {
     log(`games/${game}/ has no twins yet.`);
     return 0;
   }
-  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  // the functions of the program the disc boots: another program's, or a vector unit's, can have the same address
+  const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   const found = new Map(findFunctions(elf).map(f => [f.address, f.size]));
   const header = await twinsFolder(folder);
   const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
