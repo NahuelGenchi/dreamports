@@ -13,6 +13,7 @@ import { leave, setHome } from './leave.js';
 import { opening as openedByPlay, shown } from './host.js';
 
 const GBA_BYTES = 32 * 1024 * 1024;   // the largest Game Boy Advance cartridge
+const KEPT_DISC = 256 * 1024 * 1024;  // the largest disc kept in the browser between visits
 
 // pixel art on the grid of the page's font, Monocraft: a unit is one of its pixels, 2 px at its 18 px size
 const pixels = (name, width, height, path) =>
@@ -38,10 +39,12 @@ const drawn = () => new Promise(resolve => { requestAnimationFrame(() => setTime
  * Renders the screen into `host`, under the game's name, `brand`, with its way back to `home`, the game's own page
  * on dreamports.net, where it goes when the player didn't come from its menu. The ROMs are kept in `roms`
  * (rom/store.js). Each of `slots` is { key, store, title, required, accept, claims(buffer), read(buffer, progress),
- * unload(), extras, console, maxBytes }: `store` is its key in `roms`; `claims` says whether a file's header names
- * this game; `console` is the one the ROM is for and `maxBytes` the largest it can be (a Game Boy Advance one, 32
- * MB, unless they say otherwise); `read` reads the ROM and resolves to a line about it (its region), or throws
- * with a message for the player, keeping the ROM it had; `unload` lets go of that one; `extras` (none by default)
+ * unload(), extras, console, maxBytes, pieces }: `store` is its key in `roms`; `claims` says whether a file's header
+ * names this game; `console` is the one the ROM is for and `maxBytes` the largest it can be (a Game Boy Advance one, 32
+ * MB, unless they say otherwise); `read` reads the ROM and resolves to a line about it (its region), or to { about,
+ * later }, a line now and a promise of a better one, or throws with a message for the player, keeping the ROM it had;
+ * with `pieces`, for a disc, `read(file, progress, { others })` gets the File itself and the files chosen with it, and
+ * reads it a few sectors at a time (kit/copy/page.js), and only a small one in one file is kept; `unload` lets go of that one; `extras` (none by default)
  * are its options, each { label, hint, keys, key, get(), set(on), auto }, where `hint` says what it does, `keys`
  * (if any) the keys that use it, shown only to a keyboard, `key` is the key that switches it in the game and
  * `auto` turns it on when the ROM is chosen. `onPlay()` starts the game once every required ROM is read, and
@@ -183,22 +186,33 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
   }
 
   // reads `buffer` into the row's game, resolving to null or what's wrong with it; `store` keeps it in this
-  // browser, `auto` turns its extras on. A ROM it can't read leaves the one it had.
-  async function load(c, buffer, name, { store = false, auto = false, saved = false } = {}) {
+  // browser, `auto` turns its extras on. A ROM it can't read leaves the one it had. A disc is given as its File, never
+  // read whole (`pieces`), with the other files chosen with it, and a large one isn't kept: it would fill the browser's storage.
+  async function load(c, buffer, name, { store = false, auto = false, saved = false, others = [] } = {}) {
     const token = ++c.token, had = c.el.dataset.state === 'ready';
     say(c, '');
     c.detail.textContent = 'Reading…';
     setState(c, 'reading');
     await drawn();
     try {
-      const detail = await c.slot.read(buffer, async text => {
+      const read = await c.slot.read(buffer, async text => {
         if (token === c.token) c.detail.textContent = text;
         await drawn();
-      });
+      }, { others });
       if (token !== c.token) return null;
+      // a line now, and a better one later, as a disc's version takes seconds to tell
+      const { about: detail, later = null } = typeof read === 'object' && read ? read : { about: read };
+      later?.then(text => {
+        if (token !== c.token || !text) return;
+        c.about = text;
+        if (c.el.dataset.state === 'ready') c.detail.textContent = text;
+      }, () => {});
       c.text.title = name;
       c.about = detail;
-      c.saved = saved || (store && await roms.remember(name, buffer, c.slot.store));
+      // a small disc in one file is kept as a ROM is, as the File it is; a large one would fill the device's storage
+      const keeps = !c.slot.pieces || (buffer.size <= KEPT_DISC && !/\.cue$/i.test(name));
+      c.saved = saved || (store && keeps && await roms.remember(name, buffer, c.slot.store));
+      if (store && !keeps) say(c, 'A disc this large stays where it is on your device, so add it again next time.');
       if (auto) c.slot.extras.forEach(e => { if (e.auto) e.set(true); });
       setState(c, 'ready');
       return null;
@@ -213,10 +227,16 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
 
   // a chosen or dropped file: to the row of the game its header names, else to `target` (whose check then says
   // what's wrong with it). Resolves to { key, error }: the game it went to and, when it couldn't be read, why.
-  async function addFile(file, target, auto, alone) {
+  async function addFile(file, target, auto, alone, others) {
     const into = target && rows[target];
     const fail = error => { if (into) say(into, error, 'error'); else showNote(error); return { key: null, error }; };
     if (file.size > maxBytes) return fail(`${file.name} is too large to be a ${either(consoles)} ROM.`);
+    // a disc is read a few sectors at a time, from the File itself, so it goes to the row that reads discs
+    const disc = into?.slot.pieces ? into : Object.values(rows).find(c => c.slot.pieces);
+    if (disc) {
+      const error = await load(disc, file, file.name, { store: remember.checked, auto, others });
+      return { key: disc.slot.key, error };
+    }
     const buffer = await file.arrayBuffer();
     const c = Object.values(rows).find(c => c.slot.claims(buffer)) ?? into;
     if (!c) return fail(`${file.name} isn't ${either(slots.map(s => s.title))}.`);
@@ -237,7 +257,11 @@ export function createRomSetup(host, { brand, home, roms, heading, intro, slots,
    */
   async function add(files, target = null, { auto = true } = {}) {
     const results = [];
-    for (const file of files) results.push(await addFile(file, target, auto, files.length === 1));
+    // a disc's .cue comes with the tracks it names, which are read through it, not added on their own
+    const cues = slots.some(s => s.pieces) ? files.filter(f => /\.cue$/i.test(f.name)) : [];
+    const tracks = cues.length ? files.filter(f => !cues.includes(f) && /\.(bin|img|wav)$/i.test(f.name)) : [];
+    const own = files.filter(f => !tracks.includes(f));
+    for (const file of own) results.push(await addFile(file, target, auto, own.length === 1, files));
     return results;
   }
 

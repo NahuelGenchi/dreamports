@@ -236,6 +236,50 @@ void console_hblank(int y) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The sound: the engine is the game's own, run in the console's memory, and the kit is the sound hardware. The engine's
+// library says each register it writes (console_wrote): the sound chip's go to the kit as they're written, and a sound
+// channel's DMA switched on to wait for its FIFO reads from its source again. Each frame, the kit is given the samples
+// the two channels feed their FIFOs during it, as many as the first timer's rate makes.
+static u32 sound_at[2];
+static u8 sound_on[2];
+static int console_memory(u32 address);
+
+void console_wrote(const volatile void *where, u32 bytes) {
+  u32 at = (u32)((const u8 *)where - (const u8 *)console_io), i, n;
+  if (at >= sizeof console_io) return;
+  for (i = 0; i < bytes; i++)
+    if (at + i >= 0x60 && at + i < 0xA0) gba_sound_console_write((int)(at + i), ((const u8 *)console_io)[at + i]);
+  for (n = 0; n < 2; n++) {
+    u32 control = 0xC6 + 12 * n;
+    u16 value;
+    if (at > control + 1 || at + bytes <= control) continue;
+    value = console_io[control >> 1];
+    // on, at the FIFO's own time: from the source it was given, where it wasn't on already
+    if ((value & 0x8000) && (value >> 12 & 3) == 3) {
+      if (!sound_on[n]) sound_at[n] = (u32)console_io[(control - 10) >> 1] | (u32)console_io[(control - 8) >> 1] << 16;
+      sound_on[n] = 1;
+    } else {
+      sound_on[n] = 0;
+    }
+  }
+}
+
+// the samples of the frame that starts: each channel's next stretch of its source
+static void console_sound_frame(void) {
+  static const s8 silence[704];
+  u16 reload = console_io[0x100 >> 1];
+  u32 count = (console_io[0x102 >> 1] & 0x80) && reload ? 280896u / (0x10000u - reload) : 0, n;
+  const s8 *from[2];
+  if (count > sizeof silence) count = sizeof silence;
+  for (n = 0; n < 2; n++) {
+    int plays = sound_on[n] && console_memory(sound_at[n]) && console_memory(sound_at[n] + count);
+    from[n] = plays ? (const s8 *)sound_at[n] : silence;
+    if (plays) sound_at[n] += count;
+  }
+  gba_sound_console_samples(from[0], from[1], (int)count);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The BIOS's work, which the game calls through its stubs.
 
 /** VBlankIntrWait: until the V-blank's interrupt has said it ran, the frame's lines drawn and the V-blank begun. The
@@ -256,6 +300,7 @@ void VBlankIntrWait(void) {
     gba_clock_resume(gba_clock_frame_end(console_frame++));
     console_blank_timed = 1;
     console_vblank();
+    console_sound_frame();
   } while (!(*(vu16 *)0x03007FF8 & 1));
   *(vu16 *)0x03007FF8 &= ~1;
 }
@@ -341,6 +386,8 @@ void console_power_on(void) {
   console_io[IO_RCNT >> 1] = 0x8000;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;
+  // the kit as the sound hardware of the engine the game runs
+  gba_sound_console();
   gba_on_hblank(console_hblank);
 }
 
