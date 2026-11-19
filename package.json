@@ -17,6 +17,7 @@
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",
     "test:ps2-kit": "node tools/test/ps2-kit.mjs",
     "test:twin": "node tools/test/twin.mjs",
+    "test:clock": "node tools/test/clock.mjs",
     "test:match": "node tools/test/match.mjs",
     "test:rebuild": "node tools/test/rebuild.mjs",
     "test:nes-twin": "node tools/test/nes-twin.mjs",

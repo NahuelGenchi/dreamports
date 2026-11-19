@@ -29,7 +29,7 @@ export const C_BASE = fileURLToPath(new URL('../../kit/c/', import.meta.url));
 // console.h, and runs on a computer with the base's program for one (native.c), as a console with no kit of its own does
 const OWN = {
   gba: {
-    folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c'],
+    folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c', 'clock.c'],
     // what the console's compiler takes for granted, which C written for it leans on: a char with no sign, and code
     // that reads a value through a pointer of another type or through address 0
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks'],
