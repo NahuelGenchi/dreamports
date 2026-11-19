@@ -18,46 +18,64 @@
 //             the original's bytes. `match` and `twin` put a line right by proving its function again.
 //   --task    with --check, also fails unless every function of that task has its proof, which is how `ready`
 //             says a task is done.
+//   --bytes   sorts every byte of the version's copy (lib/rebuild.mjs, accountOf): proven code, code without a
+//             proof, data used in play, data never used, and bytes explained, with how each was told apart, and
+//             lists the stretches still unexplained, the biggest first, or every one with --all.
+//
+// Beside each version's count it prints code ported and gameplay proven, and bytes accounted for: the share of the
+// copy's bytes that are proven code, data used in play or explained, on a computer with the copy. That number is the
+// tools' own: nothing writes it in a proof file, and the site doesn't show it.
 
-import { hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { cartridgeOf, hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, PROOFS, readProofs, startProofs, stateOf, stateText } from './lib/proofs.mjs';
+import { accountOf, ACCOUNTED, KINDS as BYTES } from './lib/rebuild.mjs';
+import { followsContent, readUnreachable, usedCells } from './lib/played.mjs';
+import { copyWith } from './lib/copies.mjs';
+import { HEADER } from './gba/header.mjs';
+import { readProof } from './readme.mjs';
+import { percentText } from '../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 
-const USAGE = 'Usage: npm run dp -- proofs [<version>] [<function or task>] [--start] [--check] [--task <function or task>]';
+const USAGE = 'Usage: npm run dp -- proofs [<version>] [<function or task>] [--start] [--check] [--task <function or task>] [--bytes [--all]]';
 const count = n => n.toLocaleString('en');
 const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
 
 export async function run(args) {
   const rest = [];
   let task = null;
-  const start = args.includes('--start'), check = args.includes('--check');
+  const start = args.includes('--start'), check = args.includes('--check'), bytes = args.includes('--bytes'), all = args.includes('--all');
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--task') {
       task = args[++i];
       if (!task) throw new Error(`--task needs a function's address or a task's name.\n${USAGE}`);
-    } else if (!['--start', '--check'].includes(args[i])) {
+    } else if (!['--start', '--check', '--bytes', '--all'].includes(args[i])) {
       if (args[i].startsWith('--')) throw new Error(`proofs has no ${args[i]}.\n${USAGE}`);
       rest.push(args[i]);
     }
   }
   const [version, named] = rest;
-  if (rest.length > 2 || ((start || task || named) && !version)) throw new Error(USAGE);
+  if (rest.length > 2 || ((start || task || named || bytes) && !version) || (all && !bytes) || (bytes && named)) throw new Error(USAGE);
   if (start) return begin(version);
   if (check) return checkAll(version ? [version] : keptVersions().filter(asksForProofs), task);
   if (!version) {
     const keeping = keptVersions().filter(asksForProofs);
     if (!keeping.length) console.log('No version keeps its proofs yet: each is made a part at a time. npm run dp -- proofs <version> --start starts one\'s.');
-    for (const each of keeping) console.log(`${each}: ${summary(countsOf(stateOf(each)))}`);
+    for (const each of keeping) {
+      const states = stateOf(each);
+      console.log(`${each}: ${summary(countsOf(states))}\n  ${numbers(each, bytesAccounted(each, { states }))}`);
+    }
     return 0;
   }
-  const { states, groups } = read(version);
+  const { codeMap, states, groups } = read(version);
+  if (bytes) return showBytes(version, bytesAccounted(version, { codeMap, states: [...states.values()] }), all);
   if (named) {
     const group = groupNamed(groups, named);
     if (!group) throw new Error(`No task of ${version} goes by "${named}": name one as npm run dp -- proofs ${version} lists them, or the address of one of its functions.`);
     show(version, group, states);
     return 0;
   }
-  console.log(`${version}: ${summary(countsOf([...states.values()]))}\n`);
+  console.log(`${version}: ${summary(countsOf([...states.values()]))}`);
+  console.log(`${numbers(version, bytesAccounted(version, { codeMap, states: [...states.values()] }))}\n`);
   const width = Math.max(...groups.map(group => group.name.length));
   for (const group of groups) {
     const proven = group.functions.filter(f => states.get(f.key).kind).length;
@@ -76,6 +94,64 @@ function read(version) {
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   if (!asksForProofs(version)) throw new Error(`${version} keeps no proofs: it's made a part at a time, and its tasks are its parts (npm run dp -- find ${game}). npm run dp -- proofs ${version} --start makes it a version made a function at a time, which is its lead's to decide.`);
   return { codeMap, states: new Map(stateOf(version, { codeMap }).map(state => [state.key, state])), groups: groupsOf(codeMap) };
+}
+
+/**
+ * Every byte of a version's copy accounted for, as accountOf gives it (lib/rebuild.mjs), from its code map, its
+ * functions' proofs (`states`, as stateOf gives them), the data its played.json says was used in frames that matched
+ * and the game's unreachable.json; or { why } when it can't be: without the copy on this computer, or on a console
+ * whose data the tools don't follow in play yet.
+ */
+export function bytesAccounted(version, { codeMap = readCodeMap(version), states = stateOf(version, { codeMap }) } = {}) {
+  const original = readOriginal(version), copy = copyWith(original.sha1);
+  if (!followsContent(codeMap)) return { why: 'not measured on this console yet, as the tools don\'t follow its data in play' };
+  if (!copy) return { why: 'needs your copy: npm run dp -- rom <file>' };
+  const rom = cartridgeOf(copy.path, original.console).copy();
+  return accountOf({
+    rom, functions: codeMap.functions, proven: new Set(states.filter(state => state.kind).map(state => state.key)),
+    used: usedCells(version, codeMap, rom.length), unreachable: readUnreachable(version).content, header: original.console === 'gba' ? HEADER : null,
+  });
+}
+
+// a version's three numbers: the two the site shows, from its proof files, and bytes accounted for, the tools' own
+function numbers(version, account) {
+  const accounted = `bytes accounted for ${account.why ?? percentText(account.percent)}`;
+  let proof;
+  try {
+    proof = readProof(version);
+  } catch {
+    return `Code ported and gameplay proven don't add up (npm run check says why), ${accounted}`;
+  }
+  const measured = percent => percentText(percent) ?? 'not measured yet';
+  return `Code ported ${measured(proof?.ported?.percent)}, gameplay proven ${measured(proof?.gameplay?.percent)}, ${accounted}`;
+}
+
+const sentence = text => text[0].toUpperCase() + text.slice(1);
+
+// --bytes: every byte of the copy, by kind, and the stretches still unexplained
+function showBytes(version, account, all) {
+  if (account.why) throw new Error(`${version}'s bytes can't be accounted for: ${account.why}.`);
+  const { counts, total } = account, width = count(total).length;
+  const line = (name, words) => `${count(counts[name]).padStart(width)} bytes  ${words}`;
+  console.log(`${version}: every byte of ${readOriginal(version).name}, ${plural(total, 'byte')}.`);
+  for (const name of ['proven', 'unproven', 'used', 'never']) console.log(`  ${line(name, sentence(BYTES[name]))}`);
+  console.log('  Explained:');
+  for (const name of ACCOUNTED.filter(name => !['proven', 'used'].includes(name))) console.log(`    ${line(name, sentence(BYTES[name]))}`);
+  console.log(`Bytes accounted for: ${percentText(account.percent)}, ${count(account.accounted)} of ${plural(total, 'byte')}.`);
+  if (!account.unexplained.length) {
+    console.log('\nEvery byte is proven code, data used in play or explained.');
+    return 0;
+  }
+  const shown = all ? account.unexplained : account.unexplained.slice(0, 20);
+  const stretches = account.unexplained.length;
+  console.log(`\nStill unexplained, ${count(stretches)} stretch${stretches === 1 ? '' : 'es'}, the biggest first:`);
+  for (const s of shown) {
+    const size = s.to - s.from + 1;
+    const what = s.kind === 'unproven' ? `code without a proof, ${s.functions.length === 1 ? `function 0x${hex(s.functions[0])}` : `${count(s.functions.length)} functions from 0x${hex(s.functions[0])}`}` : 'data never used';
+    console.log(`  0x${hex(s.from)}${size > 1 ? ` to 0x${hex(s.to)}` : ''}  ${plural(size, 'byte')}, ${what}`);
+  }
+  if (shown.length < account.unexplained.length) console.log(`  and ${count(account.unexplained.length - shown.length)} more: --all lists them.`);
+  return 0;
 }
 
 const summary = counts => `${count(counts.bytes + counts.memory)} of ${plural(counts.functions, 'function')} proven, ${count(counts.bytes)} by ${KINDS.bytes} and ${count(counts.memory)} by ${KINDS.memory}`;
