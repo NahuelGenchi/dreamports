@@ -17,26 +17,14 @@
 import { readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 import { readDiscFile } from '../lib/read-copy.mjs';
+import { isInstruction } from './mips.mjs';
+
+export { isInstruction };
 
 const JR_RA = 0x03E00008;
 const HEADER = 0x800;
 const isOpening = word => (word >>> 16) === 0x27BD && (word & 0x8000) !== 0;   // ADDIU sp, sp, a negative number
 const op = word => word >>> 26, rs = word => (word >>> 21) & 31, rt = word => (word >>> 16) & 31, funct = word => word & 63;
-
-// the R3000A's instructions, by their first six bits, and for SPECIAL and REGIMM by the field that says which: anything
-// else is no instruction, as a program's values mostly aren't (the COP2 commands are the geometry processor's)
-const PRIMARY = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 32, 33, 34, 35, 36, 37, 38, 40, 41, 42, 43, 46, 50, 58]);
-const SPECIAL = new Set([0, 2, 3, 4, 6, 7, 8, 9, 12, 13, 16, 17, 18, 19, 24, 25, 26, 27, 32, 33, 34, 35, 36, 37, 38, 39, 42, 43]);
-const REGIMM = new Set([0, 1, 16, 17]);
-
-/** Whether a word is one of the R3000A's instructions. */
-export function isInstruction(word) {
-  const o = op(word);
-  if (!PRIMARY.has(o)) return false;
-  if (o === 0) return SPECIAL.has(funct(word));
-  if (o === 1) return REGIMM.has(rt(word));
-  return true;
-}
 
 /** The program in a player's copy: a PS-X EXE as it is, or the one a disc boots, which is PSX.EXE when its SYSTEM.CNF
  *  names none. */
