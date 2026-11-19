@@ -10,5 +10,6 @@ void Task_EditLanguageScreenInit(void);
 void TaskDestructor_EditLanguageScreen(struct Task *t);
 void sub_806A6A8(void);
 void sub_806AD44(void);
+void Task_806ABD4(void);
 
 #endif

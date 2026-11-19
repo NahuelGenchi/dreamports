@@ -5,36 +5,12 @@
 #include "malloc.h"
 #include "sprite.h"
 #include "task.h"
+#include "ui.h"
+#include "dma.h"
+#include "screen.h"
 
 #define TM_LANGUAGE_SCREEN 89
 #define SA1_ANIM_MENU_CURSOR 0x359
-
-/** A screen's fade in and out, as sub_805423C steps it. */
-struct StrcUi_805423C {
-  /* 0x00 */ u16 unk0;
-  /* 0x02 */ u16 unk2;
-  /* 0x04 */ u16 unk4;
-  /* 0x06 */ u16 unk6;
-  /* 0x08 */ u16 unk8;
-  /* 0x0A */ u8 unkA;
-};
-
-/** A picture for a screen of menus, as sub_80528AC loads it. */
-struct Strc_80528AC {
-  /* 0x00 */ u8 unk0[0xC];
-  /* 0x0C */ u8 *vramC;
-  /* 0x10 */ const u8 *layout;
-  /* 0x14 */ const u8 *tiles;
-  /* 0x18 */ s32 tilesSize;
-  /* 0x1C */ s32 layoutSize;
-  /* 0x20 */ const u16 *palette;
-  /* 0x24 */ u32 paletteSize;
-  /* 0x28 */ u8 unk28;
-  /* 0x29 */ u8 unk29;
-  /* 0x2A */ u8 unk2A;
-  /* 0x2B */ u8 unk2B;
-  /* 0x2C */ u8 uiGfxID;
-};
 
 /** What the language screen keeps: the language names and the words around them, the cursor, its fade, why it opened
  *  (at a first start, or from the options) and the language chosen. */
@@ -62,9 +38,6 @@ extern const u16 gUnknown_086C7BD0[0x100];
 
 void sub_80535FC(void);
 u16 UiGfxStackInit(void);
-u8 sub_805423C(struct StrcUi_805423C *fade);
-void sub_80528AC(struct Strc_80528AC *gfx);
-void Task_806ABD4(void);
 void DisplaySprite(struct Sprite *s);
 
 #define DPAD_UP 0x40
@@ -179,6 +152,59 @@ void TaskDestructor_EditLanguageScreen(struct Task *t) {
 
   for (i = 0; i < 6; i++) VramFree(screen->sprites[i].graphics.dest);
   VramFree(screen->spr120.graphics.dest);
+}
+
+/** What the screen goes back to: the title screen's menus at a first start, the options otherwise. */
+extern void (*const sLangScreenReturnProcs[2])(void);
+void m4aSoundVSyncOn(void);
+
+/** 0x0806AA00, Task_806ABD4: once faded out, the screen goes, and from the options the save is written, with the
+ *  sound and the interrupts held meanwhile; then the screen it came from. */
+void Task_806ABD4(void) {
+  struct EditLanguageScreen *screen = TASK_DATA(gCurTask);
+
+  if (sub_805423C(&screen->unk180)) {
+    gDispCnt &= ~0xE000;
+    gBldRegs.bldCnt = 0;
+    gBldRegs.bldY = 0;
+    TaskDestroy(gCurTask);
+
+    if (screen->unk18C == 1) {
+      u16 irqEnable, irqMasterEnable, dispStat;
+
+      m4aMPlayAllStop();
+      m4aSoundVSyncOff();
+      gFlags |= FLAGS_8000;
+      irqEnable = REG_READ16(REG_IE);
+      irqMasterEnable = REG_READ16(REG_IME);
+      dispStat = REG_READ16(REG_DISPSTAT);
+      REG_WRITE16(REG_IE, 0);
+      REG_READ16(REG_IE);
+      REG_WRITE16(REG_IME, 0);
+      REG_READ16(REG_IME);
+      REG_WRITE16(REG_DISPSTAT, 0);
+      REG_READ16(REG_DISPSTAT);
+      {
+        gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
+        DMA_SLOW_STOP(0);
+        DMA_SLOW_STOP(1);
+        DMA_SLOW_STOP(2);
+        DMA_SLOW_STOP(3);
+        WriteSaveGame();
+      }
+      REG_WRITE16(REG_IE, irqEnable);
+      REG_READ16(REG_IE);
+      REG_WRITE16(REG_IME, irqMasterEnable);
+      REG_READ16(REG_IME);
+      REG_WRITE16(REG_DISPSTAT, dispStat);
+      REG_READ16(REG_DISPSTAT);
+      m4aSoundVSyncOn();
+      gFlags &= ~FLAGS_8000;
+    }
+    CALL(sLangScreenReturnProcs[screen->unk18C])();
+    return;
+  }
+  sub_806AD44();
 }
 
 /** Task_EditLanguageScreenInit, 0x0806A920: once faded in, up and down move between the two languages. A, or Start

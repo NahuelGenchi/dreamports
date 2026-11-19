@@ -52,5 +52,10 @@ u32 SaveSectorSum(void *sector);
 bool32 SaveGameExists(void);
 void CreateEmptySaveGame(void);
 u16 ReadFlash(u16 sectorNum, u32 offset, void *dest, u32 size);
+u16 WriteSaveGame(void);
+void *EwramMalloc(u32 size);
+void EwramFree(void *p);
+extern u16 (*EraseFlashSector)(u16 sectorNum);
+u32 ProgramFlashSectorAndVerifyNBytes(u16 sectorNum, void *src, u32 n);
 
 #endif

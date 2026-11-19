@@ -20,6 +20,8 @@ extern u8 gEwramHeap[EWRAM_HEAP_SIZE];
 extern void *gVramHeapNone;
 extern u8 *gVramHeapStartAddr;
 extern u16 gVramHeapState[VRAM_HEAP_SEGMENTS];
+/** How many tiles the sprites' heap has, which EngineInit sets. */
+extern u16 gVramHeapMaxTileSlots;
 
 void EwramInitHeap(void);
 void VramResetHeapState(void);
