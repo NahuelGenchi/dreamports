@@ -12,6 +12,9 @@
 //   tone written through the data port and the click by DMA, the envelopes, a pitch that moves every frame, a volume
 //   sweep up and one down, keys let go of and keyed on again, the reverb, core 0 mixed into core 1, and what the chip
 //   says of its voices' ends and its interrupt address, read back and written where it takes no notice;
+// - with a recording that holds buttons and the left stick, what the module reads of the pad through the SIO2 each
+//   frame, written into the sound list the same way, is what the emulator's pad says: its mode, its buttons, its sticks
+//   and the pressure on each button, and a Dreamport that doesn't read the pressure is found;
 // - a Dreamport whose pitch is one step out on one frame is found on that frame, by its sound list.
 //
 // It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
@@ -32,6 +35,10 @@ const MEDIA = join(REPO, 'public', 'media');
 const FRAMES = 300;
 // the frame whose pitch the broken Dreamport writes a step out
 const BROKEN_AT = 150;
+// what the second recording holds, from each frame on: every button and each way of the left stick, at some point
+const PRESSED = [[0, []], [30, ['CROSS']], [45, ['UP', 'L1']], [60, ['STICK_LEFT']], [75, ['STICK_DOWN', 'R2', 'START']], [90, ['STICK_RIGHT', 'STICK_UP', 'TRIANGLE']],
+  [105, ['CIRCLE', 'SQUARE', 'DOWN', 'LEFT']], [120, ['RIGHT', 'R1', 'L2', 'SELECT']], [135, ['L3', 'R3']], [150, ['STICK_LEFT', 'STICK_RIGHT']], [165, []], [200, ['CROSS', 'CIRCLE']], [230, []]];
+const FIRST_PRESSED = PRESSED[1][0];
 
 const failures = [];
 const check = (ok, what) => {
@@ -44,15 +51,15 @@ const dp = (...args) => {
   return { status, out: stdout + stderr };
 };
 const inC = game => `${game}/c`;
-const report = () => {
-  const file = join(resultFolder(inC(GAME), 'still'), 'report.json');
+const report = (recording = 'still') => {
+  const file = join(resultFolder(inC(GAME), recording), 'report.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 };
 const hex = number => `0x${(number >>> 0).toString(16).toUpperCase()}`;
 const pairs = list => `{ ${list.map(([register, value]) => `{ ${hex(register)}, ${hex(value)} }`).join(', ')} }`;
 
 // the Dreamport in C: made-up-ps2-sound.c with the program's numbers filled in, or with its pitch a step out on one frame
-function writeGame({ broken = false, early = false } = {}) {
+function writeGame({ broken = false, early = false, noPressure = false } = {}) {
   const { R } = sound, { places } = sound.madeUpPs2Sound(), module = sound.moduleData();
   const numbers = {
     CORE1: hex(sound.CORE1), REVERB: pairs(sound.REVERB), VOICES: pairs(sound.VOICES),
@@ -61,6 +68,8 @@ function writeGame({ broken = false, early = false } = {}) {
     SERVER: hex(sound.SERVER), RPC_BUFFER_IN_MODULE: hex(module.rpcBuffer), SERVER_ARGUMENTS: hex(places.serverArguments), ANSWERED: hex(places.answered),
     SERVER_BIND_TRANSFERS: hex(places.serverBindTransfers), SERVER_CALL_TRANSFERS: hex(places.serverCallTransfers),
     INIT_TRANSFERS: hex(places.initTransfers), IRX_TRANSFERS: hex(places.irxTransfers), BIND_TRANSFERS: hex(places.bindTransfers), CALL_TRANSFERS: hex(places.callTransfers),
+    PAD_READ: `{ ${sound.PAD_READ.map(hex).join(', ')} }`, PAD_ANSWER: sound.PAD_ANSWER, PAD_ASKED: noPressure ? 9 : sound.PAD_ANSWER,
+    PAD_SET_UP: sound.PAD_SET_UP.map(([bytes, answered]) => `  { static const uint8_t command[] = { ${bytes.map(hex).join(', ')} }; sio2(command, sizeof command, ${answered}); }`).join('\n'),
     LABEL_ENUM: sound.LABEL_NAMES.map(name => name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')).join(', '),
     ATTR: hex(R.ATTR), TSA_HI: hex(R.TSA_HI), TSA_LO: hex(R.TSA_LO), STD: hex(R.STD), IRQA_HI: hex(R.IRQA_HI), IRQA_LO: hex(R.IRQA_LO),
     KON_HI: hex(R.KON_HI), KOFF_HI: hex(R.KOFF_HI), MMIX: hex(R.MMIX), ENDX_HI: hex(R.ENDX_HI), IRQINFO: hex(R.IRQINFO),
@@ -89,11 +98,12 @@ function tidy() {
 }
 
 // the program as a game of its own: its copy known to `rom`, a code map of its one function, what `new` writes, in
-// JavaScript and in C, and a recording that holds nothing
+// JavaScript and in C, a recording that holds nothing and one that holds buttons. Its buttons are read after the
+// V-blank, as every PlayStation 2 game's are in the emulator, which gives the pad a frame's buttons as the frame starts
 function setUp({ elf, sha1 }) {
   const copy = join(WORK, `${GAME}.elf`);
   writeFileSync(copy, elf);
-  const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: '', sha1, provenBy: 'draw lists' };
+  const original = { console: 'ps2', name: `${GAME} (World)`, title: GAME, code: '', sha1, provenBy: 'draw lists', keysAfterVBlank: true };
   mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
@@ -112,6 +122,7 @@ function setUp({ elf, sha1 }) {
     writeFileSync(join(gameFolder(inC(GAME)), file), text);
   }
   writeFileSync(join(proofFolder(GAME), 'recordings', 'still.json'), `${JSON.stringify({ about: 'Nothing held.', frames: FRAMES, held: [[0, []]] }, null, 2)}\n`);
+  writeFileSync(join(proofFolder(GAME), 'recordings', 'pressed.json'), `${JSON.stringify({ about: 'Buttons and the left stick held, a few at a time.', frames: FRAMES, held: PRESSED }, null, 2)}\n`);
 }
 
 function main() {
@@ -127,6 +138,17 @@ function main() {
     `the EE gets from the SIF what the emulator gives it, the Dreamport gives the sound chip what the module does, and the kit mixes every sample as the emulator does, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}, sound ${JSON.stringify(found.sound?.firstDifference ?? null)}`);
   check(found.sound?.heard === true, 'and the Dreamport is heard');
   if (run.status) console.log(run.out);
+
+  run = dp('prove', inC(GAME), 'pressed');
+  found = report('pressed');
+  check(run.status === 0 && found.matched === FRAMES && !found.sound?.differs?.length,
+    `with buttons and the left stick held, the module reads from the pad what the emulator's gives it, its mode, its buttons, its sticks and the pressure on each button, every frame: ${found.matched} of ${found.frames}, sound ${JSON.stringify(found.sound?.firstDifference ?? null)}`);
+  if (run.status) console.log(run.out);
+  writeGame({ noPressure: true });
+  run = dp('prove', inC(GAME), 'pressed');
+  found = report('pressed');
+  check(run.status !== 0 && found.sound?.firstDifference?.frame === FIRST_PRESSED && found.sound.firstDifference.by === 'list',
+    `a Dreamport that doesn't read the pressure is found on the first frame a button is held: ${JSON.stringify(found.sound?.firstDifference)}`);
 
   writeGame({ broken: true });
   run = dp('prove', inC(GAME), 'still');

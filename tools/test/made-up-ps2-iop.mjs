@@ -135,6 +135,8 @@ const lui = (rt, value) => op(0x0F, 0, rt, value), ori = (rt, rs, value) => op(0
 const slti = (rt, rs, value) => op(0x0A, rs, rt, value);
 const lw = (rt, offset, base) => op(0x23, base, rt, offset), sw = (rt, offset, base) => op(0x2B, base, rt, offset);
 const lhu = (rt, offset, base) => op(0x25, base, rt, offset), sh = (rt, offset, base) => op(0x29, base, rt, offset);
+const lbu = (rt, offset, base) => op(0x24, base, rt, offset), sb = (rt, offset, base) => op(0x28, base, rt, offset);
+const or = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x25) >>> 0;
 const addu = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x21) >>> 0, sll = (rd, rt, shift) => (rt << 16 | rd << 11 | shift << 6) >>> 0;
 const JR_RA = 0x03E00008;
 const li = (rt, value) => (value >>> 16) ? [lui(rt, value >>> 16), ori(rt, rt, value & 0xFFFF)] : [ori(rt, ZERO, value)];
@@ -176,6 +178,15 @@ function assembleIop(code) {
   return { words, places };
 }
 
+// The pad, through the SIO2 at 0xBF808200, which T3 reaches from 0xBF810000: a command sent a byte at a time and its
+// answer read back, with the command in A0, its length in A1, the answer's length in A2 and where it goes in A3
+const SIO2 = { REG0: 0x8200, DATA_OUT: 0x8260, DATA_IN: 0x8264, CTRL: 0x8268 };
+const sio2 = (command, sent, answered) => [placeOf(A0, command), ...li(A1, sent), ...li(A2, answered), placeOf(A3, 'padAnswer'), bal('sio2'), NOP];
+/** What the module sends the pad as it starts, each [bytes, how many come back]: into its configuration, to analog,
+ *  with the pressure on every button, and out again. And what it sends each frame, which reads all of it. */
+export const PAD_SET_UP = [[[0x01, 0x43, 0x00, 0x01, 0x00], 5], [[0x01, 0x44, 0x00, 0x01, 0x03, 0, 0, 0, 0], 9], [[0x01, 0x4F, 0x00, 0xFF, 0xFF, 0x03, 0, 0, 0], 9], [[0x01, 0x43, 0x00, 0x00, 0x00], 5]];
+export const PAD_READ = [0x01, 0x42, 0x00, ...Array(18).fill(0)], PAD_ANSWER = 21;
+
 // frames % n into T2, from S1, by taking n away while it's at least n
 const remainder = (n, name) => [addiu(T2, S1, 0), at(`${name}Again`), slti(T1, T2, n), bne(T1, ZERO, `${name}Done`), NOP, addiu(T2, T2, -n), beq(ZERO, ZERO, `${name}Again`), NOP, at(`${name}Done`)];
 
@@ -208,11 +219,19 @@ const soundModule = () => assembleIop([
   lui(T3, 0xBF80), placeOf(T0, 'click'), sw(T0, 0x1500, T3), ...li(T0, 16 | (CLICK.length / 64) << 16), sw(T0, 0x1504, T3), ...li(T0, 0x01000201), sw(T0, 0x1508, T3),
   spu(CORE1 + R.ATTR, 0x8000),
   spuAll(VOICES),
+  // the pad set to give the pressure on its buttons
+  lui(T3, 0xBF81),
+  PAD_SET_UP.map(([bytes, answered], i) => sio2(`padSetUp${i}`, bytes.length, answered)),
   addiu(S1, ZERO, 0), ...li(S2, PITCH_START),
 
   // then each V-blank, with S1 the frame and S2 the first voice's pitch
   at('frame'),
   bal('WaitVblankStart'), NOP,
+  // the pad read, and what it says written back two bytes at a time where the sound chip takes no notice: its mode,
+  // its buttons, its sticks and the pressure on each button
+  lui(T3, 0xBF81), sio2('padRead', PAD_READ.length, PAD_ANSWER),
+  placeOf(T1, 'padAnswer'),
+  Array.from({ length: (PAD_ANSWER - 1) / 2 }, (_, i) => [lbu(T0, 1 + i * 2, T1), lbu(T2, 2 + i * 2, T1), NOP, sll(T2, T2, 8), or(T0, T0, T2), sh(T0, R.MMIX, S3)]),
   bne(S1, ZERO, 'playing'), NOP,
   spu(R.ATTR, ATTR_PLAYING), spu(voice(0, R.VOLR), SWEEP_UP), spu(R.KON_HI, 3), spu(CORE1 + R.KON_HI, 1),
   beq(ZERO, ZERO, 'next'), NOP,
@@ -231,6 +250,14 @@ const soundModule = () => assembleIop([
   lhu(T0, R.IRQINFO, S3), NOP, sh(T0, R.MMIX, S3),
   at('next'),
   beq(ZERO, ZERO, 'frame'), addiu(S1, S1, 1),
+
+  // a command to the SIO2: how long it is each way, the first of the commands, then each byte out and each byte back
+  at('sio2'),
+  sll(T0, A1, 8), sll(T1, A2, 18), or(T0, T0, T1), sw(T0, SIO2.REG0, T3),
+  ...li(T0, 0x0C), sw(T0, SIO2.CTRL, T3),
+  at('sio2Out'), lbu(T0, 0, A0), NOP, sw(T0, SIO2.DATA_OUT, T3), addiu(A0, A0, 1), addiu(A1, A1, -1), bne(A1, ZERO, 'sio2Out'), NOP,
+  at('sio2In'), lw(T0, SIO2.DATA_IN, T3), NOP, sb(T0, 0, A3), addiu(A3, A3, 1), addiu(A2, A2, -1), bne(A2, ZERO, 'sio2In'), NOP,
+  JR_RA, NOP,
 
   // its server's thread: an RPC server of its own, as a game's sound driver has, which the EE calls every frame
   at('serve'),
@@ -273,6 +300,8 @@ const soundModule = () => assembleIop([
   at('server'), ...Array(32).fill(word(0)),
   at('queue'), ...Array(32).fill(word(0)),
   align(16), at('rpcBuffer'), ...Array(16).fill(word(0)),
+  PAD_SET_UP.map(([bytes], i) => bytesAt(`padSetUp${i}`, bytes)), bytesAt('padRead', PAD_READ),
+  at('padAnswer'), ...Array(8).fill(word(0)),
   bytesAt('tone', TONE),
   // the click on a 16-byte boundary for the DMA, as a module's own place is on one
   align(16), bytesAt('click', CLICK),
