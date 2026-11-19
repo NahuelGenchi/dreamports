@@ -25,9 +25,15 @@ const WINDOWS = process.platform === 'win32';
 // and a host can't load an emulator built for the other
 const MAC_ARCH = process.platform === 'darwin' ? (process.arch === 'arm64' ? 'arm64' : 'x86_64') : null;
 export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
-// a core with a patch of the project's own has the patch's hash in its name too, so a build without it is never used
-const patchHash = core => core.patch ? `-${createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 8)}` : '';
-export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${patchHash(core)}${EXTENSION}`);
+// What CMake builds a core with. Every product and sum the emulator's own C++ works out is rounded on its own, as
+// -ffp-contract=off asks: a compiler for arm64, such as Apple's on a Mac, would otherwise fuse a product and a sum into
+// one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
+const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
+  ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
+// a core with a patch of the project's own has the patch's hash in its name too, and one CMake builds the hash of what it's
+// built with, so a build without either is never used
+const builtWith = core => core.patch || core.cmake ? `-${createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '').digest('hex').slice(0, 8)}` : '';
+export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
   try {
@@ -76,8 +82,7 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    const mac = MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : [];
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), '-DCMAKE_BUILD_TYPE=Release', ...mac, ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])], source, tools?.env);
+    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
