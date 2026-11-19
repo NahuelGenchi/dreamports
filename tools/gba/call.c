@@ -15,6 +15,9 @@
 //   'm'                 answers the image.
 //   's' image           puts the image in the console's memory. Answers 0.
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
+//   'a' follow          whether the calls after it follow a read or write where no halfword or word starts, as the
+//                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
+//                       first). Answers 0.
 //   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
 //                       changes those values, then calls the function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
@@ -340,8 +343,9 @@ static void touched(uint32_t address, int bytes, int write) {
 
 // The console reads and writes a halfword or a word only where one starts, whatever the address says, and turns what
 // it read round to make up for it. C has no such thing, so a call that does it is one a twin can't follow.
+static int followUnaligned;
 static void aligned(uint32_t address, uint32_t bytes) {
-	if (watching && (address & (bytes - 1)) && !left) {
+	if (watching && !followUnaligned && (address & (bytes - 1)) && !left) {
 		left = 1;
 		leftFor = address;
 	}
@@ -734,6 +738,10 @@ int main(int argc, char** argv) {
 			send();
 		} else if (command == 'u') {
 			giveImage(undo);
+			out32(0);
+			send();
+		} else if (command == 'a') {
+			followUnaligned = in32() != 0;
 			out32(0);
 			send();
 		} else if (command == 'c') {
