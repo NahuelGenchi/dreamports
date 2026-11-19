@@ -297,6 +297,15 @@ static int besideTheCode(uint32_t address) {
 	return address == (target & ~3u);
 }
 
+// the source each DMA channel was given, as the program wrote it: mGBA keeps 0 in place of one a DMA can't read
+static uint32_t dmaAsked[4];
+static void asked(uint32_t address, uint32_t value, int bytes) {
+	if (address < 0x040000B0u || address >= 0x040000E0u || (address - 0x040000B0u) % 12 >= 4) return;
+	uint32_t n = (address - 0x040000B0u) / 12, half = (address - 0x040000B0u) % 12 / 2;
+	if (bytes == 4) dmaAsked[n] = value;
+	else dmaAsked[n] = half ? (dmaAsked[n] & 0xFFFF) | value << 16 : (dmaAsked[n] & 0xFFFF0000u) | (value & 0xFFFF);
+}
+
 // every read and write the processor, the BIOS and DMA make comes through here
 static void touched(uint32_t address, int bytes, int write) {
 	if (!watching) return;
@@ -307,6 +316,13 @@ static void touched(uint32_t address, int bytes, int write) {
 			if (address < biosLow) biosLow = address;
 			return;
 		}
+	}
+	// a DMA given a source it can't read, the BIOS or below the work memory, copies what the bus last held, which
+	// mGBA keeps without reading anything: no twin can know it, so the call is one a twin can't follow, left for the
+	// source the channel was given
+	if (write && gba->performingDMA && !gba->memory.dma[gba->performingDMA >> 1].nextSource && !left) {
+		left = 1;
+		leftFor = dmaAsked[(gba->performingDMA >> 1) & 3];
 	}
 	long at = inImage(address);
 	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;
@@ -361,8 +377,18 @@ static uint32_t load32(struct ARMCore* c, uint32_t address, int* cycles) {
 }
 static uint32_t load16(struct ARMCore* c, uint32_t address, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 0); return memory.load16(c, address, cycles); }
 static uint32_t load8(struct ARMCore* c, uint32_t address, int* cycles) { touched(address, 1, 0); return memory.load8(c, address, cycles); }
-static void store32(struct ARMCore* c, uint32_t address, int32_t value, int* cycles) { aligned(address, 4); touched(address & ~3u, 4, 1); memory.store32(c, address, value, cycles); }
-static void store16(struct ARMCore* c, uint32_t address, int16_t value, int* cycles) { aligned(address, 2); touched(address & ~1u, 2, 1); memory.store16(c, address, value, cycles); }
+static void store32(struct ARMCore* c, uint32_t address, int32_t value, int* cycles) {
+	asked(address & ~3u, (uint32_t) value, 4);
+	aligned(address, 4);
+	touched(address & ~3u, 4, 1);
+	memory.store32(c, address, value, cycles);
+}
+static void store16(struct ARMCore* c, uint32_t address, int16_t value, int* cycles) {
+	asked(address & ~1u, (uint16_t) value, 2);
+	aligned(address, 2);
+	touched(address & ~1u, 2, 1);
+	memory.store16(c, address, value, cycles);
+}
 static void store8(struct ARMCore* c, uint32_t address, int8_t value, int* cycles) { touched(address, 1, 1); memory.store8(c, address, value, cycles); }
 
 // the words a push, a pop or a block move reaches
