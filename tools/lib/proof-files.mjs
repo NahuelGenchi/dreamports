@@ -15,7 +15,7 @@ import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
 import { nesProgram } from '../nes/functions.mjs';
-import { bootProgram, processorOf, programReader } from '../ps2/ledger.mjs';
+import { loadCopy, loadedCopy, processorOf } from '../ps2/ledger.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -155,15 +155,21 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 /** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
  *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
  *  (nes/functions.mjs). Its `copy()` gives the whole file. With 'ps2' the address is where the EE runs the program the
- *  disc boots, and `disc` is the copy's path, whose sectors are its content (ps2/ledger.mjs). */
+ *  disc boots, and `disc` is the copy's path, whose sectors are its content, once prepareCopy has read it (ps2/ledger.mjs). */
 export function cartridgeOf(path, console = 'gba') {
   let bytes = null, program = null;
   const copy = () => (bytes ??= readFileSync(path));
-  if (console === 'ps2') return Object.assign((address, count) => (program ??= programReader(bootProgram(path)))(address, count), { copy, disc: path });
+  if (console === 'ps2') return Object.assign((address, count) => (program ??= loadedCopy(path).read)(address, count), { copy, disc: path });
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
   return Object.assign(read, { copy });
+}
+
+/** Reads what a copy's console needs read at once before cartridgeOf can give its bytes: a PlayStation 2's program
+ *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs). Nothing for another console. */
+export async function prepareCopy(path, console) {
+  if (console === 'ps2') await loadCopy(path);
 }
 
 /** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its

@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { cartridgeOf, bytesText, watchesOf } from '../lib/proof-files.mjs';
+import { cartridgeOf, bytesText, prepareCopy, watchesOf } from '../lib/proof-files.mjs';
 import { RAN, TAKEN, NOT_TAKEN, layoutOf, finderOf, playedIn, contentIn, cellsOf } from '../lib/played.mjs';
 import { mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { findFunctions } from '../ps2/functions.mjs';
@@ -116,6 +116,7 @@ async function main() {
   reference.ensureOriginal(message => console.log(message));
 
   // the program's code map, as the tools make one, and the vector unit's program, which the EE puts in its code memory
+  await prepareCopy(copy, 'ps2');
   const cartridge = cartridgeOf(copy, 'ps2');
   const vuBytes = new Uint8Array(Uint32Array.from(VU1_PROGRAM).buffer);
   const codeMap = { console: 'ps2', functions: [...findFunctions(elf).map(f => ({ key: `sub_${f.address.toString(16)}`, ...f })), { key: 'vu1_0000', address: 0, size: vuBytes.length, cpu: 'vu1', bytes: bytesText(vuBytes) }] };
