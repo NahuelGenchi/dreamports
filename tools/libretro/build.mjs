@@ -58,7 +58,8 @@ export function fetchSource({ core, name }) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
-  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', join(REPO, core.patch)], source);
+  // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
+  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
   return source;
 }
 
