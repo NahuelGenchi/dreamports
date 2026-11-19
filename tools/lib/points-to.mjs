@@ -277,7 +277,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     if (containing(target).some(g => g !== u && g.address !== target)) into.add(target);
   };
   const keeps = new Map(), callees = new Map(), wrote = new Map(), pushed = new Map();
-  const viaRegister = new Map();
+  const viaRegister = new Map(), returnSites = [];
   for (const u of units) {
     if (u.arm) {
       for (let at = 0; at + 4 <= u.bytes.length; at += 4) {
@@ -294,7 +294,15 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     if (u.size <= 4 && (u16(0) & 0xFF87) === 0x4700 && (u16(0) >> 3 & 15) < 13) viaRegister.set(u.id, u16(0) >> 3 & 15);
     const writes = new Set(), direct = new Set();
     let opaque = false;
+    // the words its pc-relative loads read, data beside the code and never instructions, unless the pass finds one run
+    u.pools = new Set();
     for (let at = 0; at + 2 <= u.bytes.length; at += 2) {
+      if ((u16(at) & 0xF800) !== 0x4800) continue;
+      const word = ((u.address + at + 4) & ~3) + (u16(at) & 0xFF) * 4 - u.address;
+      if (word >= 0 && word + 4 <= u.bytes.length) { u.pools.add(word); u.pools.add(word + 2); }
+    }
+    for (let at = 0; at + 2 <= u.bytes.length; at += 2) {
+      if (u.pools.has(at)) continue;
       const op = u16(at);
       if (isCall(u16, at, u.bytes.length)) {
         const target = callTarget(u16, at, u.address), there = pieces(target, { u, pc: u.address + at });
@@ -309,7 +317,13 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
         if (target < u.address || target >= u.address + u.size) branchTo(u, u.address + at, target, false);
       }
       for (const r of destinations(op)) writes.add(r);
-      if ((op & 0xFF87) === 0x4700 && (op >> 3 & 15) !== 14) opaque = true;
+      // a jump through a register, but the return a function makes by popping its return address and jumping to it,
+      // which the pass checks once it has run (returnsHold)
+      if ((op & 0xFF87) === 0x4700 && (op >> 3 & 15) !== 14) {
+        const reg = op >> 3 & 15;
+        if (reg < 8 && at >= 2 && !u.pools.has(at - 2) && u16(at - 2) === (0xBC00 | 1 << reg)) returnSites.push({ pc: u.address + at, id: u.id });
+        else opaque = true;
+      }
     }
     const first = [0, 2, 4, 6].map(at => (at + 2 <= u.bytes.length ? u16(at) : 0)).find(op => (op & 0xFE00) === 0xB400);
     pushed.set(u.id, new Set(first === undefined ? [] : [0, 1, 2, 3, 4, 5, 6, 7].filter(r => first >> r & 1)));
@@ -318,18 +332,32 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     keeps.set(u.id, new Set([4, 5, 6, 7, 8, 9, 10, 11, 12]));
   }
   for (const [id, direct] of callees) if (direct) for (const c of [...direct]) if (viaRegister.has(c)) callees.set(id, null);
-  for (let again = true; again;) {
-    again = false;
-    for (const [id, kept] of keeps) {
-      if (byId.get(id).arm) continue;
-      const direct = callees.get(id);
-      for (const r of [...kept]) {
-        if ((r <= 7 && pushed.get(id).has(r)) || (!wrote.get(id).has(r) && direct !== null && [...direct].every(c => keeps.get(c)?.has(r)))) continue;
-        kept.delete(r);
-        again = true;
+  // the registers each piece keeps: those it pushes, or neither it nor what it calls writes
+  const settle = () => {
+    for (let again = true; again;) {
+      again = false;
+      for (const [id, kept] of keeps) {
+        if (byId.get(id).arm) continue;
+        const direct = callees.get(id);
+        for (const r of [...kept]) {
+          if ((r <= 7 && pushed.get(id).has(r)) || (!wrote.get(id).has(r) && direct !== null && [...direct].every(c => keeps.get(c)?.has(r)))) continue;
+          kept.delete(r);
+          again = true;
+        }
       }
     }
-  }
+  };
+  settle();
+  // a piece whose summary the pass finds wrong, as one that runs a word of its pool or jumps on where it was taken to
+  // return: it keeps only what it pushes, and the pass goes again
+  const doubted = new Set();
+  const doubt = id => {
+    if (doubted.has(id)) return;
+    doubted.add(id);
+    callees.set(id, null);
+    settle();
+    changed = true;
+  };
 
   // what each piece records at each address, kept apart until the end, where two pieces at one address join
   const records = { stores: new Map(), loads: new Map(), swis: new Map(), carriers: new Map() };
@@ -352,6 +380,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
   const args = new Map(), returns = new Map(), cells = new Map();
   const sites = new Map(), arrivals = new Set(into);
   let anyStore = unread.length ? ANYWHERE : NOTHING, changed = true, complete = true, firstUnbounded = null;
+  const resets = [];
+  const cleared = a => resets.some(([from, to]) => a >= from && a < to);
   const widenAll = reason => { if (anyStore !== ANYWHERE) { anyStore = ANYWHERE; changed = true; if (why.length < 8) why.push(reason); } };
   const grow = (key, v) => {
     const before = cells.has(key) ? cells.get(key) : NOTHING, after = join(before, v);
@@ -395,7 +425,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
           const a = Number(e.slice(1));
           if (inRom(a)) { out = join(out, romValue(a, bytes, signed)); continue; }
           if (!inWork(a)) return ANYWHERE;
-          word = join(join(cell(`a${a & ~3}`), number(0)), anyStore);
+          word = join(join(cell(`a${a & ~3}`), s.stored.has(`a${a & ~3}`) && !cleared(a) ? NOTHING : number(0)), anyStore);
           for (const [site, arena] of sites) if (a >= arena.from && a < arena.to) word = join(word, cell(`h${site}`));
           low = a & 3;
         } else {
@@ -454,6 +484,8 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
           if (a >= 0x040000B0 && a < 0x040000E0) { dma(pc, a, bytes, value); continue; }
           if (!inWork(a)) continue;
           grow(`a${a & ~3}`, a & 3 ? ANYWHERE : whole);
+          // a whole word to one place: from here on, on this way, it no longer holds what it held at power-on
+          if (at.size === 1 && bytes === 4 && !(a & 3)) s.stored.add(`a${a}`);
           for (const [site, arena] of sites) if (a >= arena.from && a < arena.to) grow(`r${site}`, ANYWHERE);
         } else {
           const [kind, who, off] = place(e);
@@ -464,8 +496,14 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       }
       if (cells.size > cellLimit) complete = false;
     };
-    // the BIOS's work, from the registers it's given
+    // the BIOS's work, from the registers it's given: RegisterRamReset clears to 0 what r0's bits ask, which the pass
+    // keeps as places that may hold their power-on 0 again whenever it's read, all of them for an r0 it can't bound
     const bios = (s, pc, call) => {
+      if (call === 0x01) {
+        const flags = numbers(s.r[0]);
+        const asked = flags ? flags.flatMap(f => [...(f & 1 ? [[EWRAM, EWRAM_END]] : []), ...(f & 2 ? [[IWRAM, IWRAM_END - 0x200]] : [])]) : [[EWRAM, EWRAM_END], [IWRAM, IWRAM_END]];
+        for (const range of asked) if (!resets.some(r => r[0] === range[0] && r[1] === range[1])) { resets.push(range); changed = true; }
+      }
       const given = { r0: s.r[0], r1: s.r[1], r2: s.r[2] };
       note('swis', pc, u.id, given);
       if ((call === 0x0B || call === 0x0C) && numbers(s.r[1]) && numbers(s.r[2])) {
@@ -813,6 +851,7 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
     while (queue.length) {
       if (Date.now() - began > seconds * 1000) { complete = false; return; }
       const at = queue.pop(), s = { r: states.get(at).r.slice(), stored: new Set(states.get(at).stored) };
+      if (!u.arm && u.pools.has(at)) doubt(u.id);
       if (u.arm) { if (at % 4 === 0 && at + 4 <= size) armStep(at, s); } else if (at + 2 <= size) thumbStep(at, s);
     }
   };
@@ -843,6 +882,14 @@ export function pointsTo(rom, functions, { allocators = new Map(), copies = [], 
       }
     }
     if (!complete) break;
+    // each pop and jump taken for a return carries only the return address, or a value the pass can't bound, which it
+    // takes as a return everywhere
+    let wrong = false;
+    for (const { pc, id } of returnSites) {
+      const value = records.carriers.get(pc)?.get(id)?.value;
+      if (value && value !== ANYWHERE && [...value].some(e => e !== 'r') && !doubted.has(id)) { doubt(id); wrong = true; }
+    }
+    if (wrong) continue;
     words = weigh();
     // a word a carrier can hold, or may, is a way in, and the pass goes round again with it
     const more = words.filter(w => w.verdict !== 'data' && !arrivals.has(w.to));
