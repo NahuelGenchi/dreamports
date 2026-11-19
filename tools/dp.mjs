@@ -17,6 +17,7 @@ const TOOLS = {
   match: 'Builds a Game Boy Advance game\'s C with the compiler the original was built with, and says which functions come out as the original\'s bytes',
   twin: 'Calls a function of the original and its twin from the same memory, thousands of times, and says whether both leave the same memory',
   proofs: 'Lists where each function of a version stands: its twin, and its proof, by the same bytes or the same memory (--start: makes the version one made a function at a time; --check: every proof kept still holds)',
+  libraries: 'Says how much of each console\'s shared code, the libraries its games share, is proven, and with a version where each function it takes from them stands (--check: every library and every version that takes one keeps their rules)',
   share: 'Publishes a preview on GitHub Pages from your fork, with the clips of what the step changed for its pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what, its free tasks and what the others wait on',
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first, or for each group of functions in a version made a function at a time',

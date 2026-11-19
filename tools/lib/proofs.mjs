@@ -28,7 +28,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { proofFolder } from './paths.mjs';
+import { proofFolder, REPO } from './paths.mjs';
 import { cartridgeOf, hex, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
@@ -146,13 +146,14 @@ export function twinMarks(version, codeMap = readCodeMap(version)) {
   return marksIn(codeMap, versionTwins(version));
 }
 
-/** The same, of a version's `folder`, its `files` of C and what each defines, `twinsOf`, as versionTwins gives them,
- *  with `read(path)` for a file's text, or null, when the files aren't the computer's own. */
-export function marksIn(codeMap, { folder, files, twinsOf, read = onDisk }) {
+/** The same, of a version's `folder`, its `files` of C and what each defines, `twinsOf`, and for a file of a shared
+ *  library its twins' addresses, `givenOf`, as versionTwins gives them, with `read(path)` for a file's text, or null,
+ *  when the files aren't the computer's own. A library's file is named as the repository has it, kit/... */
+export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null, read = onDisk }) {
   const marks = new Map();
   const folders = [join(folder, 'src'), folder].filter(path => read !== onDisk || existsSync(path));
   const keyAt = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.key]));
-  const inFolder = file => relative(folder, file).split(sep).join('/');
+  const inFolder = file => (givenOf(file) ? relative(REPO, file) : relative(folder, file)).split(sep).join('/');
   // what a twin is built with beside its own code: what its file holds outside every function, and the game's own
   // headers the file includes
   const around = new Map();
@@ -169,7 +170,7 @@ export function marksIn(codeMap, { folder, files, twinsOf, read = onDisk }) {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     for (const file of files) {
       const defined = new Map(twinsOf.get(file).map(twin => [twin.name, twin]));
-      for (const contract of contractsIn(read(file) ?? '', banks).contracts) {
+      for (const contract of contractsIn(read(file) ?? '', banks, givenOf(file)).contracts) {
         const twin = defined.get(/^[A-Za-z_]\w*/.exec(contract.call)?.[0]);
         if (twin) keep(contract.offset, twin, file, `${contract.text}\n`);
       }

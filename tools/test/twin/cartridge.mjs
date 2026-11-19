@@ -52,8 +52,9 @@ export function withVideo(rom, assembly) {
   return looked;
 }
 
-// one file's functions, from the assembly the compiler wrote, each where `where` says in the cartridge
-function place(rom, assembly, where) {
+// one file's functions, from the assembly the compiler wrote, each where `where` says in the cartridge, and each value it
+// names where `names` says, or else where the program's are
+export function place(rom, assembly, where, names = new Map()) {
   const { sections, symbols, relocations } = assemble(assembly);
   const text = Buffer.from(sections['.text'].bytes);
   const all = [...symbols].filter(([, symbol]) => symbol.function).map(([name, symbol]) => ({ name, at: symbol.at })).sort((a, b) => a.at - b.at);
@@ -62,7 +63,7 @@ function place(rom, assembly, where) {
   const moved = at => { const f = around(at); return where[f.name] + at - f.at; };
   for (const { at, kind, name, addend } of relocations) {
     const symbol = symbols.get(name);
-    const target = symbol?.section === '.text' ? moved(symbol.at) + addend + (symbol.function ? 1 : 0) : (NAMED.get(name) ?? VIA[name] ?? BIOS[name]) + addend;
+    const target = symbol?.section === '.text' ? moved(symbol.at) + addend + (symbol.function ? 1 : 0) : (names.get(name) ?? NAMED.get(name) ?? VIA[name] ?? BIOS[name]) + addend;
     if (kind === 'word') text.writeUInt32LE(target, at);
     else {
       const jump = (target & ~1) - (moved(at) + 4);

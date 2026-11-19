@@ -5,7 +5,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { STATUS, splitTable } from '../readme.mjs';
+import { STATUS, sharedPart, splitTable, withShared } from '../readme.mjs';
 
 const MAPS = '.github/readme/progress';
 const MAP = /^\.github\/readme\/progress\/[^/]+\.svg$/;
@@ -143,7 +143,9 @@ export function keepMainsTable(cwd, games = []) {
   if (games.length) return;
   const mine = splitTable(readFileSync(join(cwd, STATUS), 'utf8'));
   const main = splitTable(git(cwd, ['show', `MERGE_HEAD:${STATUS}`]));
-  if (mine && main) writeFileSync(join(cwd, STATUS), `${mine.before}${main.table}${mine.after}`);
+  // and main's maps of shared code below it, which the same workflow draws
+  const shared = main && sharedPart(main.after);
+  if (mine && main) writeFileSync(join(cwd, STATUS), `${mine.before}${main.table}${shared === null ? mine.after : withShared(mine.after, shared)}`);
 }
 
 /**
