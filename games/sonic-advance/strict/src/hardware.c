@@ -3,6 +3,7 @@
 #ifndef MATCHING
 #include "console.h"
 #include "core.h"
+#include "clock.h"
 
 // Where the console has an address, in a Dreamport: the work memory and the cartridge are at their own addresses, and
 // the colours, the video memory and the sprites' list are the kit's. Each memory shows again all through its stretch
@@ -44,8 +45,16 @@ static int console_handling;
 
 void console_set_keys(u16 keys) { console_keys = keys; }
 
-// where the line count is, a line on: time goes on while the game waits for a line by reading it from memory
+// whether the console's time is power-on's, which the clock keeps, until the game first waits for a frame
+static int console_timed;
+
+// where the line count is, a line on: time goes on while the game waits for a line by reading it from memory. On
+// power-on, it's the line the console's time has reached
 u32 console_vcount_at(void) {
+  if (console_timed) {
+    console_io[IO_VCOUNT >> 1] = gba_clock_vcount();
+    return (u32)&console_io[IO_VCOUNT >> 1];
+  }
   console_line = (console_line + 1) % LINES;
   console_io[IO_VCOUNT >> 1] = (u16)console_line;
   return (u32)&console_io[IO_VCOUNT >> 1];
@@ -70,6 +79,8 @@ u16 console_read16(u32 at) {
 }
 
 void console_write16(u32 at, u16 value) {
+  // the console's time takes what decides it: the DMA channels', the timers', the sound's and WAITCNT
+  if ((at >= 0x80 && at < 0x88) || (at >= 0xB0 && at < 0xE0) || (at >= 0x100 && at < 0x110) || at == 0x204) gba_clock_written(0x04000000u + at, value);
   if (at < sizeof gba_io) gba_write(at, value);
   else if (at == IO_IF) console_io[IO_IF >> 1] &= ~value;   // a 1 says an interrupt was seen to
   else if (at < sizeof console_io) console_io[at >> 1] = value;
@@ -109,8 +120,22 @@ static void dma_run(struct console_dma *d) {
   if (!(d->control & 0x0200) || !(d->control >> 12 & 3)) d->control &= ~0x8000;
 }
 
+// the console's time: a channel's three words as the processor writes them, a value of the Dreamport's own read from
+// where the console has its stack
+static void dma_timed(u32 n, u32 src, int own, u32 dest, u32 control) {
+  u32 at = 0x040000B0u + 12 * (n & 3);
+  if (own) src = 0x03007F00u;
+  gba_clock_written(at, (u16)src);
+  gba_clock_written(at + 2, (u16)(src >> 16));
+  gba_clock_written(at + 4, (u16)dest);
+  gba_clock_written(at + 6, (u16)(dest >> 16));
+  gba_clock_written(at + 8, (u16)control);
+  gba_clock_written(at + 10, (u16)(control >> 16));
+}
+
 static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 control) {
   struct console_dma *d = &dma[n & 3];
+  if (!into) dma_timed(n, src, own != NULL, dest, control);
   u16 was = d->control;
   u32 wide;
   d->control = (u16)(control >> 16) & (n == 3 ? 0xFFE0 : 0xF7E0);
@@ -195,6 +220,10 @@ void console_hblank(int y) {
 /** VBlankIntrWait: until the V-blank's interrupt has said it ran, the frame's lines drawn and the V-blank begun. The
  *  frame ends here: the kit draws it once the game's step is over, and the game goes on from here in the next. */
 void VBlankIntrWait(void) {
+  // from the game's first wait on, its waits end its frames, not the console's time
+  gba_clock_on_frame_end(NULL);
+  gba_clock_stop();
+  console_timed = 0;
   *(vu16 *)0x03007FF8 &= ~1;
   console_io[IO_IME >> 1] = 1;
   do {
@@ -210,16 +239,36 @@ static u8 *bios_at(u32 address) {
   return address >> 24 >= 0x05 && address >> 24 <= 0x07 ? console_at(address, 1) : (u8 *)address;
 }
 
+// whether an address is the console's: its work memory, its registers and video memory, or the cartridge
+static int console_memory(u32 address) {
+  return (address >= 0x02000000u && address < 0x02040000u) || (address >= 0x03000000u && address < 0x03008000u)
+    || (address >= 0x04000000u && address < 0x08000000u) || (address >= 0x08000000u && address - 0x08000000u < gba_rom_size);
+}
+
 /** CpuSet: `control`'s count of halfwords, or words with bit 26, from `src` to `dest`, or the one at `src` over all of
  *  them with bit 24, as the BIOS copies them, one at a time. */
+// CpuSet's work, a halfword or a word at a time, as the console's time reaches each of the BIOS's stores
+static struct { u32 from, to, wide, fixed; } cpu_set;
+static void cpu_set_unit(u32 i) {
+  const u8 *in = bios_at(cpu_set.from + (cpu_set.fixed ? 0 : i * cpu_set.wide));
+  u8 *out = bios_at(cpu_set.to + i * cpu_set.wide);
+  u32 b;
+  for (b = 0; b < cpu_set.wide; b++) out[b] = in[b];
+}
+
+// the cartridge's stub for CpuSet: swi 0x0B, then back
+#define CPU_SET_STUB 0x080997E0u
+
 void CpuSet(const void *src, void *dest, u32 control) {
-  u32 count = control & 0x1FFFFF, wide = control >> 26 & 1 ? 4 : 2, fixed = control >> 24 & 1, i, b;
-  u32 from = (u32)src & ~(wide - 1), to = (u32)dest & ~(wide - 1);
-  for (i = 0; i < count; i++) {
-    const u8 *in = bios_at(from + (fixed ? 0 : i * wide));
-    u8 *out = bios_at(to + i * wide);
-    for (b = 0; b < wide; b++) out[b] = in[b];
-  }
+  u32 count = control & 0x1FFFFF, i;
+  cpu_set.wide = control >> 26 & 1 ? 4 : 2;
+  cpu_set.fixed = control >> 24 & 1;
+  cpu_set.from = (u32)src & ~(cpu_set.wide - 1);
+  cpu_set.to = (u32)dest & ~(cpu_set.wide - 1);
+  // in the console's time, from the console's addresses: a value of the Dreamport's own, as a fill's, which the C keeps
+  // on its own stack outside the console's memory, is where the console's function has its stack
+  if (gba_clock_swi(CPU_SET_STUB, 0x0B, console_memory((u32)src) ? (u32)src : 0x03007F00u, (u32)dest, control, cpu_set_unit) == 0) return;
+  for (i = 0; i < count; i++) cpu_set_unit(i);
 }
 
 void AgbMain(void);
@@ -227,6 +276,11 @@ void AgbMain(void);
 /** The cartridge's start, ARM code at 0x08000000: the interrupt handler's address where the BIOS looks for it, and
  *  then AgbMain, which never comes back. The stacks it sets are the console's processor's, which C has none of. */
 void console_start(void) {
+  // in the console's time: its branch past the header, the processor's modes and stacks, and the interrupt handler's
+  // address kept, then a jump to AgbMain in Thumb code
+  static const u32 vector[] = { 0x03007FFC };
+  gba_clock_run_arm(0x08000000, 0x08000000, 0x080000C0, NULL, 0);
+  gba_clock_run_arm(0x080000C0, 0x080000EC, 0x08001495, vector, 1);
   *(u32 *)0x03007FFC = 0x080000FC;
   AgbMain();
 }
@@ -241,16 +295,40 @@ void SoftReset(u32 flags) {
   console_start();
 }
 
+// A frame of the console's time over: the Dreamport's frame f is the console's f + 1, whose picture shows frame f's
+// work, so the console's first frame, before any of the game's, has none of the Dreamport's
+static void console_frame_end(void) {
+  if (gba_clock_frame() > 1) kit_wait_frame();
+}
+
 /** The console from power-on: the link cable's registers as its BIOS leaves them, and the lines' callbacks. */
 void console_power_on(void) {
+  // the console's time from power-on, which ends power-on's frames where the console's end
+  gba_clock_start();
+  console_timed = 1;
+  gba_clock_on_frame_end(console_frame_end);
+  gba_clock_registers(console_io);
   console_io[IO_RCNT >> 1] = 0x8000;
+  // the display in forced blank, as the BIOS leaves it, until the game first sets it
+  gba_io[0] = 0x0080;
   gba_on_hblank(console_hblank);
 }
 
 // The BIOS's division, which the game calls through its two stubs, Div and Mod: the quotient and the remainder, each
-// rounded toward zero, as the console's BIOS gives them.
-s32 Div(s32 num, s32 denom) { return num / denom; }
-s32 Mod(s32 num, s32 denom) { return num % denom; }
+// rounded toward zero, as the console's BIOS gives them. Where the console's BIOS never comes back, dividing by 0, the
+// function check's emulator gives a quotient of 1, or -1 below 0, and the number as the remainder, and the one sum
+// that doesn't fit, the lowest number by -1, gives itself and 0: so does this, rather than stop the game, as a call
+// with made-up values may divide so, though play never does.
+s32 Div(s32 num, s32 denom) {
+  if (denom == 0) return num < 0 ? -1 : 1;
+  if (denom == -1 && num == (s32)0x80000000u) return num;
+  return num / denom;
+}
+s32 Mod(s32 num, s32 denom) {
+  if (denom == 0) return num;
+  if (denom == -1) return 0;
+  return num % denom;
+}
 
 // The cartridge's flash chip, 64 KB as Sonic Advance's, on the kit's save memory, which the kit keeps for the player.
 // It reads as its bytes and takes the chip's commands as writes: two unlock writes, then which command, at 0x5555.

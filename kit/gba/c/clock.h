@@ -66,14 +66,33 @@ void gba_clock_on_frame_end(void (*wait)(void));
  *  sound's and WAITCNT, whose time the store's decides. */
 void gba_clock_written(uint32_t address, uint16_t value);
 
+/** A run's `next` when its last instruction goes back from a call, to wherever the latest timed call came from. */
+#define GBA_CLOCK_BACK 1u
+
 /** The Thumb instructions from `from` to `to`, one after another, the last going on to `next` (odd to stay in Thumb
- *  code), whose work the game has done. Each load or store among them that doesn't read the program counter or the
+ *  code, GBA_CLOCK_BACK for back from the call it's in), whose work the game has done. Each load or store among them that doesn't read the program counter or the
  *  stack takes the next address of `at` (`count` of them), and a mul takes the next as its first register's value. */
 void gba_clock_run(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count);
+
+/** The game's own copy of the console's registers, each at its distance from 0x04000000, for a run's store to a register
+ *  that no gba_clock_written waits for: the clock takes what the copy holds then. */
+void gba_clock_registers(const volatile uint16_t *file);
+
+/** The end of the console's time for the game: its runs, swis and calls cost nothing from here, as when it first waits
+ *  for a frame, which a game's own frames time from then on. gba_clock_start starts it again. */
+void gba_clock_stop(void);
 
 /** How many stores to the work memory came after a frame's end inside the run it ended in: what the Dreamport's frame
  *  has and the console's doesn't. */
 int gba_clock_late(void);
+
+/** The line the display is on as the next instruction starts, which a game that waits for one reads, in the console's
+ *  time. */
+uint16_t gba_clock_vcount(void);
+
+/** libgcc's __divsi3 at `at`, which the console's compiler calls for a division, for `numerator` and `denominator`: its
+ *  path, which the numbers decide, back to `back`. */
+void gba_clock_divsi3(uint32_t at, int32_t numerator, int32_t denominator, uint32_t back);
 
 /** The same for ARM code, read a word at a time, all of it run always, as a cartridge's start is. */
 void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count);

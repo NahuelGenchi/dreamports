@@ -2,39 +2,70 @@
 // already built, with -O1 (its proof/original.json, "compiler").
 #include "flash.h"
 #include "core.h"
+#include "time.h"
 
 #define REG_TMCNT(n) (0x100 + (n) * 4)
 #define INTR_FLAG_TIMER0 0x0008
 
-// a wait long enough for the chip to take a command
-#define DELAY()                          \
+// a wait long enough for the chip to take a command. In the console's time, it starts at `store`, where the count is
+// kept, and goes round from `loop`, each turn a run: frames of power-on end in the middle of it
+#ifdef MATCHING
+#define DELAY(store, loop)               \
   do {                                   \
     vu16 i;                              \
     for (i = 20000; i != 0; i--) {}      \
   } while (0)
+#else
+#define DELAY(store, loop)                                                  \
+  do {                                                                      \
+    vu16 i;                                                                 \
+    for (i = 20000; i != 0; i--) {                                          \
+      if (i == 20000) TIME((store), (store) + 6, (loop) + 1, IW, IW);       \
+      else TIME((loop), (loop) + 0xA, (loop) + 1, IW, IW, IW);              \
+    }                                                                       \
+    TIME((loop), (loop) + 0xA, (loop) + 0xC, IW, IW, IW);                   \
+  } while (0)
+#endif
 
 /** ReadFlashId, 0x08098C54: the chip's maker and kind, read in its ID mode through ReadFlash1 run from the stack, as
  *  the flash can't be read while the cartridge's code runs from it. */
 u16 ReadFlashId(void) {
   u16 flashId;
+#ifdef MATCHING
   u16 readFlash1Buffer[0x20];
+#else
+  // where the console's function has it, on its stack, which the C keeps elsewhere: the copy's address is kept in the
+  // work memory, and the kit finds the twin of the code there by the code itself
+  u16 *readFlash1Buffer = (u16 *)0x03007E7C;
+#endif
   u8 (*readFlash1)(u8 *);
 
+  TIME(0x08098C54, 0x08098C5C, 0x08098ECD);
   SetReadFlash1(readFlash1Buffer);
   readFlash1 = (u8(*)(u8 *))((s32)readFlash1Buffer + 1);
 
   FLASH_WRITE(0x5555, 0xAA);
   FLASH_WRITE(0x2AAA, 0x55);
   FLASH_WRITE(0x5555, 0x90);
-  DELAY();
+  TIME(0x08098C5E, 0x08098C78, 0x08098C8D, 0x0E005555, 0x0E002AAA, 0x0E005555);
+  DELAY(0x08098C8C, 0x08098C88);
 
+  // each read through the compiler's bx to the copy
+  TIME(0x08098C94, 0x08098C98, 0x08099859);
+  TIME(0x08099858, 0x08099858, 0x03007E7D);
   flashId = CALL(readFlash1)(FLASH_BASE + 1) << 8;
+  TIME(0x03007E7C, 0x03007E7E, BACK, 0x0E000001);
+  TIME(0x08098C9A, 0x08098CA4, 0x08099859);
+  TIME(0x08099858, 0x08099858, 0x03007E7D);
   flashId |= CALL(readFlash1)(FLASH_BASE);
+  TIME(0x03007E7C, 0x03007E7E, BACK, 0x0E000000);
 
   FLASH_WRITE(0x5555, 0xAA);
   FLASH_WRITE(0x2AAA, 0x55);
   FLASH_WRITE(0x5555, 0xF0);
-  DELAY();
+  TIME(0x08098CA6, 0x08098CC2, 0x08098CD9, 0x0E005555, 0x0E002AAA, 0x0E005555);
+  DELAY(0x08098CD8, 0x08098CD4);
+  TIME(0x08098CE0, 0x08098CE8, BACK);
   return flashId;
 }
 
@@ -62,6 +93,7 @@ u16 IdentifyFlash(void) {
   const struct FlashSetupInfo *const *setupInfo;
 
   REG_WRITE16(REG_WAITCNT, (REG_READ16(REG_WAITCNT) & ~3) | 3);
+  TIME(0x08098CEC, 0x08098CFE, 0x08098C55, 0x04000204, 0x04000204);
   flashId = ReadFlashId();
   setupInfo = gSetup512KInfos;
   result = 1;
@@ -121,9 +153,18 @@ void SetReadFlash1(u16 *dest) {
   src = (u16 *)CODE(ReadFlash1);
   src = (u16 *)((s32)src ^ 1);
   i = ((s32)CODE(SetReadFlash1) - (s32)CODE(ReadFlash1)) >> 1;
+  TIME(0x08098ECC, 0x08098EE2, 0x08098EFD, IW);
+#ifndef MATCHING
+  if (i != 0) TIME(0x08098EFC, 0x08098F00, 0x08098EF1);
+  else TIME(0x08098EFC, 0x08098F02, BACK);
+#endif
   while (i != 0) {
     *dest++ = *src++;
     i--;
+#ifndef MATCHING
+    if (i != 0) TIME(0x08098EF0, 0x08098F00, 0x08098EF1, ROM, IW);
+    else TIME(0x08098EF0, 0x08098F02, BACK, ROM, IW);
+#endif
   }
 }
 
