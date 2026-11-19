@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="202" viewBox="0 0 480 202">
+<title>Game Boy Advance: 0% of its known shared code proven, 0 of 7,044 bytes and 0 of 95 functions, in 1 library, taken by 0 games.</title>
+<style>text{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}.page{fill:#050a24}.block{fill:#0f1847}.text{fill:#eef4ff}.dim{fill:#a9b8e6}.track{fill:#26346e}.bytes{fill:#3fb950}.memory{fill:#58a6ff}.written{fill:#d29922}.unwritten{fill:#68728f}@media (prefers-color-scheme:light){.page{fill:#eef2fa}.block{fill:#dde4f3}.text{fill:#0b1533}.dim{fill:#3f4d73}.track{fill:#c3cde6}.bytes{fill:#1a7f37}.memory{fill:#0969da}.written{fill:#9a6700}.unwritten{fill:#737f9d}}</style>
+<rect class="page" width="480" height="202" rx="6"/>
+<text class="dim" x="9" y="18" font-size="11">Game Boy Advance's shared code</text>
+<text class="text" x="9" y="42" font-size="22" font-weight="700">0% proven</text>
+<text class="dim" x="9" y="60" font-size="11">0 of 7,044 bytes, 0 of 95 functions</text>
+<text class="dim" x="9" y="74" font-size="11">1 library, taken by 0 games</text>
+<rect class="bytes" x="9" y="83" width="8" height="8"/>
+<text class="dim" x="22" y="91" font-size="10">proven, same bytes (0)</text>
+<rect class="memory" x="178.4" y="83" width="8" height="8"/>
+<text class="dim" x="191.4" y="91" font-size="10">proven, same memory (0)</text>
+<rect class="written" x="9" y="99" width="8" height="8"/>
+<text class="dim" x="22" y="107" font-size="10">written (94)</text>
+<rect class="unwritten" x="178.4" y="99" width="8" height="8"/>
+<text class="dim" x="191.4" y="107" font-size="10">not written (1)</text>
+<g><title>gba/m4a: 0 of 95 functions proven, 0 of 7,044 bytes, 94/95 written, taken by 0 versions</title>
+<rect class="block" x="9" y="120" width="462" height="72" rx="3"/>
+<text class="text" x="16" y="135" font-size="11" font-weight="700">m4a</text>
+<text class="dim" x="464" y="135" font-size="10" text-anchor="end">94/95 written</text>
+<rect class="track" x="16" y="141" width="448" height="3" rx="1.5"/>
+</g>
+<path class="written" d="M16 151h8v8h-8zM26 151h8v8h-8zM36 151h8v8h-8zM46 151h8v8h-8zM56 151h8v8h-8zM66 151h8v8h-8zM76 151h8v8h-8zM86 151h8v8h-8zM96 151h8v8h-8zM106 151h8v8h-8zM116 151h8v8h-8zM126 151h8v8h-8zM136 151h8v8h-8zM146 151h8v8h-8zM156 151h8v8h-8zM166 151h8v8h-8zM176 151h8v8h-8zM186 151h8v8h-8zM196 151h8v8h-8zM206 151h8v8h-8zM216 151h8v8h-8zM226 151h8v8h-8zM236 151h8v8h-8zM246 151h8v8h-8zM256 151h8v8h-8zM266 151h8v8h-8zM276 151h8v8h-8zM286 151h8v8h-8zM306 151h8v8h-8zM316 151h8v8h-8zM326 151h8v8h-8zM336 151h8v8h-8zM346 151h8v8h-8zM356 151h8v8h-8zM366 151h8v8h-8zM376 151h8v8h-8zM386 151h8v8h-8zM396 151h8v8h-8zM406 151h8v8h-8zM416 151h8v8h-8zM426 151h8v8h-8zM436 151h8v8h-8zM446 151h8v8h-8zM456 151h8v8h-8zM16 161h8v8h-8zM26 161h8v8h-8zM36 161h8v8h-8zM46 161h8v8h-8zM56 161h8v8h-8zM66 161h8v8h-8zM76 161h8v8h-8zM86 161h8v8h-8zM96 161h8v8h-8zM106 161h8v8h-8zM116 161h8v8h-8zM126 161h8v8h-8zM136 161h8v8h-8zM146 161h8v8h-8zM156 161h8v8h-8zM166 161h8v8h-8zM176 161h8v8h-8zM186 161h8v8h-8zM196 161h8v8h-8zM206 161h8v8h-8zM216 161h8v8h-8zM226 161h8v8h-8zM236 161h8v8h-8zM246 161h8v8h-8zM256 161h8v8h-8zM266 161h8v8h-8zM276 161h8v8h-8zM286 161h8v8h-8zM296 161h8v8h-8zM306 161h8v8h-8zM316 161h8v8h-8zM326 161h8v8h-8zM336 161h8v8h-8zM346 161h8v8h-8zM356 161h8v8h-8zM366 161h8v8h-8zM376 161h8v8h-8zM386 161h8v8h-8zM396 161h8v8h-8zM406 161h8v8h-8zM416 161h8v8h-8zM426 161h8v8h-8zM436 161h8v8h-8zM446 161h8v8h-8zM456 161h8v8h-8zM16 171h8v8h-8zM26 171h8v8h-8zM36 171h8v8h-8zM46 171h8v8h-8zM56 171h8v8h-8z"/>
+<path class="unwritten" d="M296 151h8v8h-8z"/>
+</svg>
