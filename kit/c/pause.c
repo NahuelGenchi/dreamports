@@ -1,4 +1,5 @@
-// Ending a frame from anywhere in a game's C, and going on from there in the next (kit.h: kit_wait_frame, kit_run). A
+// Ending a frame from anywhere in a game's C, and going on from there in the next (kit.h: kit_wait_frame, kit_run), or
+// pausing partway through one until the page has what the game waits for (kit_pause). A
 // console's game waits for the screen from inside its own functions, as a fade written as a loop does, and its main
 // loop never returns. WebAssembly has no way to leave a function halfway, so the build runs one pass over a game that
 // calls these (Binaryen's Asyncify, tools/lib/c.mjs), which makes every function on the way to a wait able to put its
@@ -31,9 +32,9 @@ void kit_stack_set(uintptr_t to);
 static struct { uint8_t *at, *end; } paused;
 static uint8_t *kept, *stack;
 static uintptr_t game_stack;
-// whether the game has started, and whether it's on its way back to where it waited: kept here, as the pass's own
-// word for it can't be asked from C
-static int started, resuming;
+// whether the game has started, whether it's on its way back to where it waited, and whether it waits partway through
+// its frame: kept here, as the pass's own word for it can't be asked from C
+static int started, resuming, partway;
 
 // outside the game's code and never inlined, so the pass sees a call to it in every function that waits
 __attribute__((noinline)) void kit_wait_frame(void) {
@@ -47,7 +48,21 @@ __attribute__((noinline)) void kit_wait_frame(void) {
   asyncify_start_unwind(&paused);
 }
 
-__attribute__((noinline)) void kit_run(void (*game)(void)) {
+// the same, for a wait partway through the frame
+__attribute__((noinline)) void kit_pause(void) {
+  if (resuming) {
+    resuming = 0;
+    partway = 0;
+    asyncify_stop_rewind();
+    return;
+  }
+  partway = 1;
+  paused.at = kept;
+  paused.end = kept + KEPT_BYTES;
+  asyncify_start_unwind(&paused);
+}
+
+__attribute__((noinline)) int kit_run(void (*game)(void)) {
   // called through a pointer the compiler can't see through, as a game's main loop never ends by itself, and a call
   // that never returns would have nothing after it to come back to
   void (*volatile run)(void) = game;
@@ -68,6 +83,7 @@ __attribute__((noinline)) void kit_run(void (*game)(void)) {
   game_stack = kit_stack_get();
   kit_stack_set(ours);
   asyncify_stop_unwind();
+  return !partway;
 }
 #else
 #include <stdio.h>
@@ -77,8 +93,18 @@ void kit_wait_frame(void) {
   fputs("A game that waits for the screen from inside a function runs as WebAssembly only.\n", stderr);
   abort();
 }
-void kit_run(void (*game)(void)) {
+void kit_pause(void) { kit_wait_frame(); }
+int kit_run(void (*game)(void)) {
   (void)game;
   kit_wait_frame();
+  return 1;
 }
 #endif
+
+int kit_frame_paused(void) {
+#ifdef __wasm__
+  return partway;
+#else
+  return 0;
+#endif
+}

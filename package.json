@@ -20,6 +20,7 @@
     "test:ps2-gs": "node tools/test/ps2-gs.mjs",
     "test:ps2-flow": "node tools/test/ps2-flow.mjs",
     "test:ps2-same": "node tools/test/ps2-same.mjs",
+    "test:big-copy": "node tools/test/big-copy.mjs",
     "test:twin": "node tools/test/twin.mjs",
     "test:clock": "node tools/test/clock.mjs",
     "test:stack": "node tools/test/stack.mjs",
