@@ -41,14 +41,16 @@ jobs:
               npm run test:consoles
               npm run test:real-console
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
-          # runs; match and the NES's function check; and test:same-memory, which builds a program of the project's own
-          # as a cartridge and as a Dreamport from the same C, and has prove find every frame and the whole work memory
-          # the same in mGBA and in a browser (tools/README.md); and an NES library of the project's own, found in a
-          # second made-up program by its short hash and proven there
+          # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
+          # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
+          # program of the project's own as a cartridge and as a Dreamport from the same C, and has prove find every
+          # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
+          # the project's own, found in a second made-up program by its short hash and proven there
           - part: functions
             run: |
               npm run test:twin
               npm run test:match
+              npm run test:rebuild
               npm run test:nes-twin
               npm run test:same-memory
               npm run test:nes-libraries
