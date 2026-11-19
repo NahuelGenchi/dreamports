@@ -42,7 +42,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { LOCAL, REPO } from './lib/paths.mjs';
-import { cartridgeOf, hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { cartridgeOf, hex, inBootProgram, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { percentText, playedPercent } from '../src/lib/entries.mjs';
@@ -114,7 +114,7 @@ export async function run(args) {
   if (!copy) throw new Error(`match compares with ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readCopy(copy.path))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
 
-  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   // every twin of the version, by name, as a file calls the others' by theirs, and every name with an address
   const { folder, shifts, files, twinsOf, twins, named, libraries, givenOf } = versionTwins(game, more ? resolvePath(more) : null);
   // the shared library each of the version's files from the kit is of (lib/libraries.mjs)
