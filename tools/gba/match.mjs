@@ -235,8 +235,9 @@ function filesIn(folder) {
 let clang;
 // The file as the compiler reads it, with every #include and #define done. The console's compiler has no preprocessor
 // of its own, and the one a computer has isn't the same everywhere, so this is the one `npm ci` brings, clang's, told
-// to define nothing of its own.
-export async function preprocess(file, root, includes) {
+// to define nothing of its own. With `lines`, it keeps the markers saying which file and line each line comes from, so
+// the compiler's debugging lines are the source's own (stack.mjs).
+export async function preprocess(file, root, includes, { lines = false } = {}) {
   if (!clang) {
     try {
       clang = await import('@yowasp/clang');
@@ -248,7 +249,7 @@ export async function preprocess(file, root, includes) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   let said = '';
   const stderr = bytes => { if (bytes) said += Buffer.from(bytes).toString('utf8'); };
-  const args = ['clang', '-E', '-P', '-undef', '-nostdinc', '-w', `-D${DEFINE}`, ...includes.flatMap(folder => ['-I', inRoot(folder)]), '-o', 'out.i', inRoot(file)];
+  const args = ['clang', '-E', ...(lines ? [] : ['-P']), '-undef', '-nostdinc', '-w', `-D${DEFINE}`, ...includes.flatMap(folder => ['-I', inRoot(folder)]), '-o', 'out.i', inRoot(file)];
   let made;
   try {
     made = await clang.runClang(args, filesIn(root), { stdout: stderr, stderr });
