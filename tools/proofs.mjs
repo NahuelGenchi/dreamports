@@ -115,19 +115,28 @@ export function bytesAccounted(version, { codeMap = readCodeMap(version), states
 
 // a version's three numbers: the two the site shows, from its proof files, and bytes accounted for, the tools' own
 function numbers(version, account) {
-  const proof = readProof(version), measured = percent => percentText(percent) ?? 'not measured yet';
-  return `Code ported ${measured(proof?.ported?.percent)}, gameplay proven ${measured(proof?.gameplay?.percent)}, bytes accounted for ${account.why ?? `${percentText(account.percent)}`}`;
+  const accounted = `bytes accounted for ${account.why ?? percentText(account.percent)}`;
+  let proof;
+  try {
+    proof = readProof(version);
+  } catch {
+    return `Code ported and gameplay proven don't add up (npm run check says why), ${accounted}`;
+  }
+  const measured = percent => percentText(percent) ?? 'not measured yet';
+  return `Code ported ${measured(proof?.ported?.percent)}, gameplay proven ${measured(proof?.gameplay?.percent)}, ${accounted}`;
 }
+
+const sentence = text => text[0].toUpperCase() + text.slice(1);
 
 // --bytes: every byte of the copy, by kind, and the stretches still unexplained
 function showBytes(version, account, all) {
   if (account.why) throw new Error(`${version}'s bytes can't be accounted for: ${account.why}.`);
-  const { counts, total } = account, width = String(total.toLocaleString('en')).length;
-  const line = (name, words) => `${counts[name].toLocaleString('en').padStart(width)} bytes  ${words}`;
+  const { counts, total } = account, width = count(total).length;
+  const line = (name, words) => `${count(counts[name]).padStart(width)} bytes  ${words}`;
   console.log(`${version}: every byte of ${readOriginal(version).name}, ${plural(total, 'byte')}.`);
-  for (const name of ['proven', 'unproven', 'used', 'never']) console.log(`  ${line(name, BYTES[name][0].toUpperCase() + BYTES[name].slice(1))}`);
+  for (const name of ['proven', 'unproven', 'used', 'never']) console.log(`  ${line(name, sentence(BYTES[name]))}`);
   console.log('  Explained:');
-  for (const name of ACCOUNTED.filter(name => !['proven', 'used'].includes(name))) console.log(`    ${line(name, BYTES[name][0].toUpperCase() + BYTES[name].slice(1))}`);
+  for (const name of ACCOUNTED.filter(name => !['proven', 'used'].includes(name))) console.log(`    ${line(name, sentence(BYTES[name]))}`);
   console.log(`Bytes accounted for: ${percentText(account.percent)}, ${count(account.accounted)} of ${plural(total, 'byte')}.`);
   if (!account.unexplained.length) {
     console.log('\nEvery byte is proven code, data used in play or explained.');

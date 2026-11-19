@@ -42,6 +42,7 @@ import { LOCAL, REPO } from './lib/paths.mjs';
 import { cartridgeOf, hex, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
+import { percentText, playedPercent } from '../src/lib/entries.mjs';
 import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
@@ -90,8 +91,9 @@ export async function run(args) {
     if (args[i] === '--addresses') {
       more = args[++i];
       if (!more) throw new Error(`--addresses needs a file. ${USAGE}`);
-    } else if (args[i].startsWith('--') && !['--whole', '--all'].includes(args[i])) throw new Error(`match has no ${args[i]}. ${USAGE}`);
-    else if (!args[i].startsWith('--')) rest.push(args[i]);
+    } else if (['--whole', '--all'].includes(args[i])) continue;
+    else if (args[i].startsWith('--')) throw new Error(`match has no ${args[i]}. ${USAGE}`);
+    else rest.push(args[i]);
   }
   const [game, what] = rest;
   if (!game || rest.length > 2) throw new Error(USAGE);
@@ -276,7 +278,7 @@ function wholeReport(game, { codeMap, copy, laid, all }) {
   const states = new Map(stateOf(game, { codeMap, mark: originalMarks(game, codeMap) }).map(state => [state.key, state]));
   const result = rebuildOf({ functions: codeMap.functions, read: cartridgeOf(copy.path, 'gba'), laid, states });
   const bytes = n => `${count(n)} byte${n === 1 ? '' : 's'}`;
-  const share = n => (result.code ? `, ${(Math.floor(n / result.code * 10000) / 100).toLocaleString('en-US')}%` : '');
+  const share = n => `, ${percentText(playedPercent(n, result.code))}`;
   const most = list => (all ? list : list.slice(0, 20));
   const more = list => (!all && list.length > 20 ? [`    and ${count(list.length - 20)} more: --all lists them.`] : []);
   const at = address => `0x${hex(address)}`;
