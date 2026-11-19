@@ -697,6 +697,12 @@ uint16_t GBA_CLOCK_CODE(uint32_t at);
 
 
 void gba_clock_written(uint32_t address, uint16_t value) {
+  // with the time stopped, no run's store will take it: it's written as the time stands, and what it starts goes on
+  // when the time does
+  if (!running) {
+    gba_clock_write16(address, value);
+    return;
+  }
   if (waiting_count == WAITING) {
     // more than any run writes: the oldest goes on now
     gba_clock_write16(waiting_at[0], waiting_value[0]);
@@ -925,4 +931,19 @@ void gba_clock_divsi3(uint32_t at, int32_t numerator, int32_t denominator, uint3
   if ((int32_t)((uint32_t)numerator ^ (uint32_t)denominator) >= 0) DIVIDE_GOES(0x80, 0x84);
   gba_clock_run(from, at + 0x86, back, NULL, 0);
 #undef DIVIDE_GOES
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The console's time again, for a stretch a game has to time after power-on: the work it does in the V-blank, which
+// asks the display whether the blank lines are over.
+
+void gba_clock_resume(uint64_t time) {
+  running = 1;
+  // the timers and the sound's DMA go on to `time` as they would have, an event at a time, each at its own time: a
+  // DMA that holds the processor past `time` leaves it there
+  while (NOW < (int64_t)time) {
+    int64_t next = next_event(), to = next > NOW && next < (int64_t)time ? next : (int64_t)time;
+    cycles += to - NOW;
+    run_events();
+  }
 }
