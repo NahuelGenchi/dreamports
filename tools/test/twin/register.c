@@ -1,7 +1,9 @@
 // Two functions of the function check's test (../twin.mjs) that work the hardware, in a file of their own so the other
 // tests' program stays as it is. One reads one of its registers and writes it changed: each call of the original
 // starts from the same hardware, so its twin has to as well. The other asks DMA channel 3 for a copy at the next
-// V-blank and waits past it, which a twin, with no clock, can't do: the check has to set such calls aside.
+// V-blank and waits past it, which a twin, with no clock, can't do: the check has to set such calls aside. A third
+// reads a register the console set at power-on, through a register file of its twin's own, as a version that keeps
+// the console's registers itself does: the check gives that file the original's registers before each call (#1527).
 #include "program.h"
 
 #ifdef MATCHING
@@ -33,4 +35,17 @@ void Await(void) {
 #endif
   for (n = 0; n < 60000; n++) {
   }
+}
+
+#ifdef MATCHING
+#define SOUNDBIAS (*(volatile u16 *)0x04000088)
+#else
+// the console's registers, as a version that keeps them itself has them, each at its distance from 0x04000000
+u16 console_io[0x210];
+#define SOUNDBIAS console_io[0x88 >> 1]
+#endif
+
+/** Bias, 0x08000680: the frame the sound's bias, as the console has it. */
+void Bias(void) {
+  gFrame = SOUNDBIAS;
 }

@@ -74,6 +74,10 @@ struct Obj {
 #define gPresses (*(u32 *)(IWRAM + 0x100))
 // where the first sprite has been, a frame each, in the slow work memory
 #define gTrail ((s16 *)EWRAM)
+// a function's code, copied to the fast work memory to run from there, as a game copies one that can't run from the
+// cartridge, and what it last gave back
+#define gCode ((u16 *)(IWRAM + 0x200))
+#define gTwice (*(s32 *)(IWRAM + 0x104))
 
 void AgbMain(void);
 void CartInit(void);
@@ -84,5 +88,7 @@ void WaitFrame(void);
 void ObjBounce(struct Obj *obj);
 void ObjKeys(struct Obj *obj);
 void ObjBlink(struct Obj *obj);
+s32 Twice(s32 x);
+void RunTwice(void);
 
 #endif
