@@ -35,6 +35,7 @@ import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
+import { keptProgram } from '../ps2/original-program.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
@@ -56,11 +57,14 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
  * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
- * aren't C the console's compiler built. In a Dreamport that work is the kit's. Such a function is in no task, and
- * still counts as not proven.
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a function of
+ * another program than the one a game boots, as a PlayStation 2 disc's modules for its second processor, and for a
+ * vector unit's program (ps2/functions.mjs): `twin` and `match` check the boot program's functions, and no other's
+ * yet. Such a function is in no task, and still counts as not proven.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
+  if (f.program || f.vu) return 'elsewhere';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }
@@ -189,10 +193,16 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
 }
 
 /** What reads the original's functions for their marks, from the copy this computer knows, or null without one:
- *  `mark(f)` of a function of the code map. */
+ *  `mark(f)` of a function of the code map. A PlayStation 2 game's are read from the program its disc boots, as a
+ *  tool that read it off the disc kept it on this computer (../ps2/original-program.mjs). */
 export function originalMarks(version, codeMap = readCodeMap(version)) {
   const original = readOriginal(version), copy = copyWith(original.sha1);
   if (!copy || !existsSync(copy.path)) return null;
+  if ((codeMap?.console ?? original.console) === 'ps2') {
+    const read = keptProgram(original.sha1);
+    // only of the functions of that program: another program's, or a vector unit's, is somewhere else on the disc
+    return read && (f => markOf(f.program || f.vu ? Buffer.alloc(0) : read(f.address, f.size)));
+  }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));
 }
@@ -230,7 +240,8 @@ export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
-      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
+        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s in another program of the disc or a vector unit\'s, which no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',
