@@ -7,9 +7,13 @@
 // WebAssembly with a C library of its own (WASI), so the tools build GCC's generators and its compiler proper, cc1,
 // into WebAssembly and run them in Node.js: the same program on every computer, and nothing to install.
 //
-// The target is GCC's own little-endian R3000 for ECOFF, `mipsel-ecoff` (config/mips/ecoffl.h), the PlayStation's
-// processor. What GCC 2.7.2 needs to build this way is the tools' own, written here, and changes nothing of GCC's
-// compiling:
+// The target is the PlayStation's processor, a little-endian R3000: for GCC 2.7.2 GCC's own ECOFF one, `mipsel-ecoff`
+// (config/mips/ecoffl.h), and for GCC 2.6.3, which has none, the PlayStation's own target header decompilations build
+// it with, config/mips/psx.h from decompals/old-gcc's patch at 370040a, the GCC 2.6.3 Xeeynamo/sotn-decomp builds Sony's
+// PsyQ libraries with. The patch is fetched as GCC's source is, at its fixed commit and checked against its hash, and
+// only that header is taken from it. GCC 2.6.3 comes from a Slackware mirror's gzip archive, whose C compiler's files
+// are those of GNU's own bzip2 archive, which Node.js can't unpack. What GCC needs to build this way is the tools'
+// own, written here, and changes nothing of GCC's compiling:
 //   - a header for the computer it runs on, 32-bit and little-endian, as configure would write for one;
 //   - a declaration of each of its functions that returns nothing or a double, and a prototype of each of its error and
 //     warning functions, which take a varying number of arguments: C of 1995 calls them undeclared, and WebAssembly,
@@ -27,9 +31,17 @@ import { gunzipSync } from 'node:zlib';
 import { LOCAL } from '../lib/paths.mjs';
 import { binaryen, filesIn } from '../lib/binaryen.mjs';
 
-/** The versions the tools build, each from GNU's own archive, with its hash. */
+/** The versions the tools build, each from its archive, with its hash, and its target: GCC's own header, or one
+ *  taken from a patch, fetched and checked the same way. */
 export const GCC = {
-  '2.7.2': { url: 'https://ftp.gnu.org/old-gnu/gcc/gcc-2.7.2.tar.gz', sha256: '7cd8bce5c3aeec59a72ecc2d3d5123864a817b14cdbd0680b1a969c3bccc5da5' },
+  '2.7.2': { url: 'https://ftp.gnu.org/old-gnu/gcc/gcc-2.7.2.tar.gz', sha256: '7cd8bce5c3aeec59a72ecc2d3d5123864a817b14cdbd0680b1a969c3bccc5da5', target: 'mips/ecoffl.h' },
+  '2.6.3': {
+    url: 'https://mirrors.slackware.com/slackware/slackware-2.2.0/source/d/gcc/gcc-2.6.3.tar.gz', sha256: '66529b6ced4ccc580ec365809c1abed856d948283deff656801dec14f47d081a', target: 'mips/psx.h',
+    patch: { url: 'https://raw.githubusercontent.com/decompals/old-gcc/370040a1b8510c752c8c91434309599c8857b97d/patches/psx.patch', sha256: 'f575e1f3eb4bbd36aa90e39ce8697bce97be9ea2d818c20f2196142accdbcb5b', file: 'config/mips/psx.h' },
+    // a call with one of its two arguments, which a computer of 1994 let pass and WebAssembly doesn't link: it's
+    // reached only when GCC writes bytecode, which nothing asks of it here
+    fixes: { 'varasm.c': [['\tbc_emit_labelref (name);', '\tbc_emit_labelref (name, 0);']] },
+  },
 };
 const FOLDER = join(LOCAL, 'ps1', 'gcc');
 // what this file is, so a build made by another version of it is made again
@@ -163,22 +175,53 @@ async function runWasi(module, args, { name = 'gcc', folders, stdin = null, stdo
   }
 }
 
-async function fetchSource(version, log) {
-  const { url, sha256 } = GCC[version];
-  log(`Getting GCC ${version}'s source from GNU, at ${url}…`);
-  let packed;
+// a download's bytes, checked against its hash
+async function download(url, sha256, what) {
+  let got;
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`it answered ${response.status}`);
-    packed = Buffer.from(await response.arrayBuffer());
+    got = Buffer.from(await response.arrayBuffer());
   } catch (error) {
-    throw new Error(`GCC ${version}'s source couldn't be got from ${url}: ${error.cause?.message ?? error.message}.`);
+    throw new Error(`${what} couldn't be got from ${url}: ${error.cause?.message ?? error.message}.`);
   }
-  if (createHash('sha256').update(packed).digest('hex') !== sha256) throw new Error(`What ${url} gave isn't GCC ${version} as the tools know it, so it isn't used.`);
+  if (createHash('sha256').update(got).digest('hex') !== sha256) throw new Error(`What ${url} gave isn't ${what} as the tools know it, so it isn't used.`);
+  return got;
+}
+
+/** The file a unified diff makes new, `name` as its +++ line has it after the folder, its added lines alone. */
+export function newFileIn(diff, name) {
+  const lines = diff.split('\n'), start = lines.findIndex(line => line.startsWith('+++ ') && line.split(/\s/)[1]?.replace(/^[^/]+\//, '') === name);
+  if (start < 0) return null;
+  const out = [];
+  for (const line of lines.slice(start + 2)) {
+    if (line.startsWith('diff ') || line.startsWith('--- ')) break;
+    if (line.startsWith('+')) out.push(line.slice(1));
+  }
+  return `${out.join('\n')}\n`;
+}
+
+async function fetchSource(version, log) {
+  const { url, sha256, patch } = GCC[version];
+  log(`Getting GCC ${version}'s source, from ${url}…`);
+  const packed = await download(url, sha256, `GCC ${version}'s source`);
   const files = new Map();
   for (const [path, bytes] of filesIn(gunzipSync(packed))) {
     const name = path.replace(/^gcc-[^/]+\//, '');
     if (/^(config\/mips\/)?[^/]+\.(c|h|def|md)$/.test(name) || /^config\/[^/]+\.h$/.test(name)) files.set(name, bytes);
+  }
+  for (const [name, changes] of Object.entries(GCC[version].fixes ?? {})) {
+    let text = files.get(name).toString('latin1');
+    for (const [from, to] of changes) {
+      if (!text.includes(from)) throw new Error(`GCC ${version}'s ${name} isn't as the tools know it.`);
+      text = text.replace(from, to);
+    }
+    files.set(name, Buffer.from(text, 'latin1'));
+  }
+  if (patch) {
+    const header = newFileIn((await download(patch.url, patch.sha256, `GCC ${version}'s target`)).toString('latin1'), patch.file);
+    if (!header) throw new Error(`${patch.url} doesn't make ${patch.file}, GCC ${version}'s target.`);
+    files.set(patch.file, Buffer.from(header, 'latin1'));
   }
   return files;
 }
@@ -207,7 +250,7 @@ export async function ensureGcc(version = '2.7.2', log = console.log) {
       else files.config.mips[parts[2]] = bytes;
     }
     Object.assign(files, {
-      'config.h': Buffer.from(HOST), 'hconfig.h': Buffer.from(HOST), 'tconfig.h': Buffer.from('#include "mips/xm-mips.h"\n'), 'tm.h': Buffer.from('#include "mips/ecoffl.h"\n'),
+      'config.h': Buffer.from(HOST), 'hconfig.h': Buffer.from(HOST), 'tconfig.h': Buffer.from('#include "mips/xm-mips.h"\n'), 'tm.h': Buffer.from(`#include "${GCC[version].target}"\n`),
       // what configure writes for languages besides C, which cc1 has none of
       'options.h': Buffer.alloc(0), 'specs.h': Buffer.alloc(0),
       'obstack.h': Buffer.from(withoutLvalueCasts(text.get('obstack.h')), 'latin1'),
