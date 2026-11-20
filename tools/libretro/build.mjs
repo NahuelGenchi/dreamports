@@ -16,8 +16,10 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_SOURCE = join(HERE, 'host.c');
 // the route finder's search, which the host includes (lib/explore.h)
 const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
-// what ran of the original, which the host includes too (ran.h)
-const RAN = join(HERE, 'ran.h');
+// what ran of the original, which the host includes too (ran.h, and ran-ps2.h for the PlayStation 2)
+const RAN = join(HERE, 'ran.h'), RAN_PS2 = join(HERE, 'ran-ps2.h');
+// and what the console holds, its memory and its memory cards (held.h)
+const HELD = join(HERE, 'held.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
 // On a Mac the host and the emulator are built for the processor Node.js runs as, arm64 on Apple's chip, named to the
@@ -68,14 +70,19 @@ export function fetchSource({ core, name }) {
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
-  // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
-  if (core.patch) run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  if (core.patch) {
+    // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
+    // emulator's own files, and the patch won't write over it
+    for (const [, added] of readFileSync(join(REPO, core.patch), 'utf8').matchAll(/^diff --git a\/(\S+) b\/\S+\nnew file mode/gm)) rmSync(join(source, added), { force: true });
+    // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
+    run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  }
   return source;
 }
 
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN]);
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
@@ -98,7 +105,7 @@ export function buildReference(machine, log) {
   // said before a build of several minutes that couldn't run here
   if (core.graphics && process.platform === 'win32') throw new Error(`${name} can't run in the tools on Windows yet: its emulator draws with OpenGL, and the tools give it a context only on Linux and macOS so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
-  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });
