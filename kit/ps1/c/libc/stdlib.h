@@ -1,4 +1,5 @@
-// The kit's own: the C library's stdlib.h, for psx_gpu, which takes abs from it, and the computer's own anywhere else.
+// The kit's own: the C library's stdlib.h, for psx_gpu, which takes abs from it, and dfsound, whose memory the kit
+// gives it itself (../sound.c); and the computer's own anywhere else.
 #ifndef __wasm__
 #include_next <stdlib.h>
 #elif !defined(DREAMPORTS_STDLIB_H)

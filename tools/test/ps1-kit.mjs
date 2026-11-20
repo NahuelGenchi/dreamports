@@ -5,7 +5,10 @@
 // Dreamport with its square a shade off, are each found at their first frame. Then a second program of its own
 // (madeUpDrawExe) draws what a 3D game is made of, polygons, lines, textures, shading, dithering, mixing, a texture
 // window and the mask bit, moving each frame, and its Dreamport in C (ps1-kit/draw.c) has to be the same in every frame
-// of 300, and found at its first frame once a corner of one triangle is a pixel off.
+// of 300, and found at its first frame once a corner of one triangle is a pixel off. A third (madeUpSoundExe) plays the
+// sound chip: sounds moved into its memory by DMA and by hand, six voices with their envelopes, noise, a pitch moved
+// by another voice's and the reverb, keyed on and off over the frames. Its Dreamport in C (ps1-kit/sound.c) has to
+// sound the same in all 300, and be found by its sound where it leaves the voice of noise unkeyed.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -13,10 +16,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { GPU, drawList, madeUpDrawExe, madeUpGpuExe } from './made-up-ps1.mjs';
+import { GPU, SOUND, drawList, madeUpDrawExe, madeUpGpuExe, madeUpSoundExe, soundList } from './made-up-ps1.mjs';
 
 const GAME = 'test-ps1-kit', VERSION = `${GAME}/c`;
 const DRAWING = 'test-ps1-kit-draw', DRAWN = `${DRAWING}/c`;
+const SOUNDING = 'test-ps1-kit-sound', SOUNDED = `${SOUNDING}/c`;
 const WORK = join(LOCAL, 'test-ps1-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -39,7 +43,7 @@ const tracked = () => spawnSync('git', ['status', '--porcelain', '--untracked-fi
 
 function tidy() {
   const kept = existsSync(MEDIA) ? readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file)) : [];
-  for (const game of [GAME, DRAWING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
+  for (const game of [GAME, DRAWING, SOUNDING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
   for (const path of [WORK, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
@@ -82,6 +86,15 @@ function writeDrawing(changes = []) {
   writeFileSync(join(gameFolder(DRAWN), 'src', 'main.c'), code);
 }
 
+// the sound program's Dreamport in C, with its sounds, its script and its numbers, and `changes` as writeGame takes them
+function writeSound(changes = []) {
+  const { loops, click, script } = soundList(), words = list => list.map(word => `0x${word.toString(16).toUpperCase()}`).join(', ');
+  let code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'sound.c'), 'utf8').replace('@LOOPS@', words(loops)).replace('@CLICK@', words(click)).replace('@SCRIPT@', words(script))
+    .replace(/@([A-Z_]+)@/g, (_, key) => `0x${SOUND[key].toString(16).toUpperCase()}`);
+  for (const [from, to] of changes) code = code.replace(from, to);
+  writeFileSync(join(gameFolder(SOUNDED), 'src', 'main.c'), code);
+}
+
 async function main() {
   const before = tracked(), copies = existsSync(COPIES) ? readFileSync(COPIES) : null;
   tidy();
@@ -115,6 +128,19 @@ async function main() {
     writeDrawing([[corner, `${corner.slice(0, -1)}B`]]);
     run = dp('prove', DRAWN, 'still');
     check(run.status !== 0 && report(DRAWN).firstDifference?.frame === 0, `with one triangle's corner a pixel off, the first frame differs: ${JSON.stringify(report(DRAWN).firstDifference)}`);
+
+    console.log('The sound chip, voices keyed on and off over the frames:');
+    await makeGame(SOUNDING, SOUNDED, await madeUpSoundExe(), 'Test PlayStation Sound (World)');
+    writeSound();
+    run = dp('prove', SOUNDED, 'still');
+    if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
+    check(run.status === 0 && report(SOUNDED).frames === FRAMES && !report(SOUNDED).firstDifference && report(SOUNDED).sound?.heard, `all ${FRAMES} frames the same as the emulator's, pictures and sound, and sound heard: ${run.out.trim().split('\n').at(-1)}`);
+    // the voice of noise keyed on at frame 100 with nothing, which the chip takes as no key at all: a note moved even an
+    // octave stays within what `prove`'s bands of pitch let through, as each hears its neighbours
+    writeSound([['0x641D88, 0x8,', '0x641D88, 0x0,']]);
+    run = dp('prove', SOUNDED, 'still');
+    const heard = report(SOUNDED).sound?.firstDifference;
+    check(run.status !== 0 && !report(SOUNDED).firstPictureDifference && heard?.frame >= 98 && heard?.frame <= 102, `with the voice of noise never keyed on, its sound differs where the noise starts: ${JSON.stringify(heard)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
@@ -126,7 +152,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe PlayStation\'s kit draws as the console does, every frame.');
+  console.log('\nThe PlayStation\'s kit draws and sounds as the console does, every frame.');
 }
 
 main().catch(error => {
