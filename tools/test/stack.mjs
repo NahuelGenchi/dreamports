@@ -8,10 +8,11 @@
 //
 // The rest of the program has what the arithmetic of a register can't say, each a rule of the stack's own
 // (../gba/stack.mjs): a call through a pointer (Through), a pointer into memory the Dreamport keeps elsewhere (Far), a
-// register that holds a local worked out from memory (Local), and a function proven only at its start (Pass, under
-// Wrap). With each rule the stack is mGBA's, and without it it isn't.
+// register that holds a local worked out from memory (Local), a function proven only at its start (Pass, under
+// Wrap), and a routine the cartridge has in assembly, whose twin is C (Hand, from stack/routines.s, as a library's
+// table keeps one). With each rule the stack is mGBA's, and without it it isn't.
 
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -22,17 +23,20 @@ import { withBuildTools } from '../gba/build.mjs';
 import { ensureOriginal, runOriginal } from '../gba/original.mjs';
 import { memorySpec } from '../lib/memory.mjs';
 import { stackOfFile, syntaxOf, withStack } from '../gba/stack.mjs';
+import { routineMap } from '../gba/stack-map.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { CARTRIDGE, VIA, place } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./stack/', import.meta.url));
 const WORK = join(LOCAL, 'tmp', 'stack-test');
-const PROGRAM = join(HERE, 'leftovers.c');
+const PROGRAM = join(HERE, 'leftovers.c'), ROUTINES = join(HERE, 'routines.s');
 const compiler = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
-const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000580, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640 };
+const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000740, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640, Hand: 0x08000700 };
+// those the cartridge has as the console's compiler builds the C, all but the routine in assembly
+const COMPILED = new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Hand'));
 const NAMED = new Map([['gKept', 0x03000100], ['gOther', 0x03000104], ['gInner', 0x03000108], ['gDone', 0x0300010C], ['gOut', 0x03000110],
-  ['gMore', 0x03000120], ['gFirst', 0x03000124], ['gSecond', 0x03000128], ['gThrough', 0x0300012C], ['gSeen', 0x03000130], ['gSeed', 0x03000134], ['gLocal', 0x03000138], ['gPass', 0x0300013C], ['gWrap', 0x03000140],
-  ['gThroughLeft', 0x03000180], ['gFarLeft', 0x03000198], ['gLocalLeft', 0x030001B0], ['gPassLeft', 0x030001C8],
+  ['gMore', 0x03000120], ['gFirst', 0x03000124], ['gSecond', 0x03000128], ['gThrough', 0x0300012C], ['gSeen', 0x03000130], ['gSeed', 0x03000134], ['gLocal', 0x03000138], ['gPass', 0x0300013C], ['gWrap', 0x03000140], ['gHanded', 0x03000144],
+  ['gThroughLeft', 0x03000180], ['gFarLeft', 0x03000198], ['gLocalLeft', 0x030001B0], ['gPassLeft', 0x030001C8], ['gHandLeft', 0x030001E0],
   ['gFar', 0x0E000000]]);
 // where the Dreamport keeps what the console has at gFar, and the console's address of a pointer into it
 const FAR_HERE = 0x03000400, FAR_BYTES = 0x100;
@@ -63,6 +67,9 @@ if (built.error) throw new Error(built.error);
 const { rom } = madeUpGame({ size: 0x80000 });
 START.forEach((word, i) => rom.writeUInt32LE(word, 0xC0 + 4 * i));
 place(rom, built.assembly, FUNCTIONS, NAMED);
+// Hand as the routine in assembly, over what the compiler made of its twin
+const routines = readFileSync(ROUTINES, 'utf8');
+place(rom, routines, { Hand: FUNCTIONS.Hand }, new Map(Object.entries(FUNCTIONS).map(([name, address]) => [name, address + 1])));
 // what the compiler calls to call through a pointer: bx r0 to bx r3
 Object.values(VIA).forEach((address, register) => rom.writeUInt16LE(0x4700 | register << 3, address - CARTRIDGE));
 const cartridge = join(WORK, 'cartridge.gba');
@@ -82,12 +89,12 @@ check(read?.locals.some(l => l.name === 'box' && l.fbreg === 0 && l.bytes === 16
 const kit = [join(REPO, 'kit', 'c'), join(REPO, 'kit', 'gba', 'c')];
 const inRepo = path => relative(REPO, path).split('\\').join('/');
 const args = [...WASM_FLAGS, '-std=c11', '-O2', '-funsigned-char', ...kit.flatMap(folder => ['-I', inRepo(folder)])];
-const { readFileSync } = await import('node:fs');
 const text = readFileSync(PROGRAM, 'utf8');
 const files = { tools: { test: { stack: { 'leftovers.c': Buffer.from(text) } } }, kit: { c: {}, gba: { c: { 'stack.h': readFileSync(join(REPO, 'kit', 'gba', 'c', 'stack.h')) } } } };
 const tree = await syntaxOf(PROGRAM, REPO, args, files);
 const addressOf = name => (FUNCTIONS[name] ? FUNCTIONS[name] + 1 : null);
-const stacked_ = async (options = {}) => withStack({ file: inRepo(PROGRAM), text, tree: await syntaxOf(PROGRAM, REPO, args, files), map, matched: new Set(Object.keys(FUNCTIONS)), addressOf, ...options });
+const table = routineMap(routines).routines;
+const stacked_ = async (options = {}) => withStack({ file: inRepo(PROGRAM), text, tree: await syntaxOf(PROGRAM, REPO, args, files), map, matched: COMPILED, addressOf, routines: table, ...options });
 const made = await stacked_();
 check(made.gaps.length === 0, `the program's stack has no gaps${made.gaps.length ? `: ${made.gaps.join('; ')}` : ''}`);
 const stacked = join(WORK, 'stacked.c'), plain = join(WORK, 'plain.c'), run = join(WORK, 'run.c');
@@ -108,7 +115,7 @@ const dreamport = async (program, name) => {
 const mine = await dreamport(stacked, 'stacked'), without = await dreamport(plain, 'plain');
 // with Push not proven by the same bytes: its frame still takes its room, so Keep's saved register is where Copy
 // finds it, and Push's own two pushes are left out, and listed
-const unproven = withStack({ file: inRepo(PROGRAM), text, tree: await syntaxOf(PROGRAM, REPO, args, files), map, matched: new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Push')), addressOf });
+const unproven = withStack({ file: inRepo(PROGRAM), text, tree: await syntaxOf(PROGRAM, REPO, args, files), map, matched: new Set([...COMPILED].filter(name => name !== 'Push')), addressOf, routines: table });
 const partly = join(WORK, 'partly.c');
 writeFileSync(partly, `${unproven.header}\n${unproven.text}`);
 const part = await dreamport(partly, 'partly');
@@ -129,7 +136,7 @@ const built_ = async (name, options) => {
 const theirLeft = name => words(theirs, NAMED.get(name) - VALUES.address, 6);
 const sameLeft = (run, name) => run.left(name).every((w, i) => w === theirLeft(name)[i]);
 const show = list => list.map(hex).join(', ');
-check(['gThroughLeft', 'gFarLeft', 'gLocalLeft', 'gPassLeft'].every(name => sameLeft(mine, name)), `what each of the later functions left is what mGBA's left: ${show(theirLeft('gThroughLeft'))}; ${show(theirLeft('gFarLeft'))}; ${show(theirLeft('gLocalLeft'))}; ${show(theirLeft('gPassLeft'))}`);
+check(['gThroughLeft', 'gFarLeft', 'gLocalLeft', 'gPassLeft', 'gHandLeft'].every(name => sameLeft(mine, name)), `what each of the later functions left is what mGBA's left: ${show(theirLeft('gThroughLeft'))}; ${show(theirLeft('gFarLeft'))}; ${show(theirLeft('gLocalLeft'))}; ${show(theirLeft('gPassLeft'))}; ${show(theirLeft('gHandLeft'))}`);
 const via = map.functions.Through?.calls.find(c => c.callee === null);
 check(via?.through && via.returnOffset === via.offset + 4, `the compiler's assembly has Through's call through a pointer, in ${via?.through}`);
 check(theirLeft('gThroughLeft').includes(FUNCTIONS.Through + via.returnOffset + 1), 'and mGBA\'s stack has where it goes back to');
@@ -147,7 +154,7 @@ check(!sameLeft(noLocals, 'gLocalLeft') && noLocals.gaps.length === 1 && sameLef
 const start = map.functions.Pass?.start, passAt = FUNCTIONS.Pass - CARTRIDGE, twinAt = built.made.symbols.get('Pass').at;
 const sameStart = start && !start.loads && Buffer.compare(rom.subarray(passAt, passAt + start.bytes), Buffer.from(built.made.sections['.text'].bytes).subarray(twinAt, twinAt + start.bytes)) === 0;
 check(sameStart && start.bytes >= 2, `Pass's start is ${start?.bytes} bytes, the cartridge's own`);
-const others = new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Pass'));
+const others = new Set([...COMPILED].filter(name => name !== 'Pass'));
 const startOnly = await built_('start-only', { matched: others, starts: new Set(['Pass']) }), notAtAll = await built_('not-at-all', { matched: others });
 const wrong = run => run.left('gPassLeft').filter((w, i) => w !== theirLeft('gPassLeft')[i]).length;
 const passed = theirLeft('gPassLeft').indexOf(NAMED.get('gMore'));
@@ -155,6 +162,16 @@ check(passed >= 0 && startOnly.left('gPassLeft')[passed] === NAMED.get('gMore') 
   'with Pass proven only at its start, the register of Main\'s it doesn\'t save reaches Deep, which saves it as mGBA\'s does, and with Pass not proven at all it doesn\'t');
 check(wrong(startOnly) > 0 && wrong(startOnly) < wrong(notAtAll), `its own register and where Deep goes back to stay out: ${wrong(startOnly)} of the six words differ, and ${wrong(notAtAll)} with Pass not proven at all (${show(startOnly.left('gPassLeft'))}; ${show(notAtAll.left('gPassLeft'))})`);
 check(startOnly.gaps.some(gap => gap.startsWith('Pass: proven only at its start')), `and that's listed: ${startOnly.gaps.join('; ')}`);
+
+// Hand from the table: the routine's pushes, its high register saved through a low one, the number and the parameter it
+// keeps, and where Inner goes back to, as mGBA's; without the table, its twin only takes the room the compiler gives
+// its C, and they're missing
+const hand = table.Hand;
+check(hand?.instrs.filter(ins => ins.writes.length).length === 4 && hand.instrs.find(ins => ins.anchor?.kind === 'call')?.sp === -28, `the table gives Hand's four stores to the stack and its call 28 bytes down: ${JSON.stringify(hand?.instrs.flatMap(ins => ins.writes.map(w => w.slot)))}`);
+check(theirLeft('gHandLeft')[1] === NAMED.get('gHanded') && theirLeft('gHandLeft')[3] === NAMED.get('gDone'), `mGBA's stack has the parameter Hand kept on its frame, the start's r8 it saved through r4, and Main's registers: ${show(theirLeft('gHandLeft'))}`);
+const noRoutines = await built_('no-routines', { without: new Set(['routines']) });
+check(!sameLeft(noRoutines, 'gHandLeft') && sameLeft(noRoutines, 'gPassLeft'), `without the table, what Hand left is missing: ${show(noRoutines.left('gHandLeft'))}`);
+check(made.text.includes('gba_stack_asm_enter(&gba_asm_Hand)') && noRoutines.gaps.some(gap => gap.startsWith('Hand:')), `its twin starts from the table's frame, and without the table that's listed: ${noRoutines.gaps.filter(gap => gap.startsWith('Hand:')).join('; ')}`);
 
 if (failed) {
   console.log(`${failed} failed.`);

@@ -31,6 +31,7 @@ enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_SPEED_X = 0x5C, VIEW_SPEED_Y = 0x5F };
 
 // sub_DBFB: the view is asked to move across so that Arthur is in the middle of the picture, by at most 7 pixels to
 // the right or 8 to the left.
+// dp:twin sub_DBFB view_follows_across() if X == 0
 static void view_follows_across(void) {
   uint32_t middle = (uint32_t)(RAM[VIEW_X + 2] << 16 | RAM[VIEW_X + 1] << 8 | RAM[VIEW_X]) + 0x8000;
   uint32_t ahead = (uint32_t)(X_SCREEN << 16 | X << 8 | RAM[OBJECT_X_PART + ARTHUR]) - middle;
@@ -53,6 +54,7 @@ static void view_follows_across(void) {
 
 // sub_DB99: and down, so that he's 144 pixels below its top, by at most 7 pixels down or 8 up. A screen is 240 pixels
 // high, so 16 are taken off or put back where the two are on different screens.
+// dp:twin sub_DB99 view_follows_down() if X == 0
 static void view_follows_down(void) {
   RAM[0x7B] = RAM[VIEW_Y];
   uint16_t line = (uint16_t)(RAM[VIEW_Y + 1] + 0x90);
@@ -85,11 +87,14 @@ static void view_follows_down(void) {
 }
 
 // sub_E166: his place down, on top of the block he's landed on.
+// dp:twin sub_E166 stand_on_block() if X == 0
 static void stand_on_block(void) { Y = (uint8_t)((Y & 0xF0) | 0x08); }
 
 // sub_DF62: whether something is in his way: a solid block 8 pixels ahead of him, 4 below his place, or the edge of the
-// picture. $D1 keeps the answer.
-static int way_blocked(void) {
+// picture. $D1 keeps the answer. `s` is the stack pointer it starts with: drift's calls come from four places of his
+// task's stack, so they don't follow it.
+// dp:twin sub_DF62 +6 way_blocked(S) -> C if X == 0
+static int way_blocked(int s) {
   int left = HEADING == 0x0C;
   uint16_t ahead = (uint16_t)((X_SCREEN << 8 | X) + (left ? -8 : 8));
   RAM[0x74] = (uint8_t)ahead;
@@ -102,7 +107,7 @@ static int way_blocked(void) {
     RAM[0x77]++;
     took(WAY_AHEAD_NEXT_SCREEN);
   }
-  int solid = block_at_stage_place() >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
+  int solid = block_at_stage_place(call_from(s, left ? 0xDF79 : 0xDF69)) >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
   took(solid ? WAY_SOLID : left ? (edge ? WAY_LEFT_EDGE : WAY_LEFT_FREE) : edge ? WAY_RIGHT_EDGE : WAY_RIGHT_FREE);
   RAM[0xD1] = solid || edge ? 0x80 : 0;
   return solid || edge;
@@ -113,11 +118,11 @@ static int way_blocked(void) {
 static void drift_unless(int blocked, uint8_t speed) {
   if (blocked) { took(JUMP_BLOCKED); return; }
   took(JUMP_DRIFTS);
-  move_object(ARTHUR, speed, Y_NOT_FOLLOWED);
+  move_object(ARTHUR, speed, RAM[0xD4]);   // Y as way_blocked's look-up of the block leaves it
   took(JUMPS);
   view_follows_across();
 }
-static void drift(uint8_t speed) { drift_unless(way_blocked(), speed); }
+static void drift(uint8_t speed) { drift_unless(way_blocked(S_NOT_FOLLOWED), speed); }
 
 // sub_DDA1: what the direction buttons ask for, from the copy's list at $E307: 0 for nothing, and otherwise a heading,
 // whose bit $04 says it's across. It's also where $85, B held since before, is cleared.
@@ -154,8 +159,8 @@ static void placed(int with_buttons) {
 static void flash_after_a_hit(void);
 
 // sub_E9CE and sub_EA2F: the block of the stage at his place, or 11 pixels below it, which at $EA44 can be on the next
-// screen down: a screen is 240 pixels high.
-static uint8_t block_at_him(uint8_t below) {
+// screen down: a screen is 240 pixels high. `s` is the stack pointer they start with.
+static uint8_t block_at_him(uint8_t below, int s) {
   RAM[0x22] = below;
   RAM[0x77] = Y_SCREEN;
   RAM[0x73] = (uint8_t)(Y + below);
@@ -167,13 +172,13 @@ static uint8_t block_at_him(uint8_t below) {
     RAM[0x77]++;
     took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
   }
-  return block_at_stage_place();
+  return block_at_stage_place(s);   // after $EA2F's or $E9CE's first part
 }
 
 // sub_DC3E and sub_DC38: whether a ladder is at his place, or under his feet. A ladder's blocks are $BA to $CF.
 static int ladder(int under) {
   took(CALLS);
-  uint8_t block = block_at_him(under ? 0x0B : 0);
+  uint8_t block = block_at_him(under ? 0x0B : 0, call_from(stack_of(TASK_ARTHUR, 1), under ? 0xDC38 : 0xDC3E));
   if (under) took(JUMPS);
   took(block < 0xBA ? LADDER_BLOCK_BELOW_ITS : block < 0xD0 ? LADDER_BLOCK_IS : LADDER_BLOCK_PAST_ITS);
   return block >= 0xBA && block < 0xD0;
@@ -371,7 +376,7 @@ static wait jump(uint8_t *step) {
       *step = COUNT ? RISE : FALL;
       break;
     case FALL:
-      if (on_the_ground(ARTHUR)) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 1), 0xE23C))) {
         stand_on_block();
         took(JUMP_LANDS);
         *step = BEGIN;
@@ -397,7 +402,7 @@ static wait jump(uint8_t *step) {
       break;
     case LONG_FALL:
       // $E265
-      if (on_the_ground(ARTHUR)) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 1), 0xE265))) {
         stand_on_block();
         took(JUMP_LANDS_LATE);
         *step = BEGIN;
@@ -428,14 +433,15 @@ static void face_in_the_air(void) {
 }
 
 // sub_DF5D: whether something is in the way of a jump, which a jump straight up always has.
-static int jump_way_blocked(void) {
+// dp:twin sub_DF5D +6 jump_way_blocked(S) -> C if X == 0
+static int jump_way_blocked(int s) {
   if (!RAM[JUMP_MOVES_ACROSS]) {
     RAM[0xD1] = 0x80;
     took(JUMP_STRAIGHT_UP);
     return 1;
   }
   took(JUMP_MOVES);
-  return way_blocked();
+  return way_blocked(s);   // on into sub_DF62
 }
 
 // sub_DF93: his shape in a jump, by the way he faces, or a throw's.
@@ -489,7 +495,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         return DONE;
       }
       took(STAGE_JUMP_NOT_HIT);
-      drift_unless(jump_way_blocked(), 0x0C);
+      drift_unless(jump_way_blocked(call_from(stack_of(TASK_ARTHUR, 0), 0xDE40)), 0x0C);
       rise();
       jump_shape();
       placed(1);
@@ -523,7 +529,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         down = 1;
       } else {
         took(STAGE_JUMP_NOT_HELD);
-        if (on_the_ground(ARTHUR)) {
+        if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), long_fall ? 0xDEA9 : 0xDE66))) {
           stand_on_block();
           took(STAGE_JUMP_LANDS);
           down = 1;
@@ -543,7 +549,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         return DONE;
       }
       took(STAGE_JUMP_NOT_HIT);
-      drift_unless(jump_way_blocked(), long_fall ? 0x06 : 0x0C);
+      drift_unless(jump_way_blocked(call_from(stack_of(TASK_ARTHUR, 0), 0xDE86)), long_fall ? 0x06 : 0x0C);
       took(long_fall ? ARTHUR_FALL_BY_SEVEN : ARTHUR_FALL_BY_LIST);
       fall_by(long_fall ? 7 : jump_height());
       jump_shape();
@@ -799,7 +805,7 @@ wait arthur_task(void) {
       }
       took(ARTHUR_TURN_CHECKS);
       if (FLAGS & HELD) took(ARTHUR_HELD);
-      else if (!on_the_ground(ARTHUR)) {
+      else if (!on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), 0xDAFE))) {
         took(ARTHUR_IN_AIR);
         *step = STAGE_FALLS;
         break;
@@ -946,7 +952,7 @@ wait arthur_task(void) {
         break;
       }
       took(LADDER_DOWN_LOOKS);
-      uint8_t block = block_at_him(0x0B);
+      uint8_t block = block_at_him(0x0B, call_from(stack_of(TASK_ARTHUR, 0), 0xDD6A));
       if (block >= 0xD0) {
         took(LADDER_DOWN_NO_LADDER);
         *step = CROUCH;
@@ -1057,7 +1063,7 @@ wait arthur_task(void) {
       // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet. dp:stop sub_E2AD
       took(ARTHUR_FALL_CHECKS);
       if (FLAGS & HELD) { took(ARTHUR_FALL_HELD); *step = STAGE_STANDS; break; }
-      if (on_the_ground(ARTHUR)) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), 0xE29B))) {
         stand_on_block();
         took(ARTHUR_LANDS);
         *step = STAGE_STANDS;
@@ -1192,7 +1198,7 @@ wait arthur_task(void) {
       RAM[0x77] = Y_SCREEN;
       RAM[0x73] = (uint8_t)(Y + 4);
       took(BLOCK_BEHIND_ARTHUR);
-      uint8_t block = block_at_stage_place();
+      uint8_t block = block_at_stage_place(call_from(stack_of(TASK_ARTHUR, 0), 0xE4C1));   // $DAEB jumps to $E423 at his task's top
       if (block >= 0x60 && block < 0x70) {
         RAM[0xBF] = 0xFF;
         took(GATE_REACHED);
