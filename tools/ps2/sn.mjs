@@ -23,6 +23,7 @@ import { arch, platform } from 'node:os';
 import { dirname, join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { LOCAL } from '../lib/paths.mjs';
+import { fetchChecked } from '../lib/download.mjs';
 import { filesIn } from '../lib/binaryen.mjs';
 
 const RELEASE = 'https://github.com/decompme/compilers/releases/download/compilers';
@@ -51,19 +52,6 @@ export const WIBO = {
   'darwin-arm64': { url: `${WIBO_RELEASE}/wibo-macos`, sha256: '2b3000ef6a7a490c24ccd71967735ae0005e218922e51806cca1b8d77fd3cf7c', rosetta: true },
 };
 const FOLDER = join(LOCAL, 'ps2', 'sn-gcc');
-
-async function fetchChecked(url, sha256, what) {
-  let bytes;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`it answered ${response.status}`);
-    bytes = Buffer.from(await response.arrayBuffer());
-  } catch (error) {
-    throw new Error(`${what} couldn't be got from ${url}: ${error.cause?.message ?? error.message}.`);
-  }
-  if (createHash('sha256').update(bytes).digest('hex') !== sha256) throw new Error(`What ${url} gave isn't ${what} as the tools know it, so it isn't used.`);
-  return bytes;
-}
 
 /** Whether a Mac with Apple's chip has Rosetta 2, which runs wibo's build for Intel's chip. */
 export const hasRosetta = () => spawnSync('arch', ['-x86_64', '/usr/bin/true']).status === 0;
