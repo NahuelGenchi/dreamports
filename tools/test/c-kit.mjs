@@ -2,7 +2,8 @@
 // and the base every console's kit in C shares (kit/c/) on a console with no kit of its own.
 // It draws hundreds of made-up scenes, every mode, layer, window, colour effect and kind of sprite, with H-blanks that
 // change registers and colours between lines, with the C as WebAssembly and built for this computer, and with
-// kit/gba/video.js, and fails on any pixel that differs. Then it builds a new game's starting point in C and runs it
+// kit/gba/video.js, and a line at a time as a game on the console's clock draws it, and fails on any pixel that
+// differs. Then it builds a new game's starting point in C and runs it
 // with a made-up cartridge (made-up-game.mjs), built for this computer and in a real browser, where the proof tools
 // play it a frame at a time as they play the JavaScript starting point, and fails on any frame whose picture or video
 // hardware differs. It checks that a game in C reads a recording's start point, the words of the page's address, as
@@ -187,6 +188,13 @@ const wasmFrames = bytes.map(b => {
   return new Uint32Array(memory.buffer, instance.exports.draw(), W * H).slice();
 });
 compare('as WebAssembly', n => wasmFrames[n], expected);
+// a line at a time, as a game on the console's clock draws each when its time reaches it, each line's writes made by
+// the game after it: the same picture
+const lineFrames = bytes.map(b => {
+  new Uint8Array(memory.buffer, input, b.length).set(b);
+  return new Uint32Array(memory.buffer, instance.exports.drawLines(), W * H).slice();
+});
+compare('a line at a time, as WebAssembly', n => lineFrames[n], expected);
 
 // the sound: the C engine and the JavaScript one play the same songs with the same calls, a frame at a time, and every
 // sample of the console's mix has to be the same. Made-up songs on every pull request, and with a copy of a game here
