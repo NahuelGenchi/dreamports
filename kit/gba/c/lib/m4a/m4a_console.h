@@ -119,6 +119,14 @@ void console_wrote(const volatile void *where, u32 bytes);
 #define M4A_SET(reg, value) ((reg) = (value), console_wrote(&(reg), sizeof(reg)))
 #endif
 
+// A word stored as the engine's assembly stores one with stm: the console drops the address's low two bits, so a word
+// for an address that isn't a multiple of 4 lands at the one below it. The plain place for the console's compiler.
+#ifdef MATCHING
+#define M4A_STM_AT(type, at) (at)
+#else
+#define M4A_STM_AT(type, at) ((type *)((uintptr_t)(at) & ~(uintptr_t)3))
+#endif
+
 // the console's sound and DMA registers the engine writes, each as the C its source names
 #ifdef MATCHING
 #define M4A_REG(bits, offset) (*(vu##bits *)(0x04000000 + (offset)))
