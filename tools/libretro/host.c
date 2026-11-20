@@ -16,7 +16,7 @@
 // each size its picture had, from which frame, as JSON. What the core prints goes nowhere.
 //
 // FUNCTIONS, a file or -, is where the code map's functions are, for a core that tells the tools of every instruction it
-// runs, as the NES's does with the tools' change to it (fceumm.patch). ran.h says what's in it, and what the environment's
+// runs, as the NES's and the Super Nintendo's do with the tools' changes to them (fceumm.patch, snes9x.patch). ran.h says what's in it, and what the environment's
 // DP_PLAYED, DP_ENTRIES and DP_REGISTERS ask to be written of what ran. The JSON on stderr then says how many instructions
 // ran outside every function of FUNCTIONS, in the program under "cartridge" and outside it under "memory".
 //
@@ -31,9 +31,9 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
-// The environment's DP_STARTS, when it's set, names a file of the EE's addresses to tell of each time play reaches one,
-// with the registers and the memory the function starts from, from the same core (starts.h), for the function check's
-// memories of play.
+// The environment's DP_STARTS, when it's set, names a file of the processor's addresses to tell of each time play
+// reaches one, with the registers and the memory the function starts from, from the same core (starts.h), for the
+// function check's memories of play on the PlayStation and the PlayStation 2.
 //
 // The environment's DP_MEMORY and DP_SAVES, when they're set, ask for the console's memory after every frame and its
 // memory cards' files each time they change, from a core that says where it keeps them, as the PlayStation 2's does with
@@ -233,6 +233,11 @@ static void* procAddress(const char* name) {
 #define CGL_PFA_RENDERER_ID 70
 #define CGL_RENDERER_SOFTWARE 0x00020400
 static void* openGl;
+static void* glContext;
+static int (*cglMakeCurrent)(void*);
+static void contextOnThread(bool here) {
+	cglMakeCurrent(here ? glContext : NULL);
+}
 static void* frameworkFunction(const char* name) {
 	return dlsym(openGl, name);
 }
@@ -251,12 +256,20 @@ static const char* makeContext(bool any) {
 	int count = 0;
 	if (choose(wanted, &format, &count) || !format) return "of a kind this Mac's OpenGL can't make";
 	if (create(format, NULL, &context) || !context || makeCurrent(context)) return "and this Mac's OpenGL wouldn't make one";
+	glContext = context;
+	cglMakeCurrent = makeCurrent;
 	glFunction = frameworkFunction;
 	return NULL;
 }
 #elif !defined(_WIN32)
 // Linux's: EGL with no window, on Mesa's llvmpipe, which draws on the processor, whatever graphics card the computer
 // has, so every computer draws the same
+static void* glContext;
+static void* eglDisplay;
+static unsigned (*eglMakeCurrent)(void*, void*, void*, void*);
+static void contextOnThread(bool here) {
+	eglMakeCurrent(eglDisplay, NULL, NULL, here ? glContext : NULL);
+}
 static const char* makeContext(bool any) {
 	if (!any) {
 		setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
@@ -288,6 +301,9 @@ static const char* makeContext(bool any) {
 	if (graphics->contextType == CONTEXT_OPENGL_CORE) version[4] = EGL_CONTEXT_OPENGL_PROFILE_MASK;
 	void* context = createContext(display, config, NULL, version);
 	if (!context || !makeCurrent(display, NULL, NULL, context)) return "of a version this computer's EGL can't make";
+	glContext = context;
+	eglDisplay = display;
+	eglMakeCurrent = makeCurrent;
 	return NULL;
 }
 #endif
@@ -615,6 +631,17 @@ static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t 
 	for (uint32_t i = 0; i < bytes && memory && address + i < size; i++) memory[address + i] = value >> (i * 8);
 }
 
+// A graphics context is one thread's at a time, and the search plays the console on a thread of its own: the emulator's
+// goes with it. Without it, what the emulator draws there goes nowhere on Linux, and on a Mac the search stopped (#1707)
+static void searchThread(void* console, int plays) {
+	(void) console;
+#ifndef _WIN32
+	if (glContext) contextOnThread(plays);
+#else
+	(void) plays;
+#endif
+}
+
 int main(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
 	if (argc < (live ? 6 : route ? 5 : 12)) {
@@ -685,8 +712,10 @@ int main(int argc, char** argv) {
 		ps2Watch watch = dlsym(library, "dreamports_watch");
 		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
+			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
 			if (watch) ps2Open(watch, functions);
 			else if (tell) tell(ranInstruction);
+			else if (tell65816) tell65816(ranInstruction65816);
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;
@@ -737,7 +766,7 @@ int main(int argc, char** argv) {
 			fprintf(err, "The core can't copy its state out, which the search needs.\n");
 			return 2;
 		}
-		struct ex_machine machine = { NULL, searchFrame, searchSize, searchSave, searchLoad, searchRead, searchSet };
+		struct ex_machine machine = { NULL, searchFrame, searchSize, searchSave, searchLoad, searchRead, searchSet, searchThread };
 		return exploreRoute(machine, NULL, argv[4], 4);
 	}
 
@@ -784,8 +813,16 @@ int main(int argc, char** argv) {
 		fprintf(err, "The core keeps no sound lists, which this game's sound is proven by.\n");
 		return 2;
 	}
-	heldOpen(dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_memory_card"));
-	startsOpen(dlsym(library, "dreamports_registers"), dlsym(library, "dreamports_memory"));
+	// where the core keeps the console's memories: Play!'s name, or a name that starts as libretro's own, as Snes9x lets
+	// out only those (snes9x.patch)
+	const uint8_t* (*memories)(uint32_t, uint32_t, uint32_t) = dlsym(library, "dreamports_memory");
+	if (!memories) memories = dlsym(library, "retro_dreamports_memory");
+	heldOpen(memories, dlsym(library, "dreamports_memory_card"));
+	if (startsOpen(dlsym(library, "dreamports_registers"), memories, dlsym(library, "dreamports_starts_layout"))) {
+		// a core that tells of each instruction it's about to run, as the PlayStation's does with the tools' patch
+		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
+		if (watchPc) watchPc(startsReached);
+	}
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;

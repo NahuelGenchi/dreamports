@@ -272,6 +272,16 @@ for (const id of libraryIds()) {
     continue;
   }
   for (const [console_, given] of Object.entries(library.compilers)) {
+    // a PlayStation library is built with GCC, maspsx's rules and the tools' assembler, as match builds it there
+    if (console_ === 'ps1') {
+      const { compileFile: compilePs1, readCompiler: ps1Compiler, stopCompiler } = await import('../ps1/match.mjs');
+      const compiler = ps1Compiler({ compiler: given }, `${id}'s library.json`), built = [];
+      for (const file of library.files) built.push(await compilePs1({ file, root: library.folder, includes: [library.folder], compiler, work: join(work, 'kit', id, basename(file, '.c')) }));
+      stopCompiler();
+      const wrong = built.find(one => one.error);
+      check(!wrong, `${id} builds with GCC ${given.version}, as match builds it${wrong ? `: ${wrong.error}` : ''}`);
+      continue;
+    }
     if (console_ !== 'gba') continue;
     if (!isCompilerBuilt(given.name)) withBuildTools(console.log, tools => buildCompilers([given.name], console.log, tools));
     const built = [];

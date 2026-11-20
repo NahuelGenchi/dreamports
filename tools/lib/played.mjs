@@ -47,6 +47,7 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
+import { instructionsIn as snesInstructionsIn } from '../snes/functions.mjs';
 import { SECTOR, loadedCopy, mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
@@ -67,10 +68,14 @@ const unpack = (text, bytes) => {
 
 // a code map knows its console (lib/proof-files.mjs), and one made by hand, with none, is a Game Boy Advance's
 const isNes = codeMap => codeMap.console === 'nes';
+const isSnes = codeMap => codeMap.console === 'snes';
 const isPs2 = codeMap => codeMap.console === 'ps2';
+// a console whose places are bytes of its cartridge's program, where a code map's address is: the NES and the Super
+// Nintendo
+const byBytes = codeMap => isNes(codeMap) || isSnes(codeMap);
 
 /** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven. */
-export const followsContent = codeMap => !isNes(codeMap);
+export const followsContent = codeMap => !byBytes(codeMap);
 
 // the cells of the cartridge's or disc's data, and those that hold anything: { count, holds }
 function cellsHeld(codeMap, cartridge) {
@@ -91,9 +96,9 @@ export const cellAddress = (codeMap, cell) => (isPs2(codeMap) ? cell : CARTRIDGE
 
 /** Where each of the code map's functions has its places: { first, places, bytes, unit }, `first[i]` the place of
  *  function i's first two bytes, `bytes` how long a set of all of them is, and `unit` how many bytes a place is: two,
- *  or one on the NES. */
+ *  or one on the NES and the Super Nintendo. */
 export function layoutOf(codeMap) {
-  const unit = isNes(codeMap) ? 1 : isPs2(codeMap) ? 4 : 2;
+  const unit = byBytes(codeMap) ? 1 : isPs2(codeMap) ? 4 : 2;
   const first = new Uint32Array(codeMap.functions.length + 1);
   codeMap.functions.forEach((f, i) => { first[i + 1] = first[i] + Math.ceil(f.size / unit); });
   const places = first[codeMap.functions.length];
@@ -112,11 +117,12 @@ const leaves = op => (op & 0xFF00) === 0xBD00 || (op & 0xFF87) === 0x4700 || (op
  * found only from where they ran, as its table isn't read. `never` maps a branch's offset to the way it can't go, TAKEN
  * or NOT_TAKEN, as a game's unreachable.json says, and that way isn't followed (#1536). With `longJumps`, a BL to
  * the function's own code past its start is a long jump, as agbcc writes a branch too far for B, with no code after it
- * (#1567).
+ * (#1567). `arm` says whether the code is ARM or Thumb, for code whose bytes alone don't say: without it, ARM is code
+ * of 16 bytes or more whose first words look like it.
  */
-export function instructionsOf(bytes, seeds = [], never = new Map(), { longJumps = false } = {}) {
+export function instructionsOf(bytes, seeds = [], never = new Map(), { longJumps = false, arm: isArm = null } = {}) {
   const size = bytes.length, u16 = at => bytes[at] | bytes[at + 1] << 8, u32 = at => (u16(at) | u16(at + 2) << 16) >>> 0;
-  const arm = size >= 16 && size % 4 === 0 && looksLikeArm([0, 4, 8, 12].map(u32));
+  const arm = isArm ?? (size >= 16 && size % 4 === 0 && looksLikeArm([0, 4, 8, 12].map(u32)));
   const instructions = new Set(), branches = new Set(), work = [0, ...seeds];
   while (work.length) {
     let pc = work.pop();
@@ -144,7 +150,11 @@ export function instructionsOf(bytes, seeds = [], never = new Map(), { longJumps
         // BL, in two halves, each a step of the processor's
         instructions.add(pc).add(pc + 2);
         const target = pc + 4 + ((op & 0x7FF) << 21 >> 9 | (u16(pc + 2) & 0x7FF) << 1);
-        pc = longJumps && target > 0 && target < size ? target : pc + 4;
+        // but a BL to a `bx` through another register than lr is a call through it, as m4a's call_r3, which the
+        // function it goes to comes back from to after the BL (#1708)
+        const through = longJumps && target > 0 && target + 2 <= size && (u16(target) & 0xFF87) === 0x4700 && (u16(target) >> 3 & 15) !== 14;
+        if (through) work.push(target);
+        pc = longJumps && !through && target > 0 && target < size ? target : pc + 4;
         continue;
       }
       if (invalid(op) || (op & 0xF800) === 0xF800) break;
@@ -235,8 +245,8 @@ export function finderOf(codeMap, cartridge, made, loads = []) {
     }
     return null;
   };
-  // an NES address is a place in the program, and its code runs from nowhere else that counts
-  if (isNes(codeMap)) return address => inCartridge(address);
+  // an NES or Super Nintendo address is a place in the program, and its code runs from nowhere else that counts
+  if (byBytes(codeMap)) return address => inCartridge(address);
   // a PlayStation 2 address is in its processor's own memory: the EE's code counts where a program of the disc holds
   // what ran, and a vector unit's where the program an upload put there does (ps2/ledger.mjs)
   if (isPs2(codeMap)) {
@@ -634,7 +644,7 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   const known = unpack(sameMap ? before.code : null, layout.bytes), code = new Uint8Array(layout.bytes);
   let total = 0, played = 0;
-  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : null, ps2 = isPs2(codeMap);
+  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : isSnes(codeMap) ? snesInstructionsIn(codeMap.functions, cartridge.copy()) : null, ps2 = isPs2(codeMap);
   codeMap.functions.forEach((f, index) => {
     const first = layout.first[index], places = layout.first[index + 1] - first;
     // a PlayStation 2 function's bytes are its own program's, a module's or a vector unit's among them (ps2/ledger.mjs)
