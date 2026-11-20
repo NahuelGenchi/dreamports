@@ -331,6 +331,8 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  *   sizeOf(address): how long the code map says the function there is, or null when none starts there
  *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
  *     gives them, or null
+ *   runEnd(address, bytes): for a twin that names its run by its length, `dp:run`, as a shared library's does, the
+ *     address of the run's last function, as throughOf gives it, or null
  *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
  *     reader says of each halfword
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
@@ -340,16 +342,18 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  * function's bytes as built, with every address filled in, and `calls` the addresses its calls go to; or { error } when
  * the file didn't build, with what the compiler said.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, runEnd = () => null, original, shifts = [], given = null }) {
   const built = await compileFile({ file, root, includes, compiler, work });
   if (built.error) return built;
   const { made, assembly } = built;
   const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split(/\r?\n/);
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
+  // the last function of a twin's run: as its comment names it, or as long as its dp:run says
+  const throughOfTwin = twin => twin?.through ?? (twin?.runBytes && twin.address !== null ? runEnd(twin.address, twin.runBytes) : null) ?? null;
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
-    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: throughOfTwin(twins.get(name)), line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
     .sort((a, b) => a.at - b.at);
   functions.forEach((f, i) => {
     f.until = functions[i + 1]?.at ?? code.length;
