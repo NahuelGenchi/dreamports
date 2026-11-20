@@ -116,8 +116,8 @@ int object_in_view(uint8_t object) {
 
 // sub_E3E3 and sub_EA2F. A place
 // whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
-// dp:twin sub_E3E3 +6 on_the_ground(X) -> C if X < 25
-int on_the_ground(uint8_t object) {
+// dp:twin sub_E3E3 +6 on_the_ground(X, S) -> C if X < 25
+int on_the_ground(uint8_t object, int s) {
   took(GROUND_LOOKED_AT);
   RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
   RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] + 0x0B);
@@ -129,7 +129,7 @@ int on_the_ground(uint8_t object) {
     RAM[0x77]++;
     took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
   }
-  RAM[0x22] = block_at_stage_place();
+  RAM[0x22] = block_at_stage_place(call_from(s, 0xE3E3));   // JSR $EA2F, which goes on into $EA55
   // $E3F3: in the first set of stages the blocks $76 and $77 are solid across half their width: the right half of
   // $76, the left of $77
   if (RAM[0x22] == 0x76 || RAM[0x22] == 0x77) {
@@ -143,8 +143,10 @@ int on_the_ground(uint8_t object) {
 
 /** sub_04_BC9C, kind $1E: the key a stage's last boss leaves. It falls from the top of the picture, its colours
  *  changing every round, until it's on the ground, flag $02. Arthur within 8 pixels of it takes it: the time stops,
- *  at $C9, and it's worth 1,000 points. What the stage does then, from $C9, isn't ported yet. */
-void key(uint8_t object) {
+ *  at $C9, and it's worth 1,000 points. What the stage does then, from $C9, isn't ported yet. `y` is the processor's
+ *  Y as it starts, which the routines it calls keep. */
+// dp:twin sub_04_BC9C key(X, Y) if X >= 1 && X < 0x16 && S == stack_of(TASK_OBJECTS, 2)
+void key(uint8_t object, uint8_t y) {
   enum { LANDED = 0x02 };
   RAM[OBJECT_SHAPE + object] = 0x47;
   RAM[OBJECT_COLOURS + object] = (RAM[OBJECT_COLOURS + object] + 1) & 3;
@@ -161,9 +163,10 @@ void key(uint8_t object) {
     RAM[OBJECT_HEADING + object] = 0x08;
     took(KEY_FALLS);
     took(CALLS);
-    move_object(object, 0x08, Y_NOT_FOLLOWED);
+    move_object(object, 0x08, y);
     place_on_screen(object);
-    if (!on_the_ground(object)) { took(KEY_IN_THE_AIR); return; }
+    if (!on_the_ground(object, call_from(stack_of(TASK_OBJECTS, 2), 0xBCC7))) { took(KEY_IN_THE_AIR); return; }
+    y = RAM[0xD4];   // the block's look-up leaves Y the bank it put back
     took(BRANCH_TAKEN);
     RAM[OBJECT_FLAGS + object] |= LANDED;
     took(OBJECT_FLAG_CHANGED);
@@ -171,13 +174,13 @@ void key(uint8_t object) {
   }
   RAM[0x26] = RAM[0x27] = 8;
   took(KEY_LOOKS);
-  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(KEY_NOT_TAKEN); return; }
+  if (!arthur_near(object, y)) { took(KEY_NOT_TAKEN); return; }
   RAM[0xC9] = 0xFF;
   RAM[OBJECT_FLAGS + object] = 0;
   RAM[0x25] = RAM[0x27] = RAM[0x26] = 0;
   RAM[0x24] = 1;
   took(KEY_TAKEN);
-  add_score_with_thousands(object, 0);
+  add_score_with_thousands(object, y);
   took(RETURNS);
 }
 
@@ -475,7 +478,7 @@ static void flash(uint8_t object) {
 // $EDA2, kind $34: Satan in the opening scene. He waits 80 rounds, comes out of the dark in flashes, with the stage
 // going dark each time he shows, beats his wings, and then flies to the princess. Once he's within 8 pixels of her
 // height he has her, and flies up and away with her below him, until he's high enough to go as he came, in flashes.
-static void satan(uint8_t object) {
+static void satan(uint8_t object, uint8_t y) {
   enum { HAS_HER = 0x01, LEAVING = 0x02 };
   RAM[OBJECT_COLOURS + object] = 0x01;
   if (RAM[OBJECT_FLAGS + object] & LEAVING) {
@@ -503,7 +506,7 @@ static void satan(uint8_t object) {
     }
     RAM[OBJECT_HEADING + object] = 1;
     took(SATAN_CARRIES);
-    move_object(object, 0x18, Y_NOT_FOLLOWED);
+    move_object(object, 0x18, y);
     RAM[OBJECT_X + PRINCESS] = (uint8_t)(RAM[OBJECT_X + object] - 8);
     RAM[OBJECT_Y + PRINCESS] = (uint8_t)(RAM[OBJECT_Y + object] + 0x10);
     took(SATAN_CARRIED);
@@ -548,9 +551,9 @@ static void satan(uint8_t object) {
   A_Y_SCREEN = RAM[OBJECT_Y_SCREEN + PRINCESS];
   object_place(object, 0);
   took(SATAN_FLIES);
-  RAM[OBJECT_HEADING + object] = way_to_first(Y_NOT_FOLLOWED);
+  RAM[OBJECT_HEADING + object] = way_to_first(y);
   took(SATAN_HEADS);
-  move_object(object, 0x18, Y_NOT_FOLLOWED);
+  move_object(object, 0x18, y);
 }
 
 // sub_F63A: whether one object is within a box around another: $22 and $24 are how far left and right of it the first
@@ -803,7 +806,7 @@ static void pick_up(uint8_t object) {
     took(PICK_UP_FLASHES);
   }
   RAM[0x26] = RAM[0x27] = 6;
-  int touched = arthur_touches(object, Y_NOT_FOLLOWED);
+  int touched = arthur_touches(object, thing);   // Y, from $BA1A's look-up of its state
   if (!touched) took(PICK_UP_LEFT);
   if (!touched && object >= 0x10) took(READ_PAST_PAGE);
   if (touched && thing < 4) {
@@ -875,44 +878,44 @@ wait objects_task(void) {
       set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
       uint8_t y = (uint8_t)(kind * 2);   // the processor's Y register as each kind's routine starts: its place in the list
       switch (kind) {
-        case 0x00: zombie(object); break;
+        case 0x00: zombie(object, y); break;
         case 0x01: plant(object); break;
-        case 0x02: flier(object); break;
-        case 0x03: knight(object); break;
-        case 0x04: forest_enemy(object); break;
-        case 0x05: boss(object); break;
+        case 0x02: flier(object, y); break;
+        case 0x03: knight(object, y); break;
+        case 0x04: forest_enemy(object, y); break;
+        case 0x05: boss(object, y); break;
         case 0x06: devil(object); break;
-        case 0x07: window_thing(object); break;
-        case 0x08: big_man(object); break;
-        case 0x0A: bat(object); break;
+        case 0x07: window_thing(object, y); break;
+        case 0x08: big_man(object, y); break;
+        case 0x0A: bat(object, y); break;
         case 0x0B: cave_shooter(object); break;
         case 0x21: waiting_enemy(object, y); break;
-        case 0x2A: cave_shot(object); break;
-        case 0x15: dragon_head(object); break;
+        case 0x2A: cave_shot(object, y); break;
+        case 0x15: dragon_head(object, y); break;
         case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: dragon_piece(object); break;
-        case 0x28: dragon_fire(object); break;
-        case 0x2F: thrown(object); break;
+        case 0x28: dragon_fire(object, y); break;
+        case 0x2F: thrown(object, y); break;
         case 0x0C: lift(object); break;
         case 0x0D: case 0x0E: platform(object); break;
-        case 0x0F: bridge_flame(object); break;
-        case 0x13: water_crow(object); break;
+        case 0x0F: bridge_flame(object, y); break;
+        case 0x13: water_crow(object, y); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object, y); break;
         case 0x12: pot(object); break;
-        case 0x14: crow(object); break;
-        case 0x1E: key(object); break;
+        case 0x14: crow(object, y); break;
+        case 0x1E: key(object, y); break;
         case 0x20: gravestone(object); break;
-        case 0x2B: plant_shot(object); break;
-        case 0x29: forest_shot(object); break;
-        case 0x2C: flier_shot(object); break;
-        case 0x30: boss_shot(object); break;
+        case 0x2B: plant_shot(object, y); break;
+        case 0x29: forest_shot(object, y); break;
+        case 0x2C: flier_shot(object, y); break;
+        case 0x30: boss_shot(object, y); break;
         case 0x22: map_marker(object); break;
         case 0x36: rising_thing(object); break;
-        case 0x37: falling_thing(object); break;
-        case LANCE: case DAGGER: weapon(object); break;
+        case 0x37: falling_thing(object, y); break;
+        case LANCE: case DAGGER: weapon(object, y); break;
         case AXE: axe(object); break;
         case 0x33: princess(object); break;
-        case 0x34: satan(object); break;
+        case 0x34: satan(object, y); break;
       }   // the other kinds do nothing yet. dp:stop sub_04_9CC8
       place_on_screen(object);
     }
