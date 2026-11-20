@@ -11,7 +11,10 @@
 // sound the same in all 300, and be found by its sound where it leaves the voice of noise unkeyed. A fourth
 // (madeUpPadExe) reads the pad through SIO0 a byte at a time and draws what came back, proven with a recording that
 // holds each button in turn: its Dreamport in C (ps1-kit/pad.c) has to be the same in all 300 frames, and be found at
-// the first button held when it reads the second port, where nothing is held.
+// the first button held when it reads the second port, where nothing is held. A fifth (madeUpClockExe) takes
+// interrupts with a handler of its own, from two root counters and the V-blank, and draws how many it has counted: its
+// Dreamport in C (ps1-kit/clock.c) has to be the same in all 300 frames, and be found at once when counter 0's target
+// is 5,000 cycles longer, so it interrupts once less before the first V-blank.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -19,12 +22,13 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { GPU, PAD, SOUND, drawList, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
+import { CLOCK, GPU, PAD, SOUND, drawList, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
 
 const GAME = 'test-ps1-kit', VERSION = `${GAME}/c`;
 const DRAWING = 'test-ps1-kit-draw', DRAWN = `${DRAWING}/c`;
 const SOUNDING = 'test-ps1-kit-sound', SOUNDED = `${SOUNDING}/c`;
 const PADDING = 'test-ps1-kit-pad', PADDED = `${PADDING}/c`;
+const TIMING = 'test-ps1-kit-clock', TIMED = `${TIMING}/c`;
 const WORK = join(LOCAL, 'test-ps1-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -47,7 +51,7 @@ const tracked = () => spawnSync('git', ['status', '--porcelain', '--untracked-fi
 
 function tidy() {
   const kept = existsSync(MEDIA) ? readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file)) : [];
-  for (const game of [GAME, DRAWING, SOUNDING, PADDING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
+  for (const game of [GAME, DRAWING, SOUNDING, PADDING, TIMING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
   for (const path of [WORK, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
@@ -104,6 +108,14 @@ function writePad(select = 0x1003) {
   const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'pad.c'), 'utf8').replace('@PORT@', `0x${select.toString(16).toUpperCase()}`)
     .replace(/@([A-Z_]+)@/g, (_, key) => `0x${PAD[key].toString(16).toUpperCase()}`);
   writeFileSync(join(gameFolder(PADDED), 'src', 'main.c'), code);
+}
+
+// the clock program's Dreamport in C, with counter 0's target `target`
+function writeClock(target = CLOCK.TARGET_0) {
+  const hex = value => `0x${value.toString(16).toUpperCase()}`;
+  const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'clock.c'), 'utf8').replace('@TARGET_0@', hex(target)).replace('@TARGET_2@', hex(CLOCK.TARGET_2))
+    .replace('@BACKGROUND@', hex(CLOCK.BACKGROUND)).replace(/@BAR_(\d)@/g, (_, n) => hex(CLOCK.BARS[n]));
+  writeFileSync(join(gameFolder(TIMED), 'src', 'main.c'), code);
 }
 
 async function main() {
@@ -165,6 +177,16 @@ async function main() {
     run = dp('prove', PADDED, 'buttons');
     const first = report(PADDED, 'buttons').firstDifference;
     check(run.status !== 0 && first?.frame >= 5 && first?.frame <= 8, `reading the second port, where nothing is held, it differs at the first button held: ${JSON.stringify(first)}`);
+
+    console.log('The clock: root counters and the V-blank, taken as interrupts:');
+    await makeGame(TIMING, TIMED, await madeUpClockExe(), 'Test PlayStation Clock (World)');
+    writeClock();
+    run = dp('prove', TIMED, 'still');
+    if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
+    check(run.status === 0 && report(TIMED).frames === FRAMES && !report(TIMED).firstDifference, `all ${FRAMES} frames the same as the emulator's: ${run.out.trim().split('\n').at(-1)}`);
+    writeClock(CLOCK.TARGET_0 + 5000);
+    run = dp('prove', TIMED, 'still');
+    check(run.status !== 0 && report(TIMED).firstDifference?.frame === 0, `with counter 0's target 5,000 cycles longer, it differs at once: ${JSON.stringify(report(TIMED).firstDifference)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
@@ -176,7 +198,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe PlayStation\'s kit draws, sounds and reads its pads as the console does, every frame.');
+  console.log('\nThe PlayStation\'s kit draws, sounds, reads its pads and keeps the console\'s time as the console does, every frame.');
 }
 
 main().catch(error => {

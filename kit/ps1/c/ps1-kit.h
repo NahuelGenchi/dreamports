@@ -24,6 +24,22 @@
 void gpu_power(void);
 /** Puts the sound chip as the console's BIOS leaves it when it starts a game, with nothing heard yet. */
 void spu_power(void);
+// The clock (clock.c): the events the kit's chips set for a later cycle, one of each kind at a time, as PCSX ReARMed's
+// libpcsxcore/psxevents.h has them.
+enum { CLOCK_COUNTERS, CLOCK_LINE0, CLOCK_SIO, CLOCK_EVENTS };
+/** Puts the clock at power: no time gone, the counters stopped at 0, and the interrupts the BIOS leaves. */
+void clock_power(void);
+/** The processor's cycles since power, as the kit counts them. */
+uint32_t clock_now(void);
+/** Sets event `which` to run `run` `after` cycles from now, in place of any it had. */
+void clock_event(int which, uint32_t after, void (*run)(void));
+void clock_cancel(int which);
+/** Sets interrupts in the controller's status, and runs the game's handler if it lets them in. */
+void clock_interrupt(uint32_t bits);
+/** Runs the frame's events to its V-blank, and sets the V-blank's interrupt there. */
+void clock_frame_end(void);
+uint32_t clock_read(uint32_t address);
+void clock_write(uint32_t address, uint32_t value);
 /** Puts the pads' serial port as it starts, with nothing held. */
 void pad_power(void);
 /** The buttons the player holds this frame, a bit each in kit/consoles.js's order (console.h). */
