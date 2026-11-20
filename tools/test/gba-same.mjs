@@ -41,7 +41,7 @@ const USAGE = 'Usage: node tools/test/gba-same.mjs --write <file> | --compare <f
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 const hashOf = text => createHash('sha1').update(text).digest('hex').slice(0, 16);
 // what went wrong, as it reads on any computer: no folder of this one in it, and Windows' line ends and slashes as
-// Linux's
+// Linux's. What agbcc writes is compared byte for byte, line ends and all (../gba/agbcc.mjs, binmode.o)
 const said = text => text.replaceAll(REPO, '').replace(/\r\n/g, '\n').replaceAll('\\', '/');
 
 // the builds of a --write's file in three groups: the project's own programs, the kit's libraries and the games' C
@@ -100,7 +100,7 @@ async function write(file) {
   for (const { key, file, compiler, root, includes, stack } of builds) {
     const work = join(WORK, String(++n));
     const built = await compileFile({ file, root, includes, compiler, work });
-    const entry = { assembly: built.error ? `didn't build: ${said(built.error)}` : hashOf(built.assembly.replace(/\r\n/g, '\n')) };
+    const entry = { assembly: built.error ? `didn't build: ${said(built.error)}` : hashOf(built.assembly) };
     if (stack) {
       const map = await stackOfFile({ file, root, includes, compiler, work: `${work}-g` });
       entry.stack = map.error ? `no stack map: ${said(map.error)}` : hashOf(JSON.stringify(map));
