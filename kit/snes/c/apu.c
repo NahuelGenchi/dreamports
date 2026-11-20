@@ -26,11 +26,11 @@ uint8_t snes_aram[0x10000];
 enum { CYCLES_PER_SAMPLE = 32 };
 static const uint32_t TIMER_STEP[3] = { 128, 128, 16 };
 
-// how many of the sound processor's cycles the next frame lasts: CONSOLE_FRAME_TICKS of a clock of CONSOLE_CLOCK, with
-// what's left over carried to the next
+// how many of the sound processor's cycles `cycles` of the main clock, of CONSOLE_CLOCK a second, last, with what's left
+// over carried to the next
 static uint64_t frame_left;
-static uint32_t frame_cycles(void) {
-  uint64_t total = (uint64_t)CONSOLE_FRAME_TICKS * CONSOLE_SOUND_RATE * CYCLES_PER_SAMPLE + frame_left;
+static uint32_t frame_cycles(uint32_t cycles) {
+  uint64_t total = (uint64_t)cycles * CONSOLE_SOUND_RATE * CYCLES_PER_SAMPLE + frame_left;
   frame_left = total % CONSOLE_CLOCK;
   return (uint32_t)(total / CONSOLE_CLOCK);
 }
@@ -226,8 +226,8 @@ uint8_t apu_port_read(int port) {
   return TO_MAIN[port];
 }
 
-void apu_frame(void) {
-  frame_end += frame_cycles();
+void apu_run(uint32_t cycles) {
+  frame_end += frame_cycles(cycles);
   if (news) {
     news = 0;
     turn();
