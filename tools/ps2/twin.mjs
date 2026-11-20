@@ -21,6 +21,10 @@
 // f20 to f31 for its caller. The original's own saves on the stack, below where the call starts it, aren't compared, as
 // a twin keeps those in its own stack.
 //
+// Every call starts from the program as the console loads it, unless the check is given memories of play
+// (twin-memories.mjs, --memories): the console's memory as it was each time a function started in play, with the
+// registers it started with, so a function is called with what the game really gave it.
+//
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
 // call read, and later calls change a few of those values, mostly to numbers at the edges of what a value holds, and give
 // pointers it read as arguments, but never a word that points back into the function's own code, which is a switch's
@@ -28,12 +32,16 @@
 // instructions ran and which way each branch went, and a function counts as proven only when every instruction ran and
 // each branch went both ways (../lib/played.mjs).
 
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { gameFolder, REPO } from '../lib/paths.mjs';
-import { hex, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
+import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
+import { hex, inBootProgram, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { originalPlay } from '../lib/recording.mjs';
+import { consoleOf } from '../consoles.mjs';
+import { libretroReference } from '../libretro/reference.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
@@ -45,6 +53,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { openBuild } from '../gba/twin.mjs';
 import { findFunctions, ps2Program } from './functions.mjs';
 import { keepProgram } from './original-program.mjs';
+import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
 import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -124,8 +133,10 @@ export function chooser(seed) {
   const below = n => next() % n;
   // a number at an edge, a small one, or any
   const number = () => [() => EDGES[below(EDGES.length)], () => below(256), next][below(3)]() >>> 0;
-  // a place in the console's memory, above where a program loads and below its stack, or one a call read
-  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : (0x01000000 + below(0x3C0000) * 4) >>> 0);
+  // a place in the console's memory, above where a program loads and below its stack, or one a call read: mostly where
+  // a quadword starts, as the EE's compiler lines up what it makes, and now and then only a doubleword or a word, as a
+  // place inside something is
+  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : (0x01000000 + below(0xF0000) * 16 + [0, 0, 0, 0, 8, 4][below(6)]) >>> 0);
   return {
     next, below,
     /** An argument of a type, { bits, signed, pointer, float }: a number, or a BigInt for 64 bits. */
@@ -341,54 +352,82 @@ const spread = value => [value >>> 0, value & 0x80000000 ? 0xFFFFFFFF : 0];
  * a few values changed. `f` is { name, address, size, params, returns, call }. Answers what the check came to:
  * { compared, aside, ran, result }, `result` null while every call compared was the same, or what wasn't.
  */
-async function checkFunction({ f, original, runner, gp, options, choose }) {
+async function checkFunction({ f, original, runner, gp, options, choose, image, memories = [] }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
   // where each argument goes: the first eight whole numbers and the first eight floats in registers, and the rest on
   // the stack from where sp points, a slot of eight bytes each, in the order they're written
   let integers = 0, floats = 0, slots = 0;
   const places = f.params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
-  // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
-  // call is given and may change
-  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 8 * slots]];
-  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK + 8 * slots) && !(address >= f.code.from && address < f.code.to);
-  let compared = 0, number = 0;
+  // Where the calls start from: the function's own memories of play, a share of the calls from each, one after
+  // another, or the program as the console loads it for a function with none. A memory's first call is the one play
+  // made, with every register and the stack as they were, and the rest change what it was given.
+  const sources = memories.length ? memories : [null];
+  let compared = 0, number = 0, source = -1, made = 0, from = null;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
-    const args = f.params.map(type => choose.value(type, pointers));
+    const turn = Math.floor((number - 1) * sources.length / options.calls) % sources.length;
+    if (turn !== source) {
+      from?.drop();
+      source = turn;
+      from = sources[source];
+      made = 0;
+      // the image only when it's another than the last call started from
+      if (runner.image !== (from?.image ?? image)) {
+        await original.image(from?.image ?? image);
+        await runner.set(from?.image ?? image);
+      }
+    }
+    const asPlayed = from !== null && made++ === 0;
+    // the stack as the call has it: the program's, or play's as the function started
+    const sp = from ? from.registers[29 * 4] >>> 0 : STACK;
+    // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
+    // call is given and may change
+    const skip = [[inImage(sp - SAVES), inImage(sp) + 8 * slots]];
+    const read = address => inImage(address) >= 0 && !(address >= sp - SAVES && address < sp + 8 * slots) && !(address >= f.code.from && address < f.code.to);
+    const registers = from ? [...from.registers] : Array.from({ length: EE_REGISTERS.words }, () => choose.next());
+    // what play gave the function, read back from where a caller puts it
+    const played = () => f.params.map((type, k) => {
+      const place = places[k], at = place.float !== undefined ? EE_REGISTERS.fpr + 12 + place.float : place.register !== undefined ? (4 + place.register) * 4 : null;
+      const words = at !== null ? [registers[at], registers[at + 1]] : [0, 4].map(n => new DataView(from.image.buffer).getUint32(inImage(sp + 8 * place.slot) + n, true));
+      if (type.bits === 64) return (BigInt(words[1] >>> 0) << 32n) | BigInt(words[0] >>> 0);
+      return type.bits === 32 ? words[0] >>> 0 : (type.signed ? (words[0] << (32 - type.bits)) >> (32 - type.bits) : words[0] & (2 ** type.bits - 1)) >>> 0;
+    });
+    const args = asPlayed ? played() : f.params.map(type => choose.value(type, pointers));
     const changes = [];
-    if (pool.size && choose.below(2)) {
+    if (!asPlayed && pool.size && choose.below(2)) {
       const places = [...pool];
       for (let k = 1 + choose.below(3); k; k--) {
         const [address, bytes] = places[choose.below(places.length)];
         changes.push([address, bytes, choose.sized(bytes, pointers)]);
       }
     }
-    const registers = Array.from({ length: EE_REGISTERS.words }, () => choose.next());
     const gpr = (n, low, high = 0) => {
       registers[n * 4] = low >>> 0;
       registers[n * 4 + 1] = high >>> 0;
     };
-    gpr(0, 0);
-    registers[2] = registers[3] = 0;
-    gpr(29, STACK);
-    registers[29 * 4 + 2] = registers[29 * 4 + 3] = 0;
-    gpr(31, BACK);
-    registers[31 * 4 + 2] = registers[31 * 4 + 3] = 0;
-    gpr(28, ...spread(gp));
-    registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
+    if (!from) {
+      gpr(0, 0);
+      registers[2] = registers[3] = 0;
+      gpr(29, STACK);
+      registers[29 * 4 + 2] = registers[29 * 4 + 3] = 0;
+      gpr(31, BACK);
+      registers[31 * 4 + 2] = registers[31 * 4 + 3] = 0;
+      gpr(28, ...spread(gp));
+      registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
+      registers[EE_REGISTERS.fcsr] = 0x01000001;
+      for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
+    }
     // the arguments, as the caller puts them: whole numbers in a0 to a3 and t0 to t3, floats in f12 on
-    f.params.forEach((type, k) => {
+    if (!asPlayed) f.params.forEach((type, k) => {
       const place = places[k], low = Number(BigInt(args[k]) & 0xFFFFFFFFn), high = Number(BigInt(args[k]) >> 32n);
       if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
       else if (place.register !== undefined) gpr(4 + place.register, ...(type.bits === 64 ? [low, high] : spread(low)));
       else {
         // on the stack a caller stores a word, and the other half of the slot too for 64 bits
-        changes.push([STACK + 8 * place.slot, 4, low]);
-        if (type.bits === 64) changes.push([STACK + 8 * place.slot + 4, 4, high]);
+        changes.push([sp + 8 * place.slot, 4, low]);
+        if (type.bits === 64) changes.push([sp + 8 * place.slot + 4, 4, high]);
       }
     });
-    registers[EE_REGISTERS.fcsr] = 0x01000001;
-    for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
     const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, registers, changes });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
@@ -417,7 +456,7 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
       continue;
     }
     const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
-    const call = { number, args, changes, hardware: answer.hardware };
+    const call = { number, args, changes, hardware: answer.hardware, ...(from ? { from: { play: from.play, number: from.number, asPlayed } } : {}) };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
       aside.unbuilt = (aside.unbuilt ?? 0) + 1;
@@ -441,15 +480,17 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
   }
+  from?.drop();
   return { compared, aside, ran, result: null };
 }
 
 const argText = value => (typeof value === 'bigint' ? `0x${value.toString(16).toUpperCase().padStart(16, '0')}` : at(value));
 
 /** A call as a line says it: its number, the function with what it was given, and what was changed for it. */
-export function callText(name, { number, args, changes }) {
+export function callText(name, { number, args, changes, from }) {
   const set = changes.length ? `, after ${changes.map(([address, bytes, value]) => `${at(address)} was set to 0x${(value >>> 0).toString(16).toUpperCase().padStart(bytes * 2, '0')}`).join(' and ')}` : '';
-  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}`;
+  const played = from ? `, ${from.asPlayed ? 'as play made it, ' : ''}from the memory of ${from.play} at its start ${count(from.number)}` : '';
+  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}${played}`;
 }
 
 /** What a function's check came to, as { kind, line }: `kind` is 'same', 'differs', 'never', 'stopped', 'few' or
@@ -494,10 +535,11 @@ export function openPs2Build({ root, files, shifts, givenOf, includes }) {
 /**
  * Checks the twins of one file of C against a PlayStation 2 program, `elf`, its bytes, with `build`, as openPs2Build
  * gives one, `only` the address of the one function to check or null, `addressOf(name)` where the console keeps a
- * value, and `sizeOf(address)` how long the original's function there is. Answers { error }, { missing }, or
- * { functions }, each { name, address, kind, line, compared, whole, left }.
+ * value, `sizeOf(address)` how long the original's function there is, and `memories`, of play, for the calls to start
+ * from, as twin-memories.mjs's openMemories gives them, or none. Answers { error }, { missing }, or { functions }, each
+ * { name, address, kind, line, compared, whole, left }.
  */
-export async function checkFile({ elf, build, file, only = null, addressOf, sizeOf, original, options = {}, ruledOut = new Map(), log = () => {} }) {
+export async function checkFile({ elf, build, file, only = null, addressOf, sizeOf, original, options = {}, memories = null, ruledOut = new Map(), log = () => {} }) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   const linked = await build.link({ file, only, addressOf });
   if (linked.error) return { error: linked.error };
@@ -529,7 +571,7 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         continue;
       }
       const f = { ...call, params: types.slice(0, call.params.length), returns: call.returns ? types.at(-1) : null, size, code: { from: call.address, to: call.address + size } };
-      const checked = await checkFunction({ f, original, runner, gp, options: all, choose });
+      const checked = await checkFunction({ f, original, runner, gp, options: all, choose, image, memories: memories?.of(f.address) ?? [] });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(elf, f), f.address, checked.ran, ruledOut);
       functions.push({ name: f.name, address: f.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left, total });
@@ -541,12 +583,59 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
   return { functions };
 }
 
+/**
+ * Takes the memories of play for a version's twins, unless the ones kept are from the same copy, functions and
+ * recordings: plays the game's recordings, or those of `names`, in the console's emulator, which tells of each time
+ * the EE reaches one of `addresses`, with its registers and the memory then (../libretro/starts.h), and keeps a few
+ * for each function (twin-memories.mjs). Answers them, as openMemories does.
+ */
+export async function memoriesOfPlay({ game, original, copy, addresses, names = [], folder = join(LOCAL, 'twin', game, 'ps2'), log = console.log }) {
+  const reference = libretroReference(consoleOf('ps2')), keysLate = original.keysAfterVBlank === true;
+  // one console plays them: a recording of several on a link isn't one's play
+  const alone = readRecordings(game, names).filter(recording => !recording.players);
+  if (!alone.length) throw new Error(`games/${versionOf(game).game}/proof/recordings/ has no recording one console plays${names.length ? ' among those named' : ''}, so there's no play to take memories from.`);
+  const plays = alone.map(recording => {
+    const way = originalPlay(recording, { keysLate });
+    const buttons = way.originalHeld.map(list => list.reduce((mask, button) => mask | (reference.KEY[button] ?? 0), 0));
+    if (keysLate) buttons.unshift(0);
+    return { name: recording.name, buttons, sets: way.sets.map(({ frame, address, bytes, value }) => ({ frame, address, bytes, value })) };
+  });
+  const key = memoriesKey({ sha1: original.sha1, addresses, plays: plays.map(({ name, buttons, sets }) => [name, createHash('sha1').update(Buffer.from(Uint32Array.from(buttons).buffer)).digest('hex'), sets]) });
+  const where = inRepo(folder);
+  if (hasMemories(folder, key)) log(`The memories of play in ${where}/ are from these recordings and this copy already.`);
+  else {
+    reference.ensureOriginal(log);
+    const frames = plays.reduce((sum, play) => sum + play.buttons.length, 0);
+    log(`Playing ${plays.length === 1 ? plays[0].name : `${count(plays.length)} recordings`} in the original, ${count(frames)} frames, for the memory each function starts from…`);
+    const began = Date.now(), work = join(LOCAL, 'tmp', `ps2-starts-${process.pid}`);
+    mkdirSync(work, { recursive: true });
+    try {
+      const taken = await takeMemories({
+        addresses, folder, key,
+        plays: plays.map((play, n) => ({
+          name: play.name,
+          // played when its starts are wanted, and its file read a start at a time, as one can hold the console's memory many times over
+          starts: async () => {
+            const watched = join(work, `starts-${n}.bin`);
+            writeFileSync(watched, new Uint8Array(Uint32Array.from(addresses).buffer));
+            await reference.runOriginal({ copy, frames: play.buttons.length, buttons: play.buttons, sets: play.sets, env: { DP_STARTS: watched } });
+            return startsIn(`${watched}.out`);
+          },
+        })),
+      });
+      log(`${count(taken.memories)} memories of ${count(taken.functions)} of the ${count(addresses.length)} functions kept in ${where}/, ${(taken.bytes / 1048576).toFixed(1)} MB, in ${count(Math.round((Date.now() - began) / 1000))} seconds. They come from your copy of the game: never put them in a commit, an issue or a pull request.`);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+  return openMemories(folder);
+}
+
 /** The function check of a PlayStation 2 game's version in C, as the tool runs it: 0, or 3 when a twin isn't the same. */
 export async function twin(asked, options = {}, log = console.log) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   // a game's name alone means its version in C
   const game = writtenIn(versionOf(asked).language) !== 'c' && existsSync(gameFolder(`${versionOf(asked).game}/c`)) ? `${versionOf(asked).game}/c` : asked;
-  if (all.memories) throw new Error('--memories isn\'t there yet on the PlayStation 2: every call starts from the program as the console loads it.');
   if (all.frames !== undefined) throw new Error('--frames is for a Game Boy Advance game: on the PlayStation 2 every call starts from the program as the console loads it.');
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
@@ -577,17 +666,22 @@ export async function twin(asked, options = {}, log = console.log) {
     log(`games/${game}/ has no twins yet.`);
     return 0;
   }
-  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  // the functions of the program the disc boots: another program's, or a vector unit's, can have the same address
+  const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   const found = new Map(findFunctions(elf).map(f => [f.address, f.size]));
   const header = await twinsFolder(folder);
   const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const { ways: ruledOut } = readUnreachable(game);
+  // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
+  // check of them all
+  const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address).filter(address => address !== null)))].sort((a, b) => a - b);
+  const memories = all.memories ? await memoriesOfPlay({ game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   const proven = [], differing = [];
   const caller = new Original(await buildCaller(log), 'ee');
   try {
     for (const file of chosen) {
-      const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, ruledOut });
+      const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, memories, ruledOut });
       const where = inRepo(file);
       if (result.error) {
         const said = result.error.split('\n');
@@ -620,7 +714,7 @@ export async function twin(asked, options = {}, log = console.log) {
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_00123450.`);
   if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
-  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
+  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of, and the program as the console loads it for the rest` : 'from the program as the console loads it'} (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
   // a proof is found with the game's own names, and over enough calls to be worth the name
   if (asksForProofs(game)) {

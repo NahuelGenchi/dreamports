@@ -26,13 +26,17 @@
 //   vu0        doubles a0 on vector unit 0, in macro mode
 //   shine      reached only through the table of functions
 //   ten        the sum of ten arguments, the last two on the stack, eight bytes apart from where sp points
-// and after them the program's values, the switch's table, the table of functions and a buffer.
+//   moded      a0 + 1 when the program's mode is the one play sets, and a0 otherwise
+//   play       what stands for play: sets the mode, calls moded and then main, as a game's own code runs its functions
+// and after them the program's values, the switch's table, the table of functions, a buffer and its mode.
 
 /** Where the program loads and starts, and where its stack starts. */
 export const LOAD = 0x00100000;
 export const STACK = 0x01F00000;
 /** The program's values, read by lookup. */
 export const VALUES = [0x11111111, 0x22222222, 0x33333333, 0x44444444];
+/** The mode play sets, which moded looks for. */
+export const MODE = 0x1234ABCD;
 
 const R = { zero: 0, at: 1, v0: 2, v1: 3, a0: 4, a1: 5, a2: 6, a3: 7, t0: 8, t1: 9, t2: 10, t3: 11, s0: 16, gp: 28, sp: 29, fp: 30, ra: 31 };
 const i = (op, rs, rt, imm) => ((op << 26) | (R[rs] << 21) | (R[rt] << 16) | (imm & 0xFFFF)) >>> 0;
@@ -42,6 +46,7 @@ const addu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x21);
 const daddu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x2D);
 const addiu = (rt, rs, imm) => i(9, rs, rt, imm);
 const lui = (rt, imm) => i(15, 'zero', rt, imm);
+const ori = (rt, rs, imm) => i(13, rs, rt, imm);
 const sltiu = (rt, rs, imm) => i(11, rs, rt, imm);
 const sll = (rd, rt, sa) => r('zero', rt, rd, sa, 0);
 const jr = rs => r(rs, 'zero', 'zero', 0, 8);
@@ -70,6 +75,7 @@ const jal = label => ({ at: labels => ((3 << 26) | ((labels[label] >>> 2) & 0x3F
 const hi = (rt, label) => ({ at: labels => lui(rt, (labels[label] + 0x8000) >>> 16) });
 const lo = (rt, rs, label) => ({ at: labels => addiu(rt, rs, labels[label] & 0xFFFF) });
 const lwLo = (rt, rs, label) => ({ at: labels => lw(rt, labels[label] & 0xFFFF, rs) });
+const swLo = (rt, rs, label) => ({ at: labels => sw(rt, labels[label] & 0xFFFF, rs) });
 const here = name => ({ name });
 const pointer = label => ({ at: labels => labels[label] >>> 0 });
 
@@ -113,12 +119,17 @@ const PROGRAM = [
   here('shine'), jr('ra'), addiu('v0', 'zero', 1),
   here('ten'), lw('v0', 0, 'sp'), lw('v1', 8, 'sp'), addu('v0', 'v0', 'v1'), addu('v0', 'v0', 'a0'), addu('v0', 'v0', 'a1'), addu('v0', 'v0', 'a2'),
   addu('v0', 'v0', 'a3'), addu('v0', 'v0', 't0'), addu('v0', 'v0', 't1'), addu('v0', 'v0', 't2'), jr('ra'), addu('v0', 'v0', 't3'),
+  here('moded'), hi('v1', 'mode'), lwLo('v1', 'v1', 'mode'), lui('v0', MODE >>> 16), ori('v0', 'v0', MODE & 0xFFFF), bne('v1', 'v0', 'modedOut'),
+  daddu('v0', 'a0', 'zero'), addiu('v0', 'a0', 1),
+  here('modedOut'), jr('ra'), nop,
+  here('play'), addiu('sp', 'sp', -16), sd('ra', 0, 'sp'), lui('t0', MODE >>> 16), ori('t0', 't0', MODE & 0xFFFF), hi('t1', 'mode'), swLo('t0', 't1', 'mode'),
+  jal('moded'), addiu('a0', 'zero', 5), jal('main'), nop, ld('ra', 0, 'sp'), jr('ra'), addiu('sp', 'sp', 16),
   here('end'),
 ];
 
 /** The program's functions, in order, each from its label to the next one's. */
 export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick',
-  'hardware', 'kernel', 'forever', 'misaligned', 'vu0', 'shine', 'ten'];
+  'hardware', 'kernel', 'forever', 'misaligned', 'vu0', 'shine', 'ten', 'moded', 'play'];
 
 /** The program's words where it loads, every label's address, and each function's { name, address, size }. */
 export function madeUpProgram() {
@@ -141,6 +152,7 @@ export function madeUpProgram() {
   labels.cases = dataAt + 16;
   labels.functions = dataAt + 32;
   labels.buffer = dataAt + 48;
+  labels.mode = dataAt + 64;
   // the halves of each address were worked out before the values had theirs: once more, now that they have
   pc = LOAD;
   code.length = 0;
@@ -149,7 +161,7 @@ export function madeUpProgram() {
     code.push(typeof item === 'number' ? item : item.at(labels, pc));
     pc += 4;
   }
-  const data = [...VALUES, labels.case0, labels.case1, labels.case2, 0, labels.shine, 0, 0, 0, 0, 0, 0, 0];
+  const data = [...VALUES, labels.case0, labels.case1, labels.case2, 0, labels.shine, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
   const functions = FUNCTIONS.map((name, n) => {
     const next = n + 1 < FUNCTIONS.length ? labels[FUNCTIONS[n + 1]] : labels.end;
     return { name, address: labels[name], size: next - labels[name] };

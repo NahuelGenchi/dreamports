@@ -24,9 +24,9 @@ const PROGRAMS = {
   '3d': [madeUpPs2In3d, 'draw lists'],
   vu1: [madeUpPs2OnVu1, 'draw lists'],
   textured: [madeUpPs2Textured, 'pictures'],
-  // pictures moved into the GS's memory in one format and read in another, and read back into the console's memory.
-  // The 32-bit one, madeUpPs2Layout(32), isn't here yet: its second frame's draw list and picture come out differently
-  // from one run to the next on the same Linux computer, so two computers can't be held to it until that's found (#1590)
+  // pictures moved into the GS's memory in one format and read in another, and read back into the console's memory:
+  // the 32-bit one came out differently from run to run until Play! waited for a picture read back (#1590)
+  layout32: [() => madeUpPs2Layout(32), 'pictures'],
   layout16: [() => madeUpPs2Layout(16), 'pictures'],
   // a module on the IOP playing through the sound chip, reverb and all, which is the sound that's compared
   sound: [madeUpPs2Sound, 'pictures'],
