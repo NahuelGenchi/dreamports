@@ -36,6 +36,7 @@ import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs } from '../lib/proofs.mjs';
+import { memoriesOfPlay } from '../lib/memories-of-play.mjs';
 import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
@@ -43,7 +44,8 @@ import { openBuild } from '../gba/twin.mjs';
 import { decode } from './mips.mjs';
 import { exeOf, findFunctions, ps1Program } from './functions.mjs';
 import { ps1Resolve } from './read.mjs';
-import { addressAt, buildCaller, CACHE, CAME_BACK, ELSEWHERE, endText, EXCEPTION, IMAGE, inBios, inImage, MIRROR, Original, OUT_OF_STEPS, REGISTERS } from './original.mjs';
+import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
+import { addressAt, buildCaller, CACHE, CAME_BACK, ELSEWHERE, endText, EXCEPTION, IMAGE, inBios, inImage, MIRROR, Original, OUT_OF_STEPS, RAM, REGISTERS } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // what openBuild names the function a call through a pointer meets when nothing built is the twin of its address
@@ -195,27 +197,52 @@ class Runner {
  * a few values changed. `f` is { name, address, size, params, returns, call }. Answers what the check came to:
  * { compared, aside, ran, result }, `result` null while every call compared was the same, or what wasn't.
  */
-async function checkFunction({ f, original, runner, gp, options, choose }) {
+async function checkFunction({ f, original, runner, gp, options, choose, image, memories = [] }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
   const extra = Math.max(0, f.params.length - 4);
-  // the original's own saves below its stack, and what's above it that the call is given and may change: its
-  // arguments' place, 16 bytes, and those on the stack
-  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 16 + 4 * extra]];
-  const read = address => inMemory(address) && !(address >= STACK - SAVES && address < STACK + 16 + 4 * extra) && !(address >= f.code.from && address < f.code.to);
-  let compared = 0, number = 0;
+  // Where the calls start from: the function's own memories of play, a share of the calls from each, one after
+  // another, or the program as the console loads it for a function with none. A memory's first call is the one play
+  // made, with every register and the stack as they were, and the rest change what it was given.
+  const sources = memories.length ? memories : [null];
+  let compared = 0, number = 0, source = -1, made = 0, from = null;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
-    const args = f.params.map(type => choose.value(type, pointers));
+    const turn = Math.floor((number - 1) * sources.length / options.calls) % sources.length;
+    if (turn !== source) {
+      from?.drop();
+      source = turn;
+      from = sources[source];
+      made = 0;
+      // the image only when it's another than the last call started from
+      const start = from?.image ?? image;
+      if (runner.image !== start) {
+        await original.image(start);
+        await runner.set(start);
+      }
+    }
+    const asPlayed = from !== null && made++ === 0;
+    // the stack as the call has it, the check's own or play's as the function started, and $gp as play had it
+    const sp = from ? from.registers[29] >>> 0 : STACK, gpOfCall = from ? from.registers[28] >>> 0 : gp;
+    // the original's own saves below its stack, no further down than the memory it's in, and what's above it that the
+    // call is given and may change: its arguments' place, 16 bytes, and those on the stack, as places in the image
+    const top = inImage(sp) < 0 ? inImage(STACK) : inImage(sp);
+    const skip = [[Math.max(top >= RAM ? RAM : 0, top - SAVES), top + 16 + 4 * extra]];
+    const read = address => inMemory(address) && !(inImage(address) >= skip[0][0] && inImage(address) < skip[0][1]) && !(address >= f.code.from && address < f.code.to);
+    // what play gave the function: the first four in a0 to a3, and the rest on its stack
+    const word = address => (inImage(address) < 0 ? 0 : new DataView(from.image.buffer, from.image.byteOffset).getUint32(inImage(address), true));
+    const args = asPlayed ? f.params.map((type, i) => (i < 4 ? from.registers[4 + i] >>> 0 : word(sp + 16 + 4 * i))) : f.params.map(type => choose.value(type, pointers));
     const changes = [];
-    if (pool.size && choose.below(2)) {
+    if (!asPlayed && pool.size && choose.below(2)) {
       const places = [...pool];
       for (let k = 1 + choose.below(3); k; k--) {
         const [address, bytes] = places[choose.below(places.length)];
         changes.push([address, bytes, choose.sized(bytes, pointers)]);
       }
     }
-    args.slice(4).forEach((value, i) => changes.push([STACK + 16 + 4 * i, 4, value]));
-    const registers = REGISTERS.map((name, i) => (name === 'zero' ? 0 : name === 'sp' ? STACK : name === 'ra' ? BACK : name === 'gp' ? gp : i >= 4 && i < 8 ? args[i - 4] ?? choose.next() : choose.next()));
+    if (!asPlayed) args.slice(4).forEach((value, i) => changes.push([sp + 16 + 4 * i, 4, value]));
+    // as play left them for the call it made, but for where it comes back to, or else made up
+    const registers = asPlayed ? REGISTERS.map((name, i) => (name === 'zero' ? 0 : name === 'ra' ? BACK : from.registers[i] >>> 0))
+      : REGISTERS.map((name, i) => (name === 'zero' ? 0 : name === 'sp' ? sp : name === 'ra' ? BACK : name === 'gp' ? gpOfCall : i >= 4 && i < 8 ? args[i - 4] ?? choose.next() : choose.next()));
     const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, registers, changes });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
@@ -242,7 +269,7 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
       continue;
     }
     const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
-    const call = { number, args, changes, hardware: answer.hardware };
+    const call = { number, args, changes, hardware: answer.hardware, ...(from ? { played: from.play, asPlayed } : {}) };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
       aside.unbuilt = (aside.unbuilt ?? 0) + 1;
@@ -260,13 +287,16 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
   }
+  from?.drop();
   return { compared, aside, ran, result: null };
 }
 
 /** A call as a line says it: its number, the function with what it was given, and what was changed for it. */
-export function callText(name, { number, args, changes }) {
+export function callText(name, { number, args, changes, played, asPlayed }) {
   const set = changes.length ? `, after ${changes.map(([address, bytes, value]) => `${at(address)} was set to 0x${(value >>> 0).toString(16).toUpperCase().padStart(bytes * 2, '0')}`).join(' and ')}` : '';
-  return `call ${count(number)}, ${name}(${args.map(at).join(', ')})${set}`;
+  // a call from a memory of play says which, and whether it's the call play made
+  const memory = played === undefined ? '' : asPlayed ? `, as ${played} made it` : `, from a memory of ${played}`;
+  return `call ${count(number)}, ${name}(${args.map(at).join(', ')})${set}${memory}`;
 }
 
 /** What a function's check came to, as { kind, line }: `kind` is 'same', 'differs', 'never', 'stopped', 'few' or
@@ -307,7 +337,7 @@ const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came
  * and `sizeOf(address)` how long the original's function there is. Answers { error }, { missing }, or { functions },
  * each { name, address, kind, line, compared, whole, left }.
  */
-export async function checkFile({ exe, build, file, only = null, addressOf, sizeOf, original, options = {}, ruledOut = new Map(), log = () => {} }) {
+export async function checkFile({ exe, build, file, only = null, addressOf, sizeOf, original, options = {}, memories = null, ruledOut = new Map(), log = () => {} }) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   const linked = await build.link({ file, only, addressOf });
   if (linked.error) return { error: linked.error };
@@ -333,7 +363,7 @@ export async function checkFile({ exe, build, file, only = null, addressOf, size
         continue;
       }
       const f = { ...call, size, code: { from: call.address, to: call.address + size } };
-      const checked = await checkFunction({ f, original, runner, gp, options: all, choose });
+      const checked = await checkFunction({ f, original, runner, gp, options: all, choose, image, memories: memories?.of(f.address) ?? [] });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(exe, f), f.address, checked.ran, ruledOut);
       functions.push({ name: f.name, address: f.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left, total });
@@ -350,7 +380,6 @@ export async function twin(asked, options = {}, log = console.log) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   // a game's name alone means its version in C
   const game = writtenIn(versionOf(asked).language) !== 'c' && existsSync(gameFolder(`${versionOf(asked).game}/c`)) ? `${versionOf(asked).game}/c` : asked;
-  if (all.memories) throw new Error('--memories isn\'t there yet on the PlayStation: every call starts from the program as the console loads it.');
   if (all.frames !== undefined) throw new Error('--frames is for a Game Boy Advance game: on the PlayStation every call starts from the program as the console loads it.');
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
@@ -382,10 +411,14 @@ export async function twin(asked, options = {}, log = console.log) {
   const { ways: ruledOut } = readUnreachable(game);
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   let proven = 0;
+  // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
+  // whole run, and they're taken once for both
+  const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address).filter(address => address !== null)))].sort((a, b) => a - b);
+  const memories = all.memories ? await memoriesOfPlay({ console: 'ps1', memories: { memoriesKey, takeMemories, startsIn, hasMemories, openMemories }, game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
   const caller = new Original(buildCaller(log));
   try {
     for (const file of chosen) {
-      const result = await checkFile({ exe, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, ruledOut });
+      const result = await checkFile({ exe, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, memories, ruledOut });
       const where = inRepo(file);
       if (result.error) {
         const said = result.error.split('\n');
@@ -417,7 +450,7 @@ export async function twin(asked, options = {}, log = console.log) {
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_800D8408.`);
   if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
-  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
+  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of, and the program as the console loads it for the rest` : 'from the program as the console loads it'} (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
   if (asksForProofs(game)) log('Nothing was kept as proven: a PlayStation version\'s proofs aren\'t kept in its proofs.json yet (#1558).');
   return totals.differs || totals.never || totals.stopped ? 3 : 0;
