@@ -14,6 +14,7 @@ enum which { FIRST, SECOND, THIRD };
 extern const unsigned values[];
 extern unsigned char buffer[];
 extern int (*const functions[])(int);
+extern unsigned mode;
 
 /** 0x00100094: the sum of two numbers */
 int sum(int a, int b) {
@@ -43,18 +44,14 @@ s64 wide(s64 a, s64 b) {
   return a + b;
 }
 
-// a float as the EE's FPU takes it in: one whose exponent is all ones is the largest there is, with its sign
-static float clamped(float value) {
-  unsigned bits;
-  __builtin_memcpy(&bits, &value, 4);
-  if (bits < 0x80000000u ? bits > 0x7F7FFFFFu : bits > 0xFF7FFFFFu) bits = (bits & 0x80000000u) | 0x7F7FFFFFu;
-  __builtin_memcpy(&value, &bits, 4);
-  return value;
+// a product as the EE's FPU makes it: cut towards zero, a float whose exponent is all ones taken as the number it is
+static f32 product(f32 a, f32 b) {
+  return ee_mul(a, b);
 }
 
 /** 0x001000F8: a product of two floats, cut towards zero */
 f32 scale(f32 a, f32 b) {
-  return ee_mul(clamped(a), clamped(b));
+  return product(a, b);
 }
 
 /** 0x00100104: eight numbers' sum, four of them in t0 to t3 */
@@ -101,6 +98,11 @@ int shine(int a) {
 /** 0x001001F0: ten numbers' sum, the last two on the stack */
 int ten(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j) {
   return a + b + c + d + e + f + g + h + i + j;
+}
+
+/** 0x00100220: one more when the game is in the mode only play puts it in */
+int moded(int a) {
+  return mode == 0x1234ABCD ? a + 1 : a;
 }
 
 /** 0x0010001C: the rest, one after another, and the first of the table through its pointer */
