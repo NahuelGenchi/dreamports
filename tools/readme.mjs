@@ -8,7 +8,7 @@
 // fails when an entry doesn't agree with its folder, which `npm run check` uses.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
 import { versionsOf } from './lib/proof-files.mjs';
@@ -102,7 +102,8 @@ export function writeReadme({ check = false } = {}) {
     changed.push(file);
     if (!check) rmSync(file);
   }
-  return { changed: changed.length > 0, files: changed.map(file => relative(REPO, file)) };
+  // as the repository writes them, with / on Windows too
+  return { changed: changed.length > 0, files: changed.map(file => relative(REPO, file).split(sep).join('/')) };
 }
 
 // the maps of shared code, with their heading and the lines that mark them
