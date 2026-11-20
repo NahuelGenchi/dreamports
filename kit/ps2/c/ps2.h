@@ -37,6 +37,13 @@ void gs_image(const void *data, uint32_t length);
 void gs_read_image(void *data, uint32_t length);
 /** Writes half of a privileged register: the 32 bits at `address`, the low half at the register's own or the high 4 on. */
 void gs_screen(uint32_t address, uint32_t value);
+/** Reads half of a privileged register the console lets the EE read: CSR, IMR or SIGLBLID, the low half at the
+ *  register's own address or the high 4 on. CSR has SIGNAL, FINISH, HSINT and VSINT as the GS left them, FIELD and its
+ *  revision. */
+uint32_t gs_screen_read(uint32_t address);
+/** The function the GS's interrupt calls, as a game's handler for INTC_GS does on the console, or NULL for none: once
+ *  SIGNAL or FINISH is written, or a V-blank starts, each with its bit set in CSR and not masked in IMR. */
+void gs_on_interrupt(void (*handler)(void));
 /** Paints the page's picture with what the screen shows of the framebuffer, at the console's size. For game_draw. */
 void gs_show(void);
 

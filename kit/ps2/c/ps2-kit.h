@@ -7,7 +7,8 @@
 
 /** Gives the GS its memory, once. */
 void gs_power(void);
-/** Starts a frame's draw list again. */
+/** Starts a frame: its draw list again, and the V-blank it starts with, CSR's VSINT and its field and the interrupt
+ *  they raise. */
 void gs_list_start(void);
 /** The hash of what has been written since, as the proof tools hash the original's, and how many things that was. */
 uint32_t gs_list_hash(void);
