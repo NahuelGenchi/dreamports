@@ -255,7 +255,8 @@ export function assemble(text) {
     }
   };
 
-  for (const raw of text.split('\n')) {
+  // agbcc built for Windows ends each line with \r\n, as a program there does in a file it writes as text
+  for (const raw of text.split(/\r?\n/)) {
     lineNumber++;
     // a comment starts at an @ outside quotes
     let line = raw.replace(/^((?:[^"@]|"(?:[^"\\]|\\.)*")*)@.*$/, '$1').trim();

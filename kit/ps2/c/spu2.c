@@ -1,18 +1,25 @@
-// The PlayStation 2's sound chip, the SPU2, as the console's emulator mixes it, sample for sample (ps2-kit.h): its two
-// cores of 24 voices each, their ADPCM, envelopes, volume sweeps, pitch, reverb and sound input blocks, the chip's
-// memory, written through each core's data port or by DMA, and its interrupt address. A Dreamport's sound is proven
-// against what the emulator makes of the same writes (docs/STANDARD.md), so this follows the emulator's own model of
-// the chip, Play!'s Iop_SpuBase, Iop_Spu2_Core, Iop_Spu2 and the way PS2VM mixes the two cores, step for step, down to
-// what that model does its own way: it mixes at 44,100 samples a second, 45 at a time, and keeps decoded blocks in a
-// cache that a write into the middle of a block doesn't empty. Noise, pitch modulation and the master and effect
-// volumes, which Play! leaves out, are here as the console does them, checked against PCSX2's SPU2, and the tools'
-// patch gives Play! the same (tools/libretro/play.patch), so the two still match. Its reverb works in floats, each sum cut towards zero with tiny floats flushed, as Play!'s
-// emulation thread has them (ee.c).
+// The PlayStation 2's sound chip, the SPU2 (ps2-kit.h): its two cores of 24 voices each, the chip's memory, written
+// through each core's data port or by DMA, and its interrupt address. It is mixed as the console is known to mix it,
+// 48,000 samples a second: each voice's ADPCM decoded four samples at a time from the chip's memory as it's read, so a
+// write is heard from the next samples decoded; stepped between samples by the chip's four-point table; shaped by its
+// envelope and its two volumes, each stepped by a counter, with every volume a product shifted fifteen bits; noise and
+// pitch modulation; each voice's four mixing switches and each core's twelve; the reverb in whole numbers at half the
+// rate, through its two 39-tap filters; the sound a core is sent in blocks, read from the chip's memory; and what the
+// chip writes back into its memory as it goes, which its interrupt address can be in.
 //
-// Every write to the chip's registers, every block of sound data moved by DMA and every block of 45 samples mixed is
-// the frame's sound list, hashed in the order it came as the proof tools hash the original's (tools/libretro/play.patch).
+// The tools' emulator, Play!, has this file built into it in place of its own chip (tools/libretro/play.patch), so
+// the original and a Dreamport are mixed by the same code, and it is checked against a second emulator's SPU2, PCSX2's,
+// on programs of the project's own (kit/ps2/c/README.md). What the IOP sees of the chip stays as Play! has it, since
+// that is what a Dreamport is proven against: the registers' places, the data port, DMA and when a core takes it, and
+// the interrupt flags.
 //
-// Followed from Play! (https://github.com/jpd002/Play-), under its licence:
+// Every write to the chip's registers, every block of sound data moved by DMA and every block of 48 samples mixed is
+// the frame's sound list, hashed in the order it came as the proof tools hash the original's.
+//
+// The mixing follows PCSX2's SPU2 (https://github.com/PCSX2/pcsx2, pcsx2/SPU2), Copyright (c) 2002-2026 PCSX2 Dev
+// Team, under the GNU General Public License, version 3 or later, which is this project's licence too. The four-point
+// table is the console's, from PCSX2's interpolate_table.h, whose generator is Near's, with credit to nocash and
+// Ryphecha. The registers and DMA follow Play! (https://github.com/jpd002/Play-), under its licence:
 //
 // Copyright (c) 2006-2026, Jean-Philip Desjardins. All rights reserved.
 //
@@ -33,166 +40,87 @@
 
 #include "ps2-kit.h"
 
-#pragma STDC FP_CONTRACT OFF
-
 #define RAM_SIZE 0x200000
 #define RAM_MASK (RAM_SIZE - 1)
+#define WORD_MASK 0xFFFFF
 #define VOICES 24
-#define BUFFER_SAMPLES 28
-#define PITCH_BASE 0x1000
-#define TIME_SCALE 0x1000
-#define BLOCK_SAMPLES 45
-#define MAX_ADSR_VOLUME 0x7FFFFFFF
-#define INIT_SAMPLE_RATE 44100
-#define CORE_SAMPLE_RATE 48000
-#define OUTPUT_RATE 44100
+#define BLOCK_SAMPLES 48
+#define INPUT_SIZE 0x400
 
-// the core's control bits, its transfer modes and the voices' states
-enum { CONTROL_ENABLE = 0x8000, CONTROL_REVERB = 0x80, CONTROL_IRQ = 0x40, CONTROL_DMA = 0x30, CONTROL_DMA_STOP = 0x00, CONTROL_DMA_READ = 0x30 };
+// the core's control bits, its transfer modes, a voice's envelope's phases and an ADPCM block's flags
+enum { CONTROL_REVERB = 0x80, CONTROL_IRQ = 0x40, CONTROL_DMA = 0x30, CONTROL_DMA_STOP = 0x00, CONTROL_DMA_READ = 0x30 };
 enum { MODE_VOICE = 0, MODE_CORE0_IN = 1, MODE_CORE1_IN = 2 };
-enum { STOPPED, KEY_ON, ATTACK, DECAY, SUSTAIN, RELEASE };
-// where the cores write their output and read their sound input blocks, in the chip's memory
-enum { CORE0_SIN_LEFT = 0x000, CORE1_SIN_LEFT = 0x800, CORE1_SIN_RIGHT = 0xA00, CORE0_OUTPUT_SIZE = 0x200 };
-enum { INPUT_CORE0 = 0x2000, INPUT_CORE1 = 0x2400, INPUT_SIZE = 0x400, INPUT_SAMPLES = INPUT_SIZE / 4 };
-// the reverb's parameters, in the emulator's order
+enum { STOPPED, ATTACK, DECAY, SUSTAIN, RELEASE };
+enum { FLAG_END = 1, FLAG_LOOP = 2, FLAG_START = 4 };
+// the reverb's addresses, in the order of their registers from 0x2E4, four bytes apart, and its volumes, in the order
+// of theirs from 0x774, two bytes apart
 enum {
-  FB_SRC_A, FB_SRC_B, IIR_ALPHA, ACC_COEF_A, ACC_COEF_B, ACC_COEF_C, ACC_COEF_D, IIR_COEF, FB_ALPHA, FB_X, IIR_DEST_A0,
-  IIR_DEST_A1, ACC_SRC_A0, ACC_SRC_A1, ACC_SRC_B0, ACC_SRC_B1, IIR_SRC_A0, IIR_SRC_A1, IIR_DEST_B0, IIR_DEST_B1, ACC_SRC_C0,
-  ACC_SRC_C1, ACC_SRC_D0, ACC_SRC_D1, IIR_SRC_B0, IIR_SRC_B1, MIX_DEST_A0, MIX_DEST_A1, MIX_DEST_B0, MIX_DEST_B1,
-  IN_COEF_L, IN_COEF_R, REVERB_PARAMS,
+  APF1_SIZE, APF2_SIZE, SAME_L_DST, SAME_R_DST, COMB1_L_SRC, COMB1_R_SRC, COMB2_L_SRC, COMB2_R_SRC, SAME_L_SRC, SAME_R_SRC,
+  DIFF_L_DST, DIFF_R_DST, COMB3_L_SRC, COMB3_R_SRC, COMB4_L_SRC, COMB4_R_SRC, DIFF_L_SRC, DIFF_R_SRC, APF1_L_DST, APF1_R_DST,
+  APF2_L_DST, APF2_R_DST, REVERB_ADDRESSES,
 };
-// which parameter each of a core's reverb address registers sets, from 0x2E4 four bytes apart, and each coefficient
-// register, from 0x774 two bytes apart
-static const uint8_t address_registers[22] = {
-  FB_SRC_A, FB_SRC_B, IIR_DEST_A0, IIR_DEST_A1, ACC_SRC_A0, ACC_SRC_A1, ACC_SRC_B0, ACC_SRC_B1, IIR_SRC_A0, IIR_SRC_A1, IIR_DEST_B0,
-  IIR_DEST_B1, ACC_SRC_C0, ACC_SRC_C1, ACC_SRC_D0, ACC_SRC_D1, IIR_SRC_B0, IIR_SRC_B1, MIX_DEST_A0, MIX_DEST_A1, MIX_DEST_B0, MIX_DEST_B1,
-};
-static const uint8_t coefficient_registers[10] = { IIR_ALPHA, ACC_COEF_A, ACC_COEF_B, ACC_COEF_C, ACC_COEF_D, IIR_COEF, FB_ALPHA, FB_X, IN_COEF_L, IN_COEF_R };
+enum { IIR_VOL, COMB1_VOL, COMB2_VOL, COMB3_VOL, COMB4_VOL, WALL_VOL, APF1_VOL, APF2_VOL, IN_COEF_L, IN_COEF_R, REVERB_VOLUMES };
 
-// how far a volume sweep moves each sample, by its rate
-static const uint32_t increase_deltas[0x80] = {
-  0x3A0CC55E, 0x305FF9CE, 0x2976D61E, 0x203FFBDE, 0x1D0662AF, 0x182FFCE7, 0x1359971F, 0x101FFDEF,
-  0x0DD2475F, 0x0C17FE73, 0x0A0233AF, 0x080FFEF7, 0x07144A05, 0x060BFF39, 0x050119D7, 0x03F9DC6C,
-  0x037F3A27, 0x02FE04E5, 0x026B32E3, 0x01EF5BE9, 0x01B514DD, 0x018712AA, 0x01430F6B, 0x0100385E,
-  0x00E129C7, 0x00BE85CF, 0x00A187B5, 0x00801C2F, 0x007094E3, 0x00607F9E, 0x004FE588, 0x003DEB7D,
-  0x00392824, 0x00318930, 0x00271B77, 0x00204E57, 0x001B851B, 0x0017F80F, 0x00141506, 0x0010272B,
-  0x000E0504, 0x000BFC07, 0x000A0A83, 0x0007FD5A, 0x0006C140, 0x00063126, 0x0004F41E, 0x0003E925,
-  0x000389CC, 0x0002F8DF, 0x00027A0F, 0x0002021A, 0x0001C4E6, 0x00017C6F, 0x00014267, 0x0001010D,
-  0x0000DFC9, 0x0000C023, 0x00009E83, 0x00007ECF, 0x00006FE4, 0x00005F1B, 0x00004F41, 0x00003F67,
-  0x000037F2, 0x00002F8D, 0x000027A0, 0x0000203D, 0x00001BF9, 0x00001814, 0x00001405, 0x00000FD9,
-  0x00000D96, 0x00000BE3, 0x00000A02, 0x000007EC, 0x0000070B, 0x000005F1, 0x00000501, 0x000003F6,
-  0x00000385, 0x00000304, 0x00000280, 0x00000200, 0x000001BE, 0x0000017F, 0x00000140, 0x00000100,
-  0x000000DF, 0x000000BF, 0x000000A0, 0x00000080, 0x0000006F, 0x0000005F, 0x00000050, 0x00000040,
-  0x00000037, 0x0000002F, 0x00000028, 0x00000020, 0x0000001B, 0x00000017, 0x00000014, 0x00000010,
-  0x0000000D, 0x0000000B, 0x0000000A, 0x00000008, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-  0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-  0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
-};
-static const uint32_t decrease_deltas[0x80] = {
-  0x488FF6B5, 0x3A0CC55E, 0x305FF9CE, 0x2976D61E, 0x203FFBDE, 0x1D0662AF, 0x182FFCE7, 0x1359971F,
-  0x101FFDEF, 0x0DD2475F, 0x0C17FE73, 0x0A0233AF, 0x080FFEF7, 0x07144A05, 0x060BFF39, 0x050119D7,
-  0x03F9DC6C, 0x037F3A27, 0x02FE04E5, 0x026B32E3, 0x01EF5BE9, 0x01B514DD, 0x018712AA, 0x01430F6B,
-  0x0100385E, 0x00E129C7, 0x00BE85CF, 0x00A187B5, 0x00801C2F, 0x007094E3, 0x00607F9E, 0x004FE588,
-  0x003DEB7D, 0x00392824, 0x00318930, 0x00271B77, 0x00204E57, 0x001B851B, 0x0017F80F, 0x00141506,
-  0x0010272B, 0x000E0504, 0x000BFC07, 0x000A0A83, 0x0007FD5A, 0x0006C140, 0x00063126, 0x0004F41E,
-  0x0003E925, 0x000389CC, 0x0002F8DF, 0x00027A0F, 0x0002021A, 0x0001C4E6, 0x00017C6F, 0x00014267,
-  0x0001010D, 0x0000DFC9, 0x0000C023, 0x00009E83, 0x00007ECF, 0x00006FE4, 0x00005F1B, 0x00004F41,
-  0x00003F67, 0x000037F2, 0x00002F8D, 0x000027A0, 0x0000203D, 0x00001BF9, 0x00001814, 0x00001405,
-  0x00000FD9, 0x00000D96, 0x00000BE3, 0x00000A02, 0x000007EC, 0x0000070B, 0x000005F1, 0x00000501,
-  0x000003F6, 0x00000385, 0x00000304, 0x00000280, 0x00000200, 0x000001BE, 0x0000017F, 0x00000140,
-  0x00000100, 0x000000DF, 0x000000BF, 0x000000A0, 0x00000080, 0x0000006F, 0x0000005F, 0x00000050,
-  0x00000040, 0x00000037, 0x0000002F, 0x00000028, 0x00000020, 0x0000001B, 0x00000017, 0x00000014,
-  0x00000010, 0x0000000D, 0x0000000B, 0x0000000A, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-  0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
-  0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
-};
-// the predictor of each ADPCM filter, the ones past the fifth being none
-static const int32_t predictors[16][2] = { { 0, 0 }, { 60, 0 }, { 115, -52 }, { 98, -55 }, { 122, -60 } };
-
-// A voice reads its ADPCM a block of 28 samples ahead, and steps through them at its pitch over the output's rate
+// a volume that can sweep: its register, the counter its steps wait on, and where it is now
 typedef struct {
-  uint32_t src_index, step, src_rate, dst_rate, next_addr, repeat_addr;
-  int16_t buffer[BUFFER_SAMPLES * 2];
-  int32_t s1, s2;
-  uint8_t done, next_valid, end_flag, changed_repeat;
-} reader;
+  uint16_t reg;
+  uint32_t counter;
+  int32_t value;
+} slide;
 
+// A voice: its volumes, pitch and envelope, where its sound starts, loops and is being read, in words of the chip's
+// memory, the two samples before the next to decode, how far it is between samples, the samples decoded and not yet
+// played, and what it gave last, which bends the next voice's pitch
 typedef struct {
-  uint16_t volume_left, volume_right;
-  int32_t volume_left_abs, volume_right_abs;
-  uint16_t pitch;
-  uint32_t address;
-  uint16_t adsr_level, adsr_rate;
-  uint32_t adsr_volume;
-  uint32_t repeat;
-  uint8_t repeat_set;
-  uint32_t status;
-  uint32_t current;
+  slide left, right;
+  uint16_t pitch, adsr1, adsr2;
+  uint32_t envelope_counter;
+  int32_t envelope;
+  uint8_t phase, loop_set, flags;
+  uint32_t start, loop, next;
+  int32_t before1, before2;
+  uint32_t between, played, decoded;
+  int16_t fifo[32];
+  int32_t out;
 } voice;
-
-// the sound input a core is sent in blocks, read at its own rate
-typedef struct {
-  uint32_t base_rate, dst_rate, src_index, step;
-  uint8_t block[INPUT_SIZE];
-  uint8_t bypass;
-} block_reader;
 
 typedef struct {
   unsigned number;
-  uint32_t core_rate, base_rate;
-  uint32_t irq_addr;
+  uint16_t control, transfer_mode, mmix;
   uint8_t irq_pending;
-  uint16_t transfer_mode;
-  uint32_t transfer_addr, output_offset;
-  uint32_t reverb_voices;
-  uint32_t reverb_start, reverb_end, reverb_now;
-  uint16_t control;
-  int32_t reverb_ticks;
-  uint32_t reverb[REVERB_PARAMS];
+  uint32_t irq_addr;
+  // the data port's address, in bytes, as the emulator's DMA counts it
+  uint32_t transfer_addr;
+  // keys pressed and let go since the last sample, the voices bent by the one before and those that play noise, each
+  // voice's four mixing switches, and the voices that have reached their end
+  uint32_t key_on, key_off, bent, noise, dry_left, dry_right, wet_left, wet_right, ended;
+  slide master_left, master_right;
+  int32_t effect_left, effect_right, external_left, external_right, input_left, input_right;
+  uint32_t noise_count, noise_out;
+  uint32_t reverb_start, reverb_end, reverb_address[REVERB_ADDRESSES];
+  int16_t reverb_volume[REVERB_VOLUMES];
+  // what goes into the reverb and what comes out of it, kept twice over for its filters, and where they're written
+  int16_t down[2][128], up[2][128];
+  uint32_t reverb_at;
   voice voices[VOICES];
-  reader readers[VOICES];
-  block_reader input;
-  uint32_t input_addr, input_written;
-  uint32_t input_volume_left, input_volume_right;
-  int32_t external_volume_left, external_volume_right;
-  // the voices that play noise and those whose pitch the voice before bends, the noise generator, what each voice
-  // gave this sample after its envelope, and the master and effect volumes
-  uint32_t noise_voices, bent_voices, noise_count, noise_out;
-  int32_t voice_out[VOICES];
-  uint16_t master_left, master_right;
-  int32_t master_left_abs, master_right_abs;
-  int32_t effect_left, effect_right;
+  // a block of sound input the IOP has sent and the core hasn't yet taken into the chip's memory, and which half of
+  // its buffer the next goes in
+  uint8_t waiting[INPUT_SIZE];
+  uint32_t input_written, input_half;
+  // what each register was last written, for one read back that nothing else answers
+  uint16_t written[0x400];
 } core;
-
-// Each block the voices decode, kept by where it is and the two samples before it, as the emulator keeps them: a write
-// to the chip's memory forgets the blocks that start where it writes, but not one it writes into the middle of, which
-// plays as it was decoded until something forgets it
-typedef struct {
-  uint32_t address;
-  int32_t in_s1, in_s2, out_s1, out_s2;
-  int32_t next;
-  int16_t samples[BUFFER_SAMPLES];
-} cached;
-#define CACHE_CHUNK 4096
 
 static struct spu2 {
   uint8_t *ram;
   core cores[2];
-  uint32_t adsr_table[160];
-  // the interrupt address each core watches for, and whether a voice has read it
-  uint32_t watched[2];
-  uint8_t watched_hit[2];
-  // the cache: the first block kept at each even address, then the next of the same address
-  int32_t *cache_first;
-  cached *cache;
-  int32_t cache_size, cache_used, cache_free;
+  // samples mixed since power-on, and where the cores are in the buffers they write and read in the chip's memory
+  uint32_t cycles, at;
   uint32_t spdif_out, spdif_mode, spdif_media;
   // the frame's samples, left and right
   int16_t *heard;
   uint32_t heard_count, heard_room;
 } spu;
-// how many samples core 0 mixed before anything woke the chip, which moved only where it writes its output
-static uint32_t ticks_asleep;
 
 // ----------------------------------------------------------------------------------------------------------------
 // The sound list
@@ -221,6 +149,11 @@ static void list_keep(const void *data, uint32_t size) {
 }
 // a thing in the list: its kind and its bytes, which are hashed, and kept whole, or as their length and their own hash
 static void listed(char kind, const void *data, uint32_t length, int keep) {
+#ifdef SPU2_IN_REFERENCE
+  // the tools' emulator keeps the original's list itself, with everything else it's asked for (tools/libretro/play.patch)
+  (void)kind, (void)data, (void)length, (void)keep;
+  return;
+#endif
   const uint8_t *bytes = data;
   uint32_t own = 0x811C9DC5;
   list_hash = (list_hash ^ (uint8_t)kind) * 0x01000193;
@@ -254,308 +187,292 @@ const int16_t *spu2_heard(uint32_t *pairs) {
   return spu.heard;
 }
 
-// ----------------------------------------------------------------------------------------------------------------
-// Waking the chip
 
-static void update_noise(core *c);
+// ----------------------------------------------------------------------------------------------------------------
+// The chip's memory, in words, and its interrupt address
 
 static void core_reset(core *c, unsigned number) {
   __builtin_memset(c, 0, sizeof *c);
   c->number = number;
-  c->core_rate = CORE_SAMPLE_RATE;
-  c->base_rate = INIT_SAMPLE_RATE;
-  c->irq_addr = 0xFFFFFFFF;
-  c->reverb_end = 0x80000;
-  c->input_volume_left = c->input_volume_right = 0x7FFF;
-  c->external_volume_left = c->external_volume_right = 0x7FFF;
-  for (int i = 0; i < VOICES; i++) c->readers[i].dst_rate = OUTPUT_RATE;
-  c->input.base_rate = INIT_SAMPLE_RATE;
-  c->input.dst_rate = OUTPUT_RATE;
-  c->input.src_index = INPUT_SAMPLES * TIME_SCALE;
-  c->input.step = (c->input.base_rate * TIME_SCALE) / c->input.dst_rate;
-  c->input_addr = number == 0 ? INPUT_CORE0 : INPUT_CORE1;
+  c->irq_addr = 0x800;
+  c->mmix = number ? 0xFFC : 0xFF0;
+  c->dry_left = c->dry_right = c->wet_left = c->wet_right = 0xFFFFFF;
+  c->ended = 0xFFFFFF;
+  c->external_left = c->external_right = c->input_left = c->input_right = 0x7FFF;
+  c->reverb_start = number ? 0xFFFF8 : 0xEFFF8;
+  c->reverb_end = number ? 0xFFFFF : 0xEFFFF;
+  c->input_half = 0x100;
+  for (int i = 0; i < VOICES; i++) {
+    c->voices[i].pitch = 0x3FFF;
+    c->voices[i].start = c->voices[i].loop = 0x2800;
+    c->voices[i].next = 0x2801;
+  }
 }
-
-// the chip's memory and state, made the first time a game touches it, as one that never does needs none of it
-static void woken(void) {
-  if (spu.ram) return;
-  spu.ram = kit_alloc(RAM_SIZE);
-  spu.cache_first = kit_alloc(sizeof(int32_t) * (RAM_SIZE / 2));
-  for (uint32_t i = 0; i < RAM_SIZE / 2; i++) spu.cache_first[i] = -1;
-  spu.cache_free = -1;
+// the chip as the console starts, with `ram` its memory
+static void wake(uint8_t *ram) {
+  spu.ram = ram;
+  // what the console's own start-up leaves in the chip's memory, as PCSX2 has it from the console's BIOS: a block that
+  // ends and loops at once where every voice starts, so a voice nothing has used yet stays in it instead of running
+  // through the memory, and another further on that a game is known to lean on
+  __builtin_memset(ram + 0x2800 * 2, 7, 16);
+  __builtin_memset(ram + 0xE870 * 2, 7, 16);
   core_reset(&spu.cores[0], 0);
   core_reset(&spu.cores[1], 1);
-  spu.cores[0].output_offset = (ticks_asleep * 2) & (CORE0_OUTPUT_SIZE - 1);
-  // and its noise generator went on stepping
-  for (uint32_t i = 0; i < ticks_asleep; i++) update_noise(&spu.cores[0]);
-  spu.watched[0] = spu.watched[1] = 0xFFFFFFFF;
-  // the envelope's steps, which double every four
-  uint32_t value = 3, increment = 1, column = 0;
-  for (int i = 32; i < 160; i++) {
-    if (value < 0x3FFFFFFF) {
-      value += increment;
-      if (++column == 5) {
-        column = 1;
-        increment *= 2;
-      }
-    } else value = 0x3FFFFFFF;
-    spu.adsr_table[i] = value;
+}
+static void woken(void) {
+  if (!spu.ram) wake(kit_alloc(RAM_SIZE));
+}
+
+// For the tools' emulator, which has this chip in place of its own (tools/libretro/play.patch): the chip as the console
+// starts, on the emulator's own memory for it, its state for a save state, and what a DMA transfer's entry in the
+// sound list says of a core after it, its transfer mode and its control's DMA bits.
+void spu2_power(uint8_t *ram) {
+  int16_t *heard = spu.heard;
+  uint32_t room = spu.heard_room;
+  __builtin_memset(&spu, 0, sizeof spu);
+  spu.heard = heard;
+  spu.heard_room = room;
+  wake(ram);
+}
+uint32_t spu2_state_size(void) { return sizeof spu; }
+void spu2_state_save(uint8_t *to) { __builtin_memcpy(to, &spu, sizeof spu); }
+void spu2_state_load(const uint8_t *from) {
+  struct spu2 kept = spu;
+  __builtin_memcpy(&spu, from, sizeof spu);
+  spu.ram = kept.ram;
+  spu.heard = kept.heard;
+  spu.heard_room = kept.heard_room;
+  spu.heard_count = 0;
+}
+void spu2_transfer(int number, uint32_t *mode, uint32_t *control) {
+  woken();
+  *mode = spu.cores[number].transfer_mode;
+  *control = (uint32_t)(spu.cores[number].control & CONTROL_DMA);
+}
+
+static int16_t word_at(uint32_t address) {
+  int16_t value;
+  __builtin_memcpy(&value, spu.ram + ((address & WORD_MASK) << 1), 2);
+  return value;
+}
+static void set_word_at(uint32_t address, int32_t value) {
+  int16_t kept = (int16_t)value;
+  __builtin_memcpy(spu.ram + ((address & WORD_MASK) << 1), &kept, 2);
+}
+// a core whose interrupt address the chip has just read or written is interrupted, whichever core did it
+static void touched(uint32_t address) {
+  for (int i = 0; i < 2; i++) {
+    if ((spu.cores[i].control & CONTROL_IRQ) && spu.cores[i].irq_addr == address) spu.cores[i].irq_pending = 1;
   }
 }
+// what the chip writes back into its memory as it mixes
+static void capture(uint32_t address, int32_t value) {
+  touched(address);
+  set_word_at(address, value);
+}
+static int32_t clamped(int32_t value) { return value < -0x8000 ? -0x8000 : value > 0x7FFF ? 0x7FFF : value; }
+static int32_t scaled(int32_t sample, int32_t volume) { return (volume * sample) >> 15; }
 
 // ----------------------------------------------------------------------------------------------------------------
-// The decoded blocks
+// Volumes that sweep, and a voice's envelope
 
-static cached *cache_find(uint32_t address, int32_t s1, int32_t s2) {
-  for (int32_t i = spu.cache_first[address >> 1]; i >= 0; i = spu.cache[i].next) {
-    if (spu.cache[i].in_s1 == s1 && spu.cache[i].in_s2 == s2) return &spu.cache[i];
-  }
-  return 0;
+static void slide_set(slide *s, uint16_t value) {
+  s->reg = value;
+  if (!(value & 0x8000)) s->value = (int16_t)(uint16_t)(value << 1);
 }
-static cached *cache_add(uint32_t address, int32_t s1, int32_t s2) {
-  int32_t i = spu.cache_free;
-  if (i >= 0) spu.cache_free = spu.cache[i].next;
-  else {
-    if (spu.cache_used == spu.cache_size) {
-      // more room, kept in one stretch so an entry is found by its number
-      int32_t size = spu.cache_size + CACHE_CHUNK;
-      cached *more = kit_alloc(sizeof(cached) * (size_t)size);
-      if (spu.cache_used) __builtin_memcpy(more, spu.cache, sizeof(cached) * (size_t)spu.cache_used);
-      spu.cache = more;
-      spu.cache_size = size;
-    }
-    i = spu.cache_used++;
+// one sample of a sweep: its step, 7 less the register's two low bits, taken each time its counter fills, which the
+// five bits above set the pace of; bit 12 turns it upside down, bit 13 sends it down, bit 14 makes it exponential
+static void slide_step(slide *s) {
+  if (!(s->reg & 0x8000)) return;
+  int step = s->reg & 3, shift = (s->reg >> 2) & 0x1F, phase = (s->reg >> 12) & 1, down = (s->reg >> 13) & 1, exponential = (s->reg >> 14) & 1;
+  int32_t size = 7 - step;
+  if (down) size = ~size;
+  uint32_t counter = 0x8000u >> (shift > 11 ? shift - 11 : 0);
+  int32_t level = size * (1 << (shift < 11 ? 11 - shift : 0));
+  if (exponential) {
+    if (!down && s->value > 0x6000) counter >>= 2;
+    if (down) level = (int16_t)((level * s->value) >> 15);
   }
-  cached *item = &spu.cache[i];
-  item->address = address;
-  item->in_s1 = s1;
-  item->in_s2 = s2;
-  item->next = spu.cache_first[address >> 1];
-  spu.cache_first[address >> 1] = i;
-  return item;
-}
-// forgets the blocks that start from `address` to `address + size`, both included, as the emulator's does
-static void cache_forget(uint32_t address, uint32_t size) {
-  uint64_t last = (uint64_t)address + size;
-  if (last > RAM_SIZE - 1) last = RAM_SIZE - 1;
-  for (uint64_t at = (address + 1) & ~1u; at <= last; at += 2) {
-    int32_t i = spu.cache_first[at >> 1];
-    if (i < 0) continue;
-    while (i >= 0) {
-      int32_t next = spu.cache[i].next;
-      spu.cache[i].next = spu.cache_free;
-      spu.cache_free = i;
-      i = next;
-    }
-    spu.cache_first[at >> 1] = -1;
+  if (step != 3 && shift != 0x1F && counter < 1) counter = 1;
+  s->counter += counter;
+  if (!(exponential && down)) level = phase ? -level : level;
+  if (s->counter < 0x8000) return;
+  s->counter = 0;
+  int32_t low = -0x8000, high = 0x7FFF;
+  if (down) {
+    low = phase ? -0x8000 : 0;
+    high = phase ? 0 : 0x7FFF;
+    if (exponential) low = 0, high = 0x7FFF;
   }
+  int32_t value = s->value + level;
+  s->value = value < low ? low : value > high ? high : value;
 }
 
-static void watch(uint32_t address) {
-  for (int i = 0; i < 2; i++) if (address == spu.watched[i]) spu.watched_hit[i] = 1;
+// One sample of a voice's envelope, and whether the voice goes on. Each phase has a direction, a shape, a pace and a
+// step from the voice's two envelope registers, and a level at which the next begins.
+static int envelope_step(voice *v) {
+  int down, exponential, shift, step;
+  int32_t target;
+  switch (v->phase) {
+  case ATTACK: down = 0, exponential = v->adsr1 >> 15, shift = (v->adsr1 >> 10) & 0x1F, step = 7 - ((v->adsr1 >> 8) & 3), target = 0x7FFF; break;
+  case DECAY: down = 1, exponential = 1, shift = (v->adsr1 >> 4) & 0xF, step = -8, target = ((v->adsr1 & 0xF) + 1) << 11; break;
+  case SUSTAIN:
+    down = (v->adsr2 >> 14) & 1, exponential = v->adsr2 >> 15, shift = (v->adsr2 >> 8) & 0x1F, step = 7 - ((v->adsr2 >> 6) & 3), target = 0;
+    if (down) step = ~step;
+    break;
+  default: down = 1, exponential = (v->adsr2 >> 5) & 1, shift = v->adsr2 & 0x1F, step = -8, target = 0; break;
+  }
+  uint32_t counter = 0x8000u >> (shift > 11 ? shift - 11 : 0);
+  int32_t level = step * (1 << (shift < 11 ? 11 - shift : 0));
+  if (exponential) {
+    if (!down && v->envelope > 0x6000) counter >>= 2;
+    if (down) level = (int16_t)((level * v->envelope) >> 15);
+  }
+  if (counter < 1) counter = 1;
+  v->envelope_counter += counter;
+  if (v->envelope_counter >= 0x8000) {
+    v->envelope_counter = 0;
+    int32_t value = v->envelope + level;
+    v->envelope = value < 0 ? 0 : value > 0x7FFF ? 0x7FFF : value;
+  }
+  if (v->phase == SUSTAIN) return v->envelope != 0;
+  if ((!down && v->envelope >= target) || (down && v->envelope <= target)) v->phase++;
+  return v->phase <= RELEASE;
+}
+static void voice_stop(voice *v) {
+  v->envelope = 0;
+  v->phase = STOPPED;
 }
 
 // ----------------------------------------------------------------------------------------------------------------
 // A voice's samples
 
-static void unpack(reader *r, int16_t *to) {
-  const uint8_t *block = spu.ram + r->next_addr;
-  watch(r->next_addr);
-  uint8_t shift = block[0] & 0xF, predict = block[0] >> 4, flags = block[1];
-  int32_t key_s1 = predict == 0 ? 0 : r->s1, key_s2 = predict == 0 ? 0 : r->s2;
-  cached *item = cache_find(r->next_addr, key_s1, key_s2);
-  if (item) {
-    __builtin_memcpy(to, item->samples, sizeof item->samples);
-    r->s1 = item->out_s1;
-    r->s2 = item->out_s2;
-  } else {
-    int32_t work[BUFFER_SAMPLES];
-    for (int i = 2, n = 0; i < 16; i++) {
-      int16_t first = (int16_t)((block[i] & 0x0F) << 12), second = (int16_t)((block[i] & 0xF0) << 8);
-      first = (int16_t)(first >> shift);
-      second = (int16_t)(second >> shift);
-      work[n++] = first;
-      work[n++] = second;
+static const int32_t predictors[16][2] = { { 0, 0 }, { 60, 0 }, { 115, -52 }, { 98, -55 }, { 122, -60 } };
+
+// the word a voice is reading passed: its address is one the interrupt can be on
+static void next_word(voice *v) {
+  touched(v->next);
+  v->next = (v->next + 1) & WORD_MASK;
+}
+// The four samples of the word a voice is at, decoded from the chip's memory as it is now, with its block's header
+// as it is now, into the voice's fifo
+static void decode(voice *v) {
+  int32_t header = word_at(v->next & 0xFFFF8);
+  int shift = (header & 0xF) + 16, id = (header >> 4) & 0xF;
+  int32_t first = predictors[id][0], second = predictors[id][1];
+  uint16_t data = (uint16_t)word_at(v->next);
+  for (int i = 0; i < 4; i++) {
+    int32_t nibble = (int32_t)(((uint32_t)(data >> (i * 4)) << 28) & 0xF0000000u);
+    int32_t sample = (nibble >> shift) + ((first * v->before1 + second * v->before2 + 32) >> 6);
+    sample = clamped(sample);
+    v->fifo[(v->decoded + (uint32_t)i) % 32] = (int16_t)sample;
+    v->before2 = v->before1;
+    v->before1 = sample;
+  }
+}
+// A sample's worth of reading: the block's flags are read every sample, and four more samples are decoded when the
+// fifo has room, whether the voice is playing or not, as a voice that has stopped still moves through the memory
+static void read_ahead(core *c, int i) {
+  voice *v = &c->voices[i];
+  touched(v->next & 0xFFFF8);
+  v->flags = (uint8_t)((uint16_t)word_at(v->next & 0xFFFF8) >> 8);
+  if ((v->flags & FLAG_START) && !v->loop_set) v->loop = v->next & 0xFFFF8;
+  if ((int32_t)(v->decoded - v->played) > 12) return;
+  if (v->phase > STOPPED) decode(v);
+  v->decoded += 4;
+  next_word(v);
+  if ((v->next & 7) == 0) {
+    if (v->flags & FLAG_END) {
+      c->ended |= 1u << i;
+      v->next = v->loop;
+      if (!(v->flags & FLAG_LOOP)) voice_stop(v);
     }
-    for (int i = 0; i < BUFFER_SAMPLES; i++) {
-      int32_t value = work[i] * 64;
-      value += (r->s1 * predictors[predict][0]) / 64;
-      value += (r->s2 * predictors[predict][1]) / 64;
-      r->s2 = r->s1;
-      r->s1 = value;
-      int32_t result = (value + 32) / 64;
-      if (result < -32768) result = -32768;
-      if (result > 32767) result = 32767;
-      to[i] = (int16_t)result;
-    }
-    item = cache_add(r->next_addr, key_s1, key_s2);
-    __builtin_memcpy(item->samples, to, sizeof item->samples);
-    item->out_s1 = r->s1;
-    item->out_s2 = r->s2;
+    next_word(v);
   }
-  if (flags & 0x04) {
-    r->repeat_addr = r->next_addr;
-    r->changed_repeat = 1;
-  }
-  r->next_addr = (r->next_addr + 0x10) & RAM_MASK;
-  if (flags & 0x01) {
-    r->end_flag = 1;
-    r->next_addr = r->repeat_addr;
-    if (flags != 0x03) r->done = 1;
-  }
-}
-static void advance(reader *r) {
-  if (r->next_valid) {
-    __builtin_memmove(r->buffer, r->buffer + BUFFER_SAMPLES, sizeof(int16_t) * BUFFER_SAMPLES);
-    unpack(r, r->buffer + BUFFER_SAMPLES);
-  } else {
-    unpack(r, r->buffer);
-    unpack(r, r->buffer + BUFFER_SAMPLES);
-    r->next_valid = 1;
-  }
-}
-static void reader_set(reader *r, uint32_t address, uint32_t repeat) {
-  r->src_index = 0;
-  r->next_addr = address & RAM_MASK;
-  r->repeat_addr = repeat & RAM_MASK;
-  r->s1 = r->s2 = 0;
-  r->next_valid = r->done = r->changed_repeat = 0;
-}
-static int32_t reader_sample(reader *r) {
-  uint32_t index = r->src_index / PITCH_BASE;
-  int32_t alpha = (int32_t)(r->src_index % PITCH_BASE);
-  int32_t now = r->buffer[index], next = r->buffer[index + 1];
-  int32_t result = (now * (PITCH_BASE - alpha) / PITCH_BASE) + (next * alpha / PITCH_BASE);
-  r->src_index += r->step;
-  if (index >= BUFFER_SAMPLES) {
-    r->src_index -= BUFFER_SAMPLES * PITCH_BASE;
-    advance(r);
-  }
-  return result;
-}
-static uint32_t reader_current(const reader *r) {
-  uint32_t within = (r->src_index / PITCH_BASE) / 2;
-  return r->next_addr + (within < 0x0E ? within : 0x0E);
 }
 
-// ----------------------------------------------------------------------------------------------------------------
-// Envelopes and volumes
+// The chip's four-point table: the weights of the four samples around where a voice is, by how far it is between two
+static const int16_t gauss[256][4] = {
+  { 0x12C7, 0x59B3, 0x1307, -0x0001 }, { 0x1288, 0x59B2, 0x1347, -0x0001 }, { 0x1249, 0x59B0, 0x1388, -0x0001 }, { 0x120B, 0x59AD, 0x13C9, -0x0001 },
+  { 0x11CD, 0x59A9, 0x140B, -0x0001 }, { 0x118F, 0x59A4, 0x144D, -0x0001 }, { 0x1153, 0x599E, 0x1490, -0x0001 }, { 0x1116, 0x5997, 0x14D4, -0x0001 },
+  { 0x10DB, 0x598F, 0x1517, -0x0001 }, { 0x109F, 0x5986, 0x155C, -0x0001 }, { 0x1065, 0x597C, 0x15A0, -0x0001 }, { 0x102A, 0x5971, 0x15E6, -0x0001 },
+  { 0x0FF1, 0x5965, 0x162C, -0x0001 }, { 0x0FB7, 0x5958, 0x1672, -0x0001 }, { 0x0F7F, 0x5949, 0x16B9, -0x0001 }, { 0x0F46, 0x593A, 0x1700, -0x0001 },
+  { 0x0F0F, 0x592A, 0x1747, 0x0000 }, { 0x0ED7, 0x5919, 0x1790, 0x0000 }, { 0x0EA1, 0x5907, 0x17D8, 0x0000 }, { 0x0E6B, 0x58F4, 0x1821, 0x0000 },
+  { 0x0E35, 0x58E0, 0x186B, 0x0000 }, { 0x0E00, 0x58CB, 0x18B5, 0x0000 }, { 0x0DCB, 0x58B5, 0x1900, 0x0000 }, { 0x0D97, 0x589E, 0x194B, 0x0001 },
+  { 0x0D63, 0x5886, 0x1996, 0x0001 }, { 0x0D30, 0x586D, 0x19E2, 0x0001 }, { 0x0CFD, 0x5853, 0x1A2E, 0x0001 }, { 0x0CCB, 0x5838, 0x1A7B, 0x0002 },
+  { 0x0C99, 0x581C, 0x1AC8, 0x0002 }, { 0x0C68, 0x57FF, 0x1B16, 0x0002 }, { 0x0C38, 0x57E2, 0x1B64, 0x0003 }, { 0x0C07, 0x57C3, 0x1BB3, 0x0003 },
+  { 0x0BD8, 0x57A3, 0x1C02, 0x0003 }, { 0x0BA9, 0x5782, 0x1C51, 0x0004 }, { 0x0B7A, 0x5761, 0x1CA1, 0x0004 }, { 0x0B4C, 0x573E, 0x1CF1, 0x0005 },
+  { 0x0B1E, 0x571B, 0x1D42, 0x0005 }, { 0x0AF1, 0x56F6, 0x1D93, 0x0006 }, { 0x0AC4, 0x56D1, 0x1DE5, 0x0007 }, { 0x0A98, 0x56AB, 0x1E37, 0x0007 },
+  { 0x0A6C, 0x5684, 0x1E89, 0x0008 }, { 0x0A40, 0x565B, 0x1EDC, 0x0009 }, { 0x0A16, 0x5632, 0x1F2F, 0x0009 }, { 0x09EB, 0x5609, 0x1F82, 0x000A },
+  { 0x09C1, 0x55DE, 0x1FD6, 0x000B }, { 0x0998, 0x55B2, 0x202A, 0x000C }, { 0x096F, 0x5585, 0x207F, 0x000D }, { 0x0946, 0x5558, 0x20D4, 0x000E },
+  { 0x091E, 0x5529, 0x2129, 0x000F }, { 0x08F7, 0x54FA, 0x217F, 0x0010 }, { 0x08D0, 0x54CA, 0x21D5, 0x0011 }, { 0x08A9, 0x5499, 0x222C, 0x0012 },
+  { 0x0883, 0x5467, 0x2282, 0x0013 }, { 0x085D, 0x5434, 0x22DA, 0x0015 }, { 0x0838, 0x5401, 0x2331, 0x0016 }, { 0x0813, 0x53CC, 0x2389, 0x0018 },
+  { 0x07EF, 0x5397, 0x23E1, 0x0019 }, { 0x07CB, 0x5361, 0x2439, 0x001B }, { 0x07A7, 0x532A, 0x2492, 0x001C }, { 0x0784, 0x52F3, 0x24EB, 0x001E },
+  { 0x0762, 0x52BA, 0x2545, 0x0020 }, { 0x0740, 0x5281, 0x259E, 0x0021 }, { 0x071E, 0x5247, 0x25F8, 0x0023 }, { 0x06FD, 0x520C, 0x2653, 0x0025 },
+  { 0x06DC, 0x51D0, 0x26AD, 0x0027 }, { 0x06BB, 0x5194, 0x2708, 0x0029 }, { 0x069B, 0x5156, 0x2763, 0x002C }, { 0x067C, 0x5118, 0x27BE, 0x002E },
+  { 0x065C, 0x50DA, 0x281A, 0x0030 }, { 0x063E, 0x509A, 0x2876, 0x0033 }, { 0x061F, 0x505A, 0x28D2, 0x0035 }, { 0x0601, 0x5019, 0x292E, 0x0038 },
+  { 0x05E4, 0x4FD7, 0x298B, 0x003A }, { 0x05C7, 0x4F95, 0x29E7, 0x003D }, { 0x05AA, 0x4F52, 0x2A44, 0x0040 }, { 0x058E, 0x4F0E, 0x2AA1, 0x0043 },
+  { 0x0572, 0x4EC9, 0x2AFF, 0x0046 }, { 0x0556, 0x4E84, 0x2B5C, 0x0049 }, { 0x053B, 0x4E3E, 0x2BBA, 0x004D }, { 0x0520, 0x4DF7, 0x2C18, 0x0050 },
+  { 0x0506, 0x4DB0, 0x2C76, 0x0054 }, { 0x04EC, 0x4D68, 0x2CD4, 0x0057 }, { 0x04D2, 0x4D20, 0x2D33, 0x005B }, { 0x04B9, 0x4CD7, 0x2D91, 0x005F },
+  { 0x04A0, 0x4C8D, 0x2DF0, 0x0063 }, { 0x0488, 0x4C42, 0x2E4F, 0x0067 }, { 0x0470, 0x4BF7, 0x2EAE, 0x006B }, { 0x0458, 0x4BAC, 0x2F0D, 0x006F },
+  { 0x0441, 0x4B5F, 0x2F6C, 0x0074 }, { 0x042A, 0x4B13, 0x2FCC, 0x0078 }, { 0x0413, 0x4AC5, 0x302B, 0x007D }, { 0x03FC, 0x4A77, 0x308B, 0x0082 },
+  { 0x03E7, 0x4A29, 0x30EA, 0x0087 }, { 0x03D1, 0x49D9, 0x314A, 0x008C }, { 0x03BC, 0x498A, 0x31AA, 0x0091 }, { 0x03A7, 0x493A, 0x3209, 0x0096 },
+  { 0x0392, 0x48E9, 0x3269, 0x009C }, { 0x037E, 0x4898, 0x32C9, 0x00A1 }, { 0x036A, 0x4846, 0x3329, 0x00A7 }, { 0x0356, 0x47F4, 0x3389, 0x00AD },
+  { 0x0343, 0x47A1, 0x33E9, 0x00B3 }, { 0x0330, 0x474E, 0x3449, 0x00BA }, { 0x031D, 0x46FA, 0x34A9, 0x00C0 }, { 0x030B, 0x46A6, 0x3509, 0x00C7 },
+  { 0x02F9, 0x4651, 0x3569, 0x00CD }, { 0x02E7, 0x45FC, 0x35C9, 0x00D4 }, { 0x02D6, 0x45A6, 0x3629, 0x00DB }, { 0x02C4, 0x4550, 0x3689, 0x00E3 },
+  { 0x02B4, 0x44FA, 0x36E8, 0x00EA }, { 0x02A3, 0x44A3, 0x3748, 0x00F2 }, { 0x0293, 0x444C, 0x37A8, 0x00FA }, { 0x0283, 0x43F4, 0x3807, 0x0101 },
+  { 0x0273, 0x439C, 0x3867, 0x010A }, { 0x0264, 0x4344, 0x38C6, 0x0112 }, { 0x0255, 0x42EB, 0x3926, 0x011B }, { 0x0246, 0x4292, 0x3985, 0x0123 },
+  { 0x0237, 0x4239, 0x39E4, 0x012C }, { 0x0229, 0x41DF, 0x3A43, 0x0135 }, { 0x021B, 0x4185, 0x3AA2, 0x013F }, { 0x020D, 0x412A, 0x3B00, 0x0148 },
+  { 0x0200, 0x40D0, 0x3B5F, 0x0152 }, { 0x01F2, 0x4074, 0x3BBD, 0x015C }, { 0x01E5, 0x4019, 0x3C1B, 0x0166 }, { 0x01D9, 0x3FBD, 0x3C79, 0x0171 },
+  { 0x01CC, 0x3F62, 0x3CD7, 0x017B }, { 0x01C0, 0x3F05, 0x3D35, 0x0186 }, { 0x01B4, 0x3EA9, 0x3D92, 0x0191 }, { 0x01A8, 0x3E4C, 0x3DEF, 0x019C },
+  { 0x019C, 0x3DEF, 0x3E4C, 0x01A8 }, { 0x0191, 0x3D92, 0x3EA9, 0x01B4 }, { 0x0186, 0x3D35, 0x3F05, 0x01C0 }, { 0x017B, 0x3CD7, 0x3F62, 0x01CC },
+  { 0x0171, 0x3C79, 0x3FBD, 0x01D9 }, { 0x0166, 0x3C1B, 0x4019, 0x01E5 }, { 0x015C, 0x3BBD, 0x4074, 0x01F2 }, { 0x0152, 0x3B5F, 0x40D0, 0x0200 },
+  { 0x0148, 0x3B00, 0x412A, 0x020D }, { 0x013F, 0x3AA2, 0x4185, 0x021B }, { 0x0135, 0x3A43, 0x41DF, 0x0229 }, { 0x012C, 0x39E4, 0x4239, 0x0237 },
+  { 0x0123, 0x3985, 0x4292, 0x0246 }, { 0x011B, 0x3926, 0x42EB, 0x0255 }, { 0x0112, 0x38C6, 0x4344, 0x0264 }, { 0x010A, 0x3867, 0x439C, 0x0273 },
+  { 0x0101, 0x3807, 0x43F4, 0x0283 }, { 0x00FA, 0x37A8, 0x444C, 0x0293 }, { 0x00F2, 0x3748, 0x44A3, 0x02A3 }, { 0x00EA, 0x36E8, 0x44FA, 0x02B4 },
+  { 0x00E3, 0x3689, 0x4550, 0x02C4 }, { 0x00DB, 0x3629, 0x45A6, 0x02D6 }, { 0x00D4, 0x35C9, 0x45FC, 0x02E7 }, { 0x00CD, 0x3569, 0x4651, 0x02F9 },
+  { 0x00C7, 0x3509, 0x46A6, 0x030B }, { 0x00C0, 0x34A9, 0x46FA, 0x031D }, { 0x00BA, 0x3449, 0x474E, 0x0330 }, { 0x00B3, 0x33E9, 0x47A1, 0x0343 },
+  { 0x00AD, 0x3389, 0x47F4, 0x0356 }, { 0x00A7, 0x3329, 0x4846, 0x036A }, { 0x00A1, 0x32C9, 0x4898, 0x037E }, { 0x009C, 0x3269, 0x48E9, 0x0392 },
+  { 0x0096, 0x3209, 0x493A, 0x03A7 }, { 0x0091, 0x31AA, 0x498A, 0x03BC }, { 0x008C, 0x314A, 0x49D9, 0x03D1 }, { 0x0087, 0x30EA, 0x4A29, 0x03E7 },
+  { 0x0082, 0x308B, 0x4A77, 0x03FC }, { 0x007D, 0x302B, 0x4AC5, 0x0413 }, { 0x0078, 0x2FCC, 0x4B13, 0x042A }, { 0x0074, 0x2F6C, 0x4B5F, 0x0441 },
+  { 0x006F, 0x2F0D, 0x4BAC, 0x0458 }, { 0x006B, 0x2EAE, 0x4BF7, 0x0470 }, { 0x0067, 0x2E4F, 0x4C42, 0x0488 }, { 0x0063, 0x2DF0, 0x4C8D, 0x04A0 },
+  { 0x005F, 0x2D91, 0x4CD7, 0x04B9 }, { 0x005B, 0x2D33, 0x4D20, 0x04D2 }, { 0x0057, 0x2CD4, 0x4D68, 0x04EC }, { 0x0054, 0x2C76, 0x4DB0, 0x0506 },
+  { 0x0050, 0x2C18, 0x4DF7, 0x0520 }, { 0x004D, 0x2BBA, 0x4E3E, 0x053B }, { 0x0049, 0x2B5C, 0x4E84, 0x0556 }, { 0x0046, 0x2AFF, 0x4EC9, 0x0572 },
+  { 0x0043, 0x2AA1, 0x4F0E, 0x058E }, { 0x0040, 0x2A44, 0x4F52, 0x05AA }, { 0x003D, 0x29E7, 0x4F95, 0x05C7 }, { 0x003A, 0x298B, 0x4FD7, 0x05E4 },
+  { 0x0038, 0x292E, 0x5019, 0x0601 }, { 0x0035, 0x28D2, 0x505A, 0x061F }, { 0x0033, 0x2876, 0x509A, 0x063E }, { 0x0030, 0x281A, 0x50DA, 0x065C },
+  { 0x002E, 0x27BE, 0x5118, 0x067C }, { 0x002C, 0x2763, 0x5156, 0x069B }, { 0x0029, 0x2708, 0x5194, 0x06BB }, { 0x0027, 0x26AD, 0x51D0, 0x06DC },
+  { 0x0025, 0x2653, 0x520C, 0x06FD }, { 0x0023, 0x25F8, 0x5247, 0x071E }, { 0x0021, 0x259E, 0x5281, 0x0740 }, { 0x0020, 0x2545, 0x52BA, 0x0762 },
+  { 0x001E, 0x24EB, 0x52F3, 0x0784 }, { 0x001C, 0x2492, 0x532A, 0x07A7 }, { 0x001B, 0x2439, 0x5361, 0x07CB }, { 0x0019, 0x23E1, 0x5397, 0x07EF },
+  { 0x0018, 0x2389, 0x53CC, 0x0813 }, { 0x0016, 0x2331, 0x5401, 0x0838 }, { 0x0015, 0x22DA, 0x5434, 0x085D }, { 0x0013, 0x2282, 0x5467, 0x0883 },
+  { 0x0012, 0x222C, 0x5499, 0x08A9 }, { 0x0011, 0x21D5, 0x54CA, 0x08D0 }, { 0x0010, 0x217F, 0x54FA, 0x08F7 }, { 0x000F, 0x2129, 0x5529, 0x091E },
+  { 0x000E, 0x20D4, 0x5558, 0x0946 }, { 0x000D, 0x207F, 0x5585, 0x096F }, { 0x000C, 0x202A, 0x55B2, 0x0998 }, { 0x000B, 0x1FD6, 0x55DE, 0x09C1 },
+  { 0x000A, 0x1F82, 0x5609, 0x09EB }, { 0x0009, 0x1F2F, 0x5632, 0x0A16 }, { 0x0009, 0x1EDC, 0x565B, 0x0A40 }, { 0x0008, 0x1E89, 0x5684, 0x0A6C },
+  { 0x0007, 0x1E37, 0x56AB, 0x0A98 }, { 0x0007, 0x1DE5, 0x56D1, 0x0AC4 }, { 0x0006, 0x1D93, 0x56F6, 0x0AF1 }, { 0x0005, 0x1D42, 0x571B, 0x0B1E },
+  { 0x0005, 0x1CF1, 0x573E, 0x0B4C }, { 0x0004, 0x1CA1, 0x5761, 0x0B7A }, { 0x0004, 0x1C51, 0x5782, 0x0BA9 }, { 0x0003, 0x1C02, 0x57A3, 0x0BD8 },
+  { 0x0003, 0x1BB3, 0x57C3, 0x0C07 }, { 0x0003, 0x1B64, 0x57E2, 0x0C38 }, { 0x0002, 0x1B16, 0x57FF, 0x0C68 }, { 0x0002, 0x1AC8, 0x581C, 0x0C99 },
+  { 0x0002, 0x1A7B, 0x5838, 0x0CCB }, { 0x0001, 0x1A2E, 0x5853, 0x0CFD }, { 0x0001, 0x19E2, 0x586D, 0x0D30 }, { 0x0001, 0x1996, 0x5886, 0x0D63 },
+  { 0x0001, 0x194B, 0x589E, 0x0D97 }, { 0x0000, 0x1900, 0x58B5, 0x0DCB }, { 0x0000, 0x18B5, 0x58CB, 0x0E00 }, { 0x0000, 0x186B, 0x58E0, 0x0E35 },
+  { 0x0000, 0x1821, 0x58F4, 0x0E6B }, { 0x0000, 0x17D8, 0x5907, 0x0EA1 }, { 0x0000, 0x1790, 0x5919, 0x0ED7 }, { 0x0000, 0x1747, 0x592A, 0x0F0F },
+  { -0x0001, 0x1700, 0x593A, 0x0F46 }, { -0x0001, 0x16B9, 0x5949, 0x0F7F }, { -0x0001, 0x1672, 0x5958, 0x0FB7 }, { -0x0001, 0x162C, 0x5965, 0x0FF1 },
+  { -0x0001, 0x15E6, 0x5971, 0x102A }, { -0x0001, 0x15A0, 0x597C, 0x1065 }, { -0x0001, 0x155C, 0x5986, 0x109F }, { -0x0001, 0x1517, 0x598F, 0x10DB },
+  { -0x0001, 0x14D4, 0x5997, 0x1116 }, { -0x0001, 0x1490, 0x599E, 0x1153 }, { -0x0001, 0x144D, 0x59A4, 0x118F }, { -0x0001, 0x140B, 0x59A9, 0x11CD },
+  { -0x0001, 0x13C9, 0x59AD, 0x120B }, { -0x0001, 0x1388, 0x59B0, 0x1249 }, { -0x0001, 0x1347, 0x59B2, 0x1288 }, { -0x0001, 0x1307, 0x59B3, 0x12C7 },
+};
 
-static uint32_t adsr_delta(unsigned index) { return spu.adsr_table[(unsigned)(index + 32)]; }
-
-static void update_adsr(voice *v) {
-  static const unsigned log_index[8] = { 0, 4, 6, 8, 9, 10, 11, 12 };
-  unsigned attack_rate = v->adsr_level >> 8 & 0x7F, attack_mode = v->adsr_level >> 15, decay_rate = v->adsr_level >> 4 & 0xF, sustain_level = v->adsr_level & 0xF;
-  unsigned release_rate = v->adsr_rate & 0x1F, release_mode = v->adsr_rate >> 5 & 1, sustain_rate = v->adsr_rate >> 6 & 0x7F;
-  unsigned sustain_direction = v->adsr_rate >> 14 & 1, sustain_mode = v->adsr_rate >> 15;
-  int32_t level = (int32_t)v->adsr_volume;
-  if (v->status == ATTACK) {
-    if (attack_mode == 0 || level < 0x60000000) level = (int32_t)((uint32_t)level + adsr_delta((attack_rate ^ 0x7F) - 0x10));
-    else level = (int32_t)((uint32_t)level + adsr_delta((attack_rate ^ 0x7F) - 0x18));
-    if (level < 0) {
-      level = MAX_ADSR_VOLUME;
-      v->status = DECAY;
-    }
-  } else if (v->status == DECAY) {
-    unsigned type = ((uint32_t)level >> 28) & 0x7;
-    level = (int32_t)((uint32_t)level - adsr_delta((4 * (decay_rate ^ 0x1F)) - 0x18 + log_index[type]));
-    if ((unsigned)((level >> 27) & 0xF) <= sustain_level) v->status = SUSTAIN;
-  } else if (v->status == SUSTAIN) {
-    if (sustain_direction == 0) {
-      if (sustain_mode == 0 || level < 0x60000000) level = (int32_t)((uint32_t)level + adsr_delta((sustain_rate ^ 0x7F) - 0x10));
-      else level = (int32_t)((uint32_t)level + adsr_delta((sustain_rate ^ 0x7F) - 0x18));
-      if (level < 0) level = MAX_ADSR_VOLUME;
-    } else {
-      if (sustain_mode == 0) level = (int32_t)((uint32_t)level - adsr_delta((sustain_rate ^ 0x7F) - 0x0F));
-      else {
-        unsigned type = ((uint32_t)level >> 28) & 0x7;
-        level = (int32_t)((uint32_t)level - adsr_delta((sustain_rate ^ 0x7F) - 0x1B + log_index[type]));
-      }
-      if (level < 0) level = 0;
-    }
-  } else if (v->status == RELEASE) {
-    if (release_mode == 0) level = (int32_t)((uint32_t)level - adsr_delta((4 * (release_rate ^ 0x1F)) - 0x0C));
-    else {
-      unsigned type = ((uint32_t)level >> 28) & 0x7;
-      level = (int32_t)((uint32_t)level - adsr_delta((4 * (release_rate ^ 0x1F)) - 0x18 + log_index[type]));
-    }
-    if (level < 0) {
-      level = 0;
-      v->status = STOPPED;
-    }
-  }
-  v->adsr_volume = (uint32_t)level;
-}
-
-static int32_t channel_volume(uint16_t volume, int32_t now) {
-  int32_t level = 0;
-  if (!(volume & 0x8000)) {
-    level = volume & 0x4000 ? 0x3FFF - (volume & 0x3FFF) : (volume & 0x3FFF);
-    return (int32_t)((uint32_t)level << 17);
-  }
-  unsigned rate = volume & 0x7F, decrease = volume >> 13 & 1, slope = volume >> 14 & 1;
-  if (slope == 0) {
-    level = decrease ? (int32_t)((uint32_t)now - decrease_deltas[rate]) : (int32_t)((uint32_t)now + increase_deltas[rate]);
-  } else if (decrease) {
-    int64_t delta = (int64_t)now * (int64_t)rate / 0x7F;
-    int32_t base = now > 1 ? now : 1;
-    int64_t clamped = delta < 1 ? 1 : delta > base ? base : delta;
-    level = (int32_t)((uint32_t)base - (uint32_t)clamped);
-  }
-  // an exponential sweep up isn't done by the emulator, which leaves the voice silent
-  if (level < 0) level = 0;
-  return level;
-}
-
-static void mix(int32_t sample, int32_t volume, int16_t *out) {
-  sample = (int32_t)((uint32_t)sample * (uint32_t)volume) / 0x7FFF;
-  int32_t result = sample + *out;
-  if (result < -32768) result = -32768;
-  if (result > 32767) result = 32767;
-  *out = (int16_t)result;
-}
-
-// ----------------------------------------------------------------------------------------------------------------
-// The reverb, in floats as the emulator's thread does them: each sum cut towards zero, tiny floats flushed
-
-static float reverb_sample(const core *c, uint32_t offset) {
-  uint32_t at = c->reverb_now + offset;
-  while (at >= c->reverb_end) {
-    at -= c->reverb_end;
-    at += c->reverb_start;
-  }
-  int16_t value;
-  __builtin_memcpy(&value, spu.ram + at, 2);
-  return (float)value;
-}
-static void reverb_write(const core *c, uint32_t offset, float value) {
-  uint32_t at = c->reverb_now + offset;
-  while (at >= c->reverb_end) {
-    at -= c->reverb_end;
-    at += c->reverb_start;
-  }
-  if (value < -32768.0f) value = -32768.0f;
-  if (value > 32767.0f) value = 32767.0f;
-  int16_t whole = (int16_t)value;
-  __builtin_memcpy(spu.ram + at, &whole, 2);
-}
-static float coefficient(const core *c, int param) { return ee_div((float)(int16_t)c->reverb[param], 32768.0f); }
-#define R(param) reverb_sample(c, c->reverb[param])
-
-// The noise generator, a step each sample, at the rate the core's control says: the console's own, as PCSX2 has it
-// (Dr. Hell's, from pcsxr)
-static void update_noise(core *c) {
+// the noise generator, which every voice of a core set to noise plays, stepped once a sample at the pace the control's
+// bits 8 to 13 set
+static void noise_step(core *c) {
   static const uint8_t add[64] = {
     1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
     0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1,
   };
-  static const uint16_t rate_add[5] = { 0, 84, 140, 180, 210 };
-  uint32_t clock = c->control >> 8 & 0x3F, level = (0x8000u >> (clock >> 2)) << 16;
+  static const uint16_t pace[5] = { 0, 84, 140, 180, 210 };
+  uint32_t clock = (c->control >> 8) & 0x3F, level = (0x8000u >> (clock >> 2)) << 16;
   c->noise_count += 0x10000;
-  c->noise_count += rate_add[clock & 3];
-  if ((c->noise_count & 0xFFFF) >= rate_add[4]) {
+  c->noise_count += pace[clock & 3];
+  if ((c->noise_count & 0xFFFF) >= pace[4]) {
     c->noise_count += 0x10000;
-    c->noise_count -= rate_add[clock & 3];
+    c->noise_count -= pace[clock & 3];
   }
   if (c->noise_count >= level) {
     while (c->noise_count >= level) c->noise_count -= level;
@@ -563,152 +480,229 @@ static void update_noise(core *c) {
   }
 }
 
-static void update_reverb(core *c, const int16_t in[2], int16_t *out) {
-  if (c->reverb_ticks & 1) {
-    float input_l = ee_mul((float)in[0], 0.5f), input_r = ee_mul((float)in[1], 0.5f);
-    float iir_coef = coefficient(c, IIR_COEF), in_l = coefficient(c, IN_COEF_L), in_r = coefficient(c, IN_COEF_R);
-    float input_a0 = ee_add(ee_mul(R(IIR_SRC_A0), iir_coef), ee_mul(input_l, in_l));
-    float input_a1 = ee_add(ee_mul(R(IIR_SRC_A1), iir_coef), ee_mul(input_r, in_r));
-    float input_b0 = ee_add(ee_mul(R(IIR_SRC_B1), iir_coef), ee_mul(input_l, in_l));
-    float input_b1 = ee_add(ee_mul(R(IIR_SRC_B0), iir_coef), ee_mul(input_r, in_r));
-    float alpha = coefficient(c, IIR_ALPHA), rest = ee_sub(1.0f, alpha);
-    float a0 = ee_add(ee_mul(input_a0, alpha), ee_mul(R(IIR_DEST_A0), rest));
-    float a1 = ee_add(ee_mul(input_a1, alpha), ee_mul(R(IIR_DEST_A1), rest));
-    float b0 = ee_add(ee_mul(input_b0, alpha), ee_mul(R(IIR_DEST_B0), rest));
-    float b1 = ee_add(ee_mul(input_b1, alpha), ee_mul(R(IIR_DEST_B1), rest));
-    reverb_write(c, c->reverb[IIR_DEST_A0] + 2, a0);
-    reverb_write(c, c->reverb[IIR_DEST_A1] + 2, a1);
-    reverb_write(c, c->reverb[IIR_DEST_B0] + 2, b0);
-    reverb_write(c, c->reverb[IIR_DEST_B1] + 2, b1);
-    float ca = coefficient(c, ACC_COEF_A), cb = coefficient(c, ACC_COEF_B), cc = coefficient(c, ACC_COEF_C), cd = coefficient(c, ACC_COEF_D);
-    float acc0 = ee_add(ee_add(ee_add(ee_mul(R(ACC_SRC_A0), ca), ee_mul(R(ACC_SRC_B0), cb)), ee_mul(R(ACC_SRC_C0), cc)), ee_mul(R(ACC_SRC_D0), cd));
-    float acc1 = ee_add(ee_add(ee_add(ee_mul(R(ACC_SRC_A1), ca), ee_mul(R(ACC_SRC_B1), cb)), ee_mul(R(ACC_SRC_C1), cc)), ee_mul(R(ACC_SRC_D1), cd));
-    float fb_a0 = reverb_sample(c, c->reverb[MIX_DEST_A0] - c->reverb[FB_SRC_A]);
-    float fb_a1 = reverb_sample(c, c->reverb[MIX_DEST_A1] - c->reverb[FB_SRC_A]);
-    float fb_b0 = reverb_sample(c, c->reverb[MIX_DEST_B0] - c->reverb[FB_SRC_B]);
-    float fb_b1 = reverb_sample(c, c->reverb[MIX_DEST_B1] - c->reverb[FB_SRC_B]);
-    float fb_alpha = coefficient(c, FB_ALPHA), fb_x = coefficient(c, FB_X);
-    reverb_write(c, c->reverb[MIX_DEST_A0], ee_sub(acc0, ee_mul(fb_a0, fb_alpha)));
-    reverb_write(c, c->reverb[MIX_DEST_A1], ee_sub(acc1, ee_mul(fb_a1, fb_alpha)));
-    reverb_write(c, c->reverb[MIX_DEST_B0], ee_sub(ee_sub(ee_mul(fb_alpha, acc0), ee_mul(fb_a0, -fb_alpha)), ee_mul(fb_b0, fb_x)));
-    reverb_write(c, c->reverb[MIX_DEST_B1], ee_sub(ee_sub(ee_mul(fb_alpha, acc1), ee_mul(fb_a1, -fb_alpha)), ee_mul(fb_b1, fb_x)));
-    c->reverb_now += 2;
-    if (c->reverb_now >= c->reverb_end) c->reverb_now = c->reverb_start;
+// One sample of a voice, left and right
+static void voice_sample(core *c, int i, int32_t out[2]) {
+  voice *v = &c->voices[i];
+  slide_step(&v->left);
+  slide_step(&v->right);
+  read_ahead(c, i);
+  int32_t value = 0;
+  out[0] = out[1] = 0;
+  if (v->phase > STOPPED) {
+    if (c->noise & (1u << i)) value = (int16_t)c->noise_out;
+    else {
+      // between the four samples around where the voice is, weighed by the chip's table
+      const int16_t *weights = gauss[(v->between & 0x0FF0) >> 4];
+      for (uint32_t k = 0; k < 4; k++) value += (weights[k] * v->fifo[(v->played + k) % 32]) >> 15;
+    }
+    if (!envelope_step(v)) voice_stop(v);
+    value = scaled(value, v->envelope);
+    v->out = value;
+    out[0] = scaled(value, v->left.value);
+    out[1] = scaled(value, v->right.value);
   }
-  if (c->reverb_start != 0) {
-    float left = ee_mul(0.333f, ee_add(R(MIX_DEST_A0), R(MIX_DEST_B0)));
-    float right = ee_mul(0.333f, ee_add(R(MIX_DEST_A1), R(MIX_DEST_B1)));
-    // at the effect volume
-    mix((int32_t)left, c->effect_left, out + 0);
-    mix((int32_t)right, c->effect_right, out + 1);
+  // on by its pitch, which the voice before bends when the core says so
+  int32_t pitch = v->pitch;
+  if (i > 0 && (c->bent & (1u << i))) {
+    pitch = (pitch * (32768 + c->voices[i - 1].out)) >> 15;
+    pitch = pitch < 0 ? 0 : pitch;
   }
-  c->reverb_ticks++;
+  if (pitch > 0x3FFF) pitch = 0x3FFF;
+  v->between += (uint32_t)pitch;
+  v->played += v->between >> 12;
+  v->between &= 0xFFF;
+  // voices 1 and 3 are written into the chip's memory as they play
+  if (i == 1) capture((c->number ? 0xC00 : 0x400) + spu.at, value);
+  else if (i == 3) capture((c->number ? 0xE00 : 0x600) + spu.at, value);
 }
-#undef R
 
 // ----------------------------------------------------------------------------------------------------------------
-// A core's samples
+// The reverb, which works on one side each sample, left then right, in the stretch of the chip's memory a core is given
 
-// `external` is what comes in from the other core, core 0's output into core 1
-static void render(core *c, int16_t *samples, unsigned count, const int16_t *external) {
-  int update_reverb_now = (c->control & CONTROL_REVERB) && c->reverb_start < c->reverb_end;
-  int irq_enabled = (c->control & CONTROL_IRQ) != 0;
-  __builtin_memset(samples, 0, sizeof(int16_t) * count);
-  for (unsigned tick = 0; tick < count / 2; tick++, samples += 2) {
-    int16_t reverb_in[2] = { 0, 0 };
-    for (int i = 0; i < VOICES; i++) {
-      voice *v = &c->voices[i];
-      reader *r = &c->readers[i];
-      if (v->status == KEY_ON) {
-        reader_set(r, v->address, v->repeat);
-        advance(r);
-        r->end_flag = 0;
-        v->status = ATTACK;
-        v->adsr_volume = 0;
-      } else {
-        if (r->done) {
-          v->status = STOPPED;
-          v->adsr_volume = 0;
-          r->done = 0;
-        }
-        if (r->changed_repeat && !v->repeat_set) {
-          v->repeat = r->repeat_addr;
-          r->changed_repeat = 0;
-        }
-        r->repeat_addr = v->repeat & RAM_MASK;
-      }
-      // a voice the one before bends steps by its pitch times what that voice gave this sample
-      if (i > 0 && (c->bent_voices & (1u << i))) {
-        int32_t bent = (int32_t)(v->pitch * (32768 + c->voice_out[i - 1])) >> 15;
-        r->step = (c->base_rate * (uint32_t)(bent < 0 ? 0 : bent > 0x3FFF ? 0x3FFF : bent)) / r->dst_rate;
-      } else r->step = r->src_rate / r->dst_rate;
-      int32_t read = reader_sample(r);
-      if (c->noise_voices & (1u << i)) read = (int16_t)c->noise_out;
-      c->voice_out[i] = 0;
-      v->current = reader_current(r);
-      update_adsr(v);
-      v->volume_left_abs = channel_volume(v->volume_left, v->volume_left_abs);
-      v->volume_right_abs = channel_volume(v->volume_right, v->volume_right_abs);
-      if (read == 0) continue;
-      int32_t in = (read * (int32_t)(v->adsr_volume >> 16)) / (int32_t)(MAX_ADSR_VOLUME >> 16);
-      if (in == 0) continue;
-      c->voice_out[i] = in;
-      int32_t left = v->volume_left_abs >> 16, right = v->volume_right_abs >> 16;
-      mix(in, left, samples + 0);
-      mix(in, right, samples + 1);
-      if (update_reverb_now && (c->reverb_voices & (1u << i))) {
-        mix(in, left, reverb_in + 0);
-        mix(in, right, reverb_in + 1);
-      }
+static const int16_t filter[39] = {
+  -1, 0, 2, 0, -10, 0, 35, 0, -103, 0, 266, 0, -616, 0, 1332, 0, -2960, 0, 10246, 16384,
+  10246, 0, -2960, 0, 1332, 0, -616, 0, 266, 0, -103, 0, 35, 0, -10, 0, 2, 0, -1,
+};
+static uint32_t reverb_place(const core *c, uint32_t offset) {
+  uint32_t start = c->reverb_start & 0x3FFFFF, end = (c->reverb_end & 0x3FFFFF) | 0xFFFF;
+  return ((((spu.cycles >> 1) + offset) % ((end - start) + 1)) + start) & WORD_MASK;
+}
+#define TIMES(x, y) (((x) * (y)) >> 15)
+static void reverb(core *c, const int32_t in[2], int32_t out[2]) {
+  out[0] = out[1] = 0;
+  if (c->reverb_start >= c->reverb_end) return;
+  c->down[0][c->reverb_at] = c->down[0][c->reverb_at | 64] = (int16_t)clamped(in[0]);
+  c->down[1][c->reverb_at] = c->down[1][c->reverb_at | 64] = (int16_t)clamped(in[1]);
+  int right = spu.cycles & 1;
+  const uint32_t *a = c->reverb_address;
+  const int16_t *vol = c->reverb_volume;
+  uint32_t same_src = reverb_place(c, a[SAME_L_SRC + right]), same_dst = reverb_place(c, a[SAME_L_DST + right]), same_prv = reverb_place(c, a[SAME_L_DST + right] - 1);
+  // each side's cross feed comes from the other side
+  uint32_t diff_src = reverb_place(c, a[DIFF_L_SRC + !right]), diff_dst = reverb_place(c, a[DIFF_L_DST + right]), diff_prv = reverb_place(c, a[DIFF_L_DST + right] - 1);
+  uint32_t comb1 = reverb_place(c, a[COMB1_L_SRC + right]), comb2 = reverb_place(c, a[COMB2_L_SRC + right]);
+  uint32_t comb3 = reverb_place(c, a[COMB3_L_SRC + right]), comb4 = reverb_place(c, a[COMB4_L_SRC + right]);
+  uint32_t apf1_src = reverb_place(c, a[APF1_L_DST + right] - a[APF1_SIZE]), apf1_dst = reverb_place(c, a[APF1_L_DST + right]);
+  uint32_t apf2_src = reverb_place(c, a[APF2_L_DST + right] - a[APF2_SIZE]), apf2_dst = reverb_place(c, a[APF2_L_DST + right]);
+  int on = (c->control & CONTROL_REVERB) != 0;
+  if (on) {
+    const uint32_t used[14] = { same_src, diff_src, same_dst, diff_dst, same_prv, diff_prv, comb1, comb2, comb3, comb4, apf1_dst, apf1_src, apf2_dst, apf2_src };
+    for (int i = 0; i < 2; i++) {
+      core *other = &spu.cores[i];
+      if (!(other->control & CONTROL_IRQ) || other->irq_addr < c->reverb_start || other->irq_addr > c->reverb_end) continue;
+      for (int k = 0; k < 14; k++) if (other->irq_addr == used[k]) other->irq_pending = 1;
     }
-    block_reader *b = &c->input;
-    if (!(b->src_index / TIME_SCALE < (b->bypass ? INPUT_SAMPLES / 2 : INPUT_SAMPLES)) && c->input_written == INPUT_SIZE) {
-      __builtin_memcpy(b->block, spu.ram + c->input_addr, INPUT_SIZE);
-      b->src_index = 0;
-      c->input_written = 0;
-    }
-    if (b->src_index / TIME_SCALE < (b->bypass ? INPUT_SAMPLES / 2 : INPUT_SAMPLES)) {
-      uint32_t index = b->src_index / TIME_SCALE;
-      int16_t in[2];
-      if (b->bypass) __builtin_memcpy(in, b->block + index * 4, 4);
-      else {
-        __builtin_memcpy(&in[0], b->block + index * 2, 2);
-        __builtin_memcpy(&in[1], b->block + 0x200 + index * 2, 2);
-      }
-      b->src_index += b->step;
-      if (c->number == 0 && b->bypass) {
-        mix(in[0], 0x7FFF, samples + 0);
-        mix(in[1], 0x7FFF, samples + 1);
-      } else {
-        mix(in[0], (int32_t)c->input_volume_left, samples + 0);
-        mix(in[1], (int32_t)c->input_volume_right, samples + 1);
-      }
-    }
-    // core 0 writes its output into the chip's memory, where its interrupt address can be
-    if (c->number == 0) {
-      if (irq_enabled) {
-        if (c->irq_addr == CORE0_SIN_LEFT + c->output_offset || c->irq_addr == CORE1_SIN_LEFT + c->output_offset || c->irq_addr == CORE1_SIN_RIGHT + c->output_offset) c->irq_pending = 1;
-      }
-      c->output_offset = (c->output_offset + 2) & (CORE0_OUTPUT_SIZE - 1);
-    }
-    update_noise(c);
-    if (update_reverb_now) update_reverb(c, reverb_in, samples);
-    if (external) {
-      mix(external[tick * 2], c->external_volume_left, samples + 0);
-      mix(external[tick * 2 + 1], c->external_volume_right, samples + 1);
-    }
-    // the master volume, which sweeps as a voice's does, over everything the core gives
-    c->master_left_abs = channel_volume(c->master_left, c->master_left_abs);
-    c->master_right_abs = channel_volume(c->master_right, c->master_right_abs);
-    samples[0] = (int16_t)((samples[0] * (c->master_left_abs >> 16)) / 0x7FFF);
-    samples[1] = (int16_t)((samples[1] * (c->master_right_abs >> 16)) / 0x7FFF);
   }
-  if (irq_enabled && spu.watched_hit[c->number]) c->irq_pending = 1;
-  spu.watched_hit[c->number] = 0;
+  // what went in, down to half the rate
+  int32_t sum = 0;
+  uint32_t from = (c->reverb_at - 39) & 63;
+  for (int i = 0; i < 39; i++) sum += c->down[right][from + (uint32_t)i] * filter[i];
+  int32_t input = TIMES(vol[IN_COEF_L + right], clamped(sum >> 15));
+  int32_t same = TIMES(vol[IIR_VOL], input + TIMES(vol[WALL_VOL], word_at(same_src)) - word_at(same_prv)) + word_at(same_prv);
+  int32_t diff = TIMES(vol[IIR_VOL], input + TIMES(vol[WALL_VOL], word_at(diff_src)) - word_at(diff_prv)) + word_at(diff_prv);
+  int32_t made = TIMES(vol[COMB1_VOL], word_at(comb1)) + TIMES(vol[COMB2_VOL], word_at(comb2)) + TIMES(vol[COMB3_VOL], word_at(comb3)) + TIMES(vol[COMB4_VOL], word_at(comb4));
+  int32_t apf1 = made - TIMES(vol[APF1_VOL], word_at(apf1_src));
+  made = word_at(apf1_src) + TIMES(vol[APF1_VOL], apf1);
+  int32_t apf2 = made - TIMES(vol[APF2_VOL], word_at(apf2_src));
+  made = word_at(apf2_src) + TIMES(vol[APF2_VOL], apf2);
+  if (on) {
+    set_word_at(same_dst, clamped(same));
+    set_word_at(diff_dst, clamped(diff));
+    set_word_at(apf1_dst, clamped(apf1));
+    set_word_at(apf2_dst, clamped(apf2));
+  }
+  made = clamped(made);
+  c->up[right][c->reverb_at] = c->up[right][c->reverb_at | 64] = (int16_t)made;
+  c->up[!right][c->reverb_at] = c->up[!right][c->reverb_at | 64] = 0;
+  c->reverb_at = (c->reverb_at + 1) & 63;
+  // and what comes out, back up to the chip's rate, at twice the filter's weights
+  from = (c->reverb_at - 39) & 63;
+  int32_t left_sum = 0, right_sum = 0;
+  for (int i = 0; i < 39; i++) {
+    int32_t weight = filter[i] * 2;
+    if (weight > 0x7FFF) weight = 0x7FFF;
+    left_sum += c->up[0][from + (uint32_t)i] * weight;
+    right_sum += c->up[1][from + (uint32_t)i] * weight;
+  }
+  out[0] = clamped(left_sum >> 15);
+  out[1] = clamped(right_sum >> 15);
+}
+
+// ----------------------------------------------------------------------------------------------------------------
+// A core's sample
+
+// The sound a core is sent in blocks: read from its buffer in the chip's memory, a half of which the block that's
+// waiting is put in as the core starts reading the other half. A block is 256 samples of the left side, then 256 of
+// the right. With the chip set to pass core 0's input straight out, it isn't mixed, and its buffer is read twice as fast.
+static void input_sample(core *c, int32_t out[2]) {
+  uint32_t at = spu.at, buffer = 0x2000 + (c->number << 10);
+  for (int i = 0; i < 2; i++) {
+    if ((spu.cores[i].control & CONTROL_IRQ) && buffer + at == (spu.cores[i].irq_addr & 0xFFFFFDFF)) spu.cores[i].irq_pending = 1;
+  }
+  int bypass = c->number == 0 && (spu.spdif_out & 0x0100);
+  out[0] = bypass ? 0 : word_at(buffer + at);
+  out[1] = bypass ? 0 : word_at(buffer + 0x200 + at);
+  if (bypass) at = (at * 2) & 0x1FF;
+  if (at != 0 && at != 0x100) return;
+  c->input_half = at == 0 ? 0x100 : 0;
+  if (c->input_written != INPUT_SIZE) return;
+  __builtin_memcpy(spu.ram + ((buffer + c->input_half) << 1), c->waiting, INPUT_SIZE / 2);
+  __builtin_memcpy(spu.ram + ((buffer + 0x200 + c->input_half) << 1), c->waiting + INPUT_SIZE / 2, INPUT_SIZE / 2);
+  c->input_written = 0;
+}
+
+// a core's voices, added up dry and for the reverb, each side by its own switch
+static void voices_sample(core *c, int32_t dry[2], int32_t wet[2]) {
+  dry[0] = dry[1] = wet[0] = wet[1] = 0;
+  for (int i = 0; i < VOICES; i++) {
+    int32_t out[2];
+    voice_sample(c, i, out);
+    uint32_t bit = 1u << i;
+    if (c->dry_left & bit) dry[0] += out[0];
+    if (c->dry_right & bit) dry[1] += out[1];
+    if (c->wet_left & bit) wet[0] += out[0];
+    if (c->wet_right & bit) wet[1] += out[1];
+  }
+}
+// A core's sample from its voices, its sound input and, for core 1, core 0's output: each goes dry and to the reverb
+// by the core's twelve switches (MMIX), and the reverb comes back at the effect volume
+static void core_sample(core *c, const int32_t voices_dry[2], const int32_t voices_wet[2], const int32_t input[2], const int32_t external[2], int32_t out[2]) {
+  slide_step(&c->master_left);
+  slide_step(&c->master_right);
+  noise_step(c);
+  int32_t dry[2] = { clamped(voices_dry[0]), clamped(voices_dry[1]) }, wet[2] = { clamped(voices_wet[0]), clamped(voices_wet[1]) };
+  uint32_t buffers = c->number ? 0x1800 : 0x1000;
+  capture(buffers + spu.at, dry[0]);
+  capture(buffers + 0x200 + spu.at, dry[1]);
+  capture(buffers + 0x400 + spu.at, wet[0]);
+  capture(buffers + 0x600 + spu.at, wet[1]);
+  unsigned m = c->mmix & (c->number ? 0xFFF : 0xFF0);
+  int32_t to_dry[2], to_wet[2], back[2];
+  to_dry[0] = (m & 0x080 ? input[0] : 0) + (m & 0x800 ? dry[0] : 0) + (m & 0x008 ? external[0] : 0);
+  to_dry[1] = (m & 0x040 ? input[1] : 0) + (m & 0x400 ? dry[1] : 0) + (m & 0x004 ? external[1] : 0);
+  to_wet[0] = (m & 0x020 ? input[0] : 0) + (m & 0x200 ? wet[0] : 0) + (m & 0x002 ? external[0] : 0);
+  to_wet[1] = (m & 0x010 ? input[1] : 0) + (m & 0x100 ? wet[1] : 0) + (m & 0x001 ? external[1] : 0);
+  reverb(c, to_wet, back);
+  out[0] = to_dry[0] + scaled(back[0], c->effect_left);
+  out[1] = to_dry[1] + scaled(back[1], c->effect_right);
+}
+
+static void keys(core *c) {
+  // let go, then pressed
+  for (int i = 0; i < VOICES; i++) {
+    voice *v = &c->voices[i];
+    if ((c->key_off & (1u << i)) && v->phase != STOPPED) {
+      v->phase = RELEASE;
+      v->envelope_counter = 0;
+    }
+  }
+  c->ended &= ~c->key_on;
+  for (int i = 0; i < VOICES; i++) {
+    voice *v = &c->voices[i];
+    if (!(c->key_on & (1u << i))) continue;
+    v->phase = ATTACK;
+    v->envelope_counter = 0;
+    v->envelope = 0;
+    v->loop_set = 0;
+    v->between = 0;
+    v->flags = 0;
+    v->next = v->start | 1;
+    v->before1 = v->before2 = 0;
+    v->played = v->decoded = 0;
+  }
+  c->key_on = c->key_off = 0;
+}
+
+// One sample of the chip: core 0's goes through core 1's, at its external volume, and core 1's is what's heard
+static void sample(int16_t out[2]) {
+  core *c0 = &spu.cores[0], *c1 = &spu.cores[1];
+  spu.cycles++;
+  keys(c0);
+  keys(c1);
+  int32_t input[2][2], dry[2][2], wet[2][2], none[2] = { 0, 0 }, external[2], mixed[2];
+  input_sample(c0, input[0]);
+  input_sample(c1, input[1]);
+  input[0][0] = scaled(input[0][0], c0->input_left);
+  input[0][1] = scaled(input[0][1], c0->input_right);
+  input[1][0] = scaled(input[1][0], c1->input_left);
+  input[1][1] = scaled(input[1][1], c1->input_right);
+  voices_sample(c0, dry[0], wet[0]);
+  voices_sample(c1, dry[1], wet[1]);
+  core_sample(c0, dry[0], wet[0], input[0], none, external);
+  external[0] = scaled(clamped(external[0]), c0->master_left.value);
+  external[1] = scaled(clamped(external[1]), c0->master_right.value);
+  capture(0x800 + spu.at, external[0]);
+  capture(0xA00 + spu.at, external[1]);
+  external[0] = scaled(external[0], c1->external_left);
+  external[1] = scaled(external[1], c1->external_right);
+  core_sample(c1, dry[1], wet[1], input[1], external, mixed);
+  out[0] = (int16_t)scaled(clamped(mixed[0]), c1->master_left.value);
+  out[1] = (int16_t)scaled(clamped(mixed[1]), c1->master_right.value);
+  spu.at = (spu.at + 1) & 0x1FF;
 }
 
 void spu2_block(void) {
   listed('B', 0, 0, 1);
+  woken();
   if (spu.heard_count + BLOCK_SAMPLES * 2 > spu.heard_room) {
     uint32_t room = spu.heard_room ? spu.heard_room * 2 : 4096;
     int16_t *more = kit_alloc(sizeof(int16_t) * room);
@@ -716,79 +710,28 @@ void spu2_block(void) {
     spu.heard = more;
     spu.heard_room = room;
   }
-  int16_t *out = spu.heard + spu.heard_count;
-  spu.heard_count += BLOCK_SAMPLES * 2;
-  // a chip nothing has woken is silent, and only where core 0 writes its output moves
-  if (!spu.ram) {
-    __builtin_memset(out, 0, sizeof(int16_t) * BLOCK_SAMPLES * 2);
-    ticks_asleep += BLOCK_SAMPLES;
-    return;
-  }
-  render(&spu.cores[0], out, BLOCK_SAMPLES * 2, 0);
-  core *c1 = &spu.cores[1];
-  if (c1->control & CONTROL_ENABLE) {
-    // core 0's output goes through core 1's, at its external input's volume and under its master volume
-    int16_t second[BLOCK_SAMPLES * 2];
-    render(c1, second, BLOCK_SAMPLES * 2, out);
-    __builtin_memcpy(out, second, sizeof second);
-  }
+  for (int i = 0; i < BLOCK_SAMPLES; i++, spu.heard_count += 2) sample(spu.heard + spu.heard_count);
 }
 
 // ----------------------------------------------------------------------------------------------------------------
 // The registers
 
-static uint16_t address_low(uint32_t address) { return (uint16_t)((address >> 1) & 0xFFFF); }
-static uint16_t address_high(uint32_t address) { return (uint16_t)((address >> 17) & 0xFFFF); }
-static uint32_t set_low(uint32_t address, uint16_t value) { return (address & 0xFFFE0000) | (uint32_t)value << 1; }
-static uint32_t set_high(uint32_t address, uint16_t value) { return (address & 0x0001FFFE) | (uint32_t)value << 17; }
+static uint32_t with_low(uint32_t whole, uint32_t value) { return (whole & 0xFFFF0000) | (value & 0xFFFF); }
+static uint32_t with_high(uint32_t whole, uint32_t value) { return (whole & 0x0000FFFF) | (value & 0xFFFF) << 16; }
+// the data port's address, which the emulator keeps in bytes
+static uint16_t bytes_low(uint32_t address) { return (uint16_t)((address >> 1) & 0xFFFF); }
+static uint16_t bytes_high(uint32_t address) { return (uint16_t)((address >> 17) & 0xFFFF); }
+static uint32_t set_bytes_low(uint32_t address, uint16_t value) { return (address & 0xFFFE0000) | (uint32_t)value << 1; }
+static uint32_t set_bytes_high(uint32_t address, uint16_t value) { return (address & 0x0001FFFE) | (uint32_t)value << 17; }
 
-static void set_irq(core *c, uint32_t address) {
-  c->irq_addr = address & RAM_MASK;
-  spu.watched[c->number] = c->irq_addr;
-}
 static void set_control(core *c, uint16_t value) {
   c->control = value;
-  if (!(value & CONTROL_IRQ)) {
-    c->irq_pending = 0;
-    spu.watched_hit[c->number] = 0;
-  }
-}
-static void set_pitch(core *c, int i) {
-  reader *r = &c->readers[i];
-  r->src_rate = c->base_rate * c->voices[i].pitch;
-  r->step = r->src_rate / r->dst_rate;
-}
-static void key_on(core *c, uint32_t voices) {
-  for (int i = 0; i < VOICES; i++) {
-    if (!(voices & (1u << i))) continue;
-    voice *v = &c->voices[i];
-    v->status = KEY_ON;
-    v->repeat_set = 0;
-    v->current = v->address;
-    // the emulator's envelope a step on, for a game that reads it before the voice has played
-    v->adsr_volume = adsr_delta(((v->adsr_level >> 8 & 0x7F) ^ 0x7F) - 0x10);
-  }
-}
-static void key_off(core *c, uint32_t voices) {
-  for (int i = 0; i < VOICES; i++) {
-    if (!(voices & (1u << i))) continue;
-    voice *v = &c->voices[i];
-    if (v->status == STOPPED) continue;
-    if (v->status == KEY_ON) {
-      v->status = STOPPED;
-      reader *r = &c->readers[i];
-      reader_set(r, v->address, v->repeat);
-      __builtin_memset(r->buffer, 0, sizeof r->buffer);
-      r->end_flag = 0;
-      v->current = reader_current(r);
-    } else v->status = RELEASE;
-  }
+  if (!(value & CONTROL_IRQ)) c->irq_pending = 0;
 }
 static void write_word(core *c, uint16_t value) {
   // the emulator doesn't wrap the address round as it goes on, and writes past the chip's memory at its end: here it
   // stays in it
   __builtin_memcpy(spu.ram + (c->transfer_addr & (RAM_MASK & ~1u)), &value, 2);
-  cache_forget(c->transfer_addr, 2);
   c->transfer_addr += 2;
 }
 
@@ -796,108 +739,103 @@ static void write_word(core *c, uint16_t value) {
 static void voice_write(core *c, int i, uint32_t address, uint32_t value) {
   voice *v = &c->voices[i];
   switch (address & 0x7FF) {
-  case 0x000: v->volume_left = (uint16_t)value; if (!(value & 0x8000)) v->volume_left_abs = (int32_t)((value & 0x3FFF) << 17); break;
-  case 0x002: v->volume_right = (uint16_t)value; if (!(value & 0x8000)) v->volume_right_abs = (int32_t)((value & 0x3FFF) << 17); break;
-  case 0x004: v->pitch = (uint16_t)value; set_pitch(c, i); break;
-  case 0x006: v->adsr_level = (uint16_t)value; break;
-  case 0x008: v->adsr_rate = (uint16_t)value; break;
-  case 0x00A: v->adsr_volume = (uint16_t)value; break;
-  case 0x1C0: v->address = set_high(v->address, (uint16_t)value); break;
-  case 0x1C2: v->address = set_low(v->address, (uint16_t)value); break;
-  case 0x1C4: v->repeat = set_high(v->repeat, (uint16_t)value); v->repeat_set = 1; break;
-  case 0x1C6: v->repeat = set_low(v->repeat, (uint16_t)value); v->repeat_set = 1; break;
-  case 0x1C8: v->current = set_high(v->current, (uint16_t)value); break;
-  case 0x1CA: v->current = set_low(v->current, (uint16_t)value); break;
+  case 0x000: slide_set(&v->left, (uint16_t)value); break;
+  case 0x002: slide_set(&v->right, (uint16_t)value); break;
+  case 0x004: v->pitch = (uint16_t)value; break;
+  case 0x006: v->adsr1 = (uint16_t)value; break;
+  case 0x008: v->adsr2 = (uint16_t)value; break;
+  case 0x00A: v->envelope = (int32_t)(value & 0xFFFF); break;
+  case 0x1C0: v->start = ((value & 0x0F) << 16) | (v->start & 0xFFF8); break;
+  case 0x1C2: v->start = (v->start & 0x0F0000) | (value & 0xFFF8); break;
+  // a loop address a game writes stays, whatever the blocks' own flags say, until the voice is keyed on again
+  case 0x1C4: v->loop_set = 1; v->loop = ((value & 0x0F) << 16) | (v->loop & 0xFFF8); break;
+  case 0x1C6: v->loop_set = 1; v->loop = (v->loop & 0x0F0000) | (value & 0xFFF8); break;
+  case 0x1C8: v->next = ((value & 0x0F) << 16) | (v->next & 0xFFF8) | 1; break;
+  case 0x1CA: v->next = (v->next & 0x0F0000) | (value & 0xFFF8) | 1; break;
   }
 }
-static uint32_t voice_read(core *c, int i, uint32_t address) {
+static uint32_t voice_read(core *c, int i, uint32_t address, uint32_t written) {
   voice *v = &c->voices[i];
   switch (address & 0x7FF) {
-  case 0x000: return v->volume_left;
-  case 0x002: return v->volume_right;
-  case 0x004: return v->pitch;
-  case 0x006: return v->adsr_level;
-  case 0x008: return v->adsr_rate;
-  case 0x00A: return v->adsr_volume >> 16;
-  case 0x00C: return (uint32_t)v->volume_left_abs >> 16;
-  case 0x00E: return (uint32_t)v->volume_right_abs >> 16;
-  case 0x1C0: return address_high(v->address);
-  case 0x1C2: return address_low(v->address);
-  case 0x1C4: return address_high(v->repeat);
-  case 0x1C6: return address_low(v->repeat);
-  case 0x1C8: return address_high(v->current);
-  case 0x1CA: return address_low(v->current);
+  case 0x00A: return (uint32_t)v->envelope & 0xFFFF;
+  case 0x00C: return (uint32_t)v->left.value & 0xFFFF;
+  case 0x00E: return (uint32_t)v->right.value & 0xFFFF;
+  case 0x1C0: return v->start >> 16;
+  case 0x1C2: return v->start & 0xFFFF;
+  case 0x1C4: return v->loop >> 16;
+  case 0x1C6: return v->loop & 0xFFFF;
+  case 0x1C8: return v->next >> 16;
+  case 0x1CA: return v->next & 0xFFFF;
   }
-  return 0;
+  return written;
 }
 
 static void core_write(core *c, uint32_t address, uint32_t value) {
   uint32_t a = address & 0x7FF;
   if (a >= 0x2E4 && a < 0x33C) {
-    unsigned param = address_registers[(a - 0x2E4) / 4];
-    c->reverb[param] = a & 2 ? set_low(c->reverb[param], (uint16_t)value) : set_high(c->reverb[param], (uint16_t)value);
+    uint32_t *place = &c->reverb_address[(a - 0x2E4) / 4];
+    *place = a & 2 ? with_low(*place, value) : with_high(*place, value);
     return;
   }
   if (a >= 0x774 && a < 0x788) {
-    c->reverb[coefficient_registers[(a - 0x774) / 2]] = value;
+    c->reverb_volume[(a - 0x774) / 2] = (int16_t)value;
     return;
   }
   switch (a) {
-  case 0x19A: c->base_rate = c->core_rate; c->input.base_rate = c->core_rate; c->input.step = (c->input.base_rate * TIME_SCALE) / c->input.dst_rate; set_control(c, (uint16_t)value); break;
+  case 0x180: c->bent = with_low(c->bent, value); break;
+  case 0x182: c->bent = with_high(c->bent, value & 0xFF); break;
+  case 0x184: c->noise = with_low(c->noise, value); break;
+  case 0x186: c->noise = with_high(c->noise, value & 0xFF); break;
+  case 0x188: c->dry_left = with_low(c->dry_left, value); break;
+  case 0x18A: c->dry_left = with_high(c->dry_left, value & 0xFF); break;
+  case 0x18C: c->wet_left = with_low(c->wet_left, value); break;
+  case 0x18E: c->wet_left = with_high(c->wet_left, value & 0xFF); break;
+  case 0x190: c->dry_right = with_low(c->dry_right, value); break;
+  case 0x192: c->dry_right = with_high(c->dry_right, value & 0xFF); break;
+  case 0x194: c->wet_right = with_low(c->wet_right, value); break;
+  case 0x196: c->wet_right = with_high(c->wet_right, value & 0xFF); break;
+  case 0x198: c->mmix = (uint16_t)value; break;
+  case 0x19A: set_control(c, (uint16_t)value); break;
+  case 0x19C: c->irq_addr = with_high(c->irq_addr, value); break;
+  case 0x19E: c->irq_addr = with_low(c->irq_addr, value); break;
+  // keys wait for the next sample, where those let go are seen to before those pressed
+  case 0x1A0: c->key_on = with_low(c->key_on, value); break;
+  case 0x1A2: c->key_on = with_high(c->key_on, value & 0xFF); break;
+  case 0x1A4: c->key_off = with_low(c->key_off, value); break;
+  case 0x1A6: c->key_off = with_high(c->key_off, value & 0xFF); break;
+  case 0x1A8: c->transfer_addr = set_bytes_high(c->transfer_addr, (uint16_t)value) & RAM_MASK; break;
+  case 0x1AA: c->transfer_addr = set_bytes_low(c->transfer_addr, (uint16_t)value) & RAM_MASK; break;
   case 0x1AC: write_word(c, (uint16_t)value); break;
   case 0x1B0: c->transfer_mode = (uint16_t)value; break;
-  case 0x180: c->bent_voices = (c->bent_voices & 0xFFFF0000) | (uint16_t)value; break;
-  case 0x182: c->bent_voices = (c->bent_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
-  case 0x184: c->noise_voices = (c->noise_voices & 0xFFFF0000) | (uint16_t)value; break;
-  case 0x186: c->noise_voices = (c->noise_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
-  case 0x760: c->master_left = (uint16_t)value; if (!(value & 0x8000)) c->master_left_abs = (int32_t)((value & 0x3FFF) << 17); break;
-  case 0x762: c->master_right = (uint16_t)value; if (!(value & 0x8000)) c->master_right_abs = (int32_t)((value & 0x3FFF) << 17); break;
+  case 0x2E0: c->reverb_start = with_high(c->reverb_start, value); break;
+  case 0x2E2: c->reverb_start = with_low(c->reverb_start, value); break;
+  case 0x33C: c->reverb_end = ((value & 0x0F) << 16) | 0xFFFF; break;
+  // a write to either half of the voices that have ended clears that half
+  case 0x340: c->ended &= 0xFF0000; break;
+  case 0x342: c->ended &= 0x00FFFF; break;
+  case 0x760: slide_set(&c->master_left, (uint16_t)value); break;
+  case 0x762: slide_set(&c->master_right, (uint16_t)value); break;
   case 0x764: c->effect_left = (int16_t)value; break;
   case 0x766: c->effect_right = (int16_t)value; break;
-  case 0x194: c->reverb_voices = (c->reverb_voices & 0xFFFF0000) | (uint16_t)value; break;
-  case 0x196: c->reverb_voices = (c->reverb_voices & 0x0000FFFF) | (uint32_t)(uint16_t)value << 16; break;
-  case 0x1A0: key_on(c, value); break;
-  case 0x1A2: key_on(c, value << 16); break;
-  case 0x1A4: key_off(c, value); break;
-  case 0x1A6: key_off(c, value << 16); break;
-  case 0x340: case 0x342: if (value) for (int i = 0; i < VOICES; i++) c->readers[i].end_flag = 0; break;
-  case 0x19C: set_irq(c, set_high(c->irq_addr, (uint16_t)value)); break;
-  case 0x19E: set_irq(c, set_low(c->irq_addr, (uint16_t)value)); break;
-  case 0x1A8: c->transfer_addr = set_high(c->transfer_addr, (uint16_t)value) & RAM_MASK; break;
-  case 0x1AA: c->transfer_addr = set_low(c->transfer_addr, (uint16_t)value) & RAM_MASK; break;
-  case 0x2E0: c->reverb_start = c->reverb_now = set_high(c->reverb_start, (uint16_t)value); break;
-  case 0x2E2: c->reverb_start = c->reverb_now = set_low(c->reverb_start, (uint16_t)value); break;
-  case 0x33C: c->reverb_end = (((value & 0x0F) << 17) | 0x1FFFF) + 1; break;
-  case 0x768: c->external_volume_left = (int32_t)value; break;
-  case 0x76A: c->external_volume_right = (int32_t)value; break;
-  case 0x76C: c->input_volume_left = value; break;
-  case 0x76E: c->input_volume_right = value; break;
+  case 0x768: c->external_left = (int16_t)value; break;
+  case 0x76A: c->external_right = (int16_t)value; break;
+  case 0x76C: c->input_left = (int16_t)value; break;
+  case 0x76E: c->input_right = (int16_t)value; break;
   }
 }
-static uint32_t core_read(core *c, uint32_t address) {
+static uint32_t core_read(core *c, uint32_t address, uint32_t written) {
   switch (address & 0x7FF) {
   case 0x344: return (c->control & CONTROL_DMA) ? 0x80 : 0;
-  case 0x340: case 0x342: {
-    uint32_t flags = 0;
-    for (int i = 0; i < VOICES; i++) if (c->readers[i].end_flag) flags |= 1u << i;
-    return (address & 0x7FF) == 0x340 ? (flags & 0xFFFF) : flags >> 16;
-  }
+  case 0x340: return c->ended & 0xFFFF;
+  case 0x342: return c->ended >> 16;
   case 0x19A: return c->control;
   case 0x1B0: return c->transfer_mode;
-  case 0x1A8: return address_high(c->transfer_addr);
-  case 0x2E0: return address_high(c->reverb_start);
-  case 0x2E2: return address_low(c->reverb_start);
-  case 0x33C: return address_high(c->reverb_end - 1);
-  case 0x760: return (uint32_t)c->master_left_abs >> 16;
-  case 0x762: return (uint32_t)c->master_right_abs >> 16;
-  case 0x764: return (uint32_t)c->effect_left & 0xFFFF;
-  case 0x766: return (uint32_t)c->effect_right & 0xFFFF;
-  case 0x768: return (uint32_t)c->external_volume_left;
-  case 0x76A: return (uint32_t)c->external_volume_right;
-  case 0x76C: return c->input_volume_left;
-  case 0x76E: return c->input_volume_right;
+  case 0x1A8: return bytes_high(c->transfer_addr);
+  case 0x1AA: return bytes_low(c->transfer_addr);
+  case 0x770: return (uint32_t)c->master_left.value & 0xFFFF;
+  case 0x772: return (uint32_t)c->master_right.value & 0xFFFF;
   }
-  return 0;
+  return written;
 }
 
 // which core, and which of its voices or its own registers, an address of the chip is, as the emulator sorts them
@@ -914,10 +852,8 @@ static uint32_t access(uint32_t address, uint32_t value, int write) {
   } else {
     // the chip's own registers
     if (write) {
-      if (at == 0x7C0) {
-        spu.spdif_out = value;
-        spu.cores[0].input.bypass = (value & 0x0100) != 0;
-      } else if (at == 0x7C6) spu.spdif_mode = value;
+      if (at == 0x7C0) spu.spdif_out = value;
+      else if (at == 0x7C6) spu.spdif_mode = value;
       else if (at == 0x7C8) spu.spdif_media = value;
       return 0;
     }
@@ -933,17 +869,19 @@ static uint32_t access(uint32_t address, uint32_t value, int write) {
     }
     return at == 0x7C0 ? spu.spdif_out : at == 0x7C6 ? spu.spdif_mode : at == 0x7C8 ? spu.spdif_media : 0;
   }
+  uint32_t written = c->written[(at & 0x7FF) >> 1];
+  if (write) c->written[(at & 0x7FF) >> 1] = (uint16_t)value;
   if (at < 0x180) {
     int i = (at >> 4) & 0x3F;
     if (i >= VOICES) return 0;
-    return write ? (voice_write(c, i, at & ~(0x3Fu << 4), value), 0) : voice_read(c, i, at & ~(0x3Fu << 4));
+    return write ? (voice_write(c, i, at & ~(0x3Fu << 4), value), 0) : voice_read(c, i, at & ~(0x3Fu << 4), written);
   }
   if (at >= 0x1C0 && at < 0x2E0) {
     int i = (at - 0x1C0) / 12;
     if (i >= VOICES) return 0;
-    return write ? (voice_write(c, i, at - i * 12, value), 0) : voice_read(c, i, at - i * 12);
+    return write ? (voice_write(c, i, at - i * 12, value), 0) : voice_read(c, i, at - i * 12, written);
   }
-  return write ? (core_write(c, at, value), 0) : core_read(c, at);
+  return write ? (core_write(c, at, value), 0) : core_read(c, at, written);
 }
 
 void spu2_write(uint32_t address, uint32_t value) {
@@ -977,7 +915,6 @@ static uint32_t dma_taken(core *c, uint8_t *buffer, uint32_t block_size, uint32_
       return blocks;
     }
     if (blocks > 0x100) blocks = 0x100;
-    cache_forget(c->transfer_addr, block_size * blocks);
     for (uint32_t i = 0; i < blocks; i++) {
       uint32_t size = RAM_SIZE - c->transfer_addr < block_size ? RAM_SIZE - c->transfer_addr : block_size;
       __builtin_memcpy(spu.ram + c->transfer_addr, buffer, size);
@@ -987,9 +924,10 @@ static uint32_t dma_taken(core *c, uint8_t *buffer, uint32_t block_size, uint32_
     return blocks;
   }
   if (c->transfer_mode == MODE_CORE0_IN || c->transfer_mode == MODE_CORE1_IN) {
+    // a block of sound input waits until the core has read the half of its buffer the block goes in
     uint32_t room = (INPUT_SIZE - c->input_written) / block_size;
     if (blocks > room) blocks = room;
-    __builtin_memcpy(spu.ram + c->input_addr + c->input_written, buffer, blocks * block_size);
+    __builtin_memcpy(c->waiting + c->input_written, buffer, blocks * block_size);
     c->input_written += blocks * block_size;
     return blocks;
   }
@@ -997,6 +935,7 @@ static uint32_t dma_taken(core *c, uint8_t *buffer, uint32_t block_size, uint32_
 }
 
 uint32_t spu2_dma(int number, uint8_t *buffer, uint32_t block_size, uint32_t blocks, uint32_t direction) {
+  (void)direction;
   woken();
   core *c = &spu.cores[number];
   uint32_t taken = dma_taken(c, buffer, block_size, blocks);

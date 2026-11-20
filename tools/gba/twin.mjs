@@ -452,12 +452,13 @@ const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
  *   placed(twin): where this build has a twin, for one whose twins aren't all in one memory: a PlayStation 2 module's
  *     or a vector unit's, named by its key, has its address only in a build of its own program (../ps2/twin.mjs)
- *   kitNames: more of the kit's names for the check to call, beside those every console's has
+ *   kitNames: more of the kit's names for the check to call, beside those every console's has, and more: C of the
+ *     check's own to build beside the twins, as what keeps the packets a PlayStation 2 vector unit's program sends
  *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
  *     twinsIn takes it, or null (../lib/twins.mjs)
  * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null, placed: placedAt = twin => twin.address, kitNames = [] }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null, placed: placedAt = twin => twin.address, kitNames = [], more = '' }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
   const source = treeOf(root), elsewhere = {}, placed = new Map();
@@ -577,7 +578,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       `  return ${NO_CODE}(address);`,
       '}',
       // for C that names a twin by its address itself, with the build's twins.h, when the file with its table isn't here
-      `__attribute__((weak)) void *kit_twin(unsigned address) { return ${CODE}(address); }`, '',
+      `__attribute__((weak)) void *kit_twin(unsigned address) { return ${CODE}(address); }`, more, '',
     ].join('\n');
     const calls = first.calls.filter(call => only === null || call.address === only);
     const objects = Object.fromEntries(linked.map(each => [`__twin_unit${each.n}.o`, each.object]));
