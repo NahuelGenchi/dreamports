@@ -233,6 +233,11 @@ static void* procAddress(const char* name) {
 #define CGL_PFA_RENDERER_ID 70
 #define CGL_RENDERER_SOFTWARE 0x00020400
 static void* openGl;
+static void* glContext;
+static int (*cglMakeCurrent)(void*);
+static void contextOnThread(bool here) {
+	cglMakeCurrent(here ? glContext : NULL);
+}
 static void* frameworkFunction(const char* name) {
 	return dlsym(openGl, name);
 }
@@ -251,12 +256,20 @@ static const char* makeContext(bool any) {
 	int count = 0;
 	if (choose(wanted, &format, &count) || !format) return "of a kind this Mac's OpenGL can't make";
 	if (create(format, NULL, &context) || !context || makeCurrent(context)) return "and this Mac's OpenGL wouldn't make one";
+	glContext = context;
+	cglMakeCurrent = makeCurrent;
 	glFunction = frameworkFunction;
 	return NULL;
 }
 #elif !defined(_WIN32)
 // Linux's: EGL with no window, on Mesa's llvmpipe, which draws on the processor, whatever graphics card the computer
 // has, so every computer draws the same
+static void* glContext;
+static void* eglDisplay;
+static unsigned (*eglMakeCurrent)(void*, void*, void*, void*);
+static void contextOnThread(bool here) {
+	eglMakeCurrent(eglDisplay, NULL, NULL, here ? glContext : NULL);
+}
 static const char* makeContext(bool any) {
 	if (!any) {
 		setenv("LIBGL_ALWAYS_SOFTWARE", "1", 1);
@@ -288,6 +301,9 @@ static const char* makeContext(bool any) {
 	if (graphics->contextType == CONTEXT_OPENGL_CORE) version[4] = EGL_CONTEXT_OPENGL_PROFILE_MASK;
 	void* context = createContext(display, config, NULL, version);
 	if (!context || !makeCurrent(display, NULL, NULL, context)) return "of a version this computer's EGL can't make";
+	glContext = context;
+	eglDisplay = display;
+	eglMakeCurrent = makeCurrent;
 	return NULL;
 }
 #endif
@@ -615,6 +631,17 @@ static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t 
 	for (uint32_t i = 0; i < bytes && memory && address + i < size; i++) memory[address + i] = value >> (i * 8);
 }
 
+// A graphics context is one thread's at a time, and the search plays the console on a thread of its own: the emulator's
+// goes with it. Without it, what the emulator draws there goes nowhere on Linux, and on a Mac the search stopped (#1707)
+static void searchThread(void* console, int plays) {
+	(void) console;
+#ifndef _WIN32
+	if (glContext) contextOnThread(plays);
+#else
+	(void) plays;
+#endif
+}
+
 int main(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
 	if (argc < (live ? 6 : route ? 5 : 12)) {
@@ -739,7 +766,7 @@ int main(int argc, char** argv) {
 			fprintf(err, "The core can't copy its state out, which the search needs.\n");
 			return 2;
 		}
-		struct ex_machine machine = { NULL, searchFrame, searchSize, searchSave, searchLoad, searchRead, searchSet };
+		struct ex_machine machine = { NULL, searchFrame, searchSize, searchSave, searchLoad, searchRead, searchSet, searchThread };
 		return exploreRoute(machine, NULL, argv[4], 4);
 	}
 

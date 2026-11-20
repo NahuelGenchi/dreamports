@@ -36,6 +36,7 @@
     "test:nes-twin": "node tools/test/nes-twin.mjs",
     "test:ps1-call": "node tools/test/ps1-call.mjs",
     "test:n64-call": "node tools/test/n64-call.mjs",
+    "test:n64-twin": "node tools/test/n64-twin.mjs",
     "test:ps1-twin": "node tools/test/ps1-twin.mjs",
     "test:snes-call": "node tools/test/snes-call.mjs",
     "test:real-snes": "node tools/test/real-snes.mjs",
