@@ -126,7 +126,11 @@ unsigned misaligned(unsigned char *at) {
   return at[1];
 }
 
-/** 0x001001D4: the original works on vector unit 0 */
-unsigned vu0(unsigned value) {
-  return value;
+/** 0x001001D4: doubles four floats on vector unit 0, in macro mode, where the sum sets the unit's flags: LQC2 and
+ *  SQC2 leave out an address's low four bits, as LQ and SQ do, and VADD.xyzw vf2, vf1, vf1 is given as its word */
+void vu0(vu_vector *values) {
+  vu_vector *at = (vu_vector *)((unsigned)values & ~15u);
+  *vu0_vf(1) = *at;
+  vu0_macro(0x4BE108A8);
+  *at = *vu0_vf(2);
 }
