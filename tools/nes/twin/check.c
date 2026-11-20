@@ -19,6 +19,8 @@
 #include "check.h"
 
 enum { MOST_DRAWS = 4000, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
+// the stack pointer a call starts with when its twin isn't given it: below where a game's stack starts, at $01FF
+enum { STACK_AT = 0xDE };
 
 static uint32_t seed;
 static uint32_t rnd(uint32_t n) {
@@ -86,6 +88,13 @@ static int bank_for(const uint8_t *start) {
   return twin_bank_at >= 0 ? start[twin_bank_at] % banks : -1;
 }
 
+// What the JSR that calls the function leaves above the stack pointer it starts with: the address it comes back to,
+// less one, high byte first. It's in the memory both sides start with, as it is on the console when the call begins.
+static void place_return(uint8_t *start, uint8_t s) {
+  start[0x100 | (uint8_t)(s + 2)] = (TWIN_RETURN_TO - 1) >> 8;
+  start[0x100 | (uint8_t)(s + 1)] = (TWIN_RETURN_TO - 1) & 0xFF;
+}
+
 // A memory and registers for one call. 0 when the contract's `if` took none of the registers tried.
 static int draw(uint8_t *start, twin_regs *r, int changed) {
   if (memory_count) memcpy(start, memories + (long)rnd((uint32_t)memory_count) * 0x800, 0x800);
@@ -94,7 +103,9 @@ static int draw(uint8_t *start, twin_regs *r, int changed) {
   int tries = 0;
   do {
     r->A = any_byte(); r->X = any_byte(); r->Y = any_byte();
+    r->S = twin->stack ? any_byte() : STACK_AT;
     r->N = (int)rnd(2); r->V = (int)rnd(2); r->Z = (int)rnd(2); r->C = (int)rnd(2);
+    place_return(start, r->S);
   } while (!is_given(start, r) && ++tries < MOST_DRAWS);
   if (tries == MOST_DRAWS) return 0;
   // what the function reads, changed: the original runs to say what it reads, a few of those bytes get other values,
@@ -112,6 +123,7 @@ static int draw(uint8_t *start, twin_regs *r, int changed) {
     if (!count) break;
     memcpy(before, start, 0x800);
     for (int n = 1 + (int)rnd(MOST_CHANGED); n > 0; n--) start[read[rnd((uint32_t)count)]] = any_byte();
+    place_return(start, r->S);
     if (!is_given(start, r)) memcpy(start, before, 0x800);
   }
   return 1;
@@ -192,7 +204,9 @@ static void run(tally *out, long calls, int changed) {
     } else if (!out->first[0]) {
       char *text = out->first;
       size_t room = sizeof out->first;
-      int used = snprintf(text, room, "A %02X, X %02X, Y %02X, flags %s%s%s%s: %s%s", entry.A, entry.X, entry.Y, entry.N ? "N" : "-", entry.V ? "V" : "-", entry.Z ? "Z" : "-", entry.C ? "C" : "-",
+      char stack[8] = "";
+      if (twin->stack) snprintf(stack, sizeof stack, "S %02X, ", entry.S);
+      int used = snprintf(text, room, "A %02X, X %02X, Y %02X, %sflags %s%s%s%s: %s%s", entry.A, entry.X, entry.Y, stack, entry.N ? "N" : "-", entry.V ? "V" : "-", entry.Z ? "Z" : "-", entry.C ? "C" : "-",
         how == 1 ? "the original didn't come back; " : how == 2 ? "the original's processor jammed; " : how == 3 ? "the original came back with its stack elsewhere; " : "",
         sig == RAN_ON ? "the twin didn't come back in time; " : sig ? "the twin fell over; " : "");
       text += used; room -= (size_t)used;

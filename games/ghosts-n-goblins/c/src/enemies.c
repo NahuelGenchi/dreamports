@@ -329,7 +329,7 @@ void zombie(uint8_t object) {
   if (!(*flags & OUT)) {
     // $F7CB: under the ground, which has to be there
     took(ZOMBIE_UNDER_THE_GROUND);
-    if (!on_the_ground(object)) {
+    if (!on_the_ground(object, stack_of(TASK_OBJECTS, 3))) {
       took(ZOMBIE_NO_GROUND);
       remove_object(object);
       return;
@@ -396,7 +396,7 @@ void zombie(uint8_t object) {
   // $F838: a step, unless the ground ends or its rounds are over
   RAM[OBJECT_COLOURS + object] = 0x0B;
   took(ZOMBIE_STEP_BEGINS);
-  int ground = on_the_ground(object);
+  int ground = on_the_ground(object, stack_of(TASK_OBJECTS, 3));
   if (!ground || *count & 0x80) {
     took(ground ? ZOMBIE_ROUNDS_OVER : ZOMBIE_GROUND_ENDS);
     *flags |= SINKS;
@@ -436,7 +436,7 @@ void pot(uint8_t object) {
   if (RAM[OBJECT_FLAGS + object] & SINKS) {
     // $BC8A: it falls, the way it was headed, and once it's on the ground it's a thing to pick up, what its state says
     took(POT_IS_FALLING);
-    if (on_the_ground(object)) {
+    if (on_the_ground(object, stack_of(TASK_OBJECTS, 3))) {
       RAM[OBJECT_KIND + object] = 0x10;
       RAM[OBJECT_Y + object] = (uint8_t)((RAM[OBJECT_Y + object] & 0xF0) | 0x08);   // sub_E166: on top of the block
       took(POT_LANDS);

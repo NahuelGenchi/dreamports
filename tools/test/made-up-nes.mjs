@@ -196,6 +196,9 @@ export const TWIN = {
   look: 0xC460,
   // in bank 1: the byte at $9000 + X of its own bank, to $32
   own: 0x8100,
+  // the byte at $0100 + X, in the stack's page, to $34, read by a routine it calls: so it can be that call's own
+  // return address
+  peek: 0xC480,
   // the game keeps the bank it switched in at $10, as the routine at $C090 leaves it
   bank: 0x10,
   /** The byte at `at` of the table every bank has at $9000, and of the four pages at $C500. */
@@ -215,6 +218,9 @@ export function madeUpTwins() {
   put(TWIN.look, [0xB9, 0x00, 0x90, 0x85, 0x33, 0x60]);
   // LDA $9000,X, STA $32, RTS
   put(TWIN.own, [0xBD, 0x00, 0x90, 0x85, 0x32, 0x60], 1);
+  // JSR $C490, STA $34, RTS; and at $C490: LDA $0100,X, RTS
+  put(TWIN.peek, [0x20, 0x90, 0xC4, 0x85, 0x34, 0x60]);
+  put(0xC490, [0xBD, 0x00, 0x01, 0x60]);
   put(0xC500, Array.from({ length: 0x400 }, (_, at) => TWIN.inTable(at)));
   for (let bank = 0; bank < 4; bank++) put(0x9000, Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at)), bank);
   return rom;

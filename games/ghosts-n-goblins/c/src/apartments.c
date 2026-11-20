@@ -270,10 +270,11 @@ static int way_shut(uint8_t object) {
   if (object >= 0x0F) took(READ_PAST_PAGE);
   if (right) block_place(object, 2, 0x10, BIG_FLOOR_X_RIGHT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_RIGHT);   // sub_FFAC
   else block_place(object, -2, 0x10, BIG_FLOOR_X_LEFT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_LEFT);         // sub_FFBE
-  if (block_at_stage_place() < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
+  // sub_04_AE24 is called from the big man's routine, and calls these
+  if (block_at_stage_place(stack_of(TASK_OBJECTS, 4)) < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
   if (right) block_place(object, 8, 4, BIG_WALL_X, BIG_WALL_SCREEN_RIGHT, BIG_WALL_SCREEN_DOWN);   // sub_E9F1
   else block_place(object, -8, 4, BIG_WALL_X, BIG_WALL_SCREEN_LEFT, BIG_WALL_SCREEN_DOWN);         // sub_EA01
-  if (block_at_stage_place() >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
+  if (block_at_stage_place(stack_of(TASK_OBJECTS, 4)) >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
   took(right ? BIG_NO_WALL_RIGHT : BIG_NO_WALL_LEFT);
   return 0;
 }

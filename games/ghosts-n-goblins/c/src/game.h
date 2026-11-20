@@ -92,6 +92,24 @@ enum { TASK_TITLE = 0x02, TASK_GAME = 0x04, TASK_VIEW = 0x06, TASK_ARTHUR = 0x08
 #define TASK_NOW RAM[0x00]             // the task that's running, or 0 between rounds
 #define TASK_STATE(task) RAM[0x02 + (task)]
 #define TASK_STACK(task) RAM[0x03 + (task)]   // where the task's own stack is, in the stack's page, while it isn't running
+/** The processor's stack pointer as a routine starts that `task`'s code calls `deep` calls down. A task's code starts
+ *  with its stack at the top of its own room, which the table at $C3BC gives, as sub_C3A9 pulls its flags and where it
+ *  goes on from off it, and each call takes two bytes: the objects' kinds' routines run two calls down, called at
+ *  $F36E and $9CDE. */
+static inline int stack_of(uint8_t task, int deep) { return (uint8_t)(cart(7, (uint16_t)(0xC3BC + task)) - 2 * deep); }
+/** A routine whose original reads through a pointer that can lead into the stack's page can read there the return
+ *  addresses its own calls push, so its twin is given the stack pointer as it starts, `s` (S in its contract), and
+ *  writes them where the original's JSRs do. A caller that runs at more than one place of the stack in the original
+ *  passes S_NOT_FOLLOWED, and nothing is written. */
+enum { S_NOT_FOLLOWED = -1 };
+/** What the original's JSR at `at` leaves at the stack pointer `s`: the address of its own last byte, high byte first. */
+static inline void call_pushes(int s, uint16_t at) {
+  if (s == S_NOT_FOLLOWED) return;
+  RAM[0x100 | (uint8_t)s] = (uint8_t)((at + 2) >> 8);
+  RAM[0x100 | (uint8_t)(s - 1)] = (uint8_t)(at + 2);
+}
+/** The stack pointer a routine at `s` calls the next one with. */
+static inline int call_down(int s) { return s == S_NOT_FOLLOWED ? s : (uint8_t)(s - 2); }
 enum { TASK_READY = 0x80, TASK_ASLEEP = 0xC0, TASK_FREE = 0x00 };
 #define TASK_SLEEP(task) (0x12 + (task))  // how many V-blanks more a sleeping task sleeps, 16 bits
 #define FRAMES_SINCE_ROUND RAM[0x4E]   // counted by V-blank, and cleared as a round starts
@@ -181,7 +199,7 @@ void show_object(uint8_t object);      // sub_F321
 void hide_object(uint8_t object);      // sub_F346
 int object_in_view(uint8_t object);    // sub_F0A3
 /** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. */
-int on_the_ground(uint8_t object);
+int on_the_ground(uint8_t object, int s);
 /** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
 uint8_t free_object(void);
 enum { NO_OBJECT = 0x11 };
@@ -292,7 +310,7 @@ uint8_t way_to_first(uint8_t y);
 void crow(uint8_t object);
 void plant_shot(uint8_t object);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */
-uint8_t block_at_stage_place(void);
+uint8_t block_at_stage_place(int s);
 enum { BLOCK_SOLID = 0xC6 };
 #define TILES_FIRST_LIST RAM[0xD5]  // the set of tiles the tiles' task sends first, or $FF for none: $D6 to $D9 are its place
 #define SCENE_PLAYING RAM[0xE0]     // on while the opening scene plays

@@ -57,7 +57,7 @@ static uint8_t block_above(uint8_t object) {
   took(WEAPON_BLOCK_ROW);
   RAM[0x74] = RAM[OBJECT_X + object];
   took(WEAPON_BLOCK_PLACED);
-  return block_at_stage_place();
+  return block_at_stage_place(stack_of(TASK_OBJECTS, 3));
 }
 
 // $EB90: a weapon flies at `speed` the way it heads, and is gone out of the view, spent once it's hit something, or

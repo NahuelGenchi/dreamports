@@ -116,9 +116,10 @@ int object_in_view(uint8_t object) {
 
 // sub_E3E3 and sub_EA2F. A place
 // whose 11 pixels below are on the next screen down, at $EA44, aren't ported yet.
-// dp:twin sub_E3E3 +6 on_the_ground(X) -> C if X < 25
-int on_the_ground(uint8_t object) {
+// dp:twin sub_E3E3 +6 on_the_ground(X, S) -> C if X < 25
+int on_the_ground(uint8_t object, int s) {
   took(GROUND_LOOKED_AT);
+  call_pushes(s, 0xE3E3);   // JSR $EA2F
   RAM[0x77] = RAM[OBJECT_Y_SCREEN + object];
   RAM[0x73] = (uint8_t)(RAM[OBJECT_Y + object] + 0x0B);
   RAM[0x78] = RAM[OBJECT_X_SCREEN + object];
@@ -129,7 +130,7 @@ int on_the_ground(uint8_t object) {
     RAM[0x77]++;
     took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
   }
-  RAM[0x22] = block_at_stage_place();
+  RAM[0x22] = block_at_stage_place(call_down(s));
   // $E3F3: in the first set of stages the blocks $76 and $77 are solid across half their width: the right half of
   // $76, the left of $77
   if (RAM[0x22] == 0x76 || RAM[0x22] == 0x77) {
@@ -163,7 +164,7 @@ void key(uint8_t object) {
     took(CALLS);
     move_object(object, 0x08, Y_NOT_FOLLOWED);
     place_on_screen(object);
-    if (!on_the_ground(object)) { took(KEY_IN_THE_AIR); return; }
+    if (!on_the_ground(object, stack_of(TASK_OBJECTS, 3))) { took(KEY_IN_THE_AIR); return; }
     took(BRANCH_TAKEN);
     RAM[OBJECT_FLAGS + object] |= LANDED;
     took(OBJECT_FLAG_CHANGED);
