@@ -17,9 +17,13 @@
 typedef struct { int8_t reg; int16_t slot; } gba_push;
 
 /** What a function's start does to the stack: its pushes, and how many bytes more it takes for its locals. `unproven`
- *  is for a function whose code isn't proven to be the original's: its frame takes its room, so the frames below it
- *  are where the console has them, but nothing is written for its pushes, and no register's value is known in it. */
+ *  is for a function whose code isn't proven to be the original's. GBA_STACK_UNPROVEN: its frame takes its room, so
+ *  the frames below it are where the console has them, but nothing is written for its pushes, and no register's value
+ *  is known in it. GBA_STACK_START_PROVEN: its start is the original's, though the rest isn't proven, so its pushes
+ *  are written, and a register it doesn't push is in it what its caller left, as the console's compiler changes no
+ *  register it doesn't save; the ones it pushes hold nothing known in it. */
 typedef struct { uint8_t count; const gba_push *pushes; uint16_t frame; uint8_t unproven; } gba_frame;
+enum { GBA_STACK_PROVEN = 0, GBA_STACK_UNPROVEN = 1, GBA_STACK_START_PROVEN = 2 };
 
 /** The stack from `sp`, as the console's start leaves it for the game, with no register's value known. */
 void gba_stack_start(uint32_t sp);
@@ -27,6 +31,13 @@ void gba_stack_start(uint32_t sp);
 /** From here on in the function running, register `reg` holds `value`, or nothing the game's C can give. */
 void gba_stack_reg(int reg, uint32_t value);
 void gba_stack_unknown(int reg);
+
+/** For a game that keeps some of the console's memory away from the console's address, as the kit keeps a save's
+ *  flash: `console` gives the console's address for a pointer of the game's into such memory, and any other value as
+ *  it is. gba_stack_address(pointer) is that, and the pointer itself with no function given: what goes on the stack
+ *  for a value that is a pointer in the game's C. */
+void gba_stack_addresses(uint32_t (*console)(uint32_t pointer));
+uint32_t gba_stack_address(uint32_t pointer);
 
 /** The next function entered is called from the instruction before `return_address`, odd in Thumb code. */
 void gba_stack_call(uint32_t return_address);

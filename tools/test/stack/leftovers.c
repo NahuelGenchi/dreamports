@@ -7,6 +7,12 @@ struct Box { int a, b, c, d; };
 // where the console keeps them, as the made-up cartridge places them: no file defines them
 extern int gKept, gOther, gInner, gDone;
 extern int gOut[4];
+extern int gMore, gFirst, gSecond, gThrough, gSeen, gSeed, gLocal, gPass, gWrap;
+// memory the console has far from where a Dreamport keeps it, as a save's flash is
+extern char gFar[];
+// what each of the later functions left on the stack, as Look finds it
+struct Left { int word[6]; };
+extern int gThroughLeft[6], gFarLeft[6], gLocalLeft[6], gPassLeft[6];
 
 void Inner(void);
 void Push(void);
@@ -44,10 +50,82 @@ void Read(void) {
   Copy(&box);
 }
 
-/** Main, 0x08000340: Keep, then Read, at the same depth. */
+/** Deep, 0x08000380: keeps two addresses across its call, so it saves two of its caller's registers. */
+void Deep(void) {
+  int *first = &gFirst;
+  int *second = &gSecond;
+  Inner();
+  *first = 1;
+  *second = 2;
+}
+
+/** Through, 0x080003C0: calls the function it's handed, through a pointer, keeping an address across the call. */
+void Through(void (*function)(void)) {
+  int *through = &gThrough;
+  function();
+  *through = 3;
+}
+
+/** Far, 0x08000400: keeps a pointer it's handed across its call, in a register Deep saves. */
+void Far(char *far) {
+  Deep();
+  if (far) gSeen++;
+}
+
+// a sum written by a macro, as a game reads a register through one
+#define SUM(a, b) ((a) + (b))
+
+/** Local, 0x08000440: keeps a value it worked out from memory across its call, in a register Deep saves, assigned
+ *  through a function-like macro. */
+void Local(void) {
+  int local;
+  local = SUM(gSeed, gSeen);
+  Deep();
+  gLocal = local;
+}
+
+/** Pass, 0x08000480: keeps an address of its own across its call, and leaves the rest of its caller's registers. */
+void Pass(void) {
+  int *pass = &gPass;
+  Deep();
+  *pass = 4;
+}
+
+/** Wrap, 0x080004C0: Pass a call further down than anything else goes. */
+void Wrap(void) {
+  Pass();
+  gWrap++;
+}
+
+/** Take, 0x08000600: six words, as they are. */
+void Take(struct Left *left, int *out) {
+  int i;
+  for (i = 0; i < 6; i++) out[i] = left->word[i];
+}
+
+/** Look, 0x08000640: six words of its stack with one set, where the function before it left its own. */
+void Look(int *out) {
+  struct Left left;
+  left.word[0] = 5;
+  Take(&left, out);
+}
+
+/** Main, 0x08000580: Keep, then Read, at the same depth, and then each of the rest, with two addresses kept across
+ *  them all. */
 void Main(void) {
   int *done = &gDone;
+  int *more = &gMore;
+  gSeed = 7;
   Keep();
   Read();
+  Through(Deep);
+  Look(gThroughLeft);
+  Far(gFar);
+  Look(gFarLeft);
+  Local();
+  Look(gLocalLeft);
+  Wrap();
+  Look(gPassLeft);
   *done = 1;
+  *more = 1;
 }
