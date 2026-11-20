@@ -627,3 +627,165 @@ export function madeUpModesCartridge() {
   rom.set(w(sum & 0xFFFF), header + 0x1E);
   return { rom };
 }
+
+// The mode 7 program, for the kit's test of mode 7: a map of 16 rows of the 128 and 16 tiles of 8 bits, into the
+// video memory's even and odd bytes, turned a step each frame by its matrix, from a table of cosines, and scrolled; the
+// product of the matrix's A and B's top byte read back at $2134 and $2135 each frame as the backdrop's colour; and
+// every 16 frames another of 16 settings: wrapped, nothing or tile 0 outside the field, flipped either way, mosaic,
+// the second background of 7 bits and a priority, direct colours, window 1 over a flipped field, and colour maths.
+export const MODE7 = { COSINES: 0x8400, MAP: 0x8600, TILES: 0x8E00, PALETTE: 0x9200, SETTINGS: 0x9400 };
+export const MODE7_REGISTERS = [0x211A, 0x2106, 0x2133, 0x212C, 0x212D, 0x2130, 0x2131, 0x2123, 0x212E];
+const MODE7_SETTINGS = [
+  [0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x80, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0xC0, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x82, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x03, 0x31, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x00, 0xF1, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x00, 0x00, 0x40, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x80, 0x33, 0x40, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00],
+  [0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x01],
+  [0x80, 0x00, 0x00, 0x01, 0x00, 0x00, 0x21, 0x00, 0x00],
+  [0xC1, 0x00, 0x40, 0x01, 0x02, 0x02, 0x41, 0x00, 0x00],
+  [0x80, 0x21, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x02, 0x00, 0x40, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
+  [0x83, 0x12, 0x40, 0x03, 0x00, 0x01, 0x00, 0x03, 0x01],
+];
+const mode7Data = () => {
+  const cosines = [];
+  for (let i = 0; i < 256; i++) cosines.push(...w(Math.round(Math.cos(2 * Math.PI * i / 256) * 300) & 0xFFFF));
+  const map = [];
+  for (let r = 0; r < 16; r++) for (let c = 0; c < 128; c++) map.push((r * 5 + c * 3 + (c >> 3)) & 15);
+  const tiles = [];
+  for (let t = 0; t < 16; t++) for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) tiles.push((x + y + t) % 5 === 0 ? 0 : ((x * (t + 1) + y * 3 + t * 7) ^ (x + y) * 9) & 0xFF);
+  return { cosines, map, tiles };
+};
+const MODE7_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01,
+  ...store(0x80, 0x2100), 0x9C, ...w(0x4200),
+  // the map into the even bytes, the tiles into the odd ones, and the colours
+  0x9C, ...w(0x2115), 0xA2, ...w(0x0000), 0x8E, ...w(0x2116), ...dma(0x00, 0x18, MODE7.MAP, 0x800),
+  ...store(0x80, 0x2115), 0xA2, ...w(0x0000), 0x8E, ...w(0x2116), ...dma(0x00, 0x19, MODE7.TILES, 0x400),
+  0x9C, ...w(0x2121), ...dma(0x00, 0x22, MODE7.PALETTE, 0x200),
+  // mode 7, its centre, and the fixed colour
+  ...store(0x07, 0x2105), ...store(0x80, 0x211F), ...store(0x00, 0x211F), ...store(0x70, 0x2120), ...store(0x00, 0x2120),
+  ...store(0x2A, 0x2132), ...store(0x4C, 0x2132), ...store(0x91, 0x2132), ...store(0x0F, 0x2100),
+  ...store(0x80, 0x4200),
+  here('spin'), 0x80, rel('spin'),
+  // the V-blank: the setting for the frame's count over 16, its 9 registers
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210),
+  0xC2, 0x20, 0xA5, 0x00, 0x4A, 0x4A, 0x4A, 0x4A, 0x29, ...w(0x000F), 0x85, 0x04, 0x0A, 0x0A, 0x0A, 0x18, 0x65, 0x04, 0xAA, 0xE2, 0x20,
+  ...MODE7_REGISTERS.flatMap((register, i) => [0xBD, ...w(MODE7.SETTINGS + i), 0x8D, ...w(register)]),
+  // the matrix from the count as an angle: A and D its cosine, B its sine, C the sine taken away from nothing
+  0xC2, 0x20, 0xA5, 0x00, 0x29, ...w(0x00FF), 0x0A, 0xAA, 0xBD, ...w(MODE7.COSINES), 0x85, 0x04,
+  0x8A, 0x38, 0xE9, ...w(0x0080), 0x29, ...w(0x01FE), 0xAA, 0xBD, ...w(MODE7.COSINES), 0x85, 0x06, 0x49, ...w(0xFFFF), 0x1A, 0x85, 0x08, 0xE2, 0x20,
+  0xA5, 0x04, 0x8D, ...w(0x211B), 0xA5, 0x05, 0x8D, ...w(0x211B),
+  0xA5, 0x06, 0x8D, ...w(0x211C), 0xA5, 0x07, 0x8D, ...w(0x211C),
+  0xA5, 0x08, 0x8D, ...w(0x211D), 0xA5, 0x09, 0x8D, ...w(0x211D),
+  0xA5, 0x04, 0x8D, ...w(0x211E), 0xA5, 0x05, 0x8D, ...w(0x211E),
+  // the product back as the backdrop's colour
+  0x9C, ...w(0x2121), 0xAD, ...w(0x2134), 0x8D, ...w(0x2122), 0xAD, ...w(0x2135), 0x29, 0x7F, 0x8D, ...w(0x2122),
+  // window 1 from five times the count, 100 pixels wide, and the field scrolled across and down
+  0xA5, 0x00, 0x0A, 0x0A, 0x18, 0x65, 0x00, 0x8D, ...w(0x2126), 0x18, 0x69, 100, 0x8D, ...w(0x2127),
+  0xA5, 0x00, 0x0A, 0x8D, ...w(0x210D), 0x9C, ...w(0x210D),
+  0xA5, 0x00, 0x8D, ...w(0x210E), 0x9C, ...w(0x210E),
+  0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x40,
+];
+
+/** The mode 7 program's cartridge: { rom }, with its data where MODE7 says. */
+export function madeUpMode7Cartridge() {
+  const { rom, end } = assemble(MODE7_PROGRAM, { title: 'DREAMPORTS MODE 7', nmi: 'nmi' });
+  if (end > MODE7.COSINES) throw new Error('The mode 7 program runs into its data.');
+  const { palette } = pictureData(), { cosines, map, tiles } = mode7Data();
+  const at = address => address - ORIGIN;
+  rom.set(cosines, at(MODE7.COSINES));
+  rom.set(map, at(MODE7.MAP));
+  rom.set(tiles, at(MODE7.TILES));
+  rom.set(palette, at(MODE7.PALETTE));
+  rom.set(MODE7_SETTINGS.flat(), at(MODE7.SETTINGS));
+  const header = 0x7FC0;
+  rom.set([0, 0, 0, 0], header + 0x1C);
+  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
+  rom.set(w(~sum & 0xFFFF), header + 0x1C);
+  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  return { rom };
+}
+
+// The HDMA program, for the kit's test of HDMA: the picture program's backgrounds, and seven HDMA channels at once,
+// each with a table of its own: BG1's scroll across on every line, two bytes to one register; the brightness from an
+// indirect table, once each 32 lines; window 1's edges from a table the program copies into the work memory by DMA
+// through its port, two registers, whose first count it changes each frame; colour 0, the backdrop, on every line, two
+// bytes to $2121 and two to $2122; mosaic, switched on and off partway down; the fixed colour on every line; and the
+// mode, from 1 to 0 halfway down. Each frame channel 3 is turned off or on by the count, and BG2 scrolls.
+export const HDMA = { ...PICTURE, SCROLLS: 0x9A00, BRIGHT: 0x9C00, SKY: 0x9C40, MOSAIC: 0xA000, FIXED: 0xA010, MODE: 0xA100, WINDOW: 0xA110, WINDOW_BYTES: 451 };
+const hdmaData = () => {
+  const block = (lines, each) => [0x80 | lines, ...Array.from({ length: lines }, (_, i) => each(i)).flat()];
+  const scrolls = [...block(112, i => w(Math.round(10 * Math.sin(i * 2 * Math.PI / 56)) & 0xFFFF)), ...block(112, i => w(Math.round(10 * Math.sin((i + 112) * 2 * Math.PI / 56)) & 0xFFFF)), 0];
+  const levels = [15, 13, 11, 9, 11, 13, 15];
+  const bright = [...levels.flatMap((_, k) => [32, ...w(HDMA.BRIGHT + 0x20 + k)]), 0];
+  const colour = i => ((i >> 3) & 31) | (((i >> 2) & 31) << 5) | ((31 - (i >> 3)) << 10);
+  const sky = [...block(112, i => [0, 0, ...w(colour(i))]), ...block(112, i => [0, 0, ...w(colour(i + 112))]), 0];
+  const mosaic = [0x40, 0x00, 0x30, 0x31, 0x30, 0xF4, 0x01, 0x00, 0x00];
+  const fixed = [...block(112, i => [0x20 | (i & 31)]), ...block(112, i => [0x80 | ((i >> 1) & 31)]), 0];
+  const mode = [0x70, 0x09, 0x70, 0x00, 0x00];
+  const edge = i => 64 + Math.round(40 * Math.sin(i / 10));
+  const window = [...block(112, i => [edge(i), edge(i) + 80 + (i & 15)]), ...block(112, i => [edge(i + 112), edge(i + 112) + 80 + (i & 15)]), 0];
+  return { scrolls, bright, levels, sky, mosaic, fixed, mode, window };
+};
+// a channel's registers: its control, its register, and its table's address and bank
+const hdmaChannel = (c, control, register, table, bank) => [...store(control, 0x4300 + c * 16), ...store(register, 0x4301 + c * 16), ...store(table & 0xFF, 0x4302 + c * 16), ...store(table >> 8, 0x4303 + c * 16), ...store(bank, 0x4304 + c * 16)];
+const HDMA_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01,
+  ...store(0x80, 0x2100), 0x9C, ...w(0x4200),
+  ...store(0x80, 0x2115), 0xA2, ...w(0x0000), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, HDMA.TILES, HDMA.TILES_BYTES),
+  0xA2, ...w(0x1000), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, HDMA.SMALL, HDMA.SMALL_BYTES),
+  0xA2, ...w(0x0400), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, HDMA.MAP, 0x800),
+  0xA2, ...w(0x0C00), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, HDMA.SMALL_MAP, 0x800),
+  0x9C, ...w(0x2121), ...dma(0x00, 0x22, HDMA.PALETTE, 0x200),
+  // the window's table into the work memory at $7E2000, through its port
+  0xA2, ...w(0x2000), 0x8E, ...w(0x2181), 0x9C, ...w(0x2183), ...dma(0x00, 0x80, HDMA.WINDOW, HDMA.WINDOW_BYTES),
+  ...store(0x09, 0x2105), ...store(0x04, 0x2107), ...store(0x04, 0x2108), ...store(0x0C, 0x2109), ...store(0x00, 0x210B), ...store(0x01, 0x210C), ...store(0x07, 0x212C),
+  ...store(0x02, 0x2124), ...store(0x04, 0x212E), ...store(0x00, 0x2130), ...store(0x21, 0x2131),
+  // the seven channels, and the brightness's indirect bank
+  ...hdmaChannel(0, 0x02, 0x0D, HDMA.SCROLLS, 0x00), ...hdmaChannel(1, 0x40, 0x00, HDMA.BRIGHT, 0x00), ...store(0x00, 0x4317),
+  ...hdmaChannel(2, 0x01, 0x26, 0x2000, 0x7E), ...hdmaChannel(3, 0x03, 0x21, HDMA.SKY, 0x00), ...hdmaChannel(4, 0x00, 0x06, HDMA.MOSAIC, 0x00),
+  ...hdmaChannel(5, 0x00, 0x32, HDMA.FIXED, 0x00), ...hdmaChannel(6, 0x00, 0x05, HDMA.MODE, 0x00),
+  ...store(0x0F, 0x2100), ...store(0x80, 0x4200),
+  here('spin'), 0x80, rel('spin'),
+  // the V-blank: the window table's first count from the frame's, channel 3 off in every other 32 frames, BG2 across
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210),
+  0xA5, 0x00, 0x29, 0x3F, 0x09, 0x80, 0x8F, ...l(0x7E2000),
+  0xA5, 0x00, 0x29, 0x20, 0x4A, 0x4A, 0x49, 0x7F, 0x8D, ...w(0x420C),
+  0xA5, 0x00, 0x8D, ...w(0x210F), 0x9C, ...w(0x210F),
+  0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x40,
+];
+
+/** The HDMA program's cartridge: { rom }, with its data where HDMA says. */
+export function madeUpHdmaCartridge() {
+  const { rom, end } = assemble(HDMA_PROGRAM, { title: 'DREAMPORTS HDMA', nmi: 'nmi' });
+  if (end > HDMA.TILES) throw new Error('The HDMA program runs into its data.');
+  const { tiles, small, map, smallMap, palette } = pictureData(), data = hdmaData();
+  if (data.window.length !== HDMA.WINDOW_BYTES) throw new Error('The window table is another size.');
+  const at = address => address - ORIGIN;
+  rom.set(tiles, at(HDMA.TILES));
+  rom.set(small, at(HDMA.SMALL));
+  rom.set(map, at(HDMA.MAP));
+  rom.set(smallMap, at(HDMA.SMALL_MAP));
+  rom.set(palette, at(HDMA.PALETTE));
+  rom.set(data.scrolls, at(HDMA.SCROLLS));
+  rom.set(data.bright, at(HDMA.BRIGHT));
+  rom.set(data.levels, at(HDMA.BRIGHT + 0x20));
+  rom.set(data.sky, at(HDMA.SKY));
+  rom.set(data.mosaic, at(HDMA.MOSAIC));
+  rom.set(data.fixed, at(HDMA.FIXED));
+  rom.set(data.mode, at(HDMA.MODE));
+  rom.set(data.window, at(HDMA.WINDOW));
+  const header = 0x7FC0;
+  rom.set([0, 0, 0, 0], header + 0x1C);
+  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
+  rom.set(w(~sum & 0xFFFF), header + 0x1C);
+  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  return { rom };
+}

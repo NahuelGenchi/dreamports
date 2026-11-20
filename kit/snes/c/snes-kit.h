@@ -14,6 +14,8 @@ enum { SNES_WIDTH = 256, SNES_HEIGHT = 224, SNES_FIRST_LINE = 1 };
 void ppu_power(void);
 /** A write to a register of the picture unit, $2100 to $2133. */
 void ppu_write(uint16_t address, uint8_t value);
+/** A read of $2134 to $2136, mode 7's product of its matrix's A and B's top byte. */
+uint8_t ppu_read(uint16_t address);
 /** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
 void ppu_frame(uint32_t *out);
 /** What the console does to the picture unit as V-blank starts, after the frame's last line. */
@@ -21,6 +23,12 @@ void ppu_vblank(void);
 
 /** Moves memory by DMA on each channel `channels` has a bit for, as a write to $420B does, one after another. */
 void dma_start(uint8_t channels);
+/** Starts HDMA on the channels $420C turns on, as line 0 of a frame starts. */
+void hdma_start(void);
+/** HDMA's writes for one line, as its H-blank comes, which show from the next line down. */
+void hdma_line(void);
+/** A write to a channel's $43xA, its lines left. */
+void hdma_lines_written(int c, uint8_t value);
 
 /** Puts the sound side as the console starts it: its memory cleared, its timers off, the sound chip reset, and the
  *  start-up program waiting for the main processor. */

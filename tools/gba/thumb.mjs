@@ -15,8 +15,10 @@
 // next .pool, each once, in the order they're first named; `adr rd, label`; and stm and ldm with ! after the register.
 // ARM code, after .arm, is assembled as the older way writes it, as a twin's assembly passed through the console's
 // compiler has it, a cartridge's start and its interrupt code: branches, bx, the data-processing instructions with a
-// number or a register shifted by a number, msr and mrs, and loads and stores of a word, a byte or a halfword with a
-// number added (#1721). ARM the assembler doesn't know, and a decompilation's ARM after `.syntax unified`, takes its
+// number or a register shifted by a number or a register, msr and mrs, and loads and stores of a word, a byte or a
+// halfword with a number added (#1721); and as the m4a engine's mixer has it, its multiplies, loads and stores of every
+// kind with a number or a register added, before or after, ldm and stm, and loads from a label (#1725). ARM the
+// assembler doesn't know, and a decompilation's ARM after `.syntax unified`, takes its
 // four bytes left as zeros, so what follows is in its place, and `unassembled` says where they are.
 
 const REGISTERS = { r0: 0, r1: 1, r2: 2, r3: 3, r4: 4, r5: 5, r6: 6, r7: 7, r8: 8, r9: 9, r10: 10, r11: 11, r12: 12, r13: 13, r14: 14, r15: 15, sl: 10, fp: 11, ip: 12, sp: 13, lr: 14, pc: 15 };
@@ -325,23 +327,48 @@ export function assemble(text) {
     }
     return null;
   };
-  // a register, or a register shifted by a number: its 12 bits
-  const shiftedRegister = parts => {
+  // a register, or a register shifted by a number, or, where `byRegister`, by a register: its 12 bits
+  const shiftedRegister = (parts, byRegister = true) => {
     const rm = register(parts[0]);
-    if (rm === undefined) return null;
+    if (rm === undefined || parts.length > 2) return null;
     if (parts.length === 1) return rm;
-    const m = /^(lsl|lsr|asr|ror)\s+#?(\S+)$/i.exec(parts[1].trim());
-    const by = m ? number(m[2]) : null;
-    if (!m || by === null || by < 0 || by > 32) return null;
+    if (/^rrx$/i.test(parts[1].trim())) return 3 << 5 | rm;
+    const m = /^(lsl|lsr|asr|ror)\s+(#?)(\S+)$/i.exec(parts[1].trim());
+    if (!m) return null;
     const type = ['lsl', 'lsr', 'asr', 'ror'].indexOf(m[1].toLowerCase());
+    const rs = m[2] ? undefined : register(m[3]);
+    if (rs !== undefined) return byRegister ? rs << 8 | type << 5 | 1 << 4 | rm : null;
+    const by = number(m[3]);
+    if (by === null || by < 0 || by > 32) return null;
     return (by & 31) << 7 | type << 5 | rm;
   };
-  // [rn] or [rn, #n], an address with a number added, before: { rn, offset }
-  const addressed = text => {
-    const m = /^\[\s*([^,\]]+?)\s*(?:,\s*#?([-+]?(?:0x[0-9a-f]+|\d+)))?\s*\]$/i.exec(text.trim());
-    if (!m || register(m[1]) === undefined) return null;
-    return { rn: register(m[1]), offset: m[2] === undefined ? 0 : number(m[2]) };
+  // where a load or a store reaches, from its operands after the register: [rn] with a number or a register, shifted
+  // or not, added or taken away, before, with ! writing the address back, or [rn] and then what's added after, which
+  // moves rn on: { rn, pre, up, writeBack, offset, register } with `offset` a number, or with `register` the bits of a
+  // register and its shift, or null for an address it doesn't know
+  const reached = (parts, shifts) => {
+    const m = /^\[(.*)\](!?)$/.exec(parts[0]?.trim() ?? '');
+    if (!m) return null;
+    const inside = split(m[1]), rn = register(inside[0] ?? '');
+    if (rn === undefined) return null;
+    const post = parts.length > 1;
+    if (post && (inside.length > 1 || m[2])) return null;
+    const after = post ? parts.slice(1) : inside.slice(1);
+    const at = { rn, pre: !post, up: true, writeBack: !!m[2], offset: 0, register: null };
+    if (!after.length) return at;
+    const first = after[0].trim();
+    if (first.startsWith('#')) {
+      const value = after.length === 1 ? number(first.slice(1)) : null;
+      if (value === null) return null;
+      return { ...at, up: value >= 0 && !/^#\s*-/.test(first), offset: Math.abs(value) };
+    }
+    const sign = /^[-+]/.exec(first)?.[0];
+    const bits = shifts ? shiftedRegister([first.slice(sign ? 1 : 0), ...after.slice(1)], false) : after.length === 1 ? register(first.slice(sign ? 1 : 0)) ?? null : null;
+    return bits === null || bits === undefined ? null : { ...at, up: sign !== '-', register: bits };
   };
+  // ldm and stm: the order of the four they're written with, and the names of each for a stack, by load or store
+  const BLOCK = { ia: [0, 1], ib: [1, 1], da: [0, 0], db: [1, 0] };
+  const STACK = { ldm: { fd: 'ia', ed: 'ib', fa: 'da', ea: 'db' }, stm: { ea: 'ia', fa: 'ib', ed: 'da', fd: 'db' } };
   const armInstruction = (op, a) => {
     let m;
     if ((m = new RegExp(`^bx${ARM_CONDITION}$`).exec(op))) {
@@ -388,10 +415,10 @@ export function assemble(text) {
       word((conditionOf(m[1]) << 28 | 0x010F0000 | (from === 'spsr' ? 1 << 22 : 0) | rd << 12) >>> 0);
       return true;
     }
-    if ((m = new RegExp(`^(ldr|str)${ARM_CONDITION}(b|h)?$`).exec(op)) && a.length === 2) {
-      const load = m[1] === 'ldr', rd = register(a[0]), cond = conditionOf(m[2]) << 28;
-      if (rd === undefined) return false;
-      if (load && !m[3] && a[1].trim().startsWith('=')) {
+    if ((m = new RegExp(`^(ldr|str)${ARM_CONDITION}(b|h|sb|sh)?$`).exec(op)) && a.length >= 2) {
+      const load = m[1] === 'ldr', rd = register(a[0]), cond = conditionOf(m[2]) << 28, kind = m[3] ?? '';
+      if (rd === undefined || (!load && kind.startsWith('s'))) return false;
+      if (load && !kind && a.length === 2 && a[1].trim().startsWith('=')) {
         const written = a[1].trim().slice(1).trim(), value = evaluate(written), named = value === null ? expression(written) : { name: null, addend: value };
         const key = named.name === null ? `#${named.addend >>> 0}` : `${named.name}+${named.addend}`;
         let entry = pool.find(each => each.key === key);
@@ -400,16 +427,50 @@ export function assemble(text) {
         word(0);
         return true;
       }
-      const at = addressed(a[1]);
-      if (!at || at.offset === null) return false;
-      const up = at.offset >= 0, by = Math.abs(at.offset);
-      if (m[3] === 'h') {
-        if (by > 255) return false;
-        word((cond | 0x014000B0 | (up ? 1 << 23 : 0) | (load ? 1 << 20 : 0) | at.rn << 16 | rd << 12 | (by & 0xF0) << 4 | (by & 0xF)) >>> 0);
+      if (load && !kind && a.length === 2 && !/^[[=]/.test(a[1].trim())) {
+        // a word kept at a label, before or after, from the instruction two on
+        const target = expression(a[1]);
+        if (!target.name) return false;
+        later.push({ kind: 'arm-load', section, at: here(), code: (cond | 0x059F0000 | rd << 12) >>> 0, ...target, line: lineNumber });
+        word(0);
         return true;
       }
-      if (by > 4095) return false;
-      word((cond | 0x05000000 | (up ? 1 << 23 : 0) | (m[3] === 'b' ? 1 << 22 : 0) | (load ? 1 << 20 : 0) | at.rn << 16 | rd << 12 | by) >>> 0);
+      const halves = kind === 'h' || kind.startsWith('s'), at = reached(a.slice(1), !halves);
+      if (!at) return false;
+      const common = cond | (at.pre ? 1 << 24 : 0) | (at.up ? 1 << 23 : 0) | (at.writeBack ? 1 << 21 : 0) | (load ? 1 << 20 : 0) | at.rn << 16 | rd << 12;
+      if (halves) {
+        // a halfword, or a byte or a halfword with its sign: a number of up to 255, in two halves, or a register
+        const sh = { h: 0xB0, sb: 0xD0, sh: 0xF0 }[kind];
+        if (at.register !== null) word((common | sh | at.register) >>> 0);
+        else if (at.offset > 255) return false;
+        else word((common | 1 << 22 | sh | (at.offset & 0xF0) << 4 | (at.offset & 0xF)) >>> 0);
+        return true;
+      }
+      if (at.register === null && at.offset > 4095) return false;
+      word((common | 0x04000000 | (at.register !== null ? 1 << 25 | at.register : at.offset) | (kind === 'b' ? 1 << 22 : 0)) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(ldm|stm)${ARM_CONDITION}(ia|ib|da|db|fd|ed|fa|ea)?$`).exec(op)) && a.length >= 2) {
+      // a block of registers, in one of four orders, with ! writing the address back and ^ the user's registers
+      const order = BLOCK[STACK[m[1]][m[3]] ?? m[3] ?? 'ia'], base = /^(\S+?)\s*(!?)$/.exec(a[0].trim());
+      const rn = base && register(base[1]), listed = a.slice(1).join(','), user = /\^\s*$/.test(listed);
+      if (rn === undefined || !base) return false;
+      const bits = list(listed.replace(/\^\s*$/, ''));
+      word((conditionOf(m[2]) << 28 | 0x08000000 | order[0] << 24 | order[1] << 23 | (user ? 1 << 22 : 0) | (base[2] ? 1 << 21 : 0) | (m[1] === 'ldm' ? 1 << 20 : 0) | rn << 16 | bits) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(mul|mla)${ARM_CONDITION}(s?)$`).exec(op)) && a.length === (op.startsWith('mla') ? 4 : 3)) {
+      // rd = rm * rs, and + rn
+      const [rd, rm, rs, rn] = a.map(register);
+      if ([rd, rm, rs].some(r => r === undefined) || (m[1] === 'mla' && rn === undefined)) return false;
+      word((conditionOf(m[2]) << 28 | (m[1] === 'mla' ? 1 << 21 | rn << 12 : 0) | (m[3] ? 1 << 20 : 0) | rd << 16 | rs << 8 | 0x90 | rm) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(umull|umlal|smull|smlal)${ARM_CONDITION}(s?)$`).exec(op)) && a.length === 4) {
+      // the 64-bit product of rm and rs in rdhi and rdlo, and added to what they hold
+      const [lo, hi, rm, rs] = a.map(register);
+      if ([lo, hi, rm, rs].some(r => r === undefined)) return false;
+      word((conditionOf(m[2]) << 28 | 0x00800090 | (m[1][0] === 's' ? 1 << 22 : 0) | (m[1].endsWith('lal') ? 1 << 21 : 0) | (m[3] ? 1 << 20 : 0) | hi << 16 | lo << 12 | rs << 8 | rm) >>> 0);
       return true;
     }
     return false;
@@ -541,8 +602,8 @@ export function assemble(text) {
         if (offset % 4 || offset < -0x2000000 || offset >= 0x2000000) fail(`a branch to ${wait.name} is ${offset} bytes away, too far for it.`);
         code = (wait.code | (offset >> 2 & 0xFFFFFF)) >>> 0;
       } else {
-        if (offset < 0 || offset > 4095) fail(`a load from ${wait.name} is ${offset} bytes away, too far for it.`);
-        code = (wait.code | 1 << 23 | offset) >>> 0;
+        if (offset < -4095 || offset > 4095) fail(`a load from ${wait.name} is ${offset} bytes away, too far for it.`);
+        code = (wait.code & ~(1 << 23) | (offset >= 0 ? 1 << 23 : 0) | Math.abs(offset)) >>> 0;
       }
       for (let i = 0; i < 4; i++) bytes[wait.at + i] = code >>> 8 * i & 255;
       continue;
