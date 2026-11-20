@@ -944,15 +944,17 @@ void CgbSound(void)
     // Most comparision operations that cast to s8 perform 'and' by 0xFF.
     int mask = 0xff;
 
+    // the runs name the engine's state by SOUND_INFO_PTR, the same as soundInfo, which the console's stack then keeps
+    // where the original keeps it, as the stack tool moves no local a macro names
     if (soundInfo->cgbCounter15) {
         soundInfo->cgbCounter15--;
-        M4A_TIME(CgbSound, 0x0, 0x1E, M4A_AT(CgbSound, 0x2A), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+        M4A_TIME(CgbSound, 0x0, 0x1E, M4A_AT(CgbSound, 0x2A), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(SOUND_INFO_PTR), M4A_REACH(SOUND_INFO_PTR));
     } else {
         soundInfo->cgbCounter15 = 14;
-        M4A_TIME(CgbSound, 0x0, 0x16, M4A_AT(CgbSound, 0x24), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
-        M4A_TIME(CgbSound, 0x24, 0x28, M4A_AT(CgbSound, 0x2A), M4A_REACH(soundInfo));
+        M4A_TIME(CgbSound, 0x0, 0x16, M4A_AT(CgbSound, 0x24), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(SOUND_INFO_PTR));
+        M4A_TIME(CgbSound, 0x24, 0x28, M4A_AT(CgbSound, 0x2A), M4A_REACH(SOUND_INFO_PTR));
     }
-    M4A_TIME(CgbSound, 0x2A, 0x2E, M4A_AT(CgbSound, 0x30), M4A_REACH(soundInfo));
+    M4A_TIME(CgbSound, 0x2A, 0x2E, M4A_AT(CgbSound, 0x30), M4A_REACH(SOUND_INFO_PTR));
 
     // only a channel that's off is timed, and the step on to the next
     for (ch = 1, channels = soundInfo->cgbChans; ch <= 4; ch++, channels++) {

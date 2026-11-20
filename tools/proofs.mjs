@@ -173,7 +173,7 @@ function show(version, group, states) {
 function begin(version) {
   const { game, language } = versionOf(version), original = readOriginal(version);
   if (writtenIn(language) !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
-  if (!['gba', 'nes', 'ps2'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES and the PlayStation 2, and on no other console yet (docs/CONSOLES.md).');
+  if (!['gba', 'nes', 'ps1', 'ps2'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES, the PlayStation and the PlayStation 2, and on no other console yet (docs/CONSOLES.md).');
   if (!readCodeMap(version)) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
   console.log(startProofs(version)
     ? `Written: games/${version}/proof/${PROOFS}, with no proof in it yet. ${version} is made a function at a time from here on: npm run dp -- tasks ${version} opens its tasks from its code map, and npm run dp -- match and npm run dp -- twin keep each proof they find.`

@@ -26,6 +26,12 @@
 // own decoder reads (ps1/mips.mjs, ps1/read.mjs): <function> is an address, such as 0x800C1234, a name in the code map
 // or a label with an address, such as func_800C1234, and --bytes is its only option.
 //
+// On a Nintendo 64 game it prints the function's VR4300 instructions, from the code the cartridge starts, which the
+// tools' own decoder reads (lib/mips.mjs, n64/read.mjs): <function> is an address, such as 0x80246000, a name in the code
+// map or a label with an address, such as func_80246000, and --bytes is its only option but --rsp <address>, which
+// reads the words as the RSP's instructions, a microcode, laid out from that address in the RSP's own 4 KB, 0x1080 for
+// a game's microcode.
+//
 // On a PlayStation 2 game it prints any code its code map has, read off the disc by the tools' own decoders
 // (ps2/read.mjs): the EE's MIPS, MMI and vector unit 0 instructions (ps2/ee.mjs), an IOP module's MIPS, or a vector
 // unit's program as its pairs of instructions (ps2/vu.mjs). <function> is an address, such as 0x00123456, a code map
@@ -47,10 +53,11 @@ import { readShifts } from './portmap.mjs';
 import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
 import { readNes } from './nes/read.mjs';
 import { readPs1 } from './ps1/read.mjs';
+import { readN64 } from './n64/read.mjs';
 import { readPs2 } from './ps2/read.mjs';
 import { readSnes } from './snes/read.mjs';
 
-const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc]';
+const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc] [--rsp <address>]';
 const CARTRIDGE = 0x08000000;
 // the work RAMs, where games copy code to run it faster
 const MEMORY = [[0x02000000, 0x02040000], [0x03000000, 0x03008000]];
@@ -60,9 +67,10 @@ const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
 // the consoles whose instructions read knows, and what reads each
-const READERS = { gba: readGba, nes: readNes, snes: readSnes, ps1: readPs1, ps2: readPs2 };
-// the consoles whose reader reads the program a disc boots itself, rather than the whole copy
-const OFF_DISC = new Set(['ps1', 'ps2']);
+const READERS = { gba: readGba, nes: readNes, snes: readSnes, ps1: readPs1, n64: readN64, ps2: readPs2 };
+// the consoles whose reader reads the copy itself, the program a disc boots or a cartridge in the console's byte order,
+// rather than the whole copy as it is
+const OFF_DISC = new Set(['ps1', 'n64', 'ps2']);
 const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(', ').replace(/, ([^,]+)$/, ' and $1');
 
 export async function run(args) {
@@ -72,6 +80,7 @@ export async function run(args) {
   const original = readOriginal(game);
   const reader = READERS[original.console];
   if (!reader) throw new Error(`read knows the instructions of ${KNOWN}, and no other console's yet: a disassembler on this computer reads ${original.console} code (docs/CONSOLES.md).`);
+  if (flags.rsp !== undefined && original.console !== 'n64') throw new Error('--rsp reads a Nintendo 64 game\'s microcode, the RSP\'s instructions.');
   const codeMap = readCodeMap(game);
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   const copy = copyWith(original.sha1);
@@ -197,6 +206,9 @@ function options(args) {
       const value = Number(args[++i]);
       if (!Number.isInteger(value) || value < (arg === '--bytes' ? 1 : 0)) throw new Error(`${arg} needs a whole number. ${USAGE}`);
       flags[arg.slice(2)] = value;
+    } else if (arg === '--rsp') {
+      if (args[i + 1] === undefined || args[i + 1].startsWith('--')) throw new Error(`--rsp needs where the first word runs in the RSP's instructions, such as 0x1080. ${USAGE}`);
+      flags.rsp = args[++i];
     } else if (arg.startsWith('--')) throw new Error(`read has no ${arg}. ${USAGE}`);
     else rest.push(arg);
   }

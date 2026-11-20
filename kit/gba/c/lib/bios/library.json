@@ -1,0 +1,18 @@
+{
+  "about": "The calls to the console's BIOS as a game links them, a stub each: the swi with the call's number and back, Thumb assembly the console's compiler gives back byte for byte, with the BIOS's work the version's own",
+  "compilers": {
+    "gba": {
+      "name": "agbcc",
+      "flags": [
+        "-mthumb-interwork",
+        "-O2"
+      ]
+    }
+  },
+  "functions": [
+    ["CpuSet",4,"bios.c"],
+    ["Div",4,"bios.c"],
+    ["Mod",6,"bios.c"],
+    ["VBlankIntrWait",6,"bios.c"]
+  ]
+}
