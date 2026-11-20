@@ -8,9 +8,12 @@
 
 #include "gba.h"
 
+// where the console has them, in a build that keeps its memory there (gba.h)
+#ifndef GBA_CONSOLE_ADDRESSES
 uint8_t gba_vram[0x18000];
 uint16_t gba_pal[512];
 uint16_t gba_oam[512];
+#endif
 uint16_t gba_io[GBA_IO_HALFWORDS];
 const uint32_t *gba_underlay;
 
