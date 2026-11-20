@@ -5,7 +5,9 @@
 //
 // Every instruction the program runs on the EE is told, with each way of the branch that waits for the V-blank, and so is
 // the vector unit's program, with its loop's branch both ways, and the IOP's own code, and the sectors the console reads
-// to boot the disc. The same play twice tells the same, and the pictures are the same as with nothing told. Like the
+// to boot the disc. A second disc boots the program that starts a module of its own on the IOP (made-up-ps2-iop.mjs),
+// with the module among its files: the IOP loads it wherever it has room, the emulator says where, and what the IOP
+// runs there counts for the module's functions in the code map. The same play twice tells the same, and the pictures are the same as with nothing told. Like the
 // other checks on the real emulator, it isn't run on every pull request, as the emulator takes minutes to build, and runs
 // on Linux and macOS alone (docs/CONSOLES.md).
 //
@@ -22,14 +24,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { cartridgeOf, prepareCopy, watchesOf } from '../lib/proof-files.mjs';
+import { cartridgeOf, functionKey, prepareCopy, watchesOf } from '../lib/proof-files.mjs';
 import { RAN, TAKEN, NOT_TAKEN, layoutOf, finderOf, playedIn, contentIn, cellsOf } from '../lib/played.mjs';
 import { mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
-import { findFunctions } from '../ps2/functions.mjs';
+import { discFunctions, findFunctions, ps2Disc } from '../ps2/functions.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { BACKGROUND, BACKGROUND_3D, COS, CORNERS, CORNER_DEPTH, DEPTH_ACROSS, FRAME_PACKET, LOAD_AT, MIDDLE, MOVING_AT, MOVING_Y, RADIUS, SIN, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, STILL, TURNING, UPLOAD, VU1_PROGRAM, VU1_TAG, madeUpPs2OnVu1 } from './made-up-ps2.mjs';
 import { SECTOR, madeUpPs2Iso, systemCnf } from './made-up-ps2-iso.mjs';
+import { madeUpPs2Sound, soundIrx } from './made-up-ps2-iop.mjs';
 
 const FRAMES = 120;
 const WORK = join(LOCAL, 'test-ps2-ledger');
@@ -102,6 +105,8 @@ function proveAndAsk(copy, disc, { branch, read, sectors }) {
   run = dp('prove', IN_C, 'still');
   const report = existsSync(join(resultFolder(IN_C, 'still'), 'report.json')) ? JSON.parse(readFileSync(join(resultFolder(IN_C, 'still'), 'report.json'), 'utf8')) : {};
   check(run.status === 0 && report.matched === FRAMES, `prove matches every frame's draw list: ${report.matched} of ${report.frames}`);
+  const outside = run.out.match(/Instructions that ran outside every function of the code map: ([\d,]+), the system's own among them/)?.[1];
+  check(Number(outside?.replaceAll(',', '')) > 0 && Number(outside.replaceAll(',', '')) < 200, `and says how many instructions ran outside the code map, each once, the system's own: ${outside}`);
   if (run.status) console.log(run.out);
   const played = existsSync(join(proofFolder(IN_C), 'played.json')) ? JSON.parse(readFileSync(join(proofFolder(IN_C), 'played.json'), 'utf8')) : {};
   check(played.units?.played > 0 && played.units.played <= played.units.total, `prove writes played.json with the program's code played in matching frames: ${JSON.stringify(played.units)}, ${played.percent}%`);
@@ -186,6 +191,29 @@ async function main() {
   check(cells === disc.length / SECTOR && elfSectors.every(sector => used[sector >> 3] >> (sector & 7) & 1), `the disc's ${cells} sectors are its content, and those read count as used`);
 
   first.sound?.close();
+
+  console.log("\nA module of the IOP's on a second disc, found running where the IOP loaded it");
+  {
+    const withModule = join(WORK, 'with-module.iso');
+    writeFileSync(withModule, madeUpPs2Iso({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': madeUpPs2Sound().elf, 'SOUND.IRX': soundIrx() }).disc);
+    await prepareCopy(withModule, 'ps2');
+    const held = cartridgeOf(withModule, 'ps2');
+    // the code map as codemap makes it: every program on the disc, the module's functions from its start
+    const map = { console: 'ps2', functions: discFunctions(await ps2Disc(withModule)).map(f => ({ ...f, key: functionKey(f) })).sort((a, b) => a.address - b.address || a.key.localeCompare(b.key)) };
+    const inModule = map.functions.map((f, index) => ({ f, index })).filter(({ f }) => f.program === 'SOUND.IRX');
+    const played = await reference.runOriginal({ copy: withModule, frames: FRAMES, buttons, functions: watchesOf(map, held), played: true });
+    const loads = played.played.modules.filter(load => held.modules().has(load.hash));
+    check(inModule.length > 0 && loads.length === 1 && loads[0].end > loads[0].base, `the emulator says where the IOP loaded the module, known by its bytes: ${loads.map(l => `0x${l.base.toString(16)} to 0x${l.end.toString(16)}, in frame ${l.frame}`).join(', ')}`);
+    const own = layoutOf(map), all = new Uint8Array(FRAMES + 1).fill(1);
+    const ranThere = playedIn(played.played.records, all, own, finderOf(map, held, new Map(), played.played.modules));
+    const has = n => (ranThere[n >> 3] >> (n & 7) & 1) === 1;
+    const sum = what => inModule.reduce((total, { index }) => total + Array.from({ length: own.first[index + 1] - own.first[index] }, (_, p) => (has((own.first[index] + p) * 3 + what) ? 1 : 0)).reduce((a, b) => a + b, 0), 0);
+    const started = inModule.filter(({ index }) => has(own.first[index] * 3 + RAN)).length;
+    check(sum(RAN) > 20 && started >= 1 && sum(TAKEN) + sum(NOT_TAKEN) >= 2, `what the IOP ran there counts for the module's functions: ${sum(RAN)} instructions and ${sum(TAKEN) + sum(NOT_TAKEN)} branch ways, ${started} of its ${inModule.length} functions started`);
+    const without = playedIn(played.played.records, all, own, finderOf(map, held, new Map(), []));
+    check(inModule.every(({ index }) => Array.from({ length: own.first[index + 1] - own.first[index] }, (_, p) => (without[((own.first[index] + p) * 3) >> 3] >> (((own.first[index] + p) * 3) & 7) & 1)).every(bit => !bit)), 'and for none of them without knowing where it was loaded');
+    played.sound?.close();
+  }
 
   console.log('\nThe disc as a game\'s copy, proven with its Dreamport in C, and what untouched says of it');
   const branch = LOAD_AT + both[0];

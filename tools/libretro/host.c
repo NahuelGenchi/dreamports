@@ -682,7 +682,7 @@ int main(int argc, char** argv) {
 	if (!live && !route) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
-		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		ps2Watch watch = dlsym(library, "dreamports_watch");
 		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			if (watch) ps2Open(watch, functions);
@@ -696,7 +696,7 @@ int main(int argc, char** argv) {
 
 	// a search for what hasn't been played, on a core that tells of what it runs, told before the game loads too
 	if (route) {
-		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
+		ps2Watch watch = dlsym(library, "dreamports_watch");
 		searchCounts = watch && ps2SearchOpen(watch);
 		searchFrames = dlsym(library, "dreamports_frames");
 	}
