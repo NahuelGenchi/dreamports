@@ -201,14 +201,14 @@ export function shapesOf(types, addressOf) {
       return left;
     },
 
-
     /**
      * A struct made up for `slot`, in `image`, the memory a call starts from with what was changed for it: in a
      * stretch of the work memory that holds nothing and none of whose words are in `avoid` (a Set), with each value as
-     * makeUp above makes it up. Its changes, the pointer's first, as [address, bytes, value], or null with no room.
+     * makeUp above makes it up. Its changes, the pointer's first, as [address, bytes, value], or null with no room,
+     * as for a struct longer than a stretch.
      */
     makeUp(slot, { image, avoid = new Set(), choose, code }) {
-      const at = freeIn(image, STRETCH, avoid);
+      const at = slot.to.size <= STRETCH ? freeIn(image, STRETCH, avoid) : null;
       if (at === null) return null;
       let used = 0;
       const take = bytes => {
