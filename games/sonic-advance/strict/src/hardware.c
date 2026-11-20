@@ -217,6 +217,9 @@ static void dma_at(u32 timing) {
 void console_vblank_dma3(void) { if ((dma[3].control & 0xB000) == 0x9000) dma_run(&dma[3]); }
 
 // ---------------------------------------------------------------------------------------------------------------
+// the stack the cartridge's start sets for interrupts, IWRAM_END - 0x60, on which the BIOS calls the handler
+#define CONSOLE_IRQ_STACK 0x03007FA0u
+
 // The interrupts, as the cartridge's own handler takes them (IntrMain, ARM code the engine copies to the fast work
 // memory and the BIOS jumps to): of those both enabled and asked for, the first in its order, seen to and then run
 // from gIntrTable, one after another while any is left and the master switch is on.
@@ -234,7 +237,9 @@ void console_interrupt(u16 flags) {
     for (i = 0; i < 12 && !(pending & intr_order[i]); i++) {}
     console_io[IO_IF >> 1] &= ~(pending & intr_order[i]);
     console_handling++;
+    gba_stack_interrupt(CONSOLE_IRQ_STACK, GBA_CLOCK_BIOS_BACK);
     TWIN(gIntrTable[i])();
+    gba_stack_interrupted();
     console_handling--;
   }
 }
@@ -255,7 +260,9 @@ static void console_intr_main(void) {
   at[1] = 0x03000470u + 4 * i;
   gba_clock_run_arm(0x03000560, 0x03000570, (u32)(uintptr_t)gIntrTable[i], at, 2);
   console_handling++;
+  gba_stack_interrupt(CONSOLE_IRQ_STACK, GBA_CLOCK_BIOS_BACK);
   TWIN(gIntrTable[i])();
+  gba_stack_interrupted();
   console_handling--;
 }
 
@@ -410,20 +417,27 @@ void CpuSet(const void *src, void *dest, u32 control) {
 void AgbMain(void);
 
 /** The cartridge's start, ARM code at 0x08000000: the interrupt handler's address where the BIOS looks for it, and
- *  then AgbMain, which never comes back. The stacks it sets are the console's processor's, which C has none of. */
-void console_start(void) {
+ *  then AgbMain, which never comes back. The stacks it sets are the console's processor's, which C has none of. From
+ *  the console's power-on, or from a soft reset, after which the BIOS leaves each register as it was. */
+static void console_cartridge(int reset) {
   // in the console's time: its branch past the header, the processor's modes and stacks, and the interrupt handler's
   // address kept, then a jump to AgbMain in Thumb code
   static const u32 vector[] = { 0x03007FFC };
   gba_clock_run_arm(0x08000000, 0x08000000, 0x080000C0, NULL, 0);
   gba_clock_run_arm(0x080000C0, 0x080000EC, 0x08001495, vector, 1);
   *(u32 *)0x03007FFC = 0x080000FC;
-  // the system mode's stack, as the start sets it, and AgbMain called with lr from its mov lr, pc at 0x080000E8
+  // the system mode's stack, as the start sets it, with the interrupt handler's address in r0 and AgbMain's in r1,
+  // and AgbMain called with lr from its mov lr, pc at 0x080000E8
   gba_stack_addresses(console_address);
-  gba_stack_start(0x03007F00);
+  if (reset) gba_stack_reset(0x03007F00);
+  else gba_stack_start(0x03007F00);
+  gba_stack_reg(0, 0x080000FC);
+  gba_stack_reg(1, 0x08001495);
   gba_stack_call(0x080000F0);
   AgbMain();
 }
+
+void console_start(void) { console_cartridge(0); }
 
 /** SoftReset, with the link cable's registers set as the console starts them first, as Sonic Advance asks: the top
  *  of the fast work memory cleared, as the BIOS clears its stacks and its flags there, and the cartridge from its
@@ -432,7 +446,10 @@ void SoftReset(u32 flags) {
   u32 *at;
   if (flags & 0x20) console_io[IO_RCNT >> 1] = 0x8000;
   for (at = (u32 *)0x03007E00; at < (u32 *)0x03008000; at++) *at = 0;
-  console_start();
+  // the cartridge's call clears the master switch through r3 and r2 before the BIOS's
+  gba_stack_reg(2, 0);
+  gba_stack_reg(3, 0x04000208);
+  console_cartridge(1);
 }
 
 // A frame of the console's time over: the Dreamport's frame f is the console's f + 1, whose picture shows frame f's
