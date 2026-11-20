@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { arch } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL, REPO } from '../lib/paths.mjs';
+import { LOCAL } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
@@ -167,21 +167,16 @@ function sourceIsAt(source, commit) {
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export async function buildCaller(log = console.log) {
   const { core } = consoleOf('ps2');
-  // built once for this commit of the emulator, the tools' patch of it and these flags, and call.cpp again whenever it
-  // changes
-  const patch = core.patch ? readFileSync(join(REPO, core.patch)) : '';
-  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(FLAGS.join(' ')).update(patch).digest('hex').slice(0, 8)}`);
+  // built once for this commit of the emulator and these flags, and call.cpp again whenever it changes
+  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(FLAGS.join(' ')).digest('hex').slice(0, 8)}`);
   const program = join(folder, `call${process.platform === 'win32' ? '.exe' : ''}`), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('ps2');
   const objects = join(folder, 'objects');
   let source = join(LOCAL, 'libretro', `${core.built}-source`);
-  // the source as the patch now has it: one left from an older patch is fetched and patched again
-  const patched = join(source, '.dreamports-patch'), patchHash = createHash('sha1').update(patch).digest('hex');
-  if (!sourceIsAt(source, core.commit) || !existsSync(patched) || readFileSync(patched, 'utf8') !== patchHash) {
+  if (!sourceIsAt(source, core.commit)) {
     log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
     source = fetchSource(machine);
-    writeFileSync(join(source, '.dreamports-patch'), patchHash);
   }
   const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
