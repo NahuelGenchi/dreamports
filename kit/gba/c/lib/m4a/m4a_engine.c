@@ -110,7 +110,12 @@ void m4aSoundInit(void)
     }
 }
 
-void m4aSoundMain(void) { SoundMain(); }
+void m4aSoundMain(void)
+{
+    M4A_TIME(m4aSoundMain, 0x0, 0x4, M4A_AT(SoundMain, 0));
+    SoundMain();
+    M4A_TIME(m4aSoundMain, 0x6, 0x8, M4A_BACK);
+}
 
 void m4aSongNumStart(u16 n)
 {
@@ -179,8 +184,15 @@ void m4aMPlayAllStop(void)
 {
     s32 i;
 
-    for (i = 0; i < NUM_MUSIC_PLAYERS; i++)
+    // the players are counted down as the compiler has it, with none a path of its own
+    M4A_TIME_WHEN(NUM_MUSIC_PLAYERS == 0, m4aMPlayAllStop, 0x0, 0xA, M4A_AT(m4aMPlayAllStop, 0x1E));
+    M4A_TIME_WHEN(NUM_MUSIC_PLAYERS != 0, m4aMPlayAllStop, 0x0, 0xE, M4A_AT(m4aMPlayAllStop, 0x10));
+    for (i = 0; i < NUM_MUSIC_PLAYERS; i++) {
+        M4A_TIME(m4aMPlayAllStop, 0x10, 0x14, M4A_AT(MPlayStop, 0), M4A_REACH(&gMPlayTable[i].info));
         MPlayStop(gMPlayTable[i].info);
+        M4A_TIME(m4aMPlayAllStop, 0x16, 0x1C, M4A_AT(m4aMPlayAllStop, i + 1 < NUM_MUSIC_PLAYERS ? 0x10 : 0x1E));
+    }
+    M4A_TIME(m4aMPlayAllStop, 0x1E, 0x22, M4A_BACK);
 }
 
 void m4aMPlayContinue(struct MP2KPlayerState *mplayInfo) { MPlayContinue(mplayInfo); }
@@ -696,22 +708,30 @@ void MPlayStop(struct MP2KPlayerState *mplayInfo)
     s32 i;
     struct MP2KTrack *track;
 
-    if (mplayInfo->lockStatus != ID_NUMBER)
+    if (mplayInfo->lockStatus != ID_NUMBER) {
+        M4A_TIME(MPlayStop, 0x0, 0xA, M4A_AT(MPlayStop, 0x36), M4A_REACH(mplayInfo));
+        M4A_TIME(MPlayStop, 0x36, 0x3A, M4A_BACK);
         return;
+    }
 
     mplayInfo->lockStatus++;
     mplayInfo->status |= MUSICPLAYER_STATUS_PAUSE;
 
     i = mplayInfo->trackCount;
     track = mplayInfo->tracks;
+    M4A_TIME(MPlayStop, 0x0, 0x20, M4A_AT(MPlayStop, i > 0 ? 0x22 : 0x32), M4A_REACH(mplayInfo), M4A_REACH(mplayInfo),
+             M4A_REACH(mplayInfo), M4A_REACH(mplayInfo), M4A_REACH(mplayInfo), M4A_REACH(mplayInfo));
 
     while (i > 0) {
+        M4A_TIME(MPlayStop, 0x22, 0x28, M4A_AT(TrackStop, 0));
         TrackStop(mplayInfo, track);
         i--;
         track++;
+        M4A_TIME(MPlayStop, 0x2A, 0x30, M4A_AT(MPlayStop, i > 0 ? 0x22 : 0x32));
     }
 
     mplayInfo->lockStatus = ID_NUMBER;
+    M4A_TIME(MPlayStop, 0x32, 0x3A, M4A_BACK, M4A_REACH(mplayInfo));
 }
 
 void FadeOutBody(struct MP2KPlayerState *mplayInfo)
@@ -924,14 +944,23 @@ void CgbSound(void)
     // Most comparision operations that cast to s8 perform 'and' by 0xFF.
     int mask = 0xff;
 
-    if (soundInfo->cgbCounter15)
+    if (soundInfo->cgbCounter15) {
         soundInfo->cgbCounter15--;
-    else
+        M4A_TIME(CgbSound, 0x0, 0x1E, M4A_AT(CgbSound, 0x2A), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+    } else {
         soundInfo->cgbCounter15 = 14;
+        M4A_TIME(CgbSound, 0x0, 0x16, M4A_AT(CgbSound, 0x24), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
+        M4A_TIME(CgbSound, 0x24, 0x28, M4A_AT(CgbSound, 0x2A), M4A_REACH(soundInfo));
+    }
+    M4A_TIME(CgbSound, 0x2A, 0x2E, M4A_AT(CgbSound, 0x30), M4A_REACH(soundInfo));
 
+    // only a channel that's off is timed, and the step on to the next
     for (ch = 1, channels = soundInfo->cgbChans; ch <= 4; ch++, channels++) {
-        if (!(channels->status & SOUND_CHANNEL_SF_ON))
+        M4A_TIME_WHEN(ch > 1, CgbSound, 0x430, 0x438, M4A_AT(CgbSound, 0x30));
+        if (!(channels->status & SOUND_CHANNEL_SF_ON)) {
+            M4A_TIME(CgbSound, 0x30, 0x44, M4A_AT(CgbSound, 0x430), M4A_REACH(channels));
             continue;
+        }
 
         /* 1. determine hardware channel registers */
         switch (ch) {
@@ -1160,6 +1189,8 @@ void CgbSound(void)
     channel_complete:
         channels->data.cgb.cgbStatus = 0;
     }
+    M4A_TIME(CgbSound, 0x430, 0x436, M4A_AT(CgbSound, 0x43A));
+    M4A_TIME(CgbSound, 0x43A, 0x448, M4A_BACK);
 }
 
 void m4aMPlayTempoControl(struct MP2KPlayerState *mplayInfo, u16 tempo)

@@ -71,8 +71,8 @@ function soundListsIn(listsFile, exactFile, frames) {
  * source, target } for each time the BIOS unpacked the cartridge's data into the work RAM. With `saves`, also `saves`: the
  * cartridge's save memory each time a frame left other bytes in it, as { frame, bytes }. With `played`, also `played`:
  * { records, made, content }, what ran as the program writes it for DP_PLAYED, five words a record, the functions the
- * game made in memory as { index, address, bytes }, and the cartridge's data it used, as written for DP_CONTENT, three
- * words a record. With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
+ * game made in memory as { index, address, bytes }, the cartridge's data it used, as written for DP_CONTENT, three
+ * words a record, and `modules`, each module a PlayStation 2's IOP loaded, as { frame, base, end, hash } (libretro/ran-ps2.h). With `draws`, for a console whose emulator keeps draw lists (libretro/host.c), also
  * `draws` { hashes, counts }: for each frame, the hash of what the console gave its graphics chip and how many things.
  * With `memory`, { spec } as lib/memory.mjs makes it for a program that compares work memory (gba/original.c), also
  * `memory` { hashes, bytes }: the hash of the stretches' bytes as each frame ended, and the bytes at the frame the spec
@@ -91,7 +91,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     buttons: join(folder, `buttons-${id}.bin`), functions: join(folder, `functions-${id}.bin`), pictures: join(folder, `pictures-${id}.bin`),
     sound: join(folder, `sound-${id}.bin`), sets: join(folder, `sets-${id}.bin`), states: join(folder, `states-${id}.bin`),
     reads: join(folder, `reads-${id}.bin`), draws: join(folder, `draws-${id}.bin`), ramCode: join(folder, `ram-code-${id}.bin`), unpacks: join(folder, `unpacks-${id}.bin`),
-    played: join(folder, `played-${id}.bin`), playedCode: join(folder, `played-code-${id}.bin`), content: join(folder, `content-${id}.bin`), saves: join(folder, `saves-${id}.bin`),
+    played: join(folder, `played-${id}.bin`), playedCode: join(folder, `played-code-${id}.bin`), content: join(folder, `content-${id}.bin`), modules: join(folder, `modules-${id}.bin`), saves: join(folder, `saves-${id}.bin`),
     memory: join(folder, `memory-${id}.bin`), memoryOut: join(folder, `memory-${id}.bin.out`),
     entries: join(folder, `entries-${id}.bin`), registers: join(folder, `registers-${id}.bin`),
     soundLists: join(folder, `sound-lists-${id}.bin`), exact: join(folder, `exact-${id}.bin`),
@@ -109,7 +109,7 @@ export async function runReference({ program, args, env, width, height, stateByt
     // its files by their plain names, from their folder: only the copy's path has to survive the trip whatever it's called
     const names = Object.fromEntries(Object.entries(files).map(([key, file]) => [key, basename(file)]));
     if (!sound) names.sound = '-';
-    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(soundLists ? { DP_SOUNDS: names.soundLists, DP_SOUND_EXACT: names.exact } : {}), ...(memory ? { DP_MEMORY: names.memory } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode, DP_UNPACKS: names.unpacks } : {}), ...(entries ? { DP_ENTRIES: names.entries } : {}), ...(registers ? { DP_REGISTERS: names.registers } : {}) } });
+    const child = spawn(program, args(names), { cwd: folder, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...env, ...(reads.length ? { DP_READS: names.reads } : {}), ...(draws ? { DP_DRAWS: names.draws } : {}), ...(soundLists ? { DP_SOUNDS: names.soundLists, DP_SOUND_EXACT: names.exact } : {}), ...(memory ? { DP_MEMORY: names.memory } : {}), ...(saves ? { DP_SAVES: names.saves } : {}), ...(played ? { DP_PLAYED: names.played, DP_PLAYED_CODE: names.playedCode, DP_CONTENT: names.content, DP_MODULES: names.modules } : {}), ...(ramCode ? { DP_RAM_CODE: names.ramCode, DP_UNPACKS: names.unpacks } : {}), ...(entries ? { DP_ENTRIES: names.entries } : {}), ...(registers ? { DP_REGISTERS: names.registers } : {}) } });
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
@@ -169,7 +169,10 @@ export async function runReference({ program, args, env, width, height, stateByt
         made.push({ index, address, bytes: new Uint8Array(code.buffer, (i + 3) * 4, size) });
         i += 3 + words;
       }
-      whatPlayed = { records: new Uint32Array(new Uint8Array(readFileSync(files.played)).buffer), made, content: new Uint32Array(new Uint8Array(readFileSync(files.content)).buffer) };
+      // and on a console that loads its code where it has room, as the PlayStation 2's IOP loads its modules, where each went
+      const loads = existsSync(files.modules) ? new Uint32Array(new Uint8Array(readFileSync(files.modules)).buffer) : new Uint32Array(0);
+      const modules = Array.from({ length: loads.length / 4 }, (_, i) => ({ frame: loads[i * 4], base: loads[i * 4 + 1], end: loads[i * 4 + 2], hash: loads[i * 4 + 3] }));
+      whatPlayed = { records: new Uint32Array(new Uint8Array(readFileSync(files.played)).buffer), made, content: new Uint32Array(new Uint8Array(readFileSync(files.content)).buffer), modules };
     }
     // the save memory each time it changed: { frame, bytes }
     let saved = null;
