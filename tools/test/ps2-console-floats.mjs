@@ -5,6 +5,8 @@
 // shares, are built for this computer and given the same sums, and have to give the same bits.
 //
 // - ee-*.expected: the EE's FPU, every sum of tests/cpu/ee_fpu's arithmetic, muldiv, sqrt, convert and compare.
+// - ee-fcr.expected: the FPU's control registers, tests/cpu/ee_fpu/fcr: what CFC1 reads, what CTC1 keeps, and the flags
+//   seven sums raise.
 // - vu-efu.expected: the vector units' EFU, tests/vu/lower/efu.
 // - vu-triace.expected: the products and sums of tests/vu/games/triace, which a game's copy protection rests on.
 //
@@ -22,6 +24,11 @@ const HERE = fileURLToPath(new URL('./ps2-console-floats/', import.meta.url));
 const WORK = join(LOCAL, 'test-ps2-console-floats');
 const read = name => readFileSync(join(HERE, name), 'utf8');
 const hex = value => (value >>> 0).toString(16).padStart(8, '0');
+// a float as the console's printf("%f") shows it
+const shown = bits => {
+  const value = new Float32Array(new Uint32Array([bits]).buffer)[0];
+  return Number.isNaN(value) ? 'NaN' : value.toFixed(6);
+};
 
 // the floats the tests name, as tests/cpu/ee_fpu/shared.h and tests/vu/lower/efu.cpp set them
 const NAMED = {
@@ -40,6 +47,40 @@ const float = text => {
 const KNOWN = new Map(['ZERO', 'NEGZERO', 'MIN_EXP', 'GARBAGE1'].map(name => [`EATAN CVF_${name}`, 0x33E60000]));
 
 const sums = [];
+// The control registers come first, as the first reads FCSR as the kit starts it. CTC1 writes each value in turn, as
+// fcr.cpp does, and then each of the seven sums runs with FCSR written 0 first. A result is the 32 registers CFC1 reads,
+// or fcr0 and fcr31 where the console printed only those, and the sum's float.
+const WRITES = [
+  ['Initial'], ['Update fcr0', 0, 0xDEADBEEF], ['Update rounding mode (RM)', 31, 0x3], ['Update flags', 31, 0x7C], ['All regs'],
+  ['Update enables', 31, 0xF80], ['Update cause', 31, 0x1F000], ['Update unimplemented (E)', 31, 0x20000],
+  ['Update flushing (FS)', 31, 0x01000000], ['Update flushing (FO)', 31, 0x00400000], ['Update flushing (FN)', 31, 0x00200000],
+  ['Update FCC', 31, 0x00800000], ['Update FCC1-7', 31, 0xFE000000], ['Update unknown', 31, 0x001C0000],
+];
+const FLAG_SUMS = [
+  ['sqrt(-1)', 'sqrt bf800000 0'], ['Divide zero by zero', 'div 0 0'], ['Divide one by zero', 'div 3f800000 0'],
+  ['NAN math', 'add 7f800001 7f800001'], ['Overflow', 'mul 7f7fffff 7f7fffff'], ['Underflow', 'div 00800000 40400000'],
+  ['Inexact', 'div 3f800000 4040ffff'],
+];
+{
+  const printed = new Map();
+  let title;
+  for (const line of read('ee-fcr.expected').split('\n')) {
+    if (/^\S.*:$/.test(line)) printed.set(title = line.slice(0, -1), {});
+    else if (/^ {2}fcr/.test(line)) printed.get(title).words = [...line.matchAll(/fcr(\d+): ([0-9a-f]{8})/g)].map(([, n, word]) => [Number(n), parseInt(word, 16)]);
+    else if (/^ {2}result = /.test(line)) printed.get(title).result = line.slice('  result = '.length);
+  }
+  const check = (title, ask) => {
+    const { words, result } = printed.get(title);
+    const differ = answer => words.filter(([n, word]) => answer[1 + n] !== word);
+    sums.push({
+      line: title, group: 'the FPU\'s control registers', ask,
+      right: (got, acc, answer) => !differ(answer).length && (result === undefined || shown(got) === result),
+      told: answer => [...differ(answer).map(([n, word]) => `fcr${n} ${hex(answer[1 + n])} where the console read ${hex(word)}`), ...(result !== undefined && shown(answer[0]) !== result ? [`a result of ${shown(answer[0])} where the console's was ${result}`] : [])].join(', '),
+    });
+  };
+  for (const [title, reg = -1, value = 0] of WRITES) check(title, `fcr ${reg} ${hex(value)} - 0 0`);
+  for (const [title, sum] of FLAG_SUMS) check(title, `fcr 31 0 ${sum}`);
+}
 for (const file of ['ee-arithmetic', 'ee-muldiv', 'ee-sqrt', 'ee-convert', 'ee-compare']) {
   for (const line of read(`${file}.expected`).split('\n')) {
     const match = /^ {2}([a-z.]+) (?:\((.*?)\) )?(.*?): (\S+)(?: \((.*?)\))?$/.exec(line);
@@ -81,24 +122,24 @@ try {
 
   const groups = new Map();
   sums.forEach((sum, i) => {
-    const [got, acc] = answers[i], group = groups.get(sum.group) ?? groups.set(sum.group, { same: 0, known: 0, wrong: [] }).get(sum.group);
+    const answer = answers[i], [got, acc] = answer, group = groups.get(sum.group) ?? groups.set(sum.group, { same: 0, known: 0, wrong: [] }).get(sum.group);
     const known = KNOWN.get(sum.line);
     if (known !== undefined && known === sum.console && !sum.right(got, acc)) group.known++;
     else if (known !== undefined) group.wrong.push(`${sum.line}: the kit now gives the console's ${hex(got)}, so it comes off the list of what's known to differ`);
-    else if (sum.right(got, acc)) group.same++;
-    else group.wrong.push(`${sum.line}: the kit gave ${hex(got)}${sum.ask.startsWith('efu') ? '' : `, ACC ${hex(acc)}`}`);
+    else if (sum.right(got, acc, answer)) group.same++;
+    else group.wrong.push(`${sum.line}: ${sum.told ? sum.told(answer) : `the kit gave ${hex(got)}${sum.ask.startsWith('efu') ? '' : `, ACC ${hex(acc)}`}`}`);
   });
   for (const [name, { same, known, wrong }] of groups) {
     console.log(`  ${wrong.length ? 'FAILED' : 'ok'}: ${name}: ${same} of ${same + known + wrong.length} as the console's${known ? `, ${known} known to differ` : ''}`);
     for (const line of wrong) console.log(`      ${line}`);
     failed += wrong.length;
   }
-  console.log(`\n${sums.length} sums a console printed, ${sums.length - failed - [...groups.values()].reduce((n, g) => n + g.known, 0)} the same on the kit.`);
+  console.log(`\n${sums.length} results a console printed, ${sums.length - failed - [...groups.values()].reduce((n, g) => n + g.known, 0)} the same on the kit.`);
 } finally {
   rmSync(WORK, { recursive: true, force: true });
 }
 if (failed) {
-  console.log(`\n${failed} of the kit's sums aren't the console's.`);
+  console.log(`\n${failed} of the kit's results aren't the console's.`);
   process.exit(1);
 }
 console.log('\nAll passed.');
