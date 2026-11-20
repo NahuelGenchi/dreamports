@@ -9,8 +9,13 @@
 #define OU (EE_FCSR_O | EE_FCSR_U)
 #define DI (EE_FCSR_D | EE_FCSR_I)
 
-uint32_t ee_fcsr;
+uint32_t ee_fcsr = EE_FCSR_ONES;
 float ee_acc;
+
+uint32_t ee_cfc1(int reg) { return reg < 16 ? 0x2E30 : ee_fcsr; }
+void ee_ctc1(int reg, uint32_t value) {
+  if (reg == 31) ee_fcsr = EE_FCSR_ONES | (value & EE_FCSR_WRITTEN);
+}
 
 static uint32_t bits_of(float value) {
   uint32_t bits;
