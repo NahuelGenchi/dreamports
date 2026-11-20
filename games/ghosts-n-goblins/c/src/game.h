@@ -202,7 +202,7 @@ void show_object(uint8_t object);      // sub_F321
 void hide_object(uint8_t object);      // sub_F346
 int object_in_view(uint8_t object);    // sub_F0A3
 /** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. `s` is the stack
- *  pointer it starts with (stack_of, below). */
+ *  pointer it starts with (stack_of, above). */
 int on_the_ground(uint8_t object, int s);
 /** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
 uint8_t free_object(void);
