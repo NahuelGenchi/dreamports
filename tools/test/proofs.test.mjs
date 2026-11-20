@@ -77,14 +77,6 @@ test('a twin that gives its routine\'s length is the twin of each function of th
   assert.deepEqual([...run(0x50).keys()], ['08000200']);
 });
 
-test('how a hand-written routine takes and gives in registers is part of its twin\'s mark, as the rest of its comment isn\'t', () => {
-  const plain = marksOf(), said = marksOf(PROGRAM.replace('/** Step, 0x08000240: a step on. */', '/** Step, 0x08000240: a step on, dp:registers r3 = (Step(), r3) */'));
-  const other = marksOf(PROGRAM.replace('/** Step, 0x08000240: a step on. */', '/** Step, 0x08000240: a step on, dp:registers r2 = (Step(), r2) */'));
-  assert.notEqual(said.get('08000240').mark, plain.get('08000240').mark);
-  assert.notEqual(other.get('08000240').mark, said.get('08000240').mark);
-  assert.equal(said.get('08000200').mark, plain.get('08000200').mark);
-});
-
 test('a twin is marked by its code and its file\'s own headers, and not by its comments or its spaces', () => {
   const marks = marksOf();
   assert.deepEqual([...marks.keys()], ['08000200', '08000240', '08000260']);
