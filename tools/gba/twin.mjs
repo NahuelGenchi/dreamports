@@ -717,7 +717,7 @@ function throughSteps(value, steps) {
 // the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
 // give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-export function sourceFor(held, bytes, now, steps, wanted, other) {
+export function sourceFor(held, bytes, now, steps, wanted, other, seen = []) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
@@ -732,6 +732,9 @@ export function sourceFor(held, bytes, now, steps, wanted, other) {
     }
     return null;
   }
+  // a word the game itself kept there in a memory of play, as a pointer to one of its own things, which no number
+  // near another is: a pointer compared with 0 is then used (#1709)
+  for (const value of seen) if (value !== held && wanted(throughSteps(read(value), steps))) return value >>> 0;
   // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
   if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
   let sign = 1, added = 0;
@@ -748,7 +751,7 @@ const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, othe
 
 // The call a witness was, with one value a comparison read changed so that the branch goes the way `wanted` says:
 // an argument, or what came from the image. Null when it can't be had that way.
-function withValue(witness, origin, now, wanted, other) {
+function withValue(witness, origin, now, wanted, other, seenAt = () => []) {
   if (origin.kind === 2) {
     if (origin.where >= witness.args.length) return null;
     const value = sourceFor(witness.args[origin.where], 4, now, origin.steps, wanted, other);
@@ -760,7 +763,7 @@ function withValue(witness, origin, now, wanted, other) {
   if (origin.kind !== 1 || ![1, 2, 4].includes(origin.bytes) || inImage(origin.where) < 0) return null;
   const { where: address, bytes } = origin;
   const set = witness.changed.find(([at, size]) => at === address && size === bytes);
-  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other);
+  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other, bytes === 4 ? seenAt(address) : []);
   if (value === null) return null;
   return { args: witness.args, changed: [...witness.changed.filter(([at]) => at !== address), [address, bytes, value]] };
 }
@@ -768,7 +771,7 @@ function withValue(witness, origin, now, wanted, other) {
 // A call aimed at one of a function's branches its calls haven't taken both ways: a call that made the comparison
 // before it, again, with one of the two values it compared changed so that the branch goes the other way. Null when
 // there's none to aim at, or no value found does it.
-function aimed(f, choose) {
+function aimed(f, choose, seenAt = () => []) {
   // the calls that made the comparison just before a branch: at most four instructions before it, the nearest first
   const witnessesOf = branch => {
     for (let pc = branch.where - 2; pc >= branch.where - 8; pc -= 2) if (f.aim.witnesses.get(pc)?.length) return f.aim.witnesses.get(pc);
@@ -783,7 +786,7 @@ function aimed(f, choose) {
     if (!origin.kind) continue;
     const now = side ? compare.b : compare.a;
     const wanted = value => holds(branch.cond, side ? compare.a : value, side ? value : compare.b, compare.test) === branch.taken;
-    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b);
+    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b, seenAt);
     if (call) return { ...call, witness };
   }
   return null;
@@ -850,7 +853,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     f.tried++;
     since++;
     // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
-    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose) : null;
+    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose, address => memories?.heldAt?.(address) ?? []) : null;
     if (aim) {
       mirror = Buffer.from(aim.witness.start);
       await original.set(mirror);
