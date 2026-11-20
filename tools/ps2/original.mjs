@@ -181,7 +181,8 @@ export async function buildCaller(log = console.log) {
   const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
   const compiler = process.env.CXX || 'c++';
-  const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash'].flatMap(folder => ['-I', join(source, folder)])];
+  // the last is the filesystem header Play! takes on a Mac, where it doesn't use the compiler's own: it comes with its source
+  const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash', 'deps/Dependencies/ghc_filesystem/include'].flatMap(folder => ['-I', join(source, folder)])];
   const objectOf = file => join(objects, `${basename(file, '.cpp')}.o`);
   const waiting = [...files.filter(file => !existsSync(objectOf(file))).map(file => [file, objectOf(file)]), [CALL, join(folder, 'call.o')]];
   if (waiting.length > 1) log('Building the PlayStation 2\'s processors from Play!\'s source, once…');
