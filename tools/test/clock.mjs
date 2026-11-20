@@ -57,6 +57,7 @@ const SKIPPED = 5;
 const again = spawnSync(CLOCK, [cartridge, String(FRAMES), String(SKIPPED)], { encoding: 'utf8' });
 const after = again.stdout.trim().split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
 const sum = after.find(line => 'compared' in line), ends = after.filter(line => 'frame' in line && line.frame > SKIPPED);
+check(ends.length >= 2 && ends.every(f => f.clock === f.emulator) && again.status === 0, `the frames after it end after the same instruction, each under its own number by the clock's count, and the clock says it's stopped and running when it is: ${ends.map(f => `${f.frame}: ${f.emulator}${f.clock === f.emulator ? '' : ` (clock ${f.clock})`}`).join(', ')}`);
 check(sum && sum.compared > 0 && sum.compared < total.compared && sum.differ === 0, `with frame ${SKIPPED} left untimed and the clock resumed after it, every instruction it's told of still starts at the emulator's time: ${sum ? `${sum.compared} compared, ${sum.differ} differ${sum.differ ? `, the first at 0x${sum.first.pc.toString(16)}, ${sum.first.clock} by the clock and ${sum.first.emulator} in the emulator` : ''}` : again.stderr}`);
 
 if (failed) {
