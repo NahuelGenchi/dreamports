@@ -435,3 +435,222 @@ draw:
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return Buffer.concat([header, text]);
 }
+
+// The sound program's own sounds, in the chip's ADPCM, 16 bytes a block: a shift and a filter, flags, and 28 samples
+// of 4 bits each, the low half of a byte first. Filter 0 takes each sample as it is, shifted up 12 bits and down
+// `shift`. Flags: 4 where a loop starts, 3 where it ends and goes back, 1 where a sound ends.
+function adpcm(samples, shift, flagsOf) {
+  const bytes = [];
+  for (let block = 0; block < samples.length / 28; block++) {
+    bytes.push(shift, flagsOf(block));
+    for (let k = 0; k < 28; k += 2) bytes.push((samples[block * 28 + k] & 15) | (samples[block * 28 + k + 1] & 15) << 4);
+  }
+  const halves = [];
+  for (let k = 0; k < bytes.length; k += 2) halves.push(bytes[k] | bytes[k + 1] << 8);
+  return halves;
+}
+
+/** Where the sound program puts its sounds in the chip's memory: a tone and a square that loop, moved there by DMA,
+ *  and a click that doesn't, written a halfword at a time; and the reverb's own memory, from REVERB on. */
+export const SOUND = { TONE_AT: 0x5000, SQUARE_AT: 0x5020, CLICK_AT: 0x6000, REVERB: 0x78000, BACKGROUND: 0x102030, BAR: 0x30C0F0 };
+
+/**
+ * What the sound program gives the sound chip, of the project's own: `loops`, a tone and a square of two blocks each
+ * that loop, moved in by DMA, `click`, four blocks of a sound that fades and ends, written a halfword at a time, and
+ * `script`, each write to the chip's registers and the frame it comes on, as two words: the frame and the register's
+ * address in the processor's top 64 KB, and the value. Frame 0 sets six voices up, each with its sound, volumes,
+ * pitch and envelope, the reverb, noise on one voice and one voice's pitch moved by another's; the frames after key
+ * voices on and off, bend a pitch, sweep a volume, turn the master volume down and the reverb off.
+ */
+export function soundList() {
+  const tone = Array.from({ length: 56 }, (_, k) => Math.round(7 * Math.sin(2 * Math.PI * k / 56)));
+  const square = Array.from({ length: 56 }, (_, k) => (k < 28 ? 5 : -5));
+  let seed = 0x5EED;
+  const random = () => {
+    seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+    return ((seed >>> 16) & 0x7FFF) / 0x4000 - 1;
+  };
+  const click = Array.from({ length: 112 }, (_, k) => Math.round(7 * random() * Math.exp(-k / 30)));
+  const looping = block => (block === 0 ? 4 : 3);
+  const loops = [...adpcm(tone, 2, looping), ...adpcm(square, 2, looping)];
+  const clickHalves = adpcm(click, 1, block => (block === 3 ? 1 : 0));
+
+  const writes = [];
+  const at = (frame, register, value) => writes.push([frame, 0x1C00 + register, value & 0xFFFF]);
+  const voice = (v, register, value, frame = 0) => at(frame, v * 0x10 + register, value);
+  const { TONE_AT, SQUARE_AT, CLICK_AT, REVERB } = SOUND;
+  // master volume, the reverb's memory and its settings, then the chip on, with the reverb and noise's clock
+  at(0, 0x180, 0x3FFF); at(0, 0x182, 0x3FFF);
+  at(0, 0x1A2, REVERB >> 3);
+  const reverb = [0x0040, 0x0020, 0x5800, 0x4400, 0xC800, 0x3400, 0xD400, 0x2800, 0x5000, 0xB000, 0x0700, 0x0680, 0x0600, 0x0580, 0x0500, 0x0480,
+    0x0400, 0x0380, 0x0340, 0x0300, 0x02C0, 0x0280, 0x0240, 0x0200, 0x01C0, 0x0180, 0x0140, 0x0100, 0x00C0, 0x0080, 0x6000, 0x6000];
+  reverb.forEach((value, k) => at(0, 0x1C0 + k * 2, value));
+  at(0, 0x184, 0x3000); at(0, 0x186, 0x3000);
+  at(0, 0x1AA, 0xE680);
+  // each voice: its volumes, pitch, sound and envelope
+  const voices = [
+    [0x3000, 0x3000, 0x1000, TONE_AT, 0x108A, 0xD82C],
+    [0x2800, 0x1400, 0x0800, TONE_AT, 0x50F4, 0x1FC4],
+    [0x3FFF, 0x3FFF, 0x1000, CLICK_AT, 0x000F, 0x1FC0],
+    [0x3800, 0x3800, 0x1000, TONE_AT, 0x000F, 0x1FC8],
+    [0x2000, 0x2000, 0x0200, SQUARE_AT, 0x000F, 0x1FC4],
+    [0x2800, 0x2000, 0x1000, TONE_AT, 0x000F, 0x1FC4],
+  ];
+  voices.forEach(([left, right, pitch, sound, low, high], v) => {
+    voice(v, 0x0, left); voice(v, 0x2, right); voice(v, 0x4, pitch); voice(v, 0x6, sound >> 3); voice(v, 0x8, low); voice(v, 0xA, high);
+  });
+  // the reverb on voices 0 and 2, noise on 3, and 5's pitch moved by 4's
+  at(0, 0x198, 0x0005); at(0, 0x194, 0x0008); at(0, 0x190, 0x0020);
+  // what happens later: keys on (0x188) and off (0x18C), never both on one frame for one voice
+  at(10, 0x188, 0x0001);
+  for (let frame = 20, k = 0; frame < 200; frame += 6, k++) voice(0, 0x4, [0x1000, 0x10C0, 0x1000, 0x0F40][k % 4], frame);
+  at(30, 0x188, 0x0002);
+  for (const frame of [50, 90, 130, 170, 210, 250]) at(frame, 0x188, 0x0004);
+  at(60, 0x188, 0x0030);
+  at(100, 0x188, 0x0008);
+  at(140, 0x18C, 0x0008);
+  at(150, 0x18C, 0x0002);
+  at(180, 0x188, 0x0002);
+  at(200, 0x18C, 0x0001);
+  at(220, 0x180, 0x2000); at(220, 0x182, 0x2000);
+  voice(1, 0x0, 0xA040, 230); voice(1, 0x8, 0x20F8, 230);
+  at(240, 0x18C, 0x0030);
+  at(260, 0x1AA, 0xE600);
+  at(270, 0x18C, 0xFFFF); at(270, 0x18E, 0x00FF);
+  writes.sort((a, b) => a[0] - b[0]);
+  const script = writes.flatMap(([frame, register, value]) => [(frame << 16 | register) >>> 0, value]);
+  script.push(0xFFFF0000, 0);
+  return { loops, click: clickHalves, script };
+}
+
+/** A program that plays soundList() on the sound chip, as the console boots it: a PS-X EXE, its words after its code.
+ *  It sets up the screen, turns the chip on, moves the tone and the square into its memory by DMA, waiting for the
+ *  move to end, and writes the click a halfword at a time; then each frame waits for the V-blank, draws a bar that
+ *  moves a pixel a frame, and makes the script's writes for the frame. */
+export async function madeUpSoundExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { loops, click, script } = soundList();
+  const { TONE_AT, CLICK_AT, BACKGROUND, BAR } = SOUND;
+  const SCRIPT_AT = LOAD + 0x400, LOOPS_AT = SCRIPT_AT + script.length * 4, CLICK_RAM = LOOPS_AT + loops.length * 2;
+  const made = assemble(`
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE5000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xC000
+	sh	$t1, 0x1DAA($t0)
+	li	$t1, ${TONE_AT >> 3}
+	sh	$t1, 0x1DA6($t0)
+	li	$t1, 4
+	sh	$t1, 0x1DAC($t0)
+	li	$t1, 0xC020
+	sh	$t1, 0x1DAA($t0)
+	lw	$t1, 0x10F0($t0)
+	lui	$t2, 0x0008
+	or	$t1, $t1, $t2
+	sw	$t1, 0x10F0($t0)
+	li	$t1, ${LOOPS_AT}
+	sw	$t1, 0x10C0($t0)
+	li	$t1, ${1 << 16 | loops.length / 2}
+	sw	$t1, 0x10C4($t0)
+	li	$t1, 0x01000201
+	sw	$t1, 0x10C8($t0)
+dma:
+	lw	$t1, 0x10C8($t0)
+	nop
+	srl	$t1, $t1, 24
+	andi	$t1, $t1, 1
+	bnez	$t1, dma
+	nop
+	li	$t1, 0xC000
+	sh	$t1, 0x1DAA($t0)
+	li	$t1, ${CLICK_AT >> 3}
+	sh	$t1, 0x1DA6($t0)
+	li	$t1, 0xC010
+	sh	$t1, 0x1DAA($t0)
+	li	$t3, ${CLICK_RAM}
+	li	$t4, ${click.length}
+fifo:
+	lhu	$t1, 0($t3)
+	addiu	$t3, $t3, 2
+	addiu	$t4, $t4, -1
+	sh	$t1, 0x1DA8($t0)
+	bnez	$t4, fifo
+	nop
+	li	$t1, 0xC000
+	sh	$t1, 0x1DAA($t0)
+	li	$t3, ${SCRIPT_AT}
+	move	$s0, $zero
+wait:
+	lw	$t1, 0x1070($t0)
+	nop
+	andi	$t1, $t1, 1
+	beqz	$t1, wait
+	nop
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	li	$t1, ${0x02000000 | BACKGROUND}
+	sw	$t1, 0x1810($t0)
+	sw	$zero, 0x1810($t0)
+	li	$t1, ${240 << 16 | 320}
+	sw	$t1, 0x1810($t0)
+	li	$t1, ${0x60000000 | BAR}
+	sw	$t1, 0x1810($t0)
+	andi	$t2, $s0, 0xFF
+	lui	$t5, 100
+	or	$t2, $t2, $t5
+	sw	$t2, 0x1810($t0)
+	li	$t1, ${16 << 16 | 8}
+	sw	$t1, 0x1810($t0)
+next:
+	lw	$t1, 0($t3)
+	nop
+	srl	$t2, $t1, 16
+	bne	$t2, $s0, done
+	nop
+	lw	$t5, 4($t3)
+	andi	$t1, $t1, 0xFFFF
+	addu	$t1, $t1, $t0
+	sh	$t5, 0($t1)
+	b	next
+	addiu	$t3, $t3, 8
+done:
+	addiu	$s0, $s0, 1
+	b	wait
+	nop
+`);
+  const code = Buffer.from(made.sections.get('.text').bytes);
+  if (code.length > 0x400) throw new Error('The sound program\'s code is longer than the room before its words.');
+  const size = Math.ceil((0x400 + script.length * 4 + (loops.length + click.length) * 2) / 2048) * 2048, text = Buffer.alloc(size);
+  code.copy(text);
+  script.forEach((word, n) => text.writeUInt32LE(word >>> 0, 0x400 + n * 4));
+  [...loops, ...click].forEach((half, n) => text.writeUInt16LE(half, LOOPS_AT - LOAD + n * 2));
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}

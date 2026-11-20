@@ -1,5 +1,5 @@
-// The kit's own: the C library's string.h, for psx_gpu, as the kit's C library has it built to WebAssembly
-// (kit/c/libc.c), and the computer's own anywhere else.
+// The kit's own: the C library's string.h, for psx_gpu and dfsound, as the kit's C library has it built to
+// WebAssembly (kit/c/libc.c), and the computer's own anywhere else.
 #ifndef __wasm__
 #include_next <string.h>
 #elif !defined(DREAMPORTS_STRING_H)

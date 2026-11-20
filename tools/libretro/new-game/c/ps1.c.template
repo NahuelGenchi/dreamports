@@ -29,5 +29,5 @@ void game_step(uint32_t buttons) {
 // its picture: what the screen shows of video memory
 void game_draw(void) { gpu_show(); }
 
-// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
-void game_sound(float *left, float *right, int count) {}
+// its sound, CONSOLE_SOUND_RATE samples a second: the sound chip's, silent until the game writes it as the original does
+void game_sound(float *left, float *right, int count) { spu_sound(left, right, count); }

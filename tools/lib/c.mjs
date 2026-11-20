@@ -47,11 +47,12 @@ const OWN = {
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
-  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c'], header: true,
-    // psx_gpu, which draw.c builds as one with itself, in a folder of its own that isn't on the include path
-    trees: ['psx_gpu'],
-    // the few C library headers psx_gpu takes, which the kit built to WebAssembly has no other of
-    includes: ['psx_gpu/libc'] },
+  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c'], header: true,
+    // psx_gpu, which draw.c builds as one with itself, and dfsound, which sound.c does, each in a folder of its own that
+    // isn't on the include path
+    trees: ['psx_gpu', 'dfsound'],
+    // the few C library headers psx_gpu and dfsound take, which the kit built to WebAssembly has no other of
+    includes: ['libc'] },
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },

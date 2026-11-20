@@ -1,4 +1,4 @@
-// What the PlayStation kit's own files share (gpu.c, draw.c, ps1.c), which a game doesn't need.
+// What the PlayStation kit's own files share (gpu.c, draw.c, sound.c, ps1.c), which a game doesn't need.
 
 #ifndef DREAMPORTS_PS1_KIT_H
 #define DREAMPORTS_PS1_KIT_H
@@ -6,8 +6,8 @@
 #include "ps1.h"
 #include "kit.h"
 
-// Around the emulator's own code the kit carries as it is, psx_gpu, which draw.c includes: what a compiler would warn
-// of in it says nothing of a Dreamport's own C, so it isn't said.
+// Around the emulator's own code the kit carries as it is, psx_gpu and dfsound, which draw.c and sound.c include:
+// what a compiler would warn of in it says nothing of a Dreamport's own C, so it isn't said.
 #if defined(__clang__)
 #define EMULATOR_CODE _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Weverything\"")
 #define END_EMULATOR_CODE _Pragma("clang diagnostic pop")
@@ -22,6 +22,8 @@
 
 /** Puts the GPU as the console starts it: nothing shown, and video memory as it was. */
 void gpu_power(void);
+/** Puts the sound chip as the console's BIOS leaves it when it starts a game, with nothing heard yet. */
+void spu_power(void);
 
 // What the GPU draws with (draw.c): psx_gpu, as PCSX ReARMed draws with it.
 /** How many words each GP0 command has after its first, as the emulator's gpulib counts them. */

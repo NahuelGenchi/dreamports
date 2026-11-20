@@ -11,6 +11,7 @@ static float sound[SOUND_MAX * 2];
 /** Starts the game. */
 EXPORT("dp_start") void dp_start(void) {
   gpu_power();
+  spu_power();
   game_start();
 }
 /** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). */
