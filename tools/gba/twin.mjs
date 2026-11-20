@@ -392,6 +392,11 @@ function kitBuilt(id) {
     kits.set(id, (async () => {
       const kit = cKit(id), flags = flagsFor(kit);
       const tree = Object.fromEntries(kit.folders.map((folder, i) => [String(i), treeOf(folder, false)]));
+      // a folder the kit's own files include from by its path, as the PlayStation's psx_gpu/, inside its folder
+      for (const inside of kit.trees ?? []) {
+        const i = kit.folders.findIndex(folder => !relative(folder, dirname(inside)));
+        if (i >= 0) tree[String(i)][basename(inside)] = treeOf(inside);
+      }
       const includes = kit.folders.flatMap((_, i) => ['-I', `${KIT}/${i}`]);
       const objects = {}, defines = new Set();
       for (const source of kit.sources) {

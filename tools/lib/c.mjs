@@ -15,7 +15,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONSOLES } from '../../kit/consoles.js';
 import { LOCAL, REPO } from './paths.mjs';
@@ -47,7 +47,11 @@ const OWN = {
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
-  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
+  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c'], header: true,
+    // psx_gpu, which draw.c builds as one with itself, in a folder of its own that isn't on the include path
+    trees: ['psx_gpu'],
+    // the few C library headers psx_gpu takes, which the kit built to WebAssembly has no other of
+    includes: ['psx_gpu/libc'] },
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
@@ -117,7 +121,7 @@ export function cKit(id) {
   const disc = CONSOLES[id].disc ? [base('disc.c')] : [];
   if (own && !own.header) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
   }
   // console.h, written where the tools keep what they make, once it says something new
   const made = join(LOCAL, 'c', id);
@@ -128,7 +132,7 @@ export function cKit(id) {
   }
   if (own) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...(own.generalPage ? [base('console.c')] : []), ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, made, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
   return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
@@ -144,11 +148,15 @@ export const WASM_FLAGS = ['--target=wasm32', '-ffreestanding', '-nostdlib', '-m
 const FLAGS = ['-std=c11', ...SAME_FLAGS, '-Wall', '-Wextra', '-Wno-unused-parameter'];
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
-// every .c and .h file in the folders the sources are in and in the kit's, in folders as they are in the repository,
-// for the compiler's own
+// a kit's folders that its own files include from by their path, without them being on the include path
+const TREES = Object.values(OWN).flatMap(own => (own.trees ?? []).map(name => ({ kit: resolve(own.folder), folder: join(own.folder, name) })));
+
+// every .c and .h file in the folders the sources are in and in the kit's, and in the folders a kit's own files include
+// from by their path, in folders as they are in the repository, for the compiler's own
 function filesFor(sources, folders) {
-  const tree = {};
-  for (const folder of new Set([...folders, ...sources.map(dirname)])) {
+  const tree = {}, all = [...folders, ...sources.map(dirname)];
+  const trees = TREES.filter(each => all.some(folder => resolve(folder) === each.kit)).map(each => each.folder);
+  for (const folder of new Set([...all, ...trees])) {
     let place = tree;
     for (const part of relative(REPO, folder).split(sep).filter(Boolean)) place = place[part] ??= {};
     for (const name of readdirSync(folder)) if (/\.[ch]$/.test(name)) place[name] = readFileSync(join(folder, name));
