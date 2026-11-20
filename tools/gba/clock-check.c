@@ -58,7 +58,13 @@ static uint32_t storeMultiple(struct ARMCore* c, uint32_t a, int m, enum LSMDire
 static uint64_t emulatorEnds[FRAMES], clockEnds[FRAMES];
 static uint32_t emulatorPcs[FRAMES];
 static int emulatorFrames, clockFrames;
-static void clockEnded(void) { if (clockFrames < FRAMES) clockEnds[clockFrames++] = gba_clock_started(); }
+// each by the clock's own count of frames, so one it wasn't told of leaves its place empty
+static void clockEnded(void) {
+	int f = (int) gba_clock_frame() - 1;
+	if (f >= 0 && f < FRAMES) clockEnds[f] = gba_clock_started();
+	if (f + 1 > clockFrames) clockFrames = f + 1;
+}
+static int runningWrong;
 
 int main(int argc, char** argv) {
 	if (argc < 3) { fprintf(stderr, "clock-check CARTRIDGE FRAMES\n"); return 2; }
@@ -111,8 +117,8 @@ int main(int argc, char** argv) {
 		if (skip >= 0) {
 			int was = jumped;
 			jumped = next != pc + (thumb ? WORD_SIZE_THUMB : WORD_SIZE_ARM);
-			if (!skipping && emulatorFrames == skip && !ended) { skipping = 1; gba_clock_stop(); }
-			if (skipping == 1 && emulatorFrames > skip && was && pc >= 0x4000) { skipping = 2; gba_clock_resume(start); }
+			if (!skipping && emulatorFrames == skip && !ended) { skipping = 1; gba_clock_stop(); runningWrong |= gba_clock_running(); }
+			if (skipping == 1 && emulatorFrames > skip && was && pc >= 0x4000) { skipping = 2; gba_clock_resume(start); runningWrong |= !gba_clock_running(); }
 			if (skipping == 1) continue;
 		}
 		if (pc < 0x4000) continue;   // the BIOS's own code: the clock times it itself
@@ -137,8 +143,10 @@ int main(int argc, char** argv) {
 		compared++;
 		if (gba_clock_started() != start && !differ++) { firstPc = pc; firstOp = op; firstClock = gba_clock_started(); firstEmulator = start; }
 	}
-	int framesDiffer = 0;
+	int framesDiffer = runningWrong;
 	for (int f = 0; f < emulatorFrames; f++) {
+		// a frame the clock wasn't told of has no end of its own to compare
+		if (f == skip) continue;
 		int same = f < clockFrames && clockEnds[f] == emulatorEnds[f];
 		if (!same) framesDiffer++;
 		printf("{\"frame\":%d,\"pc\":%u,\"emulator\":%llu,\"clock\":%lld}\n", f, emulatorPcs[f], (unsigned long long) emulatorEnds[f], f < clockFrames ? (long long) clockEnds[f] : -1LL);
