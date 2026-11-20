@@ -194,9 +194,10 @@ static void draw_column(void) {
   uint8_t at = 3, side = AT_X & 8 ? 1 : 0, lower = AT_Y & 8;
   RAM[0x22] = 0;
   took(COLUMN_LIST_BEGINS);
-  find_block_tiles(stack_of(TASK_VIEW, 2));
+  find_block_tiles(call_from(stack_of(TASK_VIEW, 1), 0xE7B5));
   took(lower ? COLUMN_STARTS_LOWER : COLUMN_STARTS_UPPER);
   for (;;) {
+    int next_screen = 0;
     if (!lower) {
       column_tile(&at, side);
       if (++RAM[0x22] == 30) break;
@@ -218,12 +219,13 @@ static void draw_column(void) {
       RAM[COLUMN + at++] = RAM[COLUMN + 1] & 0x1F;
       RAM[0x23] = at++;
       AT_Y = 0;
+      next_screen = 1;
       took(COLUMN_NEXT_SCREEN);
       screen_blocks((uint8_t)(SCREEN_AT + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2))));
       took(SCREEN_BLOCKS);
       took(CALLS);
     }
-    find_block_tiles(stack_of(TASK_VIEW, 2));
+    find_block_tiles(call_from(stack_of(TASK_VIEW, 1), next_screen ? 0xE82B : 0xE7FA));
     took(COLUMN_ROUND);
   }
   took(COLUMN_TILES_DONE);
@@ -275,9 +277,10 @@ static void draw_row(void) {
   uint8_t at = 3, lower = AT_Y & 8 ? 2 : 0, right = AT_X & 8;
   RAM[0x22] = RAM[0x24] = 0;
   took(ROW_LIST_BEGINS);
-  find_block_tiles(stack_of(TASK_VIEW, 2));
+  find_block_tiles(call_from(stack_of(TASK_VIEW, 1), 0xE8A6));
   took(right ? ROW_STARTS_RIGHT : ROW_STARTS_LEFT);
   for (;;) {
+    int next_screen = 0;
     if (!right) {
       row_tile(&at, lower);
       if (RAM[0x22] == 35) break;
@@ -303,12 +306,13 @@ static void draw_row(void) {
       at++;
       RAM[0x23] = at++;
       AT_X = 0;
+      next_screen = 1;
       took(ROW_NEXT_SCREEN);
       screen_blocks((uint8_t)(SCREEN_AT + 1));
       took(SCREEN_BLOCKS);
       took(CALLS);
     }
-    find_block_tiles(stack_of(TASK_VIEW, 2));
+    find_block_tiles(call_from(stack_of(TASK_VIEW, 1), next_screen ? 0xE92B : 0xE8F9));
     took(JUMPS);
   }
   took(ROW_TILES_DONE);

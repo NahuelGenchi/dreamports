@@ -29,6 +29,7 @@ uint8_t orig_ram[0x800];
 twin_events orig_events;
 int orig_bank, orig_astray, orig_bank_reads;
 uint8_t orig_stored[0x100], orig_read[0x800];
+uint8_t orig_lowest;
 // which of the program's instructions a call ran, by where each is in the program, and how each went on, so the
 // check can say which of the function's paths its calls took: for a branch, taken or not
 uint32_t *orig_ran_at;
@@ -108,6 +109,7 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   orig_ram[0x100 | (uint8_t)(s + 2)] = (RETURN_TO - 1) >> 8;
   orig_ram[0x100 | (uint8_t)(s + 1)] = (RETURN_TO - 1) & 0xFF;
   X.S = s;
+  orig_lowest = s;
   X.PC = pc;
   uint32_t began = timestamp;
   long steps = 0;
@@ -117,6 +119,7 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
     uint32_t place = pc < 0x8000 ? prg_size : pc < 0xC000 ? ((uint32_t)orig_bank * 0x4000 + (pc - 0x8000)) % prg_size : prg_size - 0x4000 + (pc - 0xC000);
     X.count = 0;      // one instruction a time
     X6502_Run(1);
+    if ((uint8_t)(s - X.S) < 0x80 && (uint8_t)(s - X.S) > (uint8_t)(s - orig_lowest)) orig_lowest = X.S;
     if (orig_ran_ways && place < prg_size) {
       if (!orig_ran_ways[place]) orig_ran_at[orig_ran_count++] = place;
       // a branch is two bytes long, so it wasn't taken when the next instruction is the one after it

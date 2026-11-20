@@ -265,16 +265,16 @@ static void block_place(uint8_t object, int16_t ahead, uint8_t down, cost across
   RAM[0x77]++;
   took(BIG_PLACE_NEXT_DONE);
 }
-static int way_shut(uint8_t object) {
+static int way_shut(uint8_t object, uint16_t at) {
+  int s = call_from(stack_of(TASK_OBJECTS, 2), at);   // the stack pointer sub_04_AE24 runs with
   int right = RAM[OBJECT_HEADING + object] == 0x04;
   if (object >= 0x0F) took(READ_PAST_PAGE);
   if (right) block_place(object, 2, 0x10, BIG_FLOOR_X_RIGHT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_RIGHT);   // sub_FFAC
   else block_place(object, -2, 0x10, BIG_FLOOR_X_LEFT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_LEFT);         // sub_FFBE
-  // sub_04_AE24 is called from the big man's routine, and calls these
-  if (block_at_stage_place(stack_of(TASK_OBJECTS, 4)) < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
+  if (block_at_stage_place(call_from(s, right ? 0xAE2B : 0xAE3B)) < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
   if (right) block_place(object, 8, 4, BIG_WALL_X, BIG_WALL_SCREEN_RIGHT, BIG_WALL_SCREEN_DOWN);   // sub_E9F1
   else block_place(object, -8, 4, BIG_WALL_X, BIG_WALL_SCREEN_LEFT, BIG_WALL_SCREEN_DOWN);         // sub_EA01
-  if (block_at_stage_place(stack_of(TASK_OBJECTS, 4)) >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
+  if (block_at_stage_place(call_from(s, right ? 0xAE32 : 0xAE42)) >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
   took(right ? BIG_NO_WALL_RIGHT : BIG_NO_WALL_LEFT);
   return 0;
 }
@@ -342,7 +342,7 @@ static void walks(uint8_t object) {
   uint8_t *count = &RAM[OBJECT_COUNT + object], *heading = &RAM[OBJECT_HEADING + object];
   if (flag(object, THROWS)) { took(BIG_WALK_THROWS); throws_down(object); return; }
   took(BIG_WALKS);
-  if (way_shut(object)) {
+  if (way_shut(object, 0xACB6)) {
     RAM[OBJECT_FLAGS + object] ^= FACES_LEFT;
     took(BIG_TURNS);
     flags_read(object);
@@ -453,7 +453,7 @@ static void on_his_floor(uint8_t object) {
     return;
   }
   took(BIG_FLOOR_NOT_THROWING);
-  if (way_shut(object)) { took(BIG_FLOOR_WAY_SHUT); return; }
+  if (way_shut(object, 0xAE16)) { took(BIG_FLOOR_WAY_SHUT); return; }
   took(BIG_FLOOR_STEPS);
   move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
 }

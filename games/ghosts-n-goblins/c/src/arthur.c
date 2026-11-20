@@ -168,13 +168,13 @@ static uint8_t block_at_him(uint8_t below, int s) {
     RAM[0x77]++;
     took(BLOCK_BELOW_ARTHUR_NEXT_SCREEN);
   }
-  return block_at_stage_place(s);
+  return block_at_stage_place(s);   // after $EA2F's or $E9CE's first part
 }
 
 // sub_DC3E and sub_DC38: whether a ladder is at his place, or under his feet. A ladder's blocks are $BA to $CF.
 static int ladder(int under) {
   took(CALLS);
-  uint8_t block = block_at_him(under ? 0x0B : 0, stack_of(TASK_ARTHUR, 2));
+  uint8_t block = block_at_him(under ? 0x0B : 0, call_from(stack_of(TASK_ARTHUR, 1), under ? 0xDC38 : 0xDC3E));
   if (under) took(JUMPS);
   took(block < 0xBA ? LADDER_BLOCK_BELOW_ITS : block < 0xD0 ? LADDER_BLOCK_IS : LADDER_BLOCK_PAST_ITS);
   return block >= 0xBA && block < 0xD0;
@@ -372,7 +372,7 @@ static wait jump(uint8_t *step) {
       *step = COUNT ? RISE : FALL;
       break;
     case FALL:
-      if (on_the_ground(ARTHUR, stack_of(TASK_ARTHUR, 2))) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 1), 0xE23C))) {
         stand_on_block();
         took(JUMP_LANDS);
         *step = BEGIN;
@@ -398,7 +398,7 @@ static wait jump(uint8_t *step) {
       break;
     case LONG_FALL:
       // $E265
-      if (on_the_ground(ARTHUR, stack_of(TASK_ARTHUR, 2))) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 1), 0xE265))) {
         stand_on_block();
         took(JUMP_LANDS_LATE);
         *step = BEGIN;
@@ -524,7 +524,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         down = 1;
       } else {
         took(STAGE_JUMP_NOT_HELD);
-        if (on_the_ground(ARTHUR, stack_of(TASK_ARTHUR, 1))) {
+        if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), long_fall ? 0xDEA9 : 0xDE66))) {
           stand_on_block();
           took(STAGE_JUMP_LANDS);
           down = 1;
@@ -800,7 +800,7 @@ wait arthur_task(void) {
       }
       took(ARTHUR_TURN_CHECKS);
       if (FLAGS & HELD) took(ARTHUR_HELD);
-      else if (!on_the_ground(ARTHUR, stack_of(TASK_ARTHUR, 1))) {
+      else if (!on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), 0xDAFE))) {
         took(ARTHUR_IN_AIR);
         *step = STAGE_FALLS;
         break;
@@ -947,7 +947,7 @@ wait arthur_task(void) {
         break;
       }
       took(LADDER_DOWN_LOOKS);
-      uint8_t block = block_at_him(0x0B, stack_of(TASK_ARTHUR, 1));
+      uint8_t block = block_at_him(0x0B, call_from(stack_of(TASK_ARTHUR, 0), 0xDD6A));
       if (block >= 0xD0) {
         took(LADDER_DOWN_NO_LADDER);
         *step = CROUCH;
@@ -1058,7 +1058,7 @@ wait arthur_task(void) {
       // $E28E: 6 pixels a round until he's on the ground. Off the bottom of the picture, at $E2AD, isn't ported yet. dp:stop sub_E2AD
       took(ARTHUR_FALL_CHECKS);
       if (FLAGS & HELD) { took(ARTHUR_FALL_HELD); *step = STAGE_STANDS; break; }
-      if (on_the_ground(ARTHUR, stack_of(TASK_ARTHUR, 1))) {
+      if (on_the_ground(ARTHUR, call_from(stack_of(TASK_ARTHUR, 0), 0xE29B))) {
         stand_on_block();
         took(ARTHUR_LANDS);
         *step = STAGE_STANDS;
@@ -1193,7 +1193,7 @@ wait arthur_task(void) {
       RAM[0x77] = Y_SCREEN;
       RAM[0x73] = (uint8_t)(Y + 4);
       took(BLOCK_BEHIND_ARTHUR);
-      uint8_t block = block_at_stage_place(stack_of(TASK_ARTHUR, 1));   // $DAEB jumps to $E423 at his task's top
+      uint8_t block = block_at_stage_place(call_from(stack_of(TASK_ARTHUR, 0), 0xE4C1));   // $DAEB jumps to $E423 at his task's top
       if (block >= 0x60 && block < 0x70) {
         RAM[0xBF] = 0xFF;
         took(GATE_REACHED);

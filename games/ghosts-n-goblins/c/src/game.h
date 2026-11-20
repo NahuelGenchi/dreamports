@@ -110,6 +110,9 @@ static inline void call_pushes(int s, uint16_t at) {
 }
 /** The stack pointer a routine at `s` calls the next one with. */
 static inline int call_down(int s) { return s == S_NOT_FOLLOWED ? s : (uint8_t)(s - 2); }
+/** The original's JSR at `at`, from a routine at the stack pointer `s`: what it pushes is written, and the stack pointer
+ *  the routine it calls starts with is given back. */
+static inline int call_from(int s, uint16_t at) { call_pushes(s, at); return call_down(s); }
 enum { TASK_READY = 0x80, TASK_ASLEEP = 0xC0, TASK_FREE = 0x00 };
 #define TASK_SLEEP(task) (0x12 + (task))  // how many V-blanks more a sleeping task sleeps, 16 bits
 #define FRAMES_SINCE_ROUND RAM[0x4E]   // counted by V-blank, and cleared as a round starts
@@ -272,7 +275,7 @@ void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object);
 /** sub_04_BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
-void key(uint8_t object);
+void key(uint8_t object, uint8_t y);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object);
 void boss_shot(uint8_t object);

@@ -18,7 +18,9 @@
 #include "nes.h"
 #include "check.h"
 
-enum { MOST_DRAWS = 4000, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
+// MOST_DRAWS: the registers tried for one call before its `if` is taken to say no, enough for an `if` that holds one
+// stack pointer and one register in 25
+enum { MOST_DRAWS = 1 << 17, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
 // the stack pointer a call starts with when its twin isn't given it: below where a game's stack starts, at $01FF
 enum { STACK_AT = 0xDE };
 
@@ -164,10 +166,14 @@ static void run(tally *out, long calls, int changed) {
     if (how) out->not_back++;
 
     // every byte of the work memory. In the stack's page, what the original pushed and left behind isn't the game's
-    // memory, so a byte there counts only if the original stored to it or the twin changed it.
+    // memory, so a byte there counts only if the original stored to it or the twin changed it. And the bytes from
+    // where the call came back to down to the lowest its stack went are where its calls' return addresses were, free
+    // once it has returned, as the next call pushes there: a twin that writes there what its original's calls pushed,
+    // for a read through a pointer to find, can leave there what the original's later calls pushed over it.
     int at = -1, apart = 0;
+    uint8_t frames = (uint8_t)(entry.S + 2 - orig_lowest);
     for (int j = 0; j < 0x800; j++) {
-      if ((j & 0x700) == 0x100 && !orig_stored[j & 0xFF] && nes_ram[j] == start[j]) continue;
+      if ((j & 0x700) == 0x100 && !orig_stored[j & 0xFF] && (nes_ram[j] == start[j] || (uint8_t)(entry.S + 2 - j) < frames)) continue;
       if (left_out[j]) continue;
       if (nes_ram[j] != orig_ram[j]) { apart++; out->differs[j]++; if (at < 0) at = j; }
     }

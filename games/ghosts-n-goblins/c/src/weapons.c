@@ -38,8 +38,8 @@ static void spent_weapon(uint8_t object) {
 }
 
 // sub_E9CA, with its call: the block four pixels above an object's place, on the screen above, at $E9E5, when they're
-// above its screen's top. Counted a write at a time.
-static uint8_t block_above(uint8_t object) {
+// above its screen's top. Counted a write at a time. `at` is the weapon's call of it.
+static uint8_t block_above(uint8_t object, uint16_t at) {
   took(WEAPON_BLOCK_ABOVE);
   RAM[0x22] = 4;
   took(WEAPON_BLOCK_ROW);
@@ -57,7 +57,7 @@ static uint8_t block_above(uint8_t object) {
   took(WEAPON_BLOCK_ROW);
   RAM[0x74] = RAM[OBJECT_X + object];
   took(WEAPON_BLOCK_PLACED);
-  return block_at_stage_place(stack_of(TASK_OBJECTS, 3));
+  return block_at_stage_place(call_from(stack_of(TASK_OBJECTS, 2), at));   // $E9CA jumps on into $EA55
 }
 
 // $EB90: a weapon flies at `speed` the way it heads, and is gone out of the view, spent once it's hit something, or
@@ -81,7 +81,7 @@ static void fly(uint8_t object, uint8_t speed) {
     return;
   }
   took(WEAPON_NOT_SPENT);
-  uint8_t block = block_above(object);
+  uint8_t block = block_above(object, 0xEBA5);
   if (block != 0xD0 && block != 0xDF) { took(WEAPON_FLIES_ON); return; }
   // $EBB0: one of a gravestone's two blocks stops it, with a sound
   took(block == 0xD0 ? WEAPON_STOPPED_BY_D0 : WEAPON_STOPPED_BY_DF);
@@ -132,7 +132,7 @@ void axe(uint8_t object) {
   took(AXE_COLOURS);
   RAM[OBJECT_COLOURS + object] = 1;
   took(AXE_COLOURS_STORED);
-  uint8_t block = block_above(object);
+  uint8_t block = block_above(object, 0xECE5);
   if (block < 0xC6) { took(AXE_NOT_SOLID); fly(object, 0x22); return; }
   if (block != 0xD0 && block != 0xDF) { took(AXE_SOLID); fly(object, 0x22); return; }
   // $ECF4: a gravestone's block, and it's spent at once
