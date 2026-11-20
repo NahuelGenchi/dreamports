@@ -14,7 +14,11 @@
 // the first button held when it reads the second port, where nothing is held. A fifth (madeUpClockExe) takes
 // interrupts with a handler of its own, from two root counters and the V-blank, and draws how many it has counted: its
 // Dreamport in C (ps1-kit/clock.c) has to be the same in all 300 frames, and be found at once when counter 0's target
-// is 5,000 cycles longer, so it interrupts once less before the first V-blank.
+// is 5,000 cycles longer, so it interrupts once less before the first V-blank. A sixth (madeUpCdExe) boots from a disc
+// of the test's own, a BIN and its .cue (madeUpCdDisc), gives the CD drive a script of commands, one or two a frame,
+// and logs and draws every interrupt and answer, each sector's first bytes taken one at a time and the sum of its words
+// moved by DMA: its Dreamport in C (ps1-kit/cd.c), reading the same disc, has to be the same in all 300 frames, and be
+// found where its first sector shows when it reads from one sector on, or at single speed.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -22,13 +26,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { CLOCK, GPU, PAD, SOUND, drawList, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
+import { CD, CLOCK, GPU, PAD, SOUND, cdScript, cdTime, drawList, madeUpCdDisc, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
 
 const GAME = 'test-ps1-kit', VERSION = `${GAME}/c`;
 const DRAWING = 'test-ps1-kit-draw', DRAWN = `${DRAWING}/c`;
 const SOUNDING = 'test-ps1-kit-sound', SOUNDED = `${SOUNDING}/c`;
 const PADDING = 'test-ps1-kit-pad', PADDED = `${PADDING}/c`;
 const TIMING = 'test-ps1-kit-clock', TIMED = `${TIMING}/c`;
+const READING = 'test-ps1-kit-cd', READ = `${READING}/c`;
 const WORK = join(LOCAL, 'test-ps1-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -51,7 +56,7 @@ const tracked = () => spawnSync('git', ['status', '--porcelain', '--untracked-fi
 
 function tidy() {
   const kept = existsSync(MEDIA) ? readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file)) : [];
-  for (const game of [GAME, DRAWING, SOUNDING, PADDING, TIMING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
+  for (const game of [GAME, DRAWING, SOUNDING, PADDING, TIMING, READING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
   for (const path of [WORK, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
@@ -62,12 +67,18 @@ function writeGame(changes = []) {
   writeFileSync(join(gameFolder(VERSION), 'src', 'main.c'), code);
 }
 
-// a game of the test's own in games/, with the program `exe` as its copy, and `more` in its original.json, which rom
-// knows, its code map, its first files in JavaScript and in C, and a recording of 300 frames with nothing held
+// a game of the test's own in games/, with the program `exe` as its copy, or a disc, { bin, cue }, and `more` in its
+// original.json, which rom knows, its code map, its first files in JavaScript and in C, and a recording of 300 frames
+// with nothing held
 async function makeGame(game, version, exe, name, more = {}) {
-  const copy = join(WORK, `${game}.exe`);
-  writeFileSync(copy, exe);
-  const original = { console: 'ps1', name, title: game, code: '', sha1: createHash('sha1').update(exe).digest('hex'), ...more };
+  let copy = join(WORK, `${game}.exe`);
+  if (Buffer.isBuffer(exe)) writeFileSync(copy, exe);
+  else {
+    writeFileSync(join(WORK, `${game}.bin`), exe.bin);
+    writeFileSync(copy = join(WORK, `${game}.cue`), exe.cue);
+  }
+  const bytes = Buffer.isBuffer(exe) ? exe : exe.bin;
+  const original = { console: 'ps1', name, title: game, code: '', sha1: createHash('sha1').update(bytes).digest('hex'), ...more };
   mkdirSync(join(proofFolder(game), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(game), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
@@ -116,6 +127,16 @@ function writeClock(target = CLOCK.TARGET_0) {
   const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'clock.c'), 'utf8').replace('@TARGET_0@', hex(target)).replace('@TARGET_2@', hex(CLOCK.TARGET_2))
     .replace('@BACKGROUND@', hex(CLOCK.BACKGROUND)).replace(/@BAR_(\d)@/g, (_, n) => hex(CLOCK.BARS[n]));
   writeFileSync(join(gameFolder(TIMED), 'src', 'main.c'), code);
+}
+
+// the CD program's Dreamport in C, with its script and numbers, and the parameters of the command its script gives at
+// frame `frame`, if it's given, put as `parameters` instead
+function writeCd({ frame = -1, parameters = [] } = {}) {
+  const hex = value => `0x${value.toString(16).toUpperCase()}`, script = cdScript();
+  for (let at = 0; at < script.length; at += 8) if ((script[at] | script[at + 1] << 8) === frame) script.splice(at + 4, parameters.length, ...parameters);
+  const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'cd.c'), 'utf8').replace('@SCRIPT@', script.map(hex).join(', '))
+    .replace(/@([A-Z_]+)@/g, (_, key) => hex(CD[key]));
+  writeFileSync(join(gameFolder(READ), 'src', 'main.c'), code);
 }
 
 async function main() {
@@ -187,6 +208,21 @@ async function main() {
     writeClock(CLOCK.TARGET_0 + 5000);
     run = dp('prove', TIMED, 'still');
     check(run.status !== 0 && report(TIMED).firstDifference?.frame === 0, `with counter 0's target 5,000 cycles longer, it differs at once: ${JSON.stringify(report(TIMED).firstDifference)}`);
+
+    console.log('The CD drive: commands, answers and sectors from a disc of the test\'s own:');
+    await makeGame(READING, READ, await madeUpCdDisc(READING), 'Test PlayStation CD (World)');
+    writeCd();
+    run = dp('prove', READ, 'still');
+    if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
+    check(run.status === 0 && report(READ).frames === FRAMES && !report(READ).firstDifference, `all ${FRAMES} frames the same as the emulator's: ${run.out.trim().split('\n').at(-1)}`);
+    // the first sector read, at double speed, comes 44,000 cycles into frame 16, after the drive's seek and the half a
+    // sector's time it reads its subchannel ahead, and its sum shows in that frame's picture
+    writeCd({ frame: 13, parameters: cdTime(CD.DATA_AT + 1) });
+    run = dp('prove', READ, 'still');
+    check(run.status !== 0 && report(READ).firstDifference?.frame === 16, `reading from one sector on, it differs at frame 16, where the first sector's sum shows: ${JSON.stringify(report(READ).firstDifference)}`);
+    writeCd({ frame: 12, parameters: [0x00] });
+    run = dp('prove', READ, 'still');
+    check(run.status !== 0 && report(READ).firstDifference?.frame === 16, `reading at single speed, it differs at frame 16 too, where the first sector hasn't come yet: ${JSON.stringify(report(READ).firstDifference)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
@@ -198,7 +234,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe PlayStation\'s kit draws, sounds, reads its pads and keeps the console\'s time as the console does, every frame.');
+  console.log('\nThe PlayStation\'s kit draws, sounds, reads its pads and its CD and keeps the console\'s time as the console does, every frame.');
 }
 
 main().catch(error => {

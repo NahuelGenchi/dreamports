@@ -50,11 +50,15 @@ const OWN = {
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
-  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c'], header: true,
-    // psx_gpu, which draw.c builds as one with itself, and dfsound, which sound.c does, each in a folder of its own that
-    // isn't on the include path
-    trees: ['psx_gpu', 'dfsound'],
-    // the few C library headers psx_gpu and dfsound take, which the kit built to WebAssembly has no other of
+  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c', 'cd.c'], header: true,
+    // psx_gpu, which draw.c builds as one with itself, dfsound, which sound.c does, and the emulator's CD drive, which
+    // cd.c does, each in a folder of its own that isn't on the include path
+    trees: ['psx_gpu', 'dfsound', 'cdrom'],
+    // what never waits for the disc or the screen, as it never reaches the game's code, the clock or the disc: psx_gpu
+    // and dfsound, which the pass that makes waits work leaves as they are, as it takes most of a build's time
+    // otherwise and slows drawing and mixing (withWaits)
+    neverWait: ['draw.c', 'sound.c'],
+    // the few C library headers psx_gpu, dfsound and the CD drive take, which the kit built to WebAssembly has no other of
     includes: ['libc'] },
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
@@ -125,7 +129,7 @@ export function cKit(id) {
   const disc = CONSOLES[id].disc ? [base('disc.c')] : [];
   if (own && !own.header) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], neverWait: (own.neverWait ?? []).map(name => join(own.folder, name)) };
   }
   // console.h, written where the tools keep what they make, once it says something new
   const made = join(LOCAL, 'c', id);
@@ -136,7 +140,7 @@ export function cKit(id) {
   }
   if (own) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...(own.generalPage ? [base('console.c')] : []), ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, made, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, made, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [], neverWait: (own.neverWait ?? []).map(name => join(own.folder, name)) };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
   return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
@@ -265,7 +269,7 @@ export function buildWasm(sources, out, kit) {
   return building.get(out);
 }
 
-async function build(sources, out, { folders, flags = [], addressOf = null, codeOf = null }) {
+async function build(sources, out, { folders, flags = [], addressOf = null, codeOf = null, neverWait = [] }) {
   // the compiler runs in a folder of its own, with the repository's C at the same paths
   const files = filesFor(sources, folders), name = basename(out);
   const args = ['clang', ...WASM_FLAGS, ...FLAGS, ...flags,
@@ -292,6 +296,8 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
   // the kit's own sources each from its kept object, built as the whole build would build it
   const compileArgs = [...WASM_FLAGS.filter(flag => flag !== '-nostdlib'), ...FLAGS, ...flags.filter(flag => !flag.startsWith('-Wl,')), ...folders.flatMap(folder => ['-I', inRepo(folder)])];
   const objects = {}, own = [];
+  // the functions the kit's sources that never wait define, as many times as each name is defined there
+  const never = new Map(), waitless = neverWait.map(source => resolve(source));
   for (const source of sources) {
     if (!ofKit(source)) {
       own.push(inRepo(source));
@@ -309,6 +315,7 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
     });
     if (built.error) throw new Error(`The C didn't build to WebAssembly:\n${built.error}`);
     objects[`${Object.keys(objects).length}.o`] = built.made;
+    if (waitless.includes(resolve(source))) for (const name of definedFunctions(built.made)) never.set(name, (never.get(name) ?? 0) + 1);
   }
   const link = [...args.slice(0, args.length - sources.length), ...own, ...Object.keys(objects).map(object => `__kit_objects/${object}`)];
   try {
@@ -320,7 +327,16 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
   if (!made?.[name]) throw new Error('The C didn\'t build to WebAssembly, and the compiler didn\'t say why.');
   const linked = addressOf ? await atAddresses(made[name], addressOf, codeOf) : made[name];
   const waits = waitsInside(linked);
-  const module = waits ? await withWaits(linked) : linked;
+  let module = linked;
+  if (waits && never.size) {
+    // the pass finds the functions by their names, which the linker drops, so the module is linked again with them
+    const named = addressOf ? linked : (await runClang(link.filter(arg => arg !== '-Wl,--strip-all'), { ...files, __kit_objects: objects }, { stdout: stderr, stderr }))[name];
+    // a name defined anywhere else too, in the game's own C, isn't left out, as that function may wait
+    const counts = functionNames(named);
+    module = await withWaits(named, [...never].filter(([each, times]) => counts.get(each) === times).map(([each]) => each));
+  } else if (waits) {
+    module = await withWaits(linked);
+  }
   writeFileSync(out, module);
   if (from) remember(key, { from, module: sha1(module), ...(waits ? { pass: BINARYEN_VERSION } : {}) });
   return out;
@@ -346,10 +362,90 @@ async function atAddresses(module, addressOf, codeOf = null) {
 // whether a module's C waits from inside a function: the kit's pause.c is in it, with the four calls it makes to the pass
 const waitsInside = module => WebAssembly.Module.imports(new WebAssembly.Module(module)).some(each => each.module === 'asyncify');
 
+// the functions a WebAssembly object of the compiler's defines, by name, from its symbol table (the linking section's,
+// as WebAssembly's tool conventions write it)
+function definedFunctions(object) {
+  const sections = WebAssembly.Module.customSections(new WebAssembly.Module(object), 'linking');
+  const names = [];
+  if (!sections.length) return names;
+  const bytes = new Uint8Array(sections[0]);
+  let at = 0;
+  const number = () => {
+    let value = 0, shift = 0, byte;
+    do {
+      byte = bytes[at++];
+      value += (byte & 0x7F) * 2 ** shift;
+      shift += 7;
+    } while (byte & 0x80);
+    return value;
+  };
+  const text = () => {
+    const length = number();
+    at += length;
+    return Buffer.from(bytes.subarray(at - length, at)).toString('utf8');
+  };
+  number();
+  while (at < bytes.length) {
+    const kind = bytes[at++], end = number() + at;
+    // the symbol table: a function's, a global's, an event's or a table's index, and its name when it's defined or
+    // named; a value's name and, when defined, where; a section's index
+    if (kind === 8) {
+      for (let count = number(); count > 0; count--) {
+        const type = bytes[at++], flags = number(), defined = !(flags & 0x10);
+        if (type === 1) {
+          text();
+          if (defined) number(), number(), number();
+        } else if (type === 3) {
+          number();
+        } else {
+          number();
+          if (defined || flags & 0x40) {
+            const name = text();
+            if (type === 0 && defined) names.push(name);
+          }
+        }
+      }
+    }
+    at = end;
+  }
+  return names;
+}
+
+// how many functions of a module have each name, from its name section
+function functionNames(module) {
+  const counts = new Map(), sections = WebAssembly.Module.customSections(new WebAssembly.Module(module), 'name');
+  if (!sections.length) return counts;
+  const bytes = new Uint8Array(sections[0]);
+  let at = 0;
+  const number = () => {
+    let value = 0, shift = 0, byte;
+    do {
+      byte = bytes[at++];
+      value += (byte & 0x7F) * 2 ** shift;
+      shift += 7;
+    } while (byte & 0x80);
+    return value;
+  };
+  while (at < bytes.length) {
+    const kind = bytes[at++], end = number() + at;
+    if (kind === 1) {
+      for (let count = number(); count > 0; count--) {
+        number();
+        const length = number(), name = Buffer.from(bytes.subarray(at, at + length)).toString('utf8');
+        at += length;
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+    }
+    at = end;
+  }
+  return counts;
+}
+
 /** A module whose C calls kit_wait_frame, after the pass that makes the wait work: Binaryen's Asyncify, which gives
  *  every function on the way to a wait a way to put its values away and come back to them, and takes the four calls
- *  the kit makes to it (kit/c/pause.c) as its own, so the module that comes out imports nothing new. */
-export async function withWaits(module) {
+ *  the kit makes to it (kit/c/pause.c) as its own, so the module that comes out imports nothing new. The functions
+ *  named in `neverWait`, which can't reach a wait, are left as they are; the module that comes out keeps no names. */
+export async function withWaits(module, neverWait = []) {
   const tools = await binaryen();
   const parsed = tools.readBinary(module);
   try {
@@ -359,6 +455,7 @@ export async function withWaits(module) {
     tools.setShrinkLevel(0);
     // only the kit's wait ends a frame: nothing the page gives the game, such as its save memory, does
     tools.setPassArgument('asyncify-ignore-imports', '');
+    tools.setPassArgument('asyncify-removelist', neverWait.length ? neverWait.join(',') : null);
     parsed.runPasses(['asyncify']);
     // the pass leaves a lot to tidy, which is most of what it would cost a game otherwise
     parsed.optimize();
