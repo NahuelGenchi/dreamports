@@ -334,9 +334,9 @@ function librariesOfFolder(folder, id) {
   return versionLibraries(game, id);
 }
 
-/** A game's own C, every .c file in its folder's src/, such as games/<game>/c/src/, built with its console's kit to
- *  src/game.wasm there, or to `out`, with the files of the shared libraries it takes, from their folders in the kit. */
-export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) {
+// What a game's build is made of: its kit, its own C, the shared libraries it takes, every source and folder, the
+// defines a library's values need, and, for a game of twins, its twins.h's folder and what the compiler is asked for it
+async function partsOf(folder) {
   const kit = cKit(consoleOfFolder(folder)), own = ownSources(folder);
   const libraries = librariesOfFolder(folder, kit.id);
   const sources = [...own, ...libraries.flatMap(library => library.files), ...kit.sources], folders = [...kit.folders, ...libraries.map(library => library.library.folder)];
@@ -344,23 +344,41 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
   const defines = kit.id === 'gba' ? [] : libraries.flatMap(library => [...library.values].map(([name, value]) => `-DADDRESS_${name}=0x${value.toString(16).toUpperCase()}`));
   const twins = await twinsFolder(folder);
   const gameFlags = kit.gameFlags ?? [];
-  if (!twins) return buildWasm(sources, out, { ...kit, folders, ...(defines.length || gameFlags.length ? { flags: [...gameFlags, ...defines] } : {}) });
   // a game of twins is C written as the console's compiler reads it, and is built as the function check builds it:
   // with what that compiler takes for granted, and each value it names where the console keeps it
-  const flags = [...kit.twinFlags, ...gameFlags, ...defines, '-Wl,--export-if-defined=kit_twin'], all = [...folders, twins.folder];
-  // one that matches the console's work memory has the console's stack too, as its functions proven by the same bytes
-  // leave it (../gba/stack.mjs): its own files are built from copies with the stack's calls in
+  const flags = twins ? [...kit.twinFlags, ...gameFlags, ...defines, '-Wl,--export-if-defined=kit_twin'] : [...gameFlags, ...defines];
+  return { kit, own, libraries, sources, folders, twins, flags, all: twins ? [...folders, twins.folder] : folders };
+}
+
+// A game of twins on the Game Boy Advance that matches the console's work memory has the console's stack too, as its
+// functions proven by the same bytes leave it (../gba/stack.mjs): its own files, and its shared libraries', are built
+// from copies with the stack's calls in. Each such file's copy, and the folders they're built with, or null.
+async function stackedOf(folder, { kit, own, libraries, sources, flags, all }) {
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
-  if (kit.id === 'gba' && !game.startsWith('..') && readOriginalOf(game)?.workMemory) {
-    const { stackSources } = await import('../gba/stack.mjs');
-    const src = join(folder, 'src'), withSrc = [...all, src];
-    const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
-    // the shared libraries' files too, whose functions proven by the same bytes leave the stack as the game's do
-    const stackable = [...own, ...libraries.flatMap(library => library.files)];
-    const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
-    const stacked = sources.map(file => made.sources[stackable.indexOf(file)] ?? file);
-    return buildWasm(stacked, out, { ...kit, folders: withSrc, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
-  }
+  if (kit.id !== 'gba' || game.startsWith('..') || isAbsolute(game) || !readOriginalOf(game)?.workMemory) return null;
+  const { stackSources } = await import('../gba/stack.mjs');
+  const withSrc = [...all, join(folder, 'src')];
+  const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
+  const stackable = [...own, ...libraries.flatMap(library => library.files)];
+  const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+  return { copies: new Map(stackable.map((file, i) => [file, made.sources[i]])), folders: withSrc };
+}
+
+/** For the function check (../gba/twin.mjs): the copy of each of a version's files, its own and its shared libraries',
+ *  that its build takes, with the console's stack's calls in, as a Map, or null for a version built from its files as
+ *  they are. */
+export async function stackedCopies(folder) {
+  const parts = await partsOf(folder);
+  return parts.twins ? (await stackedOf(folder, parts))?.copies ?? null : null;
+}
+
+/** A game's own C, every .c file in its folder's src/, such as games/<game>/c/src/, built with its console's kit to
+ *  src/game.wasm there, or to `out`, with the files of the shared libraries it takes, from their folders in the kit. */
+export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) {
+  const parts = await partsOf(folder), { kit, sources, folders, twins, flags, all } = parts;
+  if (!twins) return buildWasm(sources, out, { ...kit, folders, ...(flags.length ? { flags } : {}) });
+  const stacked = await stackedOf(folder, parts);
+  if (stacked) return buildWasm(sources.map(file => stacked.copies.get(file) ?? file), out, { ...kit, folders: stacked.folders, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
   return buildWasm(sources, out, { ...kit, folders: all, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
 }
 

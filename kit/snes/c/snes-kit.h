@@ -15,6 +15,8 @@ void ppu_power(void);
 void ppu_write(uint16_t address, uint8_t value);
 /** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
 void ppu_frame(uint32_t *out);
+/** What the console does to the picture unit as V-blank starts, after the frame's last line. */
+void ppu_vblank(void);
 
 /** Moves memory by DMA on each channel `channels` has a bit for, as a write to $420B does, one after another. */
 void dma_start(uint8_t channels);

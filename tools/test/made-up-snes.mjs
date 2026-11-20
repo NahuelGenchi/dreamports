@@ -254,3 +254,88 @@ export function madeUpPictureCartridge() {
   rom.set(w(sum & 0xFFFF), header + 0x1E);
   return { rom };
 }
+
+// The sprite program, for the kit's test too: 128 sprites from a table of the project's own, with tiles in both of
+// their tables, every size $2101 can choose in turn every 16 frames and its second table's gap every 128, flips, the
+// four priorities between the first background's two, more than 32 sprites on some lines and more than 34 of their
+// tiles on others; and at each V-blank the first 8 moved, their high bits and sizes changed, the background scrolled,
+// and every 64 frames the sprites' first moved by $2103's priority bit, from an odd address in the frames between.
+export const SPRITES = { TILES: 0x8400, TILES_BYTES: 0x800, BG_TILES: 0x8C00, MAP: 0x8E00, PALETTE: 0x9600, OAM: 0x9800 };
+const spriteData = () => {
+  const { tiles: bgTiles, map: bgMap, palette } = pictureData();
+  const tiles = [];
+  for (let t = 0; t < 64; t++) {
+    const pixel = (x, y) => ((x === 0 || y === 0 || x === 7 || y === 7) ? 1 + (t & 7) : (x * y + t) % 3 === 0 ? 0 : 8 + ((x + y + t) & 7));
+    const planes = (p, y) => Array.from({ length: 8 }, (_, x) => (pixel(x, y) >> p & 1) << (7 - x)).reduce((a, b) => a | b, 0);
+    for (let y = 0; y < 8; y++) tiles.push(planes(0, y), planes(1, y));
+    for (let y = 0; y < 8; y++) tiles.push(planes(2, y), planes(3, y));
+  }
+  const oam = new Uint8Array(544);
+  for (let s = 0; s < 128; s++) {
+    let x, y;
+    if (s < 8) [x, y] = [s * 30, 20 + s * 10];
+    else if (s < 48) [x, y] = [(s * 7) & 0xFF, 100 + (s & 3)];
+    else if (s < 64) [x, y] = [(s * 37) & 0x1FF, 150];
+    else [x, y] = [(s * 53) & 0x1FF, (s * 29) & 0xFF];
+    oam[s * 4] = x & 0xFF;
+    oam[s * 4 + 1] = y;
+    oam[s * 4 + 2] = (s * 5) & 0xFF;
+    oam[s * 4 + 3] = (s & 1) | (s % 8) << 1 | (s >> 3 & 3) << 4 | (s >> 1 & 1) << 6 | (s >> 2 & 1) << 7;
+    oam[0x200 + (s >> 2)] |= ((x >> 8 & 1) | (s >> 4 & 1) << 1) << ((s & 3) * 2);
+  }
+  return { tiles, bgTiles: bgTiles.slice(0, 512), bgMap, palette, oam: [...oam] };
+};
+
+const SPRITE_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01,
+  ...store(0x80, 0x2100), 0x9C, ...w(0x4200), ...store(0x80, 0x2115),
+  // the 64 sprite tiles again and again, to fill both of their tables from word $0000 to $2FFF
+  ...Array.from({ length: 12 }, (_, i) => [0xA2, ...w(i * 0x400), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, SPRITES.TILES, SPRITES.TILES_BYTES)]).flat(),
+  // the background's tiles at word $4000 and its map at $3C00, every colour, and the sprites' table
+  0xA2, ...w(0x4000), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, SPRITES.BG_TILES, 0x200),
+  0xA2, ...w(0x3C00), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, SPRITES.MAP, 0x800),
+  0x9C, ...w(0x2121), ...dma(0x00, 0x22, SPRITES.PALETTE, 0x200),
+  0x9C, ...w(0x2102), 0x9C, ...w(0x2103), ...dma(0x00, 0x04, SPRITES.OAM, 544),
+  ...store(0x01, 0x2105), ...store(0x3C, 0x2107), ...store(0x04, 0x210B), ...store(0x11, 0x212C),
+  ...store(0x80, 0x4200),
+  here('spin'), 0x80, rel('spin'),
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210),
+  // $2101: the sizes from bits 4 to 6 of the frame's count, the second table's gap from bit 7
+  0xA5, 0x00, 0x29, 0x70, 0x0A, 0x85, 0x02, 0xA5, 0x00, 0x29, 0x80, 0x4A, 0x4A, 0x4A, 0x4A, 0x05, 0x02, 0x8D, ...w(0x2101),
+  // the first 8 sprites: x, y, tile and attributes, from the count
+  0x9C, ...w(0x2102), 0x9C, ...w(0x2103), 0xA2, ...w(0x0000),
+  here('move'), 0x8A, 0x0A, 0x0A, 0x0A, 0x0A, 0x18, 0x65, 0x00, 0x8D, ...w(0x2104),
+  0x8A, 0x0A, 0x0A, 0x0A, 0x18, 0x65, 0x00, 0x4A, 0x8D, ...w(0x2104),
+  0x8A, 0x18, 0x65, 0x00, 0x8D, ...w(0x2104), 0x8A, 0x45, 0x00, 0x8D, ...w(0x2104),
+  0xE8, 0xE0, ...w(8), 0xD0, rel('move'),
+  // their high bits and sizes, two bytes of the high table
+  ...store(0x00, 0x2102), ...store(0x01, 0x2103), 0xA5, 0x00, 0x8D, ...w(0x2104), 0x49, 0xFF, 0x8D, ...w(0x2104),
+  // every 64 frames the first sprite by $2103's priority bit, half of those from an odd address with a byte written
+  0xA5, 0x00, 0x29, 0x40, 0xF0, rel('plain'),
+  0xA5, 0x00, 0x0A, 0x8D, ...w(0x2102), 0xA9, 0x80, 0x8D, ...w(0x2103),
+  0xA5, 0x00, 0x29, 0x20, 0xF0, rel('scroll'),
+  0xA5, 0x00, 0x0A, 0x09, 0x01, 0x8D, ...w(0x2102), 0xA9, 0x80, 0x8D, ...w(0x2103), 0x9C, ...w(0x2104),
+  0x80, rel('scroll'),
+  here('plain'), 0x9C, ...w(0x2102), 0x9C, ...w(0x2103),
+  here('scroll'), 0xA5, 0x00, 0x8D, ...w(0x210D), 0xA5, 0x01, 0x8D, ...w(0x210D), 0xA5, 0x00, 0x8D, ...w(0x210E), 0x9C, ...w(0x210E),
+  ...store(0x0F, 0x2100),
+  0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x40,
+];
+
+/** The sprite program's cartridge: { rom }, with its data where SPRITES says. */
+export function madeUpSpriteCartridge() {
+  const { rom } = assemble(SPRITE_PROGRAM, { title: 'DREAMPORTS SPRITES', nmi: 'nmi' });
+  const { tiles, bgTiles, bgMap, palette, oam } = spriteData();
+  const at = address => address - ORIGIN;
+  rom.set(tiles, at(SPRITES.TILES));
+  rom.set(bgTiles, at(SPRITES.BG_TILES));
+  rom.set(bgMap, at(SPRITES.MAP));
+  rom.set(palette, at(SPRITES.PALETTE));
+  rom.set(oam, at(SPRITES.OAM));
+  const header = 0x7FC0;
+  rom.set([0, 0, 0, 0], header + 0x1C);
+  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
+  rom.set(w(~sum & 0xFFFF), header + 0x1C);
+  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  return { rom };
+}
