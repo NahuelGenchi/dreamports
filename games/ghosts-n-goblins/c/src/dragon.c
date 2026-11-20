@@ -67,9 +67,10 @@ static void head_flies(uint8_t object) {
   first_place(y_low, y_screen, (uint8_t)x, (uint8_t)(RAM[0x65] + (x >> 8)));
   second_place(object);
   took(DRAGON_PLACES);
-  RAM[OBJECT_HEADING + object] = way_to_first(Y_NOT_FOLLOWED);
+  // Y is its place in the list, as $B1C8 loads it to read the list
+  RAM[OBJECT_HEADING + object] = way_to_first(*state);
   took(DRAGON_HEADS);
-  move_object(object, (uint8_t)(0x16 + RAM[0xD2]), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(0x16 + RAM[0xD2]), *state);
 }
 
 // $B24B: facing Arthur, every 64th round, it breathes fire at him from the 21st or 22nd object, unless he's within 48
@@ -110,7 +111,7 @@ static void head_breathes(uint8_t object) {
   second_place(object);
   first_place(RAM[OBJECT_Y + ARTHUR], RAM[OBJECT_Y_SCREEN + ARTHUR], RAM[OBJECT_X + ARTHUR], RAM[OBJECT_X_SCREEN + ARTHUR]);
   took(DRAGON_FIRE_MADE);
-  uint8_t way = way_to_first(Y_NOT_FOLLOWED);
+  uint8_t way = way_to_first(fire);   // Y, the fire's object, as the look for a free one leaves it
   took(DRAGON_FIRE_HEADED);
   RAM[OBJECT_HEADING + fire] = (uint8_t)((way & 0x0C) | 0x04);
   took(DRAGON_FIRE_STORE);
@@ -156,7 +157,7 @@ static void head_dies(uint8_t object) {
 }
 
 // sub_04_B0E3, kind $15: the head. Asleep, it wakes when Arthur comes within 32 pixels, or after 64 rounds in the view.
-void dragon_head(uint8_t object) {
+void dragon_head(uint8_t object, uint8_t y) {
   took(DRAGON_NOT_FIFTH_SET);
   flag_read(object);
   if (RAM[OBJECT_FLAGS + object] & BURNING) { took(DRAGON_BURNING); enemy_burns_away(object); return; }
@@ -174,7 +175,7 @@ void dragon_head(uint8_t object) {
     RAM[0x26] = 8;
     took(DRAGON_HEAD_BOX);
     int arthur_touched;
-    uint8_t weapon = enemy_spark_tests(object, &arthur_touched);
+    uint8_t weapon = enemy_spark_tests(object, &arthur_touched, &y);
     if (!weapon && !arthur_touched) took(DRAGON_NOT_TOUCHED);
     else {
       if (arthur_touched) took(DRAGON_TOUCHED_ARTHUR);
@@ -208,7 +209,7 @@ void dragon_head(uint8_t object) {
   else {
     RAM[0x26] = RAM[0x27] = 0x20;
     took(DRAGON_ASLEEP);
-    if (arthur_near(object, Y_NOT_FOLLOWED)) took(DRAGON_WAKES);
+    if (arthur_near(object, y)) took(DRAGON_WAKES);
     else {
       uint8_t *count = &RAM[OBJECT_COUNT + object];
       took(DRAGON_WAITS);
@@ -294,7 +295,7 @@ void dragon_piece(uint8_t object) {
     RAM[0x26] = RAM[0x27] = 8;
     took(DRAGON_PIECE_TESTS);
     int arthur_touched;
-    enemy_touch_tests(object, &arthur_touched);
+    enemy_touch_tests(object, &arthur_touched, NULL);
   } else took(DRAGON_PIECE_HIDDEN);
   int found;
   if (HITS(object)) {
@@ -343,9 +344,9 @@ void dragon_piece(uint8_t object) {
   }
   if (far) {
     took(CALLS);
-    RAM[OBJECT_HEADING + object] = way_to_first(Y_NOT_FOLLOWED);
+    RAM[OBJECT_HEADING + object] = way_to_first(ahead);   // Y, the piece ahead, as part_left leaves it
     took(DRAGON_FOLLOW_HEADED);
   }
   took(DRAGON_FOLLOW_MOVES);
-  move_object(object, (uint8_t)(0x16 + RAM[0xD2]), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(0x16 + RAM[0xD2]), ahead);
 }
