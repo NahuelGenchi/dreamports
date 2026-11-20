@@ -35,13 +35,13 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { proofFolder, REPO } from './paths.mjs';
-import { cartridgeOf, hex, inBootProgram, readCodeMap, readOriginal } from './proof-files.mjs';
+import { cartridgeOf, functionKey, hex, inBootProgram, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
-import { keptProgram } from '../ps2/original-program.mjs';
+import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
@@ -63,14 +63,14 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
  * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
- * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a function of
- * another program than the one a game boots, as a PlayStation 2 disc's modules for its second processor, and for a
- * vector unit's program (ps2/functions.mjs): `twin` and `match` check the boot program's functions, and no other's
- * yet. Such a function is in no task, and still counts as not proven.
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a PlayStation 2
+ * vector unit's program (ps2/functions.mjs), which `twin` doesn't call yet: it's in no task, and still counts as not
+ * proven. A function of another program of the disc, a module for its second processor or another for the EE, has
+ * its proof by `twin` (ps2/twin.mjs).
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
-  if (f.program || f.vu) return 'elsewhere';
+  if (f.vu) return 'elsewhere';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }
@@ -88,7 +88,7 @@ export const asksForProofs = version => existsSync(proofsFile(version));
  *  Throws, saying what's wrong `where`, when it isn't one. */
 export function parseProofs(found, where = PROOFS) {
   const lines = found?.functions;
-  const good = line => Array.isArray(line) && /^[0-9A-F]{8}(?:\/[0-9A-F]{16})?$/.test(line[0]) && Object.hasOwn(KINDS, line[1]) && MARK.test(line[2]) && MARK.test(line[3])
+  const good = line => Array.isArray(line) && /^[0-9A-F]{8}(?:\/[0-9A-F]{16})?(?:@[^~]+)?(?:~vu)?$/.test(line[0]) && Object.hasOwn(KINDS, line[1]) && MARK.test(line[2]) && MARK.test(line[3])
     && (line[1] === 'memory' ? line.length === 5 && Number.isInteger(line[4]) && line[4] > 0 : line.length === 4);
   if (!found || typeof found.original !== 'string' || !Array.isArray(lines) || !lines.every(good)) {
     throw new Error(`${where} isn't as npm run dp -- match and npm run dp -- twin write it: only they write a function's proof, so take your changes to it back and run them again.`);
@@ -168,7 +168,9 @@ export function twinMarks(version, codeMap = readCodeMap(version)) {
 export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null, read = onDisk }) {
   const marks = new Map();
   const folders = [join(folder, 'src'), folder].filter(path => read !== onDisk || existsSync(path));
-  const keyAt = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.key]));
+  // a function by where it is: its address in the program the game boots, and its whole key in another program or a
+  // vector unit's (../gba/match.mjs, keyIn)
+  const keyAt = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [inBootProgram(f) ? f.address : f.key, f.key]));
   const inFolder = file => (givenOf(file) ? relative(REPO, file) : relative(folder, file)).split(sep).join('/');
   // what a twin is built with beside its own code: what its file holds outside every function, and the game's own
   // headers the file includes
@@ -195,6 +197,7 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
   }
   for (const file of files) {
     for (const twin of twinsOf.get(file)) {
+      if (twin.keyed) keep(functionKey(twin.keyed), twin, file);
       if (twin.address === null) continue;
       keep(twin.address, twin, file);
       // a twin of a run (gba/match.mjs, throughIn) is the twin of each function of it
@@ -212,8 +215,9 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
   if (!copy || !existsSync(copy.path)) return null;
   if ((codeMap?.console ?? original.console) === 'ps2') {
     const read = keptProgram(original.sha1);
-    // only of the functions of that program: another program's, or a vector unit's, is somewhere else on the disc
-    return read && (f => markOf(f.program || f.vu ? Buffer.alloc(0) : read(f.address, f.size)));
+    // another program's, or a vector unit's, is somewhere else on the disc: its bytes are kept by its key once the
+    // function check has read it, and until then nothing is known of it, which is null
+    return read && (f => (f.program || f.vu ? (keptPiece(original.sha1, f.key) ? markOf(keptPiece(original.sha1, f.key)) : null) : markOf(read(f.address, f.size))));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));
@@ -231,7 +235,7 @@ export function stateOf(version, { codeMap = readCodeMap(version), proofs = read
   const kept = proofs?.functions ?? new Map();
   return codeMap.functions.map(f => {
     const twin = marks.get(f.key) ?? null, line = kept.get(f.key);
-    const why = !twin ? 'no twin' : stopped.has(f.key) ? 'stop' : !line ? 'unproven' : line.twin !== twin.mark ? 'twin changed' : mark && line.original !== mark(f) ? 'original changed' : null;
+    const why = !twin ? 'no twin' : stopped.has(f.key) ? 'stop' : !line ? 'unproven' : line.twin !== twin.mark ? 'twin changed' : mark && mark(f) !== null && line.original !== mark(f) ? 'original changed' : null;
     return {
       key: f.key, address: f.address, size: f.size, ...(beyondProof(codeMap, f) ? { beyond: beyondProof(codeMap, f) } : {}),
       twin: twin && { name: twin.name, file: twin.file, line: twin.line },
@@ -253,7 +257,7 @@ export function stateText(state) {
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
       : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
-        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s in another program of the disc or a vector unit\'s, which no proof reaches yet' : 'no twin yet',
+        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s a vector unit\'s program, which no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',
@@ -303,10 +307,10 @@ export function keepProofs(version, { kind, proven = [], failed = [], starts = n
 export function withProofs(kept, { kind, proven = [], failed = [], functions: all, marks, stopped, mark }) {
   const byKey = new Map(all.map(f => [f.key, f]));
   const functions = new Map([...kept].filter(([key]) => byKey.has(key) && marks.has(key)));
-  const holds = key => functions.has(key) && functions.get(key).twin === marks.get(key).mark && functions.get(key).original === mark(byKey.get(key));
+  const holds = key => functions.has(key) && functions.get(key).twin === marks.get(key).mark && [null, functions.get(key).original].includes(mark(byKey.get(key)));
   const result = { kept: [], stopped: [], already: [] };
   for (const { key, calls } of proven) {
-    if (!byKey.has(key) || !marks.has(key)) continue;
+    if (!byKey.has(key) || !marks.has(key) || mark(byKey.get(key)) === null) continue;
     if (stopped.has(key)) {
       result.stopped.push(key);
       functions.delete(key);
@@ -341,9 +345,12 @@ export function groupsOf(codeMap) {
   const groups = [];
   let group = null, bytes = 0;
   const bank = f => (codeMap.console === 'nes' ? Math.floor(f.address / 0x4000) : 0);
-  for (const f of codeMap.functions.filter(f => !beyondProof(codeMap, f))) {
+  // a PlayStation 2 disc's programs one after another, the one it boots first, as each one's addresses are its own
+  const program = f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`;
+  const inOrder = codeMap.functions.filter(f => !beyondProof(codeMap, f)).map((f, n) => [f, n]).sort(([a, x], [b, y]) => (program(a) < program(b) ? -1 : program(a) > program(b) ? 1 : x - y)).map(([f]) => f);
+  for (const f of inOrder) {
     const last = group?.at(-1);
-    if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last)) {
+    if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last) || program(f) !== program(last)) {
       group = [];
       bytes = 0;
       groups.push(group);
@@ -367,7 +374,7 @@ export function groupNamed(groups, named) {
   const digits = /^(?:0x|\$)?([0-9a-f]{4,8})$/i.exec(String(named).trim())?.[1] ?? /^functions? ([0-9a-f]{8})(?: to [0-9a-f]{8})?$/.exec(said)?.[1];
   if (!digits) return null;
   const address = parseInt(digits, 16);
-  return groups.find(group => group.functions.some(f => address >= f.address && address < f.address + f.size)) ?? null;
+  return groups.find(group => group.functions.some(f => inBootProgram(f) && address >= f.address && address < f.address + f.size)) ?? null;
 }
 
 /** A function's address as people read it: 0x080001C4. */

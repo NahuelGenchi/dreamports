@@ -51,7 +51,8 @@ export function stackMap(assemblyText) {
   // read here as bytes, as they would be assembled.
   const code = [], codeLines = [], debugLines = new Map();
   let section = '.text';
-  assemblyText.split('\n').forEach((raw, k) => {
+  // with \r\n at each line's end from agbcc built for Windows, as the tools' assembler reads it
+  assemblyText.split(/\r?\n/).forEach((raw, k) => {
     const { labels, rest } = labelsOf(uncomment(raw));
     const directive = /^(\.\w+)\s*(.*)$/.exec(rest);
     const name = directive?.[1].toLowerCase();

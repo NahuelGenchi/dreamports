@@ -69,6 +69,18 @@ export function addressIn(text, shifts = [], console = 'gba') {
   return null;
 }
 
+// a PlayStation 2 code map's key for a function outside the program the disc boots, or a vector unit's, as a comment
+// writes it: 0x00000120@MODULE.IRX, 0x00340010~vu, 0x00000048@DATA/MODELS.BIN~vu
+const KEYED = /\b0x([0-9A-Fa-f]{8})(?:@([^\s*~]+?))?(~vu)?(?=:?(?:[\s*]|$))/g;
+
+/** The function of a PlayStation 2 game a comment names by its code map's key, when it's in another program of the
+ *  disc than the one it boots, or is a vector unit's program: { address, program, vu }, as the code map has them
+ *  (../lib/proof-files.mjs), or null for a comment that names none. */
+export function keyIn(text) {
+  for (const [, digits, program, vu] of text.matchAll(KEYED)) if (program || vu) return { address: parseInt(digits, 16), ...(program ? { program } : {}), ...(vu ? { vu: true } : {}) };
+  return null;
+}
+
 /** The last function of a run a twin's comment names, as in `0x08001AA4 to 0x0800258E`, or null: a twin of one
  *  routine the code map holds as several functions, each running on into the next, is a twin of each of them, from the
  *  first address to the second, and its bytes are compared with all of theirs together. */
@@ -140,7 +152,9 @@ function lex(text) {
 export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
 
 /** The functions a file of C defines, each { name, address, line, own, code, unaligned }: `address` is the function of the original it's
- *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, `own`
+ *  the twin of, which the comment just above it names, or else its own name when that's a label, or null, and null
+ *  with `keyed`, { address, program, vu }, for a PlayStation 2 function the comment names by its key (keyIn), which is
+ *  in no memory the boot program's addresses name, `own`
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
  *  it is a proof of (../lib/proofs.mjs). A file of a shared library names no address: `given`, a Map of its twins'
@@ -207,11 +221,13 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
         at = comment.from;
       }
       const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts, console);
-      const address = given ? given.get(name) ?? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console);
+      // on the PlayStation 2 a comment can name a function of another program of the disc, or a vector unit's, by its key
+      const keyed = !given && console === 'ps2' ? keyIn(above.join('\n')) : null;
+      const address = given ? given.get(name) ?? null : keyed ? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console);
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
-      twins.push({ name, address, ...(through === null ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
@@ -314,7 +330,7 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
   const built = await compileFile({ file, root, includes, compiler, work });
   if (built.error) return built;
   const { made, assembly } = built;
-  const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split('\n');
+  const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split(/\r?\n/);
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
 
   // the functions the file defines, in the order they sit in its code, each up to the next
