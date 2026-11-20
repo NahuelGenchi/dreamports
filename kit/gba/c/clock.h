@@ -138,6 +138,10 @@ void gba_clock_resume(uint64_t time);
  *  has and the console's doesn't. */
 int gba_clock_late(void);
 
+/** What the clock calls at each overflow of a sound FIFO's timer, as the emulator samples the FIFO there (its
+ *  GBAAudioSampleFIFO): `which` FIFO, 0 for A and 1 for B, `when`, in cycles from power-on, and the sample it plays
+ *  from then. Each FIFO holds what its DMA wrote, the words read from where the DMA reads at the time it does. */
+void gba_clock_on_fifo(void (*latch)(int which, uint64_t when, int value));
 /** The line the display is on as the next instruction starts, which a game that waits for one reads, in the console's
  *  time. */
 uint16_t gba_clock_vcount(void);

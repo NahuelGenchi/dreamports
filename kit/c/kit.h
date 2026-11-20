@@ -68,6 +68,17 @@ void kit_pause(void);
 int kit_frame_paused(void);
 
 /**
+ * Runs `program`, a second program beside the game's, such as what a console's sound processor runs, from its start
+ * the first time and from where it last waited after that, until it next waits with kit_wait_beside, and returns 1;
+ * or 0 when it came back instead, and then the next call starts it again. A console's kit calls it whenever the second
+ * processor would have something new to do, always with the same function, even from inside the game's own code: the
+ * two keep their places apart. Only as WebAssembly.
+ */
+int kit_run_beside(void (*program)(void));
+/** Ends the second program's turn here, and carries on from here when the kit next runs it. */
+void kit_wait_beside(void);
+
+/**
  * The picture the page shows this frame, `width` × `height` words, red in the lowest byte and 0xFF above blue, as an
  * ImageData holds them, at the size the game shows now, which can change from one frame to the next. The same words
  * as the last frame's while the size stays the same.

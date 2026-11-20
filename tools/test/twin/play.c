@@ -4,7 +4,10 @@
 // them: called from the memory the console has at power-on it reads address 0, where a twin can't follow, as most of
 // a real game's functions do. Only a memory of play has a stage for it. Play also puts a little code of its own in the
 // fast work memory, as a game copies code there to run it faster, and Glow runs it every frame: that code loads a
-// constant from beside itself, which is the code's and not a value the check may change (#1518).
+// constant from beside itself, which is the code's and not a value the check may change (#1518). Every other frame
+// the stage has a spare room, its own, and Spare, called on the frames it has none, counts that room's lamp when there
+// is one: from its own memories a call never has one, and only a word the game kept there in another memory of play
+// is a room to aim it with (#1709).
 #include "program.h"
 
 #define FULL 100
@@ -21,10 +24,12 @@ struct Room {
   struct Lamp *lamp;
 };
 
-/** The stage play makes, with the room it's in. */
+/** The stage play makes, with the room it's in, its spare room, if it has one, and how many frames it's been played. */
 struct Stage {
   struct Room *room;
   u32 rooms;
+  struct Room *spare;
+  u32 frames;
 };
 
 extern struct Stage *gStage;
@@ -55,6 +60,14 @@ void Glow(void) {
 #endif
 }
 
+/** Spare, 0x08000880: the spare room's lamp counted twice, if the stage has one. */
+void Spare(void) {
+  struct Room *spare = gStage->spare;
+
+  if (spare)
+    spare->lamp->lit += 2;
+}
+
 #ifdef MATCHING
 // the line the screen is drawing, and the buttons, a bit each, 0 while held
 #define LINE (*(volatile u16 *)0x04000006)
@@ -70,8 +83,13 @@ void Play(void) {
     while (LINE != 160) {}
     while (LINE == 160) {}
     if (gStage) {
+      struct Stage *stage = gStage;
+
+      stage->spare = ++stage->frames & 1 ? stage->room : 0;
       Shine(KEYS & KEY_B ? 7 : 1);
       Glow();
+      if (!stage->spare)
+        Spare();
     } else if (!(KEYS & KEY_A)) {
       u16 *code = (u16 *)GLOW_CODE;
       struct Stage *stage = (struct Stage *)0x02000400;
@@ -84,6 +102,8 @@ void Play(void) {
       room->lamp = lamp;
       stage->room = room;
       stage->rooms = 1;
+      stage->spare = 0;
+      stage->frames = 0;
       // ldr r0, [pc, #0] and bx lr: the word after them
       code[0] = 0x4800;
       code[1] = 0x4770;
