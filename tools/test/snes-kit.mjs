@@ -8,7 +8,9 @@
 // in front, scrolls them both ways, and steps the screen's brightness through every value. The sprite program shows
 // 128 sprites over a background, every size $2101 chooses in turn, flips, priorities, more than 32 sprites on a line
 // and more than 34 of their tiles, moves 8 of them through their table's port each frame, and turns $2103's priority
-// rotation on and off, from an even address and an odd one. The music program sends the sound processor a program
+// rotation on and off, from an even address and an odd one. The colour program goes through 16 settings of windows
+// and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and below. The
+// music program sends the sound processor a program
 // with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
 // each frame; that program plays three voices through the sound chip, with envelopes, BRR's filters, a bent pitch,
 // noise and the echo, and changes them as its timer counts.
@@ -19,7 +21,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, madeUpColourCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -40,6 +42,15 @@ const PROGRAMS = [
       [[['snes_write(0x2104, (uint8_t)(x ^ low));', 'snes_write(0x2104, (uint8_t)((x ^ low) ^ 0x30));']], 'a sprite\'s priority off'],
       [[['snes_write(0x2104, (uint8_t)((x << 4) + low));', 'snes_write(0x2104, (uint8_t)((x << 4) + low + 1));']], 'a sprite a pixel off'],
       [[['snes_write(0x2101, (uint8_t)(SNES_RAM[2] | (low & 0x80) >> 4));', 'snes_write(0x2101, (uint8_t)(SNES_RAM[2] | 0x18));']], 'the sprites\' second table on the background\'s tiles'],
+    ],
+  },
+  {
+    name: 'colour', game: 'test-snes-kit-colour', title: 'DREAMPORTS COLOUR', cartridge: madeUpColourCartridge, data: COLOUR, file: 'colour.c',
+    wrongs: [
+      [[['+ 10 + x));', '+ 10 + x) ^ 0x80);']], 'taking away where it adds', 16],
+      [[['snes_write(0x2132, (uint8_t)((low >> 1 & 0x1F) | 0x40));', 'snes_write(0x2132, (uint8_t)(((low >> 1) + 1 & 0x1F) | 0x40));']], 'the fixed colour\'s green a step off', 16],
+      [[['+ 6 + x));', '+ 6 + x) & 0x00);']], 'no sub screen', 32],
+      [[['snes_write(0x2127, (uint8_t)(one + 70));', 'snes_write(0x2127, (uint8_t)(one + 71));']], 'window 1 a pixel wider', 144],
     ],
   },
   {
