@@ -5,7 +5,8 @@ name: Check
 # npm run test:c-kit, which tries the kit in C against the JavaScript kit's drawing and starting point, and
 # npm run test:consoles and test:real-console, which do the same on a made-up console and on a real NES emulator, built
 # from its makers' source, with a small program of the project's own, and say which of its functions ran, and
-# npm run test:ps1-kit, which proves the PlayStation's kit in C against its real emulator with another, and npm run test:match, which builds the Game Boy
+# npm run test:ps1-kit, which proves the PlayStation's kit in C against its real emulator with another, and
+# npm run test:ps1-memories, which takes memories of play in that emulator for the function check, and npm run test:match, which builds the Game Boy
 # Advance's compiler from its keepers' source and tries match with another small program of the project's own, and
 # npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third, and
 # npm run test:ps1-call and test:ps1-twin, which run the functions of a fourth in the PlayStation's emulator's own
@@ -14,10 +15,11 @@ name: Check
 # tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
 # test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
 # test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
-# npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816, and
-# npm run test:n64-call, which runs the functions of an eighth in Parallel N64's own processor. A pull
-# request's code runs here, with a token that
-# can only read and no secrets.
+# npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
+# npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
+# and reads the program a ninth gives the sound processor, and npm run test:n64-call and test:n64-twin, which run the
+# functions of an eighth in Parallel N64's own processor and check its twins against them. A pull request's code runs
+# here, with a token that can only read and no secrets.
 #
 # The tests run in five jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695). The
 # check main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only
@@ -43,14 +45,19 @@ jobs:
               npm run check
               npm run build
               npm run test:game
-          # the kits and the consoles' emulators, and the Super Nintendo's processor running one function at a time
+          # the kits and the consoles' emulators, the Super Nintendo's processor running one function at a time and its
+          # emulator saying what ran for the code map, and the Nintendo 64's function check, here as the functions job is
+          # near its time
           - part: consoles
             run: |
               npm run test:c-kit
               npm run test:consoles
               npm run test:real-console
               npm run test:ps1-kit
+              npm run test:ps1-memories
+              npm run test:n64-twin
               npm run test:snes-call
+              npm run test:real-snes
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a

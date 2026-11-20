@@ -1,9 +1,11 @@
 // npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
-// (gba/functions.mjs), an NES game (nes/functions.mjs), a PlayStation game (ps1/functions.mjs) or a PlayStation 2 game
-// (ps2/functions.mjs), where it maps every program on the disc: the one it boots, its other programs, its modules for
-// the second processor and the vector units' programs. With --from, it takes them from a list: a decompilation's
+// (gba/functions.mjs), an NES game (nes/functions.mjs), a Super Nintendo game (snes/functions.mjs), with the mode each
+// function starts in, a PlayStation game (ps1/functions.mjs), a Nintendo 64 game (n64/functions.mjs), where it maps the
+// code its cartridge starts, or a PlayStation 2 game (ps2/functions.mjs), where it maps every program on the disc: the
+// one it boots, its other programs, its modules for the second processor and the vector units' programs. With --from,
+// it takes them from a list: a decompilation's
 // symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
 // a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
 // copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
@@ -34,7 +36,9 @@ import * as gbaFunctions from './gba/functions.mjs';
 import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
+import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
+import * as snesFunctions from './snes/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -59,11 +63,28 @@ const FINDERS = {
     play: true,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
   },
+  // a Super Nintendo game's cartridge, its addresses the offsets in its ROM, followed from its vectors with the
+  // processor's mode carried along, and from where play sent it in the mode it ran in (snes/functions.mjs)
+  snes: {
+    ...snesFunctions,
+    file: 'tools/snes/functions.mjs',
+    address: address => address,
+    play: true,
+    name: (value, copy) => snesFunctions.snesNames(value, snesFunctions.snesProgram(copy).map)[0]?.[1],
+    fromPlay: (copy, functions, sent) => snesFunctions.fromPlay(copy, functions, sent),
+  },
   // a PlayStation or PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
   ps1: {
     ...ps1Functions,
     file: 'tools/ps1/functions.mjs',
     read: ps1Functions.ps1Program,
+    address: address => address,
+  },
+  // a Nintendo 64 game's code as its cartridge starts it, read in the console's byte order whatever order the copy's in
+  n64: {
+    ...n64Functions,
+    file: 'tools/n64/functions.mjs',
+    read: n64Functions.n64Cartridge,
     address: address => address,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
@@ -128,11 +149,13 @@ export async function run(args) {
     }
     if (finder?.play) {
       const sent = await sentInPlay(game, original, copy.path);
-      const starts = sent && startsFromPlay(nesFunctions.nesProgram(theCopy).prg, functions, sent);
+      // on the Super Nintendo the code is followed again from where play went, in the mode it went there in
+      const found = sent && finder.fromPlay ? finder.fromPlay(theCopy, functions, sent) : null;
+      const starts = found ? found.starts : sent && startsFromPlay(nesFunctions.nesProgram(theCopy).prg, functions, sent);
       if (starts?.length) {
         // each starts a function, cut from the one it's in if it's in one, and its code is followed from there
         const cut = splitAt(functions, starts.map(address => ({ address, size: 1 })));
-        functions = gbaFunctions.fillFunctions(cut, finder.findFunctions(theCopy, cut));
+        functions = found ? found.functions : gbaFunctions.fillFunctions(cut, finder.findFunctions(theCopy, cut));
         const PLAYED = ', and the functions its recordings reach that following the code doesn\'t, found by playing them in the original';
         if (!from.includes(PLAYED)) from += PLAYED;
         const hexes = starts.slice(0, 12).map(address => `0x${hex(address)}`).join(', ');
@@ -160,8 +183,9 @@ export async function run(args) {
 }
 
 /** Where play sent the processor in every recording of a game whose emulator says so (libretro/ran.h): each place
- *  once, as { address, way }, `way` being 'called', 'jumped' through a pointer or 'returned' to. Null when the
- *  emulator doesn't say, or the game has no recordings one console plays. */
+ *  once for each way and mode, as { address, way, mode }, `way` being 'called', 'jumped' through a pointer or
+ *  'returned' to, and `mode` the processor's mode as its emulator says it. Null when the emulator doesn't say, or the
+ *  game has no recordings one console plays. */
 async function sentInPlay(game, original, copyPath) {
   const reference = await referenceOf(original);
   const recordings = readRecordings(game).filter(r => r.players === undefined);
@@ -176,7 +200,7 @@ async function sentInPlay(game, original, copyPath) {
       const buttons = originalHeld.map(list => list.reduce((mask, b) => mask | (reference.KEY[b] ?? 0), 0));
       if (keysLate) buttons.unshift(0);
       const { entries } = await reference.runOriginal({ copy: copyPath, frames: buttons.length + 1, buttons, sets, entries: true });
-      for (const { address, way } of entries) if (!found.has(`${address} ${way}`)) found.set(`${address} ${way}`, { address, way });
+      for (const { address, way, mode } of entries) if (!found.has(`${address} ${way} ${mode}`)) found.set(`${address} ${way} ${mode}`, { address, way, mode });
       process.stdout.write(`\rLooking for functions only play reaches: ${++done} of ${recordings.length} recordings…`);
     }
   };

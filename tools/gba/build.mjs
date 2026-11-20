@@ -174,7 +174,7 @@ function buildHere(log, windows) {
   if (windows) copyFileSync(made(CALLER), CALLER);
   writeFileSync(CALLER_STAMP, JSON.stringify({ mgba, caller: caller() }) + '\n');
   log('Building the program that checks the kit\'s clock…');
-  run(compiler, ['-O2', '-o', made(CLOCK), beside(CLOCK_SOURCE), beside(KIT_CLOCK), '-DGBA_CLOCK_CODE=check_code', '-I', dirname(KIT_CLOCK), '-I', KIT_C, ...headers, ...library], 'Building the program that checks the kit\'s clock', windows?.env);
+  run(compiler, ['-O2', '-o', made(CLOCK), beside(CLOCK_SOURCE), beside(KIT_CLOCK), '-DGBA_CLOCK_CODE=check_code', '-DGBA_CLOCK_DATA=check_data', '-I', dirname(KIT_CLOCK), '-I', KIT_C, ...headers, ...library], 'Building the program that checks the kit\'s clock', windows?.env);
   if (windows) copyFileSync(made(CLOCK), CLOCK);
   writeFileSync(CLOCK_STAMP, JSON.stringify({ mgba, clock: clock() }) + '\n');
   if (windows) {

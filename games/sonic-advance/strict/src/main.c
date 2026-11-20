@@ -31,6 +31,19 @@
 
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
+// and those of the compiler's helpers and the BIOS's stubs the trial takes from the kit (kit/gba/c/lib/libgcc/ and
+// bios/), which only the twins' table names
+unsigned int _call_via_r0(void), _call_via_r1(void), _call_via_r2(void), _call_via_r3(void), _call_via_r4(void);
+unsigned int _call_via_r5(void), _call_via_r6(void), _call_via_r7(void), _call_via_r8(void), _call_via_r9(void);
+unsigned int _call_via_sl(void), _call_via_fp(void), _call_via_ip(void), _call_via_sp(void), _call_via_lr(void);
+int __divsi3(int numerator, int denominator);
+void __div0(void);
+int Div(int num, int denom), Mod(int num, int denom);
+// and the cartridge's own start, in ARM code, which does nothing here (crt0.c)
+void CartridgeStart(void), CartridgeInit(void), IntrMainArm(void);
+// and the C library's, whose twins are the console's build's alone (kit/gba/c/lib/newlib/): here the kit's own
+void *memcpy(void *dest, const void *src, unsigned long n);
+void *memset(void *dest, int c, unsigned long n);
 
 // the console's start and what the page gives it each frame (hardware.c)
 void console_power_on(void);

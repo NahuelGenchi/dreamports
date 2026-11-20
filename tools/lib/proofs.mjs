@@ -38,7 +38,7 @@ import { proofFolder, REPO } from './paths.mjs';
 import { cartridgeOf, functionKey, hex, inBootProgram, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
-import { codeOf, piecesIn } from '../gba/match.mjs';
+import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
@@ -197,9 +197,12 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
     for (const twin of twinsOf.get(file)) {
       if (twin.keyed) keep(functionKey(twin.keyed), twin, file);
       if (twin.address === null) continue;
-      keep(twin.address, twin, file);
-      // a twin of a run (gba/match.mjs, throughIn) is the twin of each function of it
-      if (twin.through) for (const f of codeMap.functions) if (inBootProgram(f) && f.address > twin.address && f.address <= twin.through) keep(f.address, twin, file);
+      // how a hand-written routine takes and gives is part of what its twin is, as an NES twin's contract is (#1710)
+      const more = twin.registers ? `${twin.registers.text}\n` : '';
+      keep(twin.address, twin, file, more);
+      // a twin of a run (gba/match.mjs, throughOf) is the twin of each function of it
+      const through = throughOf(twin, codeMap.functions);
+      if (through) for (const f of codeMap.functions) if (inBootProgram(f) && f.address > twin.address && f.address <= through) keep(f.address, twin, file, more);
     }
   }
   return marks;

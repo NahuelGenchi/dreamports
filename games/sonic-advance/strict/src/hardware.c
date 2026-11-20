@@ -294,91 +294,37 @@ void console_hblank(int y) {
 
 // ---------------------------------------------------------------------------------------------------------------
 // The sound: the engine is the game's own, run in the console's memory, and the kit is the sound hardware. The engine's
-// library says each register it writes (console_wrote): the sound chip's go to the kit as they're written, and a sound
-// channel's DMA switched on to wait for its FIFO reads from its source again. Each frame, the kit is given the samples
-// the two FIFOs play during it, as many as the first timer's rate makes.
-static u32 sound_at[2];
-static u8 sound_on[2];
-// each FIFO: up to eight words its DMA read and it hasn't played yet, from the `fifo_read`th on, and the word it plays
-// from, a byte at a time
-static u32 fifo_words[2][8], fifo_word[2];
-static u8 fifo_count[2], fifo_read[2], fifo_word_left[2];
-static int console_memory(u32 address);
-
+// library says each register it writes (console_wrote): the sound chip's go to the kit as they're written. The two
+// FIFOs are the kit's clock's, which the library's DMA registers reach as its runs store them, and which plays each
+// FIFO's samples at its timer's overflows, as the console does (gba_sound_console_fifo).
 void console_wrote(const volatile void *where, u32 bytes) {
-  u32 at = (u32)((const u8 *)where - (const u8 *)console_io), i, n;
+  u32 at = (u32)((const u8 *)where - (const u8 *)console_io), i;
   if (at >= sizeof console_io) return;
   for (i = 0; i < bytes; i++)
     if (at + i >= 0x60 && at + i < 0xA0) gba_sound_console_write((int)(at + i), ((const u8 *)console_io)[at + i]);
-  // a FIFO emptied: the control's reset bit, A's and then B's, which reads back as 0, as the console's does
-  if (at <= 0x83 && at + bytes > 0x82) {
-    for (n = 0; n < 2; n++)
-      if (console_io[0x82 >> 1] & (0x800 << (4 * n))) fifo_count[n] = fifo_read[n] = 0;
+  // a FIFO emptied: the control's reset bits, A's and then B's, which the clock's store of it takes, and which read
+  // back as 0, as the console's do
+  if (at <= 0x83 && at + bytes > 0x82 && (console_io[0x82 >> 1] & 0x8800)) {
+    gba_clock_written(0x04000082u, console_io[0x82 >> 1]);
     console_io[0x82 >> 1] &= ~0x8800;
   }
-  for (n = 0; n < 2; n++) {
-    u32 control = 0xC6 + 12 * n;
-    u16 value;
-    if (at > control + 1 || at + bytes <= control) continue;
-    value = console_io[control >> 1];
-    // on, at the FIFO's own time: from the source it was given, where it wasn't on already
-    if ((value & 0x8000) && (value >> 12 & 3) == 3) {
-      if (!sound_on[n]) sound_at[n] = (u32)console_io[(control - 10) >> 1] | (u32)console_io[(control - 8) >> 1] << 16;
-      sound_on[n] = 1;
-    } else {
-      sound_on[n] = 0;
-    }
-  }
-}
-
-// the samples of the frame that starts, as each FIFO plays them: one at each of the first timer's overflows, from the
-// oldest word it holds, a byte at a time, the lowest first; and at an overflow that finds fewer than four words left,
-// its DMA reads four more from its source, to be played after those. The FIFO plays what its DMA read up to a burst
-// before, as the console's does, and goes on playing what it holds after its DMA stops
-static void console_sound_frame(void) {
-  static s8 played[2][704];
-  u16 reload = console_io[0x100 >> 1];
-  u32 count = (console_io[0x102 >> 1] & 0x80) && reload ? 280896u / (0x10000u - reload) : 0, n, i, w;
-  if (count > sizeof played[0]) count = sizeof played[0];
-  for (n = 0; n < 2; n++) {
-    for (i = 0; i < count; i++) {
-      int reads = fifo_count[n] < 4 && sound_on[n] && console_memory(sound_at[n]) && console_memory(sound_at[n] + 15);
-      if (!fifo_word_left[n] && fifo_count[n]) {
-        fifo_word[n] = fifo_words[n][fifo_read[n]];
-        fifo_read[n] = (fifo_read[n] + 1) & 7;
-        fifo_count[n]--;
-        fifo_word_left[n] = 4;
-      }
-      played[n][i] = (s8)fifo_word[n];
-      if (fifo_word_left[n]) {
-        fifo_word[n] >>= 8;
-        fifo_word_left[n]--;
-      }
-      if (reads) {
-        for (w = 0; w < 4; w++) fifo_words[n][(fifo_read[n] + fifo_count[n] + w) & 7] = *(const u32 *)(sound_at[n] + 4 * w);
-        fifo_count[n] += 4;
-        sound_at[n] += 16;
-      }
-    }
-  }
-  gba_sound_console_samples(played[0], played[1], (int)count);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // The BIOS's work, which the game calls through its stubs.
 
-/** VBlankIntrWait: until the V-blank's interrupt has said it ran, the frame's lines drawn and the V-blank begun. The
- *  frame ends here: the kit draws it once the game's step is over, and the game goes on from here in the next. */
+/** VBlankIntrWait's work, for the BIOS library's stub (kit/gba/c/lib/bios): until the V-blank's interrupt has said it
+ *  ran, the frame's lines drawn and the V-blank begun. The frame ends here: the kit draws it once the game's step is
+ *  over, and the game goes on from here in the next. */
 // A frame that ends in the middle of the game's work, as the console's time says: the Dreamport's ends there too, and
 // the next starts as any does, with its V-blank and its sound.
 static void console_frame_inside(void) {
   kit_wait_frame();
   console_blank_timed = 1;
   console_vblank();
-  console_sound_frame();
 }
 
-void VBlankIntrWait(void) {
+void console_vblank_intr_wait(void) {
   // from the game's first wait on, a frame ends at its wait, or inside its work where the console's time says
   gba_clock_on_frame_end(console_frame_inside);
   console_timed = 0;
@@ -400,7 +346,6 @@ void VBlankIntrWait(void) {
     gba_clock_resume(gba_clock_frame_end(gba_clock_frame()));
     console_blank_timed = 1;
     console_vblank();
-    console_sound_frame();
   } while (!(*(vu16 *)0x03007FF8 & 1));
   *(vu16 *)0x03007FF8 &= ~1;
 }
@@ -417,8 +362,8 @@ static int console_memory(u32 address) {
     || (address >= 0x04000000u && address < 0x08000000u) || (address >= 0x08000000u && address - 0x08000000u < gba_rom_size);
 }
 
-/** CpuSet: `control`'s count of halfwords, or words with bit 26, from `src` to `dest`, or the one at `src` over all of
- *  them with bit 24, as the BIOS copies them, one at a time. */
+/** CpuSet's work, for the BIOS library's stub: `control`'s count of halfwords, or words with bit 26, from `src` to
+ *  `dest`, or the one at `src` over all of them with bit 24, as the BIOS copies them, one at a time. */
 // CpuSet's work, a halfword or a word at a time, as the console's time reaches each of the BIOS's stores
 static struct { u32 from, to, wide, fixed; } cpu_set;
 static void cpu_set_unit(u32 i) {
@@ -431,7 +376,7 @@ static void cpu_set_unit(u32 i) {
 // the cartridge's stub for CpuSet: swi 0x0B, then back
 #define CPU_SET_STUB 0x080997E0u
 
-void CpuSet(const void *src, void *dest, u32 control) {
+void console_cpu_set(const void *src, void *dest, u32 control) {
   u32 count = control & 0x1FFFFF, i;
   cpu_set.wide = control >> 26 & 1 ? 4 : 2;
   cpu_set.fixed = control >> 24 & 1;
@@ -504,22 +449,24 @@ void console_power_on(void) {
   console_io[IO_SOUNDBIAS >> 1] = 0x200;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;
-  // the kit as the sound hardware of the engine the game runs
+  // the kit as the sound hardware of the engine the game runs, its FIFOs on the clock, from the frame the Dreamport's
+  // first frame is the console's
   gba_sound_console();
+  gba_sound_console_fifo(gba_clock_frame_end(0));
   gba_on_hblank(console_hblank);
 }
 
-// The BIOS's division, which the game calls through its two stubs, Div and Mod: the quotient and the remainder, each
-// rounded toward zero, as the console's BIOS gives them. Where the console's BIOS never comes back, dividing by 0, the
+// The BIOS's division, which the game calls through its two stubs, Div and Mod, the BIOS library's: the quotient and
+// the remainder, each rounded toward zero, as the console's BIOS gives them. Where the console's BIOS never comes back, dividing by 0, the
 // function check's emulator gives a quotient of 1, or -1 below 0, and the number as the remainder, and the one sum
 // that doesn't fit, the lowest number by -1, gives itself and 0: so does this, rather than stop the game, as a call
 // with made-up values may divide so, though play never does.
-s32 Div(s32 num, s32 denom) {
+s32 console_div(s32 num, s32 denom) {
   if (denom == 0) return num < 0 ? -1 : 1;
   if (denom == -1 && num == (s32)0x80000000u) return num;
   return num / denom;
 }
-s32 Mod(s32 num, s32 denom) {
+s32 console_mod(s32 num, s32 denom) {
   if (denom == 0) return num;
   if (denom == -1) return 0;
   return num % denom;

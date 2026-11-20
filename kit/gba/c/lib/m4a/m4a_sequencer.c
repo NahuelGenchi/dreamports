@@ -3,8 +3,8 @@
 // an instruction's work at a time, and its proof is the same memory.
 //
 // A few of its routines take and give values in registers no C function uses (ldrb_r3_r2, chk_adr_r2,
-// ld_r3_tp_adr_i, ld_r3_tp_adr_i_unchecked, ChnVolSetAsm): here they're C functions, proven through the functions
-// that call them.
+// ld_r3_tp_adr_i, ld_r3_tp_adr_i_unchecked, ChnVolSetAsm): here they're C functions, and the comment of each that
+// takes and gives in r0 to r3 says how, dp:registers, which the function check compares (tools/README.md).
 #include "m4a_internal.h"
 
 /** Clears the 64 bytes at `at`, as four stm store them: from the word `at` is in, when it isn't on a word. */
@@ -49,7 +49,9 @@ void MP2K_event_fine(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track)
 
 /**
  * Whether the engine reads at `at`: anywhere from the work memory on, and in the BIOS only from its own table of
- * commands up, which is never, as that table is in the cartridge. A value it won't read is 0.
+ * commands up, which is never, as that table is in the cartridge. A value it won't read is 0. The engine's routine
+ * takes the address in r2 and a value read from it in r3, which it gives back, or 0:
+ * dp:registers r3 = chk_adr_r2((const void *)r2) ? r3 : 0
  */
 u32 chk_adr_r2(const void *at)
 {
@@ -69,7 +71,11 @@ u32 ldrb_r3_r2(const u8 *at)
     return chk_adr_r2(at) ? *at : 0;
 }
 
-/** The track's next byte of commands, if the engine reads there. */
+/**
+ * The track's next byte of commands, if the engine reads there. The engine's routine takes the track in r1 and gives
+ * the byte back in r3, and is 10 bytes, of which the code map keeps the last 8 as a function of their own: dp:run 10
+ * dp:registers r3 = ld_r3_tp_adr_i((struct MP2KTrack *)r1)
+ */
 u32 ld_r3_tp_adr_i(struct MP2KTrack *track)
 {
     u8 *at = track->cmdPtr;
@@ -77,7 +83,10 @@ u32 ld_r3_tp_adr_i(struct MP2KTrack *track)
     return ldrb_r3_r2(at);
 }
 
-/** The track's next byte of commands. */
+/**
+ * The track's next byte of commands. The engine's routine takes the track in r1 and gives the byte back in r3:
+ * dp:registers r3 = ld_r3_tp_adr_i_unchecked((struct MP2KTrack *)r1)
+ */
 u32 ld_r3_tp_adr_i_unchecked(struct MP2KTrack *track)
 {
     u8 *at = track->cmdPtr;

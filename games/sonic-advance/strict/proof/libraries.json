@@ -104,10 +104,6 @@
         "MP2K_event_xleng": "08098C28",
         "MP2K_event_xswee": "08098C3C",
         "MP2K_event_null": "08098C50",
-        "CpuSet": "080997E1",
-        "_call_via_r1": "08099849",
-        "_call_via_r2": "0809984D",
-        "__divsi3": "08099881",
         "gMPlayJumpTableTemplate": "086D54F0",
         "gScaleTable": "086D5580",
         "gFreqTable": "086D5634",
@@ -120,6 +116,41 @@
         "gXcmdTable": "086D5798",
         "gMPlayTable": "086D767C",
         "gSongTable": "086D76AC"
+      }
+    },
+    "gba/libgcc": {
+      "at": {
+        "_call_via_r0": "08099844",
+        "_call_via_r1": "08099848",
+        "_call_via_r2": "0809984C",
+        "_call_via_r3": "08099850",
+        "_call_via_r4": "08099854",
+        "_call_via_r5": "08099858",
+        "_call_via_r6": "0809985C",
+        "_call_via_r7": "08099860",
+        "_call_via_r8": "08099864",
+        "_call_via_r9": "08099868",
+        "_call_via_sl": "0809986C",
+        "_call_via_fp": "08099870",
+        "_call_via_ip": "08099874",
+        "_call_via_sp": "08099878",
+        "_call_via_lr": "0809987C",
+        "__divsi3": "08099880",
+        "__div0": "08099914"
+      }
+    },
+    "gba/bios": {
+      "at": {
+        "CpuSet": "080997E0",
+        "Div": "080997E4",
+        "Mod": "080997E8",
+        "VBlankIntrWait": "0809981C"
+      }
+    },
+    "gba/newlib": {
+      "at": {
+        "memcpy": "0809B2C4",
+        "memset": "0809B324"
       }
     }
   }

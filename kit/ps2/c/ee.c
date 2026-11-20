@@ -60,8 +60,7 @@ float ee_adda(float a, float b) { return ee_acc = ee_add(a, b); }
 float ee_suba(float a, float b) { return ee_acc = ee_sub(a, b); }
 float ee_mula(float a, float b) { return ee_acc = ee_mul(a, b); }
 static float multiply_add(float a, float b, uint32_t negate) {
-  uint32_t flags = 0, product = fpu_mul(bits_of(a), bits_of(b), &flags) ^ negate;
-  uint32_t result = fpu_add(bits_of(ee_acc), product, &flags);
+  uint32_t flags = 0, result = fpu_mul_add(bits_of(ee_acc), bits_of(a), bits_of(b), negate != 0, &flags);
   return flagged(result, flags, OU);
 }
 float ee_madd(float a, float b) { return multiply_add(a, b, 0); }
@@ -71,8 +70,8 @@ float ee_msuba(float a, float b) { return ee_acc = multiply_add(a, b, SIGN); }
 
 float ee_abs(float value) { return flagged(bits_of(value) & ~SIGN, 0, OU); }
 float ee_neg(float value) { return flagged(bits_of(value) ^ SIGN, 0, OU); }
-float ee_max(float a, float b) { return flagged(fpu_order(bits_of(a)) >= fpu_order(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
-float ee_min(float a, float b) { return flagged(fpu_order(bits_of(a)) <= fpu_order(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
+float ee_max(float a, float b) { return flagged(fpu_rank(bits_of(a)) >= fpu_rank(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
+float ee_min(float a, float b) { return flagged(fpu_rank(bits_of(a)) <= fpu_rank(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
 
 static int condition(int value) {
   ee_fcsr = value ? ee_fcsr | EE_FCSR_C : ee_fcsr & ~EE_FCSR_C;

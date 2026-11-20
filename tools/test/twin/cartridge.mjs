@@ -27,7 +27,8 @@ export const DIVIDES = { Share: 0x08000540 };
 export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680, Fetch: 0x08000940, Ready: 0x08000980 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, one that runs code play put in the work memory, and the value play keeps the stage in
-export const PLAYED = { Shine: 0x08000400, Play: 0x08000440, Glow: 0x08000800 };
+// (Play, which grew with Spare, after every other function, where it has room)
+export const PLAYED = { Shine: 0x08000400, Play: 0x08000B00, Glow: 0x08000800, Spare: 0x08000880 };
 NAMED.set('gStage', 0x03000060);
 // a function that gives back what its caller keeps, and that caller, in a file of their own (gives.c)
 export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
@@ -35,6 +36,10 @@ export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
 // and the number it loads beside them
 export const TURN = { Turn: 0x08000900 };
 export const TURN_LENGTH = 16;
+// a Thumb start that goes on into ARM code, as a library's veneer does, with its ARM part an entry of its own as a code
+// map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
+export const TWICE = { Twice: 0x08000A80 };
+export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x08000A84, size: 24 }];
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -57,6 +62,26 @@ export function withTurn(rom) {
   const turned = Buffer.from(rom);
   [0xE59F1008, 0xE5912000, 0xE5812002, 0xE12FFF1E, NAMED.get('gFrame') + 2].forEach((word, i) => turned.writeUInt32LE(word, TURN.Turn - CARTRIDGE + 4 * i));
   return turned;
+}
+
+export function withTwice(rom) {
+  const twice = Buffer.from(rom);
+  // add r2, pc, #0 and bx r2: on into the ARM code after it
+  twice.writeUInt32LE(0x4710A200, TWICE.Twice - CARTRIDGE);
+  // ldr r1, [pc, #12], ldr r2, [r1, #4], lsl r2, r2, #1, str r2, [r1, #8], bx lr, and gFrame
+  [0xE59F100C, 0xE5912004, 0xE1A02082, 0xE5812008, 0xE12FFF1E, NAMED.get('gFrame')].forEach((word, i) => twice.writeUInt32LE(word, TWICE.Twice + 4 - CARTRIDGE + 4 * i));
+  return twice;
+}
+
+// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does (withPeek, peek.c)
+export const PEEK = { Peek: 0x08000A40 };
+export const PEEK_LENGTH = 6;
+
+export function withPeek(rom) {
+  const peeked = Buffer.from(rom);
+  // ldrb r3, [r2, #0], add r3, #1, bx lr
+  [0x7813, 0x3301, 0x4770].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Peek - CARTRIDGE + 2 * i));
+  return peeked;
 }
 
 export function withVideo(rom, assembly) {

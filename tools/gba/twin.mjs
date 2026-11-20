@@ -47,7 +47,7 @@ import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
 import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
-import { addressFinder, twinsIn } from './match.mjs';
+import { addressFinder, runIn, throughOf, twinsIn } from './match.mjs';
 import { addressAt, CARTRIDGE, IMAGE, inImage, REGIONS } from './twin-memory.mjs';
 import { hasMemories, memoriesKey, openMemories, takeMemories } from './twin-memories.mjs';
 
@@ -228,7 +228,13 @@ class Original {
    *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
    *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. `spare` is
    *  what the registers no argument fills hold, 0 unless given. */
-  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false }) {
+  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false, gives = 0 }) {
+    // a hand-written routine gives back in the register its twin's comment names (#1710)
+    if (gives !== (this.gives ?? 0)) {
+      this.ask('g', [gives]);
+      await this.take(4);
+      this.gives = gives;
+    }
     // a twin that says it follows reads and writes where no halfword or word starts has those calls compared
     if (Boolean(unaligned) !== Boolean(this.unaligned)) {
       this.ask('a', [unaligned ? 1 : 0]);
@@ -488,6 +494,12 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id).map(twin => ({ ...twin, address: placedAt(twin) })), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
+          // a hand-written routine's twin that says how it takes and gives in registers is called with the four of
+          // them, and gives back what its comment's C works out from them (#1710)
+          if (twin.registers && !wrap) {
+            calls.push({ ...twin, params: [0, 1, 2, 3].map(() => ({ bits: 32, signed: false, pointer: true })), returns: { bits: 32, signed: false }, call: `${CALL}${n}_${twin.name}` });
+            continue;
+          }
           const signature = signatureFor(text, twin.name);
           if (signature) calls.push({ ...twin, ...signature, call: `${CALL}${n}_${twin.name}` });
           else unknown.push(twin.name);
@@ -498,7 +510,11 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const build = () => {
           const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
-          for (const { name: twin, params, returns, call } of calls) {
+          for (const { name: twin, params, returns, call, registers } of calls) {
+            if (registers && !wrap) {
+              lines.push(`unsigned ${call}(unsigned r0, unsigned r1, unsigned r2, unsigned r3) { (void)r0; (void)r1; (void)r2; (void)r3; return (unsigned)(${registers.expression}); }`);
+              continue;
+            }
             if (wrap) {
               lines.push(wrap({ name: twin, params, returns, call }));
               continue;
@@ -686,8 +702,8 @@ function holds(cond, a, b, test) {
 function branchesLeft(f, bytesOf) {
   const at = f.address & ~1, bytes = bytesOf(at, f.span);
   const branches = [];
-  for (const [where, how] of pathsLeft(bytes, at, f.ran).left) {
-    if (how === 'never ran') continue;
+  for (const [where, how] of pathsLeft(bytes, at, f.ran, new Map(), f.modes).left) {
+    if (how === 'never ran' || f.modes?.findLast(([offset]) => offset <= where - at)?.[1]) continue;
     const op = bytes.readUInt16LE(where - at);
     if ((op & 0xF000) !== 0xD000 || (op >> 8 & 15) >= 14) continue;
     branches.push({ where, cond: op >> 8 & 15, taken: how === 'never taken' });
@@ -713,7 +729,7 @@ function throughSteps(value, steps) {
 // the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
 // give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-export function sourceFor(held, bytes, now, steps, wanted, other) {
+export function sourceFor(held, bytes, now, steps, wanted, other, seen = []) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
@@ -728,6 +744,9 @@ export function sourceFor(held, bytes, now, steps, wanted, other) {
     }
     return null;
   }
+  // a word the game itself kept there in a memory of play, as a pointer to one of its own things, which no number
+  // near another is: a pointer compared with 0 is then used (#1709)
+  for (const value of seen) if (value !== held && wanted(throughSteps(read(value), steps))) return value >>> 0;
   // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
   if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
   let sign = 1, added = 0;
@@ -744,7 +763,7 @@ const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, othe
 
 // The call a witness was, with one value a comparison read changed so that the branch goes the way `wanted` says:
 // an argument, or what came from the image. Null when it can't be had that way.
-function withValue(witness, origin, now, wanted, other) {
+function withValue(witness, origin, now, wanted, other, seenAt = () => []) {
   if (origin.kind === 2) {
     if (origin.where >= witness.args.length) return null;
     const value = sourceFor(witness.args[origin.where], 4, now, origin.steps, wanted, other);
@@ -756,7 +775,7 @@ function withValue(witness, origin, now, wanted, other) {
   if (origin.kind !== 1 || ![1, 2, 4].includes(origin.bytes) || inImage(origin.where) < 0) return null;
   const { where: address, bytes } = origin;
   const set = witness.changed.find(([at, size]) => at === address && size === bytes);
-  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other);
+  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other, bytes === 4 ? seenAt(address) : []);
   if (value === null) return null;
   return { args: witness.args, changed: [...witness.changed.filter(([at]) => at !== address), [address, bytes, value]] };
 }
@@ -764,7 +783,7 @@ function withValue(witness, origin, now, wanted, other) {
 // A call aimed at one of a function's branches its calls haven't taken both ways: a call that made the comparison
 // before it, again, with one of the two values it compared changed so that the branch goes the other way. Null when
 // there's none to aim at, or no value found does it.
-function aimed(f, choose) {
+function aimed(f, choose, seenAt = () => []) {
   // the calls that made the comparison just before a branch: at most four instructions before it, the nearest first
   const witnessesOf = branch => {
     for (let pc = branch.where - 2; pc >= branch.where - 8; pc -= 2) if (f.aim.witnesses.get(pc)?.length) return f.aim.witnesses.get(pc);
@@ -779,7 +798,7 @@ function aimed(f, choose) {
     if (!origin.kind) continue;
     const now = side ? compare.b : compare.a;
     const wanted = value => holds(branch.cond, side ? compare.a : value, side ? value : compare.b, compare.test) === branch.taken;
-    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b);
+    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b, seenAt);
     if (call) return { ...call, witness };
   }
   return null;
@@ -846,7 +865,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     f.tried++;
     since++;
     // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
-    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose) : null;
+    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose, address => memories?.heldAt?.(address) ?? []) : null;
     if (aim) {
       mirror = Buffer.from(aim.witness.start);
       await original.set(mirror);
@@ -905,7 +924,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0 });
     if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
@@ -1040,13 +1059,33 @@ export async function compareCalls({ original, twins, start, functions, options,
  * ran, and from each word of it that isn't an instruction and holds an address inside it, as the table of a switch
  * does, so a case no call reached is seen as left out.
  */
-export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
+export function pathsLeft(bytes, address, ran, ruledOut = new Map(), modes = null) {
+  // a twin of a run (#1708) has its pieces each read as the code it is: an ARM one by itself, and Thumb ones next to
+  // each other together, as a long jump goes from one to another
+  const stretches = [];
+  for (const [offset, arm] of modes ?? [[0, null]]) {
+    if (stretches.length && !arm && !stretches.at(-1).arm) continue;
+    if (stretches.length) stretches.at(-1).end = offset;
+    stretches.push({ from: offset, end: bytes.length, arm });
+  }
+  const found = { instructions: new Set(), branches: new Set() };
+  for (const { from, end, arm } of stretches) {
+    const got = stretchPaths(bytes.subarray(from, end), address + from, ran, ruledOut, arm);
+    for (const offset of got.instructions) found.instructions.add(from + offset);
+    for (const offset of got.branches) found.branches.add(from + offset);
+  }
+  return waysLeft(found, address, ran, ruledOut);
+}
+
+// the instructions and branches of one stretch of code, as pathsLeft says, `arm` true or false when its pieces say
+// which, and null for code whose bytes have to say it
+function stretchPaths(bytes, address, ran, ruledOut, arm) {
   const seeds = new Set([...ran.keys()].map(where => where - address).filter(offset => offset >= 0 && offset < bytes.length));
   // a way the game never takes isn't followed, so what only it reaches isn't asked for (#1536)
   const never = new Map([...ruledOut].filter(([where]) => where >= address && where < address + bytes.length).map(([where, way]) => [where - address, way]));
   let found;
   for (;;) {
-    found = instructionsOf(bytes, [...seeds], never, { longJumps: true });
+    found = instructionsOf(bytes, [...seeds], never, { longJumps: true, arm });
     const before = seeds.size;
     for (let word = (4 - address % 4) % 4; word + 4 <= bytes.length; word += 4) {
       if (found.instructions.has(word) || found.instructions.has(word + 2)) continue;
@@ -1055,7 +1094,7 @@ export function pathsLeft(bytes, address, ran, ruledOut = new Map()) {
     }
     if (seeds.size === before) break;
   }
-  return waysLeft(found, address, ran, ruledOut);
+  return found;
 }
 
 /** What a call was, in words: its number, what it was given, the memory of play it started from or went on from, if
@@ -1072,7 +1111,7 @@ export function outcome(f, { calls, seconds }) {
   const byte = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
   const hardware = f.result?.hardware ? ` The original used the hardware's register at ${at(f.result.hardware)} in this call, which a twin has to do through the kit.` : '';
   if (f.result?.kind === 'differs') {
-    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}` : null;
+    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}${f.registers ? ` in r${f.registers.gives}, as its comment's ${f.registers.text} works it out` : ''}` : null;
     const memory = f.result.memory ? `at ${at(f.result.memory.address)}, in ${f.result.memory.name}, the twin left ${byte(f.result.memory.ours)} and the original ${byte(f.result.memory.theirs)}` : null;
     return { kind: 'differs', line: `${callText(f.name, f.result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
@@ -1183,13 +1222,19 @@ export function givesBackUsed(bytes, functions) {
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, ruledOut = new Map(), givesBack = () => null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
   if (built.missing.length) return { missing: built.missing };
   const { twins, unknown } = built.unit;
-  const functions = built.calls.map(f => ({ ...f, address: f.address | (isArm(f.address) ? 0 : 1), span: (f.address >= CARTRIDGE && sizeOf(f.address)) || 0, unaligned: twins.find(twin => twin.name === f.name)?.unaligned === true }));
+  const functions = built.calls.map(f => {
+    // a twin of a run is called with the run as its own code, each piece of it read as the code it is (#1708)
+    const run = f.address >= CARTRIDGE ? runOf(f) : null;
+    const span = run ? Math.max(sizeOf(f.address) ?? 0, run.at(-1).address + run.at(-1).size - f.address) : (f.address >= CARTRIDGE && sizeOf(f.address)) || 0;
+    const modes = run ? run.map(piece => [piece.address - f.address, isArm(piece.address)]) : null;
+    return { ...f, address: f.address | (isArm(f.address) ? 0 : 1), span, ...(run ? { run: run.map(piece => piece.address), modes } : {}), unaligned: twins.find(twin => twin.name === f.name)?.unaligned === true };
+  });
   let rom = null;
   const cartridge = (address, size) => (rom ??= readFileSync(copy)).subarray(address - CARTRIDGE, address - CARTRIDGE + size);
   if (functions.length) {
@@ -1211,7 +1256,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
   return {
     functions: [
-      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...whole(f, outcome(f, all), cartridge, ruledOut) })),
+      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...(f.run ? { run: f.run } : {}), ...whole(f, outcome(f, all), cartridge, ruledOut) })),
       ...twins.filter(twin => twin.address === null && only === null).map(twin => ({ name: twin.name, address: null, line: twin.line })),
       ...unknown.filter(asked).map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
     ],
@@ -1223,7 +1268,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
 function whole(f, found, cartridge, ruledOut) {
   if (found.kind !== 'same') return found;
   if (!f.span) return { ...found, whole: false, line: `${found.line}, but the code map has no function there, so which of its paths ran can't be said, and it isn't proven` };
-  const { total, left } = pathsLeft(cartridge(f.address & ~1, f.span), f.address & ~1, f.ran, ruledOut);
+  const { total, left } = pathsLeft(cartridge(f.address & ~1, f.span), f.address & ~1, f.ran, ruledOut, f.modes);
   if (!left.length) return { ...found, whole: true, line: `${found.line}, which took every path of the original's` };
   const first = left.slice(0, 3).map(([where, how]) => `${at(where)} ${how}`).join(', ');
   return { ...found, whole: false, left, line: `${found.line}, but they left out ${count(left.length)} of the original's ${count(total)} instructions and branch ways, such as ${first}: it's the same as far as they went, and isn't proven until calls take those too` };
@@ -1261,6 +1306,13 @@ export async function memoriesOfPlay({ game, original, copy, addresses, names = 
 
 const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came back', stopped: 'Stopped', few: 'Too few calls', unchecked: 'Not checked' };
 
+/** What says whether the function at an address of a cartridge, `rom` its bytes, is ARM code: it starts with an
+ *  instruction that always runs, as the code map's finder has it (functions.mjs), and the words after it look like
+ *  ARM too. A Thumb veneer that goes on into ARM code, as `add r2, pc, #0` and `bx r2`, doesn't, whatever follows it
+ *  (#1708). */
+export const armIn = rom => address => address >= CARTRIDGE && address % 4 === 0 && address - CARTRIDGE + 16 <= rom.length
+  && rom.readUInt32LE(address - CARTRIDGE) >>> 28 === 0xE && looksLikeArm([0, 4, 8, 12].map(offset => rom.readUInt32LE(address - CARTRIDGE + offset)));
+
 /** The function check of a Game Boy Advance game's version in C: `options.function` names one function, an address
  *  or a name, or every twin is checked; the rest are as DEFAULTS, `addresses` another file of names, and `memories`,
  *  true or a list of recordings, has the calls start from memories of play, taken from those recordings. It prints
@@ -1294,8 +1346,7 @@ export async function twin(game, options = {}) {
   }
   ensureCaller(log);
   const rom = readFileSync(copy.path);
-  const isArm = address => address >= CARTRIDGE && address % 4 === 0 && address - CARTRIDGE + 16 <= rom.length
-    && looksLikeArm([0, 4, 8, 12].map(offset => rom.readUInt32LE(address - CARTRIDGE + offset)));
+  const isArm = armIn(rom);
   // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
   // check of them all
   const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address)).filter(address => address !== null))].sort((a, b) => a - b);
@@ -1312,11 +1363,16 @@ export async function twin(game, options = {}) {
   const givesBack = givesBackUsed(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE && !isArm(f.address)).map(f => ({ address: f.address, size: f.size })));
   const { ways: ruledOut } = readUnreachable(game);
   const proven = [], differing = [];
+  let wholes = 0;
   try {
     for (const file of chosen) {
       const result = await checkFile({
         original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories,
         sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack,
+        runOf: twin => {
+          const through = throughOf(twin, codeMap.functions);
+          return through === null ? null : runIn(codeMap.functions, twin.address, through);
+        },
       });
       const where = inRepo(file);
       if (result.error) {
@@ -1338,7 +1394,11 @@ export async function twin(game, options = {}) {
           continue;
         }
         totals[f.kind]++;
-        if (f.whole) proven.push({ key: hex(f.address), calls: f.compared });
+        // a twin of a run proves each function of it (#1708)
+        if (f.whole) {
+          wholes++;
+          for (const address of f.run ?? [f.address]) proven.push({ key: hex(address), calls: f.compared });
+        }
         else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
       }
@@ -1352,7 +1412,7 @@ export async function twin(game, options = {}) {
   }
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of` : `${count(all.frames)} frames in`} (seed ${all.seed}).`);
-  if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  if (totals.same) log(`${count(wholes)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
   // a proof is found with the game's own names, and over enough calls to be worth the name
   if (!asksForProofs(game)) return totals.differs || totals.never || totals.stopped ? 3 : 0;
   if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');

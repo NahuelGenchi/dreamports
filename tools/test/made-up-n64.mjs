@@ -10,10 +10,14 @@
 //   fill       writes a1 bytes of a2 from a0, in a loop
 //   lookup     the a0th word of its table of values
 //   twice      sum(a0, a0), through a call, with a stack of its own
-//   wide       a0 in the high half of a 64-bit number and a1 in the low, given back and kept at a2
+//   wide       a0 in the high half of a 64-bit number and a1 added, kept at a2 and given back as the console's
+//              compilers give one, its high word in v0 and its low in v1
 //   likely     1 when a0 is 0 and 2 when it isn't, by a branch whose delay slot runs only when it goes
 //   addf       the sum of the two singles at a0, kept after them
 //   square     the double at a0 squared, kept after it
+//   mulf       the product of two floats, given in $f12 and $f14, in $f0
+//   addd       the sum of two doubles, given in $f12 and $f14, in $f0
+//   bits       a float given after a whole number, which comes in a1, given back as its bits
 //   forever    a loop that never ends
 //   misaligned reads a word where none starts
 //   cartridge  reads the cartridge, at 0xB0000000
@@ -35,6 +39,7 @@ const nop = 0;
 const addu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x21);
 const daddu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x2D);
 const dsll32 = (rd, rt, sa) => r('zero', rt, rd, sa, 0x3C);
+const dsra32 = (rd, rt, sa) => r('zero', rt, rd, sa, 0x3F);
 const addiu = (rt, rs, imm) => i(9, rs, rt, imm);
 const ori = (rt, rs, imm) => i(13, rs, rt, imm);
 const lui = (rt, imm) => i(15, 'zero', rt, imm);
@@ -56,6 +61,8 @@ const sdc1 = (ft, offset, base) => f(0x3D, ft, offset, base);
 const cop1 = (format, ft, fs, fd, fn) => ((17 << 26) | (format << 21) | (ft << 16) | (fs << 11) | (fd << 6) | fn) >>> 0;
 const addS = (fd, fs, ft) => cop1(16, ft, fs, fd, 0);
 const mulD = (fd, fs, ft) => cop1(17, ft, fs, fd, 2);
+const mulS = (fd, fs, ft) => cop1(16, ft, fs, fd, 2);
+const addD = (fd, fs, ft) => cop1(17, ft, fs, fd, 0);
 // what needs to know where things are: a branch to a label, a call, and the two halves of an address
 const branch = op => (rs, rt, label) => ({ at: (labels, pc) => i(op, rs, rt, (labels[label] - pc - 4) >> 2) });
 const beq = branch(4), beql = branch(0x14);
@@ -83,10 +90,13 @@ const PROGRAM = [
   here('fill_done'), jr('ra'), nop,
   here('lookup'), hi('t0', 'values'), lo('t0', 't0', 'values'), sll('t1', 'a0', 2), addu('t0', 't0', 't1'), lw('v0', 0, 't0'), jr('ra'), nop,
   here('twice'), addiu('sp', 'sp', -24), sw('ra', 16, 'sp'), jal('sum'), addu('a1', 'a0', 'zero'), lw('ra', 16, 'sp'), jr('ra'), addiu('sp', 'sp', 24),
-  here('wide'), dsll32('v0', 'a0', 0), daddu('v0', 'v0', 'a1'), jr('ra'), sd('v0', 0, 'a2'),
+  here('wide'), dsll32('t0', 'a0', 0), daddu('t0', 't0', 'a1'), sd('t0', 0, 'a2'), dsra32('v0', 't0', 0), jr('ra'), sll('v1', 't0', 0),
   here('likely'), beql('a0', 'zero', 'likely_zero'), addiu('v0', 'zero', 1), addiu('v0', 'zero', 2), here('likely_zero'), jr('ra'), nop,
   here('addf'), lwc1(0, 0, 'a0'), lwc1(2, 4, 'a0'), addS(4, 0, 2), swc1(4, 8, 'a0'), jr('ra'), nop,
   here('square'), ldc1(0, 0, 'a0'), mulD(2, 0, 0), sdc1(2, 8, 'a0'), jr('ra'), nop,
+  here('mulf'), mulS(0, 12, 14), jr('ra'), nop,
+  here('addd'), addD(0, 12, 14), jr('ra'), nop,
+  here('bits'), jr('ra'), addu('v0', 'a1', 'zero'),
   here('forever'), b('forever'), nop,
   here('misaligned'), lw('v0', 1, 'a0'), jr('ra'), nop,
   here('cartridge'), lui('t0', 0xB000), lw('v0', 0, 't0'), jr('ra'), nop,
@@ -109,22 +119,22 @@ const PROGRAM = [
 ];
 
 /** The functions, in order, each with the name of the label it starts at. */
-export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'likely', 'addf', 'square', 'forever', 'misaligned', 'cartridge', 'hardware', 'trap', 'unmapped', 'pick', 'shine'];
+export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'likely', 'addf', 'square', 'mulf', 'addd', 'bits', 'forever', 'misaligned', 'cartridge', 'hardware', 'trap', 'unmapped', 'pick', 'shine'];
 // what isn't code: the values, the switch's table, the table of functions, the numbers and the buffer
 const DATA = ['values', 'cases', 'functions', 'numbers', 'buffer', 'end'];
 
-/** The program as words, from LOAD, where each label is, and each function's address and size. */
-export function madeUpProgram() {
+// The words of `items` placed from `base`, and where each label is
+function assemble(items, base) {
   const labels = {};
-  let pc = LOAD;
-  for (const item of PROGRAM) {
+  let pc = base;
+  for (const item of items) {
     if (item.name) labels[item.name] = pc;
     else if (item.align) pc += (item.align - (pc % item.align)) % item.align;
     else pc += 4;
   }
   const words = [];
-  pc = LOAD;
-  for (const item of PROGRAM) {
+  pc = base;
+  for (const item of items) {
     if (item.name) continue;
     if (item.align) {
       for (; pc % item.align; pc += 4) words.push(0);
@@ -133,8 +143,46 @@ export function madeUpProgram() {
     words.push(typeof item === 'number' ? item >>> 0 : item.at(labels, pc));
     pc += 4;
   }
+  return { words, labels };
+}
+
+/** The program as words, from LOAD, where each label is, and each function's address and size. */
+export function madeUpProgram() {
+  const { words, labels } = assemble(PROGRAM, LOAD);
   // each function's address and size, to the next function or values after it
   const after = [...FUNCTIONS, ...DATA].map(name => labels[name]).sort((a, b) => a - b);
   const functions = FUNCTIONS.map(name => ({ name, address: labels[name], size: after.find(at => at > labels[name]) - labels[name] }));
   return { words, labels, functions };
+}
+
+// The cartridge's own boot code, which the console runs from the RSP's data memory, where it copies the cartridge's
+// first 4 KB, at 0xA4000040, past the header: it has the cartridge interface copy the megabyte after it to where the
+// program loads, waits until it's done, and jumps there, as the boot code a game's cartridge holds does once it has
+// set the console up. It's the project's own, as is every word of this cartridge.
+const andi = (rt, rs, imm) => i(12, rs, rt, imm);
+const bne = branch(5);
+const BOOT = [
+  lui('t0', 0xA460), addiu('t1', 'zero', LOAD & 0xFFFF), sw('t1', 0x00, 't0'),
+  lui('t1', 0x1000), ori('t1', 't1', 0x1000), sw('t1', 0x04, 't0'),
+  lui('t1', 0x000F), ori('t1', 't1', 0xFFFF), sw('t1', 0x0C, 't0'),
+  here('wait'), lw('t2', 0x10, 't0'), andi('t2', 't2', 3), bne('t2', 'zero', 'wait'), nop,
+  lui('t3', LOAD >>> 16), ori('t3', 't3', LOAD & 0xFFFF), jr('t3'), nop,
+];
+
+/**
+ * The program as a cartridge the console boots: its header, its boot code at 0x40, and the program at 0x1000, the
+ * megabyte the boot code copies, which the cartridge holds all of. The header names where the program runs, or `named`,
+ * as a cartridge whose boot code puts its program elsewhere does. { cartridge, labels, functions }.
+ */
+export function madeUpCartridge({ named = LOAD } = {}) {
+  const { words, labels, functions } = madeUpProgram();
+  const cartridge = Buffer.alloc(0x1000 + 0x100000);
+  cartridge.writeUInt32BE(0x80371240, 0x00);
+  cartridge.writeUInt32BE(0x0000000F, 0x04);
+  cartridge.writeUInt32BE(named >>> 0, 0x08);
+  cartridge.write('DREAMPORTS MADE UP'.padEnd(20), 0x20, 'latin1');
+  cartridge.write('NDPE', 0x3B, 'latin1');
+  assemble(BOOT, 0xA4000040).words.forEach((word, n) => cartridge.writeUInt32BE(word, 0x40 + n * 4));
+  words.forEach((word, n) => cartridge.writeUInt32BE(word, 0x1000 + n * 4));
+  return { cartridge, labels, functions };
 }
