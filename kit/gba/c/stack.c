@@ -33,6 +33,8 @@ static struct {
 static int depth;
 
 static void store(uint32_t at, uint32_t v, int bytes) {
+  // a routine in assembly stores its pushes before its stack pointer is known to have moved past them
+  if (at < low) low = at;
   for (int i = 0; i < bytes; i++) ((volatile uint8_t *)(uintptr_t)at)[i] = (uint8_t)(v >> (8 * i));
 }
 

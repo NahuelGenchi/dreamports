@@ -275,6 +275,11 @@ try {
   const named = program(['#include "program.h"', '#include "program.h"\n#include "twins.h"'], ['which & 1 ? Step : Skip', 'which & 1 ? TWIN_ADDRESS(Step) : TWIN_ADDRESS(Skip)'], ['if (gHandler) gHandler();', 'if (gHandler) TWIN(gHandler)();']);
   const written = await checking(named, {}, { includes: [join(named, '..'), headers] });
   check(sameBut(written, []), `a twin that names functions by their addresses with twins.h, and calls through its table, leaves the same memory${written.error ? `: ${written.error}` : ''}`);
+  // a game of twins has its own table in one of its files, and in the check an address it has no twin of, as a made-up
+  // pointer is, is the check's to set aside as one a twin can't follow, rather than the table's to stop the game on
+  const tabled = program(['#include "program.h"', '#include "program.h"\n#include "twins.h"'], ['which & 1 ? Step : Skip', 'which & 1 ? TWIN_ADDRESS(Step) : TWIN_ADDRESS(Skip)'], ['if (gHandler) gHandler();\n}', 'if (gHandler) TWIN(gHandler)();\n}\n\nTWIN_TABLE']);
+  const own = await checking(tabled, {}, { includes: [join(tabled, '..'), headers] });
+  check(sameBut(own, []), `and so does one whose file has the game's own table, which made-up pointers reach with no twin${own.error ? `: ${own.error}` : `: ${own.by.Run?.line}`}`);
 
   console.log('A twin that never comes back:');
   const began = Date.now();
