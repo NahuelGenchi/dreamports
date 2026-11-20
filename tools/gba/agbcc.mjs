@@ -54,22 +54,14 @@ const SOURCES = ['toplev', 'version', 'tree', 'print-tree', 'stor-layout', 'fold
 // which of them the programs above write, so they're read from where they were built
 const WRITTEN = new Set(['genrtl', ...TABLES.map(([file]) => file.replace(/\.[ch]$/, ''))]);
 
-// A program built for Windows writes \r\n for every \n of a file it opened as text, as agbcc opens its assembly, and
-// the tools read agbcc's assembly as it comes out on Linux and a Mac. MinGW's binmode.o, linked in, has a program open
-// every file as bytes, so agbcc writes the same bytes on Windows as anywhere else. The stamp says so, as an agbcc built
-// on Windows before has to be built again.
-const FILES = process.platform === 'win32' ? 'bytes' : undefined;
-
 const built = () => {
   try { return JSON.parse(readFileSync(STAMP, 'utf8')); } catch { return {}; }
 };
-// whether the stamp is of this commit of agbcc, built as it's built now
-const current = stamp => stamp.commit === AGBCC_COMMIT && stamp.files === FILES;
 
 /** Whether this compiler is built, from this commit of agbcc. */
 export function isCompilerBuilt(name = 'agbcc') {
   const stamp = built();
-  return current(stamp) && stamp.compilers?.includes(name) && existsSync(compilerPath(name));
+  return stamp.commit === AGBCC_COMMIT && stamp.compilers?.includes(name) && existsSync(compilerPath(name));
 }
 
 function run(command, args, what, { cwd, env, output } = {}) {
@@ -105,8 +97,6 @@ export function buildCompilers(names, log, windows) {
   mkdirSync(FOLDER, { recursive: true });
   const gcc = source(log);
   const cc = windows?.gcc ?? (process.env.CC || 'cc');
-  const binmode = windows ? spawnSync(cc, ['-print-file-name=binmode.o'], { env: windows.env, encoding: 'utf8' }).stdout?.trim() : null;
-  if (windows && !existsSync(binmode ?? '')) throw new Error(`Building agbcc needs MinGW's binmode.o, which ${cc} doesn't have.`);
   for (const name of names) {
     if (isCompilerBuilt(name)) continue;
     log(`Building the Game Boy Advance's compiler, ${name} (under a minute)…`);
@@ -130,11 +120,11 @@ export function buildCompilers(names, log, windows) {
       run(program(generator, [...RTL, ...more]), [join(gcc, 'thumb.md')], what, { ...options, output: join(folder, table) });
     }
     SOURCES.forEach(compile);
-    run(cc, [...flags, '-o', join(folder, name + EXE), ...objects([...SOURCES, ...RTL, 'rtlanal']), ...(windows ? [binmode, '-static'] : [])], what, options);
+    run(cc, [...flags, '-o', join(folder, name + EXE), ...objects([...SOURCES, ...RTL, 'rtlanal']), ...(windows ? ['-static'] : [])], what, options);
     copyFileSync(join(folder, name + EXE), compilerPath(name));
     rmSync(folder, { recursive: true, force: true });
     const stamp = built();
-    writeFileSync(STAMP, JSON.stringify({ commit: AGBCC_COMMIT, files: FILES, compilers: [...new Set([...(current(stamp) ? stamp.compilers ?? [] : []), name])] }) + '\n');
+    writeFileSync(STAMP, JSON.stringify({ commit: AGBCC_COMMIT, compilers: [...new Set([...(stamp.commit === AGBCC_COMMIT ? stamp.compilers ?? [] : []), name])] }) + '\n');
   }
   rmSync(BUILD, { recursive: true, force: true });
 }

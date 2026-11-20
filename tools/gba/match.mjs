@@ -314,7 +314,7 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
   const built = await compileFile({ file, root, includes, compiler, work });
   if (built.error) return built;
   const { made, assembly } = built;
-  const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split('\n');
+  const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split(/\r?\n/);
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
 
   // the functions the file defines, in the order they sit in its code, each up to the next
