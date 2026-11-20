@@ -53,19 +53,20 @@ const others = (run, name) => run.results.filter(result => result !== run.of[nam
 console.log('The contracts as they\'re read:');
 {
   const { contracts, bank, errors } = contractsIn(game, 4);
-  check(contracts.length === 6 && !errors.length && bank === 0x10, `six contracts and the bank's byte, $10 (${contracts.length}, ${errors.length} unread)`);
+  check(contracts.length === 7 && !errors.length && bank === 0x10, `seven contracts and the bank's byte, $10 (${contracts.length}, ${errors.length} unread)`);
   const add = contracts.find(contract => contract.name === 'sub_C400'), send = contracts.find(contract => contract.name === 'sub_C440');
   check(add?.call === 'add_to_total(A)' && add.back === 'C' && add.given === null && add.offset === 0xC400, 'a call, and after -> what its result equals');
   check(send?.byAddress === 0b10 && send.back === null, 'a register given with & is one the twin changes');
-  const more = contractsIn('// dp:twin sub_C2BC +6 start_task(A) -> C ? Y : 0 if A >= 2 && A <= 16 */\n// dp:twin nothing f(X)\n// dp:twin sub_C400 X\n// dp:bank C7', 4);
+  check(contracts.find(contract => contract.name === 'sub_C480')?.stack === true && !add.stack, 'a contract that names S is given the stack pointer');
+  const more = contractsIn('// dp:twin sub_C2BC +6 start_task(A) -> C ? Y : 0 if A >= 2 && A <= 16 */\n// dp:twin nothing f(X)\n// dp:twin sub_C400 X\n// dp:bank C7\n// dp:twin sub_C420 f(&S)', 4);
   const [task] = more.contracts;
   check(task?.allowance === 6 && task.back === 'C ? Y : 0' && task.given === 'A >= 2 && A <= 16', 'cycles beyond the function\'s own, and after if what the game gives');
-  check(more.errors.length === 3 && more.errors.map(error => error.line).join() === '2,3,4', 'a line that names no function, has no call or names no byte is said, with its line');
+  check(more.errors.length === 4 && more.errors.map(error => error.line).join() === '2,3,4,5', 'a line that names no function, has no call, names no byte or gives S by address is said, with its line');
 }
 
 console.log('The twins as they are, from random memories:');
 const right = tried('right');
-check(right.same === 6, `all six twins are the same as their originals (${right.same})`);
+check(right.same === 7, `all seven twins are the same as their originals (${right.same})`);
 check(right.results.every(result => !result.asItWas && result.changed.calls === CALLS), `each on ${CALLS} calls, none left out`);
 check(right.of.add_to_total.counts && right.of.pick.counts && !right.of.send.counts, 'the time is compared for the twins that count it');
 
@@ -75,7 +76,7 @@ console.log('And from memories kept in a file:');
   for (let i = 0; i < bytes.length; i++) bytes[i] = (i * 2654435761 >>> 13) & 0xFF;
   writeFileSync(memories, bytes);
   const kept = tried('right', [], { memories });
-  check(kept.same === 6 && kept.results.every(result => result.asItWas.calls === CALLS && result.changed.calls === CALLS), `all six the same, on ${CALLS} calls as they were and ${CALLS} changed`);
+  check(kept.same === 7 && kept.results.every(result => result.asItWas.calls === CALLS && result.changed.calls === CALLS), `all seven the same, on ${CALLS} calls as they were and ${CALLS} changed`);
 }
 
 console.log('One line changed at a time:');
@@ -109,6 +110,21 @@ console.log('One line changed at a time:');
   check(!run.of.add_to_total.same && changed.same === CALLS && changed.time > 0 && changed.time < CALLS, 'a wrong time is found, where everything else is the same');
   const call = tried('time-with-call', [['? 26 : 22', '? 32 : 28'], ['sub_C400 add_to_total', 'sub_C400 +6 add_to_total']]);
   check(call.of.add_to_total.same, 'and a twin that counts the JSR that calls it says so in its contract');
+}
+{
+  const run = tried('no-push', [['  RAM[0x100 | s] = 0xC4;', ''], ['  RAM[0x100 | (uint8_t)(s - 1)] = 0x82;', '']]);
+  const { changed } = run.of.peek;
+  check(!run.of.peek.same && changed.memory > 0 && changed.memory < CALLS && changed.bytes[0]?.[0] === 0x34 && others(run, 'peek'), `a twin that doesn't write what its original's own call pushes, which the original then reads, is found (${CALLS - changed.memory} of ${CALLS} calls)`);
+  const fixed = tried('fixed-stack', [['void peek(uint8_t place, uint8_t s) {', 'void peek(uint8_t place, uint8_t s) {\n  s = 0xDE;']]);
+  check(!fixed.of.peek.same && others(fixed, 'peek'), 'and so is one that takes the stack to be where it starts in a call whose contract doesn\'t name S');
+  const stray = tried('stray-push', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s - 1)] = 0x55;']]);
+  check(stray.of.peek.same, 'a twin may leave anything where the call\'s own frames were, as the next call pushes there');
+  const below = tried('below-frames', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s - 2)] = 0x55;']]);
+  check(!below.of.peek.same, 'but not below the lowest its stack went');
+  const above = tried('above-stack', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s + 3)] = 0x55;']]);
+  check(!above.of.peek.same, 'but not above it, where the stack of its callers is');
+  const returned = tried('return-read', [['peek(X, S)', 'peek(X, S) if X == (uint8_t)(S + 2)']]);
+  check(returned.of.peek.same && returned.of.peek.changed.calls === CALLS, 'and a call that reads the address its caller left above S reads the same on both sides');
 }
 {
   const run = tried('falls-over', [['RAM[0x33] = in_bank', 'volatile uintptr_t nowhere = 16; *(uint8_t *)nowhere = in_bank']]);
@@ -156,8 +172,8 @@ console.log('One line changed at a time:');
     let run = dp('rom', copy);
     check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s copy');
     run = dp('twin', VERSION, '--calls', '300');
-    check(run.status === 0 && /6 of 6 twins the same as the original on every call/.test(run.out), `every twin of a version is checked, and it ends with 0: ${run.out.trim().split('\n').at(-1)}`);
-    check(/300 calls from random memories/.test(run.out) && (run.out.match(/the same on all 300 calls/g) ?? []).length === 6, 'with as many calls as --calls says, a line for each twin');
+    check(run.status === 0 && /7 of 7 twins the same as the original on every call/.test(run.out), `every twin of a version is checked, and it ends with 0: ${run.out.trim().split('\n').at(-1)}`);
+    check(/300 calls from random memories/.test(run.out) && (run.out.match(/the same on all 300 calls/g) ?? []).length === 7, 'with as many calls as --calls says, a line for each twin');
     run = dp('twin', '--seed', '9', VERSION, 'add_to_total', 'sub_C440', '--calls', '300', '--seconds', '1');
     check(run.status === 0 && /2 of 2 twins the same/.test(run.out), `functions are named by the twin's name or the original's, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'pick', '--calls', '300');
@@ -169,7 +185,7 @@ console.log('One line changed at a time:');
     check(run.status === 0 && existsSync(join(proofFolder(VERSION), 'proofs.json')), 'its proofs start with none');
     const lines = () => JSON.parse(readFileSync(join(proofFolder(VERSION), 'proofs.json'), 'utf8')).functions;
     run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 0 && /6 of those 6 took every path of the original's function/.test(run.out) && /6 functions kept as proven by the same memory/.test(run.out) && lines().length === 6 && lines().every(line => line[1] === 'memory' && line[4] === 1000),
+    check(run.status === 0 && /7 of those 7 took every path of the original's function/.test(run.out) && /7 functions kept as proven by the same memory/.test(run.out) && lines().length === 7 && lines().every(line => line[1] === 'memory' && line[4] === 1000),
       `each twin whose calls took every path of the original's is kept as proven by the same memory: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION, '--check');
     check(run.status === 0, 'and every proof kept holds');
@@ -178,9 +194,9 @@ console.log('One line changed at a time:');
     check(run.status === 1 && /add_to_total in src\/game\.c, is kept as proven and its twin, or a header or another line of its file, changed since/.test(run.out) && (run.out.match(/changed since/g) ?? []).length === 1, 'a contract changed makes its twin\'s proof stale, and no other\'s');
     write(game.replace('RAM[0x22]++;', 'RAM[0x22] += 2;'));
     run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 3 && lines().length === 5, 'a twin that differs loses its line');
+    check(run.status === 3 && lines().length === 6, 'a twin that differs loses its line');
     run = dp('twin', VERSION, '--calls', '300');
-    check(run.status === 3 && /5 of 6 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the Game Boy Advance: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 3 && /6 of 7 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the Game Boy Advance: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--frames', '10');
     check(run.status === 1 && /--frames isn't one of its options/.test(run.out) && /npm run dp -- twin/.test(run.out), 'an option of another console\'s check is refused, with how the tool is typed');
     run = dp('twin', VERSION, 'nothing_here');

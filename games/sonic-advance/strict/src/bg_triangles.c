@@ -3,14 +3,10 @@
 #include "core.h"
 #include "bg_triangles.h"
 
-// the windows' horizontal registers, which a line's window edges go to
-#ifdef MATCHING
+// the windows' horizontal registers, which a line's window edges go to: only ever named by where the console has them,
+// as the H-blank's copy reaches them there (gHBlankCopyTarget), in the Dreamport too
 #define REG_WIN0H (*(vu16 *)0x04000040)
 #define REG_WIN1H (*(vu16 *)0x04000042)
-#else
-#define REG_WIN0H (*(vu16 *)((u8 *)gba_io + 0x40))
-#define REG_WIN1H (*(vu16 *)((u8 *)gba_io + 0x42))
-#endif
 typedef u8 int_vcount;
 #define DISPLAY_WIDTH 240
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))

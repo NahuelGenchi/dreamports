@@ -39,7 +39,8 @@ static uint32_t console_address(uint32_t pointer) {
 // the interrupts', the DMA channels', the timers', the sound's, the link cable's and the buttons', are kept here, as
 // the console keeps them, by how far each is from 0x04000000.
 enum {
-  IO_DISPSTAT = 0x004, IO_VCOUNT = 0x006, IO_KEYINPUT = 0x130, IO_RCNT = 0x134, IO_IE = 0x200, IO_IF = 0x202, IO_IME = 0x208,
+  IO_DISPSTAT = 0x004, IO_VCOUNT = 0x006, IO_SOUNDBIAS = 0x088, IO_KEYINPUT = 0x130, IO_RCNT = 0x134, IO_IE = 0x200,
+  IO_IF = 0x202, IO_IME = 0x208,
   STAT_VBLANK = 0x0001, STAT_HBLANK = 0x0002, STAT_VCOUNT = 0x0004, STAT_VBLANK_IRQ = 0x0008, STAT_HBLANK_IRQ = 0x0010,
   STAT_VCOUNT_IRQ = 0x0020, IRQ_VBLANK = 0x0001, IRQ_HBLANK = 0x0002, IRQ_VCOUNT = 0x0004, LINES = 228,
 };
@@ -295,9 +296,13 @@ void console_hblank(int y) {
 // The sound: the engine is the game's own, run in the console's memory, and the kit is the sound hardware. The engine's
 // library says each register it writes (console_wrote): the sound chip's go to the kit as they're written, and a sound
 // channel's DMA switched on to wait for its FIFO reads from its source again. Each frame, the kit is given the samples
-// the two channels feed their FIFOs during it, as many as the first timer's rate makes.
+// the two FIFOs play during it, as many as the first timer's rate makes.
 static u32 sound_at[2];
 static u8 sound_on[2];
+// each FIFO: up to eight words its DMA read and it hasn't played yet, from the `fifo_read`th on, and the word it plays
+// from, a byte at a time
+static u32 fifo_words[2][8], fifo_word[2];
+static u8 fifo_count[2], fifo_read[2], fifo_word_left[2];
 static int console_memory(u32 address);
 
 void console_wrote(const volatile void *where, u32 bytes) {
@@ -305,6 +310,12 @@ void console_wrote(const volatile void *where, u32 bytes) {
   if (at >= sizeof console_io) return;
   for (i = 0; i < bytes; i++)
     if (at + i >= 0x60 && at + i < 0xA0) gba_sound_console_write((int)(at + i), ((const u8 *)console_io)[at + i]);
+  // a FIFO emptied: the control's reset bit, A's and then B's, which reads back as 0, as the console's does
+  if (at <= 0x83 && at + bytes > 0x82) {
+    for (n = 0; n < 2; n++)
+      if (console_io[0x82 >> 1] & (0x800 << (4 * n))) fifo_count[n] = fifo_read[n] = 0;
+    console_io[0x82 >> 1] &= ~0x8800;
+  }
   for (n = 0; n < 2; n++) {
     u32 control = 0xC6 + 12 * n;
     u16 value;
@@ -320,19 +331,37 @@ void console_wrote(const volatile void *where, u32 bytes) {
   }
 }
 
-// the samples of the frame that starts: each channel's next stretch of its source
+// the samples of the frame that starts, as each FIFO plays them: one at each of the first timer's overflows, from the
+// oldest word it holds, a byte at a time, the lowest first; and at an overflow that finds fewer than four words left,
+// its DMA reads four more from its source, to be played after those. The FIFO plays what its DMA read up to a burst
+// before, as the console's does, and goes on playing what it holds after its DMA stops
 static void console_sound_frame(void) {
-  static const s8 silence[704];
+  static s8 played[2][704];
   u16 reload = console_io[0x100 >> 1];
-  u32 count = (console_io[0x102 >> 1] & 0x80) && reload ? 280896u / (0x10000u - reload) : 0, n;
-  const s8 *from[2];
-  if (count > sizeof silence) count = sizeof silence;
+  u32 count = (console_io[0x102 >> 1] & 0x80) && reload ? 280896u / (0x10000u - reload) : 0, n, i, w;
+  if (count > sizeof played[0]) count = sizeof played[0];
   for (n = 0; n < 2; n++) {
-    int plays = sound_on[n] && console_memory(sound_at[n]) && console_memory(sound_at[n] + count);
-    from[n] = plays ? (const s8 *)sound_at[n] : silence;
-    if (plays) sound_at[n] += count;
+    for (i = 0; i < count; i++) {
+      int reads = fifo_count[n] < 4 && sound_on[n] && console_memory(sound_at[n]) && console_memory(sound_at[n] + 15);
+      if (!fifo_word_left[n] && fifo_count[n]) {
+        fifo_word[n] = fifo_words[n][fifo_read[n]];
+        fifo_read[n] = (fifo_read[n] + 1) & 7;
+        fifo_count[n]--;
+        fifo_word_left[n] = 4;
+      }
+      played[n][i] = (s8)fifo_word[n];
+      if (fifo_word_left[n]) {
+        fifo_word[n] >>= 8;
+        fifo_word_left[n]--;
+      }
+      if (reads) {
+        for (w = 0; w < 4; w++) fifo_words[n][(fifo_read[n] + fifo_count[n] + w) & 7] = *(const u32 *)(sound_at[n] + 4 * w);
+        fifo_count[n] += 4;
+        sound_at[n] += 16;
+      }
+    }
   }
-  gba_sound_console_samples(from[0], from[1], (int)count);
+  gba_sound_console_samples(played[0], played[1], (int)count);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -470,6 +499,9 @@ void console_power_on(void) {
   // each line of the picture drawn as the console draws it, when its time reaches the line's H-blank
   gba_clock_on_line(gba_draw_line_now);
   console_io[IO_RCNT >> 1] = 0x8000;
+  // the sound's bias in the middle of its 10-bit range, as the console starts it: the sound library keeps it when it
+  // sets the bias's rate, so a sample below 0 swings below the middle, rather than clipped at 0
+  console_io[IO_SOUNDBIAS >> 1] = 0x200;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;
   // the kit as the sound hardware of the engine the game runs

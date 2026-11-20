@@ -7,10 +7,10 @@
 // that call them.
 #include "m4a_internal.h"
 
-/** Clears the 64 bytes at `at`. */
+/** Clears the 64 bytes at `at`, as four stm store them: from the word `at` is in, when it isn't on a word. */
 void SoundMainBTM(void *at)
 {
-    u32 *word = at;
+    u32 *word = M4A_STM_AT(u32, at);
     u32 i;
     for (i = 0; i < 16; i++)
         word[i] = 0;

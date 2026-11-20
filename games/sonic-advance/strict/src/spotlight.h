@@ -16,5 +16,7 @@ struct SpotlightBeam {
 };
 
 struct Task *CreateSpotlightBeamTask(void);
+void Task_SpotlightBeam(void);
+void TaskDestructor_8012284(struct Task *t);
 
 #endif
