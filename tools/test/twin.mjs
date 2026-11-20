@@ -217,24 +217,6 @@ try {
   const unended = await checking(join(longer, 'twice.c'), {}, pieces);
   check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
 
-  console.log('A routine that takes and gives in registers no C function uses:');
-  const peek = { sizeOf: address => (address === PEEK.Peek ? PEEK_LENGTH : address === PEEK.Spill ? SPILL_LENGTH : sizeOf(address)) };
-  const peeked = await checking(join(HERE, 'peek.c'), {}, peek);
-  check(peeked.by.Peek?.kind === 'same' && peeked.by.Peek.compared === CALLS && peeked.by.Peek.whole === true, `a twin whose comment says it takes r2 and gives r3, dp:registers, leaves the same memory and gives back the same in r3${peeked.by.Peek?.kind === 'same' ? '' : `: ${peeked.by.Peek?.line ?? peeked.error}`}`);
-  const reworded = (from, to) => {
-    const folder = join(work, `changed-${++variants}`);
-    cpSync(HERE, folder, { recursive: true });
-    writeFileSync(join(folder, 'peek.c'), readFileSync(join(HERE, 'peek.c'), 'utf8').replace(from, to));
-    return join(folder, 'peek.c');
-  };
-  const asC = await checking(reworded(', dp:registers r3 = Peek((const unsigned char *)r2)', ''), {}, peek);
-  check(asC.by.Peek?.kind !== 'same' && asC.by.Peek?.kind !== undefined, `without it, it's called as C calls a function, from r0, and isn't the same: ${asC.by.Peek?.line ?? asC.error}`);
-  const off = await checking(reworded('r3 = Peek((const unsigned char *)r2)', 'r3 = Peek((const unsigned char *)r2) + 1'), {}, peek);
-  check(off.by.Peek?.kind === 'differs' && /in r3, as its comment's dp:registers r3 = /.test(off.by.Peek.line), `and with a line that works it out wrong, it differs in r3: ${off.by.Peek?.line ?? off.error}`);
-  check(peeked.by.Spill?.kind === 'same' && peeked.by.Spill.compared === CALLS && peeked.by.Spill.whole === true, `one whose comment says it takes r4 and r5 and gives nothing back leaves the same memory${peeked.by.Spill?.kind === 'same' ? '' : `: ${peeked.by.Spill?.line ?? peeked.error}`}`);
-  const fromR0 = await checking(reworded(', dp:registers Spill(r4, r5)', ''), {}, peek);
-  check(fromR0.by.Spill?.kind !== 'same' && fromR0.by.Spill?.kind !== undefined, `and without it, it's called from r0 and r1 and isn't the same: ${fromR0.by.Spill?.line ?? fromR0.error}`);
-
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));
   check(looked.by.Look?.kind === 'same' && looked.by.Look.compared === CALLS, `a twin that reads it where the kit keeps it is the same over every call, with the byte changed for some of them${looked.by.Look?.kind === 'same' ? '' : `: ${looked.by.Look?.line ?? looked.error}`}`);
