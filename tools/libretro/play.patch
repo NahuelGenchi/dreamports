@@ -3126,7 +3126,7 @@ index 71aed53..be44279 100644
  }
  
 diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
-index 4ef7854..c790578 100644
+index 4ef7854..fa5f275 100644
 --- a/Source/iop/Iop_McServ.cpp
 +++ b/Source/iop/Iop_McServ.cpp
 @@ -18,6 +18,8 @@
@@ -3205,7 +3205,20 @@ index 4ef7854..c790578 100644
  	if(!isDirectCall)
  	{
  		// Delay all commands a bit (except ReadFast, which has a different mecanism)
-@@ -1308,8 +1363,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+@@ -1276,7 +1331,11 @@ unsigned int CMcServ::CPathFinder::Read(ENTRY* entry, unsigned int size)
+ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+ {
+ 	bool found = false;
+-	for(const auto& element : fs::directory_iterator(path))
++	//Dreamports: a folder's entries in the order of their names, as the computer's own order is its own
++	std::vector<fs::directory_entry> elements;
++	for(const auto& element : fs::directory_iterator(path)) elements.push_back(element);
++	std::sort(elements.begin(), elements.end(), [](const fs::directory_entry& a, const fs::directory_entry& b) { return a.path().generic_string() < b.path().generic_string(); });
++	for(const auto& element : elements)
+ 	{
+ 		const auto& relativePath(element.path());
+ 		std::string relativePathString(relativePath.generic_string());
+@@ -1308,8 +1367,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
  
  			//Fill in modification date info
  			{
