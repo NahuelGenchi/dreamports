@@ -3,15 +3,15 @@
 
 export const CARTRIDGE = 0x08000000;
 
-/** Each memory: where it is in the image, where the console has it, how long it is and what it is. One with `kit` is
- *  the hardware's, which a twin reaches through the kit: for twins built on the kit it's the kit's memory of that name,
- *  wherever the module keeps it, that is given and compared, and not the console's address (kit/gba/c/gba.h). */
+/** Each memory: where it is in the image, where the console has it, how long it is and what it is. Twins built on the
+ *  kit have the palette, the video memory and the sprites' list where the console has them too, as the kit keeps
+ *  them in a build of twins (kit/gba/c/gba.h), so each memory is given and compared at the console's address. */
 export const REGIONS = [
   { at: 0, address: 0x02000000, bytes: 0x40000, name: 'the work memory' },
   { at: 0x40000, address: 0x03000000, bytes: 0x8000, name: 'the work memory' },
-  { at: 0x48000, address: 0x05000000, bytes: 0x400, name: 'the palette', kit: 'gba_pal' },
-  { at: 0x48400, address: 0x06000000, bytes: 0x18000, name: 'the video memory', kit: 'gba_vram' },
-  { at: 0x60400, address: 0x07000000, bytes: 0x400, name: 'the sprites\' list', kit: 'gba_oam' },
+  { at: 0x48000, address: 0x05000000, bytes: 0x400, name: 'the palette' },
+  { at: 0x48400, address: 0x06000000, bytes: 0x18000, name: 'the video memory' },
+  { at: 0x60400, address: 0x07000000, bytes: 0x400, name: 'the sprites\' list' },
 ];
 
 export const IMAGE = 0x60800;
