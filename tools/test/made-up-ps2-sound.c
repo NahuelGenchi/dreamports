@@ -50,7 +50,7 @@ static void module_frame(void) {
   if (frame == 0) {
     W(@ATTR@, @ATTR_PLAYING@);
     W(@VOICE0_VOLR@, @SWEEP_UP@);
-    W(@KON_HI@, 3);
+    W(@KON_HI@, 7);
     W(CORE1 + @KON_HI@, 1);
   } else {
     W(@VOICE0_PITCH@, @PITCH_START@ + (frame * @PITCH_STEP@) % (@PITCH_END@ - @PITCH_START@));
@@ -59,6 +59,8 @@ static void module_frame(void) {
     if (tone_frame == 0) W(@KON_HI@, 1);
     if (frame % @CLICK_EVERY@ == 0) W(CORE1 + @KON_HI@, 1);
     if (frame == @SWEEP_AT@) W(@VOICE1_VOLL@, @SWEEP_DOWN@);
+    if (frame == @MASTER_SWEEP_AT@) W(@MVOLR@, @MASTER_SWEEP@);
+    if (frame == @MASTER_BACK_AT@) W(@MVOLR@, @MASTER_RIGHT@);
     // what the chip says, written back where it takes no notice
     W(@MMIX@, READ(@ENDX_HI@));
     W(CORE1 + @MMIX@, READ(CORE1 + @ENDX_HI@));
