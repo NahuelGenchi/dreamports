@@ -38,7 +38,8 @@ bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-
 And it tells the tools what the console does, when they ask before a game loads (dreamports_watch, Source/DreamportsWatch.h,
 tools/libretro/ran-ps2.h): each block of instructions the EE, the IOP or a vector unit runs, as the block ends, with which
 way its branch went and the words it was compiled from, on the EE and the IOP each instruction with what the registers
-hold before it runs, and every sector of the disc read. A block that runs only says so, so the console does the same
+hold before it runs, every sector of the disc read, and every module the IOP loads, with where it put it and a hash of
+the bytes it loaded, which says which module it is. A block that runs only says so, so the console does the same
 with it or without; while the tools watch, the processors compile each block for itself rather than reuse the code of
 another block of the same bytes, which would name that one.
 
@@ -67,7 +68,7 @@ program left on its way lands as it ends. SUBAq, which Play! left out, is there 
 rule comes from, and what the emulator still does its own way).
 
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
-index 4c460e6..7a0c6ef 100644
+index 4c460e6..1fec7a8 100644
 --- a/Source/BasicBlock.cpp
 +++ b/Source/BasicBlock.cpp
 @@ -3,6 +3,8 @@
@@ -79,7 +80,7 @@ index 4c460e6..7a0c6ef 100644
  
  #if defined(AOT_BUILD_CACHE) || defined(AOT_USE_CACHE)
  #define AOT_ENABLED
-@@ -42,6 +44,116 @@ extern "C"
+@@ -42,6 +44,117 @@ extern "C"
  
  #define INVALID_LINK_SLOT (~0U)
  
@@ -89,6 +90,7 @@ index 4c460e6..7a0c6ef 100644
 +void (*Dreamports::g_blockRan)(DREAMPORTS_BLOCK*, uint32) = nullptr;
 +void (*Dreamports::g_step)(DREAMPORTS_BLOCK*, uint32, const void*) = nullptr;
 +void (*Dreamports::g_sectorRead)(uint32) = nullptr;
++void (*Dreamports::g_moduleLoaded)(uint32, uint32, uint32) = nullptr;
 +uint64 Dreamports::g_vblanks = 0;
 +uint32 Dreamports::g_vblankMilliHertz = 59940;
 +uint32 Dreamports::g_memoryCardChanges = 0;
@@ -196,7 +198,7 @@ index 4c460e6..7a0c6ef 100644
  CBasicBlock::CBasicBlock(CMIPS& context, uint32 begin, uint32 end, BLOCK_CATEGORY category)
      : m_begin(begin)
      , m_end(end)
-@@ -76,6 +188,7 @@ void CBasicBlock::SetAotBlockOutputStream(Framework::CStdStream* outputStream)
+@@ -76,6 +189,7 @@ void CBasicBlock::SetAotBlockOutputStream(Framework::CStdStream* outputStream)
  
  void CBasicBlock::Compile()
  {
@@ -204,7 +206,7 @@ index 4c460e6..7a0c6ef 100644
  #ifndef AOT_USE_CACHE
  
  	Framework::CMemStream stream;
-@@ -225,6 +338,7 @@ void CBasicBlock::CompileRange(CMipsJitter* jitter)
+@@ -225,6 +339,7 @@ void CBasicBlock::CompileRange(CMipsJitter* jitter)
  
  	for(uint32 address = m_begin; address <= m_end; address += 4)
  	{
@@ -212,7 +214,7 @@ index 4c460e6..7a0c6ef 100644
  		m_context.m_pArch->CompileInstruction(
  		    address,
  		    jitter,
-@@ -257,6 +371,15 @@ void CBasicBlock::CompileProlog(CMipsJitter* jitter)
+@@ -257,6 +372,15 @@ void CBasicBlock::CompileProlog(CMipsJitter* jitter)
  
  void CBasicBlock::CompileEpilog(CMipsJitter* jitter, bool loopsOnItself)
  {
@@ -630,10 +632,10 @@ index 438943a..04f2901 100644
  
 diff --git a/Source/DreamportsWatch.h b/Source/DreamportsWatch.h
 new file mode 100644
-index 0000000..fa5a952
+index 0000000..151fd96
 --- /dev/null
 +++ b/Source/DreamportsWatch.h
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,70 @@
 +#pragma once
 +
 +// Dreamports: what the tools' program is told of the console as it plays (tools/libretro/play.patch, ran-ps2.h). Nothing
@@ -671,10 +673,21 @@ index 0000000..fa5a952
 +	extern void (*g_blockRan)(DREAMPORTS_BLOCK*, uint32 jumped);
 +	extern void (*g_step)(DREAMPORTS_BLOCK*, uint32 position, const void* registers);
 +	extern void (*g_sectorRead)(uint32 sector);
++	extern void (*g_moduleLoaded)(uint32 base, uint32 end, uint32 hash);
 +
 +	inline void SectorRead(uint32 sector)
 +	{
 +		if(g_sectorRead) g_sectorRead(sector);
++	}
++
++	// The IOP has loaded a module's bytes, `size` of them as its file holds them, at `base`, and they reach `end` there:
++	// the tools are told where, and which module, by its bytes' hash (FNV-1a), before the loader changes any for its place
++	inline void ModuleLoaded(const uint8* image, uint32 size, uint32 base, uint32 end)
++	{
++		if(!g_moduleLoaded) return;
++		uint32 hash = 0x811C9DC5;
++		for(uint32 i = 0; i < size; i++) hash = (hash ^ image[i]) * 0x01000193;
++		g_moduleLoaded(base, end, hash);
 +	}
 +
 +	// The console's clock, the same in every run: midnight on 1 January 2001, Coordinated Universal Time, as the console
@@ -3060,6 +3073,27 @@ index 66bfe59..478f3d1 100644
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
+diff --git a/Source/iop/IopBios.cpp b/Source/iop/IopBios.cpp
+index e6b722a..c8301f3 100644
+--- a/Source/iop/IopBios.cpp
++++ b/Source/iop/IopBios.cpp
+@@ -10,6 +10,7 @@
+ #include "std_experimental_map.h"
+ 
+ #include "IopBios.h"
++#include "../DreamportsWatch.h"
+ #include "../COP_SCU.h"
+ #include "Log.h"
+ #include "../ElfFile.h"
+@@ -3565,6 +3566,8 @@ uint32 CIopBios::LoadExecutable(CELF32& elf, ExecutableRange& executableRange, u
+ 	    m_ram + baseAddress,
+ 	    elf.GetContent() + programHeader->nOffset,
+ 	    programHeader->nFileSize);
++	//Dreamports: the tools are told where the module went, and which it is (DreamportsWatch.h)
++	Dreamports::ModuleLoaded(elf.GetContent() + programHeader->nOffset, programHeader->nFileSize, baseAddress, baseAddress + programHeader->nMemorySize);
+ 	RelocateElf(elf, baseAddress, programHeader->nFileSize);
+ 
+ 	executableRange.first = baseAddress;
 diff --git a/Source/iop/Iop_Cdvdman.cpp b/Source/iop/Iop_Cdvdman.cpp
 index 71aed53..be44279 100644
 --- a/Source/iop/Iop_Cdvdman.cpp
@@ -3302,7 +3336,7 @@ index 1fab09e..fb1987e 100644
  	{
  	public:
 diff --git a/Source/iop/Iop_SubSystem.cpp b/Source/iop/Iop_SubSystem.cpp
-index dd584b3..09bd807 100644
+index dd584b3..b420493 100644
 --- a/Source/iop/Iop_SubSystem.cpp
 +++ b/Source/iop/Iop_SubSystem.cpp
 @@ -7,6 +7,8 @@
@@ -3527,7 +3561,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..84ae987 100644
+index 8a07c26..5d27bac 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,12 @@
@@ -3543,7 +3577,7 @@ index 8a07c26..84ae987 100644
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +43,209 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +43,211 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -3640,9 +3674,11 @@ index 8a07c26..84ae987 100644
 +
 +// Dreamports: what the tools' program asks to be told as the console plays, set before a game loads (DreamportsWatch.h):
 +// each block of instructions that runs on the EE, the IOP or a vector unit, with which way its branch went, and on the EE
-+// and the IOP each instruction with what the registers hold, and each sector read of the disc. Any can be none
-+extern "C" RETRO_API void dreamports_watch(void (*blockRan)(DREAMPORTS_BLOCK*, uint32_t), void (*step)(DREAMPORTS_BLOCK*, uint32_t, const void*), void (*sectorRead)(uint32_t))
++// and the IOP each instruction with what the registers hold, each sector read of the disc, and each module the IOP loads,
++// with where it put it. Any can be none
++extern "C" RETRO_API void dreamports_watch(void (*blockRan)(DREAMPORTS_BLOCK*, uint32_t), void (*step)(DREAMPORTS_BLOCK*, uint32_t, const void*), void (*sectorRead)(uint32_t), void (*moduleLoaded)(uint32_t, uint32_t, uint32_t))
 +{
++	Dreamports::g_moduleLoaded = moduleLoaded;
 +	Dreamports::g_processors[Dreamports::PROCESSOR_EE] = &m_virtualMachine->m_ee->m_EE;
 +	Dreamports::g_processors[Dreamports::PROCESSOR_IOP] = &m_virtualMachine->m_iop->m_cpu;
 +	Dreamports::g_processors[Dreamports::PROCESSOR_VU0] = &m_virtualMachine->m_ee->m_VU0;
@@ -3753,7 +3789,7 @@ index 8a07c26..84ae987 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -185,7 +394,7 @@ void retro_get_system_av_info(struct retro_system_av_info* info)
+@@ -185,7 +396,7 @@ void retro_get_system_av_info(struct retro_system_av_info* info)
  
  	*info = {};
  	info->timing.fps = 60.0;
@@ -3762,7 +3798,7 @@ index 8a07c26..84ae987 100644
  	info->geometry.base_width = 640;
  	info->geometry.base_height = 448;
  	info->geometry.max_width = 640 * 8;
-@@ -258,6 +467,8 @@ bool retro_serialize(void* data, size_t size)
+@@ -258,6 +469,8 @@ bool retro_serialize(void* data, size_t size)
  		m_virtualMachine->m_ee->SaveState(archive);
  		m_virtualMachine->m_iop->SaveState(archive);
  		m_virtualMachine->m_ee->m_gs->SaveState(archive);
@@ -3771,7 +3807,7 @@ index 8a07c26..84ae987 100644
  
  		archive.Write(stateStream);
  		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
-@@ -285,6 +496,7 @@ bool retro_unserialize(const void* data, size_t size)
+@@ -285,6 +498,7 @@ bool retro_unserialize(const void* data, size_t size)
  			m_virtualMachine->m_ee->LoadState(archive);
  			m_virtualMachine->m_iop->LoadState(archive);
  			m_virtualMachine->m_ee->m_gs->LoadState(archive);
@@ -3779,7 +3815,7 @@ index 8a07c26..84ae987 100644
  		}
  		catch(...)
  		{
-@@ -446,15 +658,24 @@ void retro_run()
+@@ -446,15 +660,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -3807,7 +3843,7 @@ index 8a07c26..84ae987 100644
  	}
  }
  
-@@ -554,7 +775,7 @@ void retro_init()
+@@ -554,7 +777,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -3816,7 +3852,7 @@ index 8a07c26..84ae987 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +795,7 @@ void retro_deinit()
+@@ -574,6 +797,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{

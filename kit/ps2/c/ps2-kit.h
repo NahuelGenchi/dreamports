@@ -63,6 +63,9 @@ int vu_ready(int unit);
 void vu_start(int unit, uint32_t address);
 /** Where the program last stopped, for MSCNT to go on from. */
 uint32_t vu_stopped_at(int unit);
+/** A unit's registers as 158 words the function check gives and reads (vu.c): with `set` the words are put in the
+ *  unit, and without it read from it. Either way it gives where the words are. */
+uint32_t *vu_registers(int unit, int set);
 
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);
