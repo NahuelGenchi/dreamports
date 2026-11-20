@@ -201,7 +201,8 @@ void place_on_screen(uint8_t object);  // sub_F181
 void show_object(uint8_t object);      // sub_F321
 void hide_object(uint8_t object);      // sub_F346
 int object_in_view(uint8_t object);    // sub_F0A3
-/** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. */
+/** sub_E3E3: whether the block 11 pixels below an object's place is solid, so it's on the ground. `s` is the stack
+ *  pointer it starts with (stack_of, below). */
 int on_the_ground(uint8_t object, int s);
 /** sub_DA18: the first of the 16 objects after Arthur that isn't in use, or NO_OBJECT. */
 uint8_t free_object(void);
@@ -282,10 +283,12 @@ void key(uint8_t object, uint8_t y);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object, uint8_t y);
 void boss_shot(uint8_t object, uint8_t y);
-/** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
+/** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c).
+ *  `y`, when it isn't NULL, is the processor's Y, which it leaves as the original does. */
 uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched, uint8_t *y);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
- *  whether Arthur touched it and is hit. */
+ *  whether Arthur touched it and is hit. `y`, when it isn't NULL, is the processor's Y: it's left as it was when the
+ *  enemy isn't shown, and otherwise is the weapon sub_F5F9 found, or $14 when none. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched, uint8_t *y);
 /** $F770: an enemy that a weapon has hit falls for six rounds, the way its flag $02 says, and is gone (enemies.c). */
 void hit_enemy_falls(uint8_t object);
