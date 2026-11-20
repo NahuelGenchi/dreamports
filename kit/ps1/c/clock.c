@@ -49,6 +49,8 @@ __attribute__((weak)) void game_interrupt(void) {}
 
 uint32_t clock_now(void) { return clock.now; }
 
+uint32_t clock_frame_start(void) { return clock.frame_end - FRAME; }
+
 void clock_event(int which, uint32_t after, void (*run)(void)) { clock_event_at(which, clock.now + after, run); }
 
 void clock_event_at(int which, uint32_t at, void (*run)(void)) {

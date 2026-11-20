@@ -1036,12 +1036,14 @@ export function cdData(sectors = CD.DATA_SECTORS) {
 /**
  * A program that drives the CD drive as a game does, from a disc of its own: it reads counter 0 as it starts, which says
  * how long the BIOS took to hand it over, takes interrupts with a handler of its own, the V-blank's and the drive's,
- * and just after each V-blank gives the drive the commands its script has for that frame. The handler logs each of
+ * and just after each V-blank gives the drive the commands its script has for that frame, `script` (cdScript), where
+ * 0xF0 isn't a command but the drive's four volumes for the CD's sound, left to left, left to right, right to left and
+ * right to right, set and applied. It sets the sound chip up to hear the CD's sound, loud. The handler logs each of
  * the drive's interrupts, its answer, and for each sector read its first bytes taken one at a time, in the mode that
  * gives the whole sector, and the sum of its words, moved by DMA. Each frame it draws the last 1,024 bytes of its log,
  * a block each, and how long the BIOS took, as a bar.
  */
-export async function madeUpCdExe() {
+export async function madeUpCdExe(script = cdScript()) {
   const { assemble } = await import('../ps1/assemble.mjs');
   const { BASE, VBLANKS, COUNT, SCRIPT, WORDS, BYTES, START, SAVED, SECTOR, LOG, LOG_SIZE, BACKGROUND, HANDOFF } = CD;
   const at = (labels, name) => LOAD + (labels.get(name)?.at ?? 0);
@@ -1092,6 +1094,14 @@ start:
 	sw	$t1, 0x1810($t0)
 	li	$t1, 0xE5000000
 	sw	$t1, 0x1810($t0)
+	li	$t1, 0x3FFF
+	sh	$t1, 0x1D80($t0)
+	sh	$t1, 0x1D82($t0)
+	li	$t1, 0x7FFF
+	sh	$t1, 0x1DB0($t0)
+	sh	$t1, 0x1DB2($t0)
+	li	$t1, 0xC001
+	sh	$t1, 0x1DAA($t0)
 	sw	$zero, ${VBLANKS}($s1)
 	sw	$zero, ${COUNT}($s1)
 	lui	$t1, ${hi(at(labels, 'script'))}
@@ -1131,6 +1141,9 @@ issue:
 	lbu	$t2, 2($s2)
 	lbu	$t3, 3($s2)
 	lbu	$t5, 4($s2)
+	li	$t4, 0xF0
+	beq	$t2, $t4, volumes
+	nop
 	li	$t4, 0x0E
 	bne	$t2, $t4, parameters
 	nop
@@ -1156,6 +1169,26 @@ parameter:
 	addiu	$t3, $t3, -1
 command:
 	sb	$t2, 0x1801($t0)
+	b	issue
+	addiu	$s2, $s2, 8
+volumes:
+	li	$t4, 2
+	sb	$t4, 0x1800($t0)
+	sb	$t5, 0x1802($t0)
+	lbu	$t5, 5($s2)
+	nop
+	sb	$t5, 0x1803($t0)
+	li	$t4, 3
+	sb	$t4, 0x1800($t0)
+	lbu	$t5, 7($s2)
+	nop
+	sb	$t5, 0x1801($t0)
+	lbu	$t5, 6($s2)
+	nop
+	sb	$t5, 0x1802($t0)
+	li	$t4, 0x20
+	sb	$t4, 0x1803($t0)
+	sb	$zero, 0x1800($t0)
 	b	issue
 	addiu	$s2, $s2, 8
 issued:
@@ -1316,7 +1349,7 @@ ${saved.map((name, i) => `	lw	$${name}, ${i * 4}($k0)`).join('\n')}
 	rfe
 	.align	2
 script:
-	.byte	${cdScript().join(', ')}
+	.byte	${script.join(', ')}
 `;
   };
   const made = assemble(source(assemble(source(new Map())).symbols));
@@ -1343,4 +1376,73 @@ export async function madeUpCdDisc(name) {
   const cnf = Buffer.from('BOOT = cdrom:\\MADE_UP.EXE;1\r\nTCB = 4\r\nEVENT = 20\r\nSTACK = 801FFF00\r\n');
   const iso = madeUpPs2Disc({ console: 'ps1', code: 'MADE_UP.EXE', files: { 'SYSTEM.CNF': cnf, 'MADE_UP.EXE': exe, 'DATA.BIN': cdData() }, at: { 'DATA.BIN': CD.DATA_AT }, sectors: CD.DATA_AT + CD.DATA_SECTORS + 16 });
   return { bin: toRaw(iso, 2), cue: `FILE "${name}.bin" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n` };
+}
+
+// --- the CD's own sound ----------------------------------------------------------------------------------------------
+
+/** What's where on the CD sound program's disc: its XA file, 8 channels in turn, each a tone of its own, and its track of
+ *  audio after a pregap of two seconds. */
+export const CD_SOUND = { XA_AT: 40, XA_SECTORS: 400, AUDIO_SECTORS: 200, PREGAP: 150 };
+
+/** The CD sound program's script, as cdScript's: XA sound streamed from channel 0 and then channel 3 of its file, at
+ *  double speed with only that channel's sectors taken, its left and right swapped by the drive's volumes and back,
+ *  and the track of audio played with its reports, muted and heard again, then the drive stopped. */
+export function cdSoundScript() {
+  const entries = [];
+  const at = (frame, command, ...params) => entries.push([frame & 0xFF, frame >> 8, command, params.length, ...params, 0, 0, 0, 0].slice(0, 8));
+  const { XA_AT } = CD_SOUND;
+  at(1, 0x01); at(2, 0x0D, 0x01, 0x00); at(3, 0x0E, 0xC8); at(4, 0x02, ...cdTime(XA_AT)); at(5, 0x1B);
+  at(60, 0xF0, 0x00, 0x80, 0x80, 0x00); at(90, 0x09);
+  at(96, 0x0E, 0x04); at(97, 0x03, 0x02); at(150, 0x0B); at(170, 0x0C); at(200, 0x09);
+  at(206, 0x0D, 0x01, 0x03); at(207, 0x0E, 0xC8); at(208, 0x02, ...cdTime(XA_AT + 24)); at(209, 0x1B); at(260, 0x09);
+  at(266, 0xF0, 0x80, 0x00, 0x00, 0x80); at(280, 0x08); at(298, 0x01);
+  entries.push([0xFF, 0xFF, 0, 0, 0, 0, 0, 0]);
+  return entries.flat();
+}
+
+// A sector of XA sound, 4 bits a sample, stereo, at 37,800 a second, as the drive's decoder reads it: 18 sound groups of
+// 4 units of 28 samples each side, each sample a nibble with filter 0 and range 2, so 1,024 a step, the left in a byte's
+// low nibble and the right in its high one. `sample(n)` gives the nth sample of the channel's stream, [left, right].
+function xaData(first, sample) {
+  const data = Buffer.alloc(2324);
+  const nibble = value => Math.max(-8, Math.min(7, Math.round(value / 1024))) & 0xF;
+  for (let group = 0; group < 18; group++) {
+    const base = group * 128;
+    data.fill(0x02, base, base + 16);
+    for (let unit = 0; unit < 4; unit++) {
+      for (let k = 0; k < 7; k++) {
+        for (let m = 0; m < 4; m++) {
+          const [left, right] = sample(first + group * 112 + unit * 28 + k * 4 + m);
+          data[base + 16 + unit + 16 * k + 4 * m] = nibble(left) | nibble(right) << 4;
+        }
+      }
+    }
+  }
+  return data;
+}
+
+/** The CD sound program's disc, a BIN and its .cue named `name`: its program, its SYSTEM.CNF, and its XA file, in a data
+ *  track of Mode 2 sectors, the XA ones Form 2 with their subheaders saying file 1, their channel, real-time audio,
+ *  stereo, 37,800 a second; then a track of audio, made-up tones, after a pregap of two seconds of silence. */
+export async function madeUpCdSoundDisc(name) {
+  const { madeUpPs2Disc, toRaw, madeUpSound } = await import('./made-up-disc.mjs');
+  const { makeSector, RAW } = await import('../../kit/copy/cd.js');
+  const { XA_AT, XA_SECTORS, AUDIO_SECTORS, PREGAP } = CD_SOUND;
+  const exe = await madeUpCdExe(cdSoundScript());
+  const cnf = Buffer.from('BOOT = cdrom:\\MADE_UP.EXE;1\r\nTCB = 4\r\nEVENT = 10\r\nSTACK = 801FFF00\r\n');
+  const iso = madeUpPs2Disc({ console: 'ps1', code: 'MADE_UP.EXE', files: { 'SYSTEM.CNF': cnf, 'MADE_UP.EXE': exe, 'XA.STR': Buffer.alloc(XA_SECTORS * 2048) }, at: { 'XA.STR': XA_AT }, sectors: XA_AT + XA_SECTORS + 20 });
+  const data = toRaw(iso, 2), sectors = data.length / RAW;
+  // channel c's tone: a sine on each side, two octaves or more from the other side's and from the other channels' on the
+  // same side, as `prove` hears a band with its neighbours
+  const LEFT = [250, 1000, 4000, 125, 500, 2000, 8000, 300], RIGHT = [4000, 250, 1000, 8000, 2000, 125, 500, 600];
+  const tone = channel => n => [Math.sin(n * 2 * Math.PI * LEFT[channel] / 37800) * 6000, Math.sin(n * 2 * Math.PI * RIGHT[channel] / 37800) * 6000];
+  for (let n = 0; n < XA_SECTORS; n++) {
+    const channel = n % 8, at = (XA_AT + n) * RAW;
+    xaData(Math.floor(n / 8) * 2016, tone(channel)).copy(data, at + 24);
+    makeSector(data, XA_AT + n, 2, { form: 2, subheader: [1, channel, 0x64, 0x01], at });
+  }
+  const bin = Buffer.concat([data, Buffer.alloc(PREGAP * RAW), madeUpSound(AUDIO_SECTORS)]);
+  const msf = frames => [Math.floor(frames / 4500), Math.floor(frames / 75) % 60, frames % 75].map(v => String(v).padStart(2, '0')).join(':');
+  const cue = `FILE "${name}.bin" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n  TRACK 02 AUDIO\r\n    INDEX 00 ${msf(sectors)}\r\n    INDEX 01 ${msf(sectors + PREGAP)}\r\n`;
+  return { bin, cue };
 }

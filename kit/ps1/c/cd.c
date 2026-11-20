@@ -146,11 +146,11 @@ int cdra_getStatus(struct CdrStat *stat) {
   return 0;
 }
 
-// The CD's own sound, its XA sound and its audio tracks, which the drive gives the sound chip, comes in a piece of its
-// own: until then the chip doesn't hear it, while the drive decodes XA sectors, and says it does, as the emulator does.
-void SPU_playADPCMchannel(xa_decode_t *xa, unsigned int cycle, int is_start) { (void)xa, (void)cycle, (void)is_start; }
-int SPU_playCDDAchannel(short *pcm, int bytes, unsigned int cycle, int is_start) { return (void)pcm, (void)bytes, (void)cycle, (void)is_start, 0; }
-void SPU_setCDvol(unsigned char ll, unsigned char lr, unsigned char rl, unsigned char rr, unsigned int cycle) { (void)ll, (void)lr, (void)rl, (void)rr, (void)cycle; }
+// The CD's own sound, its XA sound and its tracks of audio, which the drive gives the sound chip as each sector comes,
+// and the volumes it mixes them with (sound.c)
+void SPU_playADPCMchannel(xa_decode_t *xa, unsigned int cycle, int is_start) { spu_cd_xa(xa, cycle, is_start); }
+int SPU_playCDDAchannel(short *pcm, int bytes, unsigned int cycle, int is_start) { return (void)is_start, spu_cd_audio(pcm, bytes, cycle); }
+void SPU_setCDvol(unsigned char ll, unsigned char lr, unsigned char rl, unsigned char rr, unsigned int cycle) { spu_cd_volume(ll, lr, rl, rr, cycle); }
 
 // ----------------------------------------------------------------------------------------------------------------
 // The disc as the emulator reads it before a game starts (misc.c, CheckCdrom and LoadCdromMainExe): its region, from
