@@ -13,6 +13,8 @@ static int return_known;
 static uint32_t gaps;
 // whether a game started it: a build that never does, as the function check's, has every call cost nothing
 static int started;
+// the lowest the stack pointer went since a call of the function check began (gba_stack_begin)
+static uint32_t low;
 static uint32_t (*console_address)(uint32_t pointer);
 
 // each function running: the stack pointer, the registers and the return address as it was called, and for a routine
@@ -45,6 +47,19 @@ void gba_stack_start(uint32_t start) {
   interrupts = 0;
   gaps = 0;
 }
+
+void gba_stack_begin(uint32_t start) {
+  started = 1;
+  sp = low = start;
+  // what the original's call starts with in its registers is the check's, which the twin's C doesn't give
+  known = 0;
+  return_known = 0;
+  depth = 0;
+  interrupts = 0;
+  gaps = 0;
+}
+
+uint32_t gba_stack_lowest(void) { return low; }
 
 void gba_stack_reset(uint32_t start) {
   // the emulator's BIOS leaves each register as the soft reset found it, and so does the stack's count of them
@@ -113,6 +128,7 @@ uint32_t gba_stack_enter(const gba_frame *frame) {
   else if (frame->unproven == GBA_STACK_START_PROVEN)
     for (int i = 0; i < frame->count; i++) known &= (uint16_t) ~(1u << frame->pushes[i].reg);
   sp = sp + (uint32_t)lowest - frame->frame;
+  if (sp < low) low = sp;
   return (uint32_t)depth;
 }
 
@@ -143,6 +159,7 @@ void gba_stack_asm_at(int anchor, const uint64_t *values) {
   }
   calls[depth - 1].last = (uint8_t)anchor;
   if (routine->sp[anchor] != GBA_STACK_NO_SP) sp = entry + (uint32_t)(int32_t)routine->sp[anchor];
+  if (sp < low) low = sp;
 }
 
 uint64_t gba_stack_asm_caller(int reg) {
