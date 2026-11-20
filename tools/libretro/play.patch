@@ -790,6 +790,22 @@ index 5c8ded9..1d10b27 100644
  	}
  
  	m_currentSpuBlock++;
+diff --git a/Source/PS2VM.h b/Source/PS2VM.h
+index c4f8be0..70ab6bc 100644
+--- a/Source/PS2VM.h
++++ b/Source/PS2VM.h
+@@ -182,8 +182,9 @@ private:
+ 	//SPU update parameters
+ 	enum
+ 	{
+-		DST_SAMPLE_RATE = 44100,
+-		SAMPLES_PER_UPDATE = 45, //44100 / 45 -> 980 SPU updates per second
++		//Dreamports: the chip's own rate, a thousandth of a second at a time
++		DST_SAMPLE_RATE = 48000,
++		SAMPLES_PER_UPDATE = 48,
+ 		SPU_UPDATE_TICKS_PRECISION = 32,
+ 		BLOCK_SIZE = SAMPLES_PER_UPDATE * 2,
+ 		MAX_BLOCK_COUNT = 400,
 diff --git a/Source/ee/COP_VU.cpp b/Source/ee/COP_VU.cpp
 index e6c36f8..bfe36ad 100644
 --- a/Source/ee/COP_VU.cpp
@@ -3756,7 +3772,7 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..63fa003 100644
+index 8a07c26..2b4fda1 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
 @@ -19,6 +19,12 @@
@@ -3987,6 +4003,15 @@ index 8a07c26..63fa003 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
+@@ -185,7 +399,7 @@ void retro_get_system_av_info(struct retro_system_av_info* info)
+ 
+ 	*info = {};
+ 	info->timing.fps = 60.0;
+-	info->timing.sample_rate = 44100;
++	info->timing.sample_rate = 48000;
+ 	info->geometry.base_width = 640;
+ 	info->geometry.base_height = 448;
+ 	info->geometry.max_width = 640 * 8;
 @@ -258,6 +472,8 @@ bool retro_serialize(void* data, size_t size)
  		m_virtualMachine->m_ee->SaveState(archive);
  		m_virtualMachine->m_iop->SaveState(archive);

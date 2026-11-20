@@ -26,7 +26,7 @@ export const SPU2 = 0x1F900000, CORE1 = 0x400, CORE1_LOW = 40;
 export const R = {
   VOLL: 0x0, VOLR: 0x2, PITCH: 0x4, ADSR1: 0x6, ADSR2: 0x8, PMON_HI: 0x180, NON_HI: 0x184,
   MVOLL: 0x760, MVOLR: 0x762, EVOLL: 0x764, EVOLR: 0x766,
-  VMIXER_HI: 0x194, MMIX: 0x198, ATTR: 0x19A, IRQA_HI: 0x19C, IRQA_LO: 0x19E, KON_HI: 0x1A0, KOFF_HI: 0x1A4, TSA_HI: 0x1A8, TSA_LO: 0x1AA, STD: 0x1AC,
+  VMIXER_HI: 0x194, NOTE: 0x1B2, ATTR: 0x19A, IRQA_HI: 0x19C, IRQA_LO: 0x19E, KON_HI: 0x1A0, KOFF_HI: 0x1A4, TSA_HI: 0x1A8, TSA_LO: 0x1AA, STD: 0x1AC,
   SSA_HI: 0x1C0, SSA_LO: 0x1C2, ESA_HI: 0x2E0, ESA_LO: 0x2E2, REVERB: 0x2E4, EEA_HI: 0x33C, ENDX_HI: 0x340, ENDX_LO: 0x342,
   AVOLL: 0x768, AVOLR: 0x76A, COEF: 0x774, IRQINFO: 0x7C2,
 };
@@ -241,7 +241,7 @@ const soundModule = () => assembleIop([
   // its buttons, its sticks and the pressure on each button
   lui(T3, 0xBF81), sio2('padRead', PAD_READ.length, PAD_ANSWER),
   placeOf(T1, 'padAnswer'),
-  Array.from({ length: (PAD_ANSWER - 1) / 2 }, (_, i) => [lbu(T0, 1 + i * 2, T1), lbu(T2, 2 + i * 2, T1), NOP, sll(T2, T2, 8), or(T0, T0, T2), sh(T0, R.MMIX, S3)]),
+  Array.from({ length: (PAD_ANSWER - 1) / 2 }, (_, i) => [lbu(T0, 1 + i * 2, T1), lbu(T2, 2 + i * 2, T1), NOP, sll(T2, T2, 8), or(T0, T0, T2), sh(T0, R.NOTE, S3)]),
   bne(S1, ZERO, 'playing'), NOP,
   spu(R.ATTR, ATTR_PLAYING), spu(voice(0, R.VOLR), SWEEP_UP), spu(R.KON_HI, 7), spu(CORE1 + R.KON_HI, 1),
   beq(ZERO, ZERO, 'next'), NOP,
@@ -257,9 +257,9 @@ const soundModule = () => assembleIop([
   ...li(T1, MASTER_SWEEP_AT), bne(S1, T1, 'noMaster'), NOP, spu(R.MVOLR, MASTER_SWEEP), at('noMaster'),
   ...li(T1, MASTER_BACK_AT), bne(S1, T1, 'noBack'), NOP, spu(R.MVOLR, MASTER_RIGHT), at('noBack'),
   // what the chip says, written back where the emulator takes no notice of it
-  lhu(T0, R.ENDX_HI, S3), NOP, sh(T0, R.MMIX, S3),
-  lhu(T0, CORE1 + R.ENDX_HI, S3), NOP, sh(T0, CORE1 + R.MMIX, S3),
-  lhu(T0, R.IRQINFO, S3), NOP, sh(T0, R.MMIX, S3),
+  lhu(T0, R.ENDX_HI, S3), NOP, sh(T0, R.NOTE, S3),
+  lhu(T0, CORE1 + R.ENDX_HI, S3), NOP, sh(T0, CORE1 + R.NOTE, S3),
+  lhu(T0, R.IRQINFO, S3), NOP, sh(T0, R.NOTE, S3),
   at('next'),
   beq(ZERO, ZERO, 'frame'), addiu(S1, S1, 1),
 
