@@ -155,13 +155,6 @@ jobs:
           path: .dreamports/libretro/play_libretro-*.dylib
           key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs') }}
 
-      # temporary, for #1707: the search on a Mac, with what macOS says of a crash
-      - name: The search on a Mac (temporary)
-        run: |
-          said() { sleep 30; for f in ~/Library/Logs/DiagnosticReports/host*; do echo "== $f"; head -c 300000 "$f"; done; exit 1; }
-          npm run test:ps2-ledger || said
-          npm run test:ps2-memory || said
-
       - run: npm run test:ps2-same -- --write ps2-same-mac.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
