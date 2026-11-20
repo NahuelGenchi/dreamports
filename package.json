@@ -23,7 +23,7 @@
     "test:ps2-cards": "node tools/test/ps2-cards.mjs",
     "test:ps2-spu2": "node tools/test/ps2-spu2.mjs",
     "test:ps2-gs": "node tools/test/ps2-gs.mjs",
-    "test:ps2-ee-vu": "node tools/test/ps2-ee-vu.mjs",
+    "test:ps2-ee-vu": "node tools/test/ps2-console-floats.mjs && node tools/test/ps2-ee-vu.mjs",
     "test:ps2-flow": "node tools/test/ps2-flow.mjs",
     "test:ps2-same": "node tools/test/ps2-same.mjs",
     "test:big-copy": "node tools/test/big-copy.mjs",

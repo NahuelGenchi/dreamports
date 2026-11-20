@@ -16,18 +16,23 @@ extern "C" {
 enum { FLAG_O = 1, FLAG_U = 2, FLAG_D = 4, FLAG_I = 8 };
 
 uint32_t fpu_add(uint32_t a, uint32_t b, uint32_t *flags);
+/** a times b as the multiplier makes it: the two aren't treated alike, so an instruction's fs goes first. */
 uint32_t fpu_mul(uint32_t a, uint32_t b, uint32_t *flags);
+/** acc plus a times b, or minus it: the largest float with the product's sign when the product is too large. */
+uint32_t fpu_mul_add(uint32_t acc, uint32_t a, uint32_t b, int subtract, uint32_t *flags);
 uint32_t fpu_div(uint32_t a, uint32_t b, uint32_t *flags);
 /** The square root of a float without its sign. */
 uint32_t fpu_sqrt(uint32_t a, uint32_t *flags);
-/** a over the square root of b: the root cut, then the division cut. */
+/** a over the square root of b: the root, then the division. */
 uint32_t fpu_rsqrt(uint32_t a, uint32_t b, uint32_t *flags);
 /** A float as a whole number, what's after its point dropped, the largest there is with its sign for one too large. */
 int32_t fpu_to_int(uint32_t a);
 /** A whole number as a float, cut to 24 bits. */
 uint32_t fpu_from_int(int32_t value);
-/** A float as a whole number that orders as it does, a tiny one as zero, for the FPU's compares, MAX and MIN. */
+/** A float as a whole number that orders as it does, a tiny one as zero, for the FPU's compares. */
 int32_t fpu_order(uint32_t a);
+/** A float as a whole number its bits order as, minus zero under zero, for the FPU's MAX and MIN. */
+int64_t fpu_rank(uint32_t a);
 
 // the vector units' EFU sums, by name
 enum { EFU_ESADD, EFU_ERSADD, EFU_ELENG, EFU_ERLENG, EFU_ESUM, EFU_ESQRT, EFU_ERSQRT, EFU_ERCPR, EFU_ESIN, EFU_EEXP, EFU_EATAN, EFU_EATANXY, EFU_EATANXZ };
