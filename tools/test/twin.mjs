@@ -15,7 +15,7 @@
 // wrong twin of it is found, the same recording and seed give the same memories and the same calls, and nothing of
 // the memories is in a file the repository tracks.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -341,8 +341,11 @@ try {
   check(stuck.by.Shine?.kind === 'never' && /still going after 1 second/.test(stuck.by.Shine.line) && Date.now() - began < 60000, `a twin that never comes back from a memory of play is stopped and said: ${stuck.by.Shine?.line ?? stuck.error}`);
 
   const inside = relative(REPO, kept.folder);
-  const ignored = execFileSync('git', ['check-ignore', inside], { cwd: REPO, encoding: 'utf8' }).trim() === inside;
-  check(!inside.startsWith('..') && inside.startsWith('.dreamports') && ignored && changed() === before, `the memories are in ${inside.split('\\').join('/')}/, which git leaves out, and nothing the repository tracks has changed`);
+  // by git's answer, as what it prints back has / where Windows' paths have \
+  const ignored = spawnSync('git', ['check-ignore', '-q', inside], { cwd: REPO }).status === 0;
+  check(!inside.startsWith('..') && inside.startsWith('.dreamports') && ignored, `the memories are in ${inside.split('\\').join('/')}/, which git leaves out`);
+  const after = changed();
+  check(after === before, `and nothing the repository tracks has changed${after === before ? '' : `: ${after.trim().split('\n').slice(0, 3).join('; ')}`}`);
 } finally {
   second.original.close();
 }
