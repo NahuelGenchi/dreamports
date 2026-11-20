@@ -657,3 +657,37 @@ void vu_ftoi(vu_vector *ft, const vu_vector *fs, int bits, int dest) {
 void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest) {
   EACH(dest) ft->f[i] = bits ? plain(OP_MUL, 0, of_bits(fpu_from_int(fs->i[i])), of_bits((uint32_t)(127 - bits) << 23)) : of_bits(fpu_from_int(fs->i[i]));
 }
+
+// ---- For the function check: a unit's registers, given and read whole ----
+// The words are in the order the check's own side has them (tools/ps2/original.mjs, VU_REGISTERS): VF0 to VF31, four
+// words each, the accumulator, VI0 to VI15, a word each, Q, I, P and R, the status, MAC and clip flags, a word the
+// kit has nothing for, and TOP and ITOP, which are the VIF's and stay as they are here.
+uint32_t *vu_registers(int number, int set) {
+  static uint32_t words[158];
+  struct unit *u = &units[number & 1];
+  if (set) {
+    for (int r = 0; r < 32; r++) for (int f = 0; f < 4; f++) u->vf[r].u[f] = words[r * 4 + f];
+    for (int f = 0; f < 4; f++) u->acc.u[f] = words[128 + f];
+    for (int r = 0; r < 16; r++) u->vi[r] = (uint16_t)words[132 + r];
+    u->q = words[148];
+    u->i = words[149];
+    u->p = words[150];
+    u->r = words[151];
+    u->status = words[152];
+    u->mac = words[153];
+    u->clip = u->clip_issued = words[154];
+  } else {
+    for (int r = 0; r < 32; r++) for (int f = 0; f < 4; f++) words[r * 4 + f] = vf(u, r, f);
+    for (int f = 0; f < 4; f++) words[128 + f] = u->acc.u[f];
+    for (int r = 0; r < 16; r++) words[132 + r] = vi(u, r);
+    words[148] = u->q;
+    words[149] = u->i;
+    words[150] = u->p;
+    words[151] = u->r;
+    words[152] = u->status;
+    words[153] = u->mac;
+    words[154] = u->clip;
+    words[155] = 0;
+  }
+  return words;
+}

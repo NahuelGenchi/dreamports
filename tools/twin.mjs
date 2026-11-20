@@ -22,7 +22,8 @@
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
 // and on the PlayStation (ps1/twin.mjs) and the PlayStation 2 (ps2/twin.mjs) a call starts from the program as the
 // console loads it, with no --frames, or with --memories from each function's memories as it starts in play, in the
-// console's emulator, and --addresses is as on the Game Boy Advance; and on the NES, where
+// console's emulator, and --addresses is as on the Game Boy Advance; on the PlayStation 2 a function can also be named
+// by its code map's key, as 120@SOUND.IRX, when it's in another program of the disc; and on the NES, where
 // each twin has a contract beside it and several functions can be named (nes/twin.mjs):
 //   --from      another folder of the game's C than its src/
 //   --without   bytes of the work memory left out of what's compared
