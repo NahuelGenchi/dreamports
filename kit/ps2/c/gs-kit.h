@@ -1,5 +1,5 @@
-// What the GS's own files share (gs.c, gs-memory.c), which a game doesn't need: its memory, laid out as the chip lays it
-// out, and its palette buffer.
+// What the GS's own files share (gs.c, gs-memory.c), which a game doesn't need: its registers and draw
+// list, its memory, laid out as the chip lays it out, and its palette buffer.
 
 #ifndef DREAMPORTS_GS_KIT_H
 #define DREAMPORTS_GS_KIT_H
@@ -17,6 +17,19 @@ enum {
 
 /** The registers as last written, by number (ps2.h), for the GS's files to read. */
 extern uint64_t gs_registers[0x63];
+/** Adds something written to the frame's draw list: 'R' a register, 'I' a picture's data, 'S' half of a privileged
+ *  register, as the proof tools keep the original's. */
+void gs_list_add(char kind, const void *data, size_t length);
+/** SIGNAL, FINISH or LABEL written: what CSR and SIGLBLID make of it. */
+void gs_event(uint8_t reg, uint64_t value);
+
+/** Whether a format keeps 16-bit pixels. */
+static inline int gs_is_16(int psm) { return psm == PSMCT16 || psm == PSMCT16S || psm == PSMZ16 || psm == PSMZ16S; }
+/** A 16-bit colour as a 32-bit one: five bits a channel, shifted up, and its top bit as the alpha `one` or `zero` says. */
+static inline uint32_t gs_from_16(uint32_t colour, uint32_t one, uint32_t zero) {
+  uint32_t r = (colour & 31) << 3, g = (colour >> 5 & 31) << 3, b = (colour >> 10 & 31) << 3;
+  return r | g << 8 | b << 16 | (colour & 0x8000 ? one : zero) << 24;
+}
 
 /** Gives the GS its memory, all zero. */
 void gs_memory_power(void);

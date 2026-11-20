@@ -5,6 +5,9 @@
 //
 // Also here: pictures moved into memory, out of it and within it (BITBLTBUF, TRXPOS, TRXREG, TRXDIR), and the palette
 // buffer, which TEX0's CLD loads from memory.
+//
+// The order a picture copied onto itself goes in follows PCSX2's GSState::Move (Copyright (C) 2002-2026 PCSX2 Dev Team,
+// GPL-3.0-or-later, https://github.com/PCSX2/pcsx2), written again here.
 
 #include "gs-kit.h"
 
@@ -137,6 +140,40 @@ static struct {
 // the place a transfer's coordinates wrap at: they are 11 bits
 #define WRAP 2047
 
+// A picture copied from one place in memory to another, a pixel at a time, from the corner TRXPOS's DIR names. The chip
+// copies through a buffer, so where a picture is copied onto itself the source stays ahead of the destination. The
+// order here is the one PCSX2 found to give what games show (GSState::Move, PCSX2 Dev Team, GPL-3.0-or-later), which is
+// what the kit's copies are checked against: a copy onto itself runs backwards across, or up, when its destination
+// starts after its source within the source's page, and DIR turns it round only when the destination is after the
+// source or the two don't meet.
+static void copy_within(uint64_t buffers, uint64_t place, uint32_t w, uint32_t h) {
+  int from_psm = (int)field(buffers, 24, 6), to_psm = (int)field(buffers, 56, 6);
+  uint32_t from = field(buffers, 0, 14), from_width = field(buffers, 16, 6), to = field(buffers, 32, 14), to_width = field(buffers, 48, 6);
+  int sx = (int)field(place, 0, 11), sy = (int)field(place, 16, 11), dx = (int)field(place, 32, 11), dy = (int)field(place, 48, 11);
+  int width = (int)w, height = (int)h;
+  int meet = from == to && sx < dx + width && dx < sx + width && sy < dy + height && dy < sy + height;
+  int across = 1, down = 1;
+  if (field(place, 60, 1) && (!meet || sx < dx)) { sx += width - 1; dx += width - 1; across = -1; }
+  if (field(place, 59, 1) && (!meet || sy < dy)) { sy += height - 1; dy += height - 1; down = -1; }
+  // the destination's page: 64 by 32 pixels of 32 bits, 64 by 64 of 16, 128 by 64 of 8 and 128 by 128 of 4
+  int page_w = to_psm == PSMT8 || to_psm == PSMT4 ? 128 : 64;
+  int page_h = to_psm == PSMT4 ? 128 : to_psm == PSMT8 || to_psm == PSMCT16 || to_psm == PSMCT16S || to_psm == PSMZ16 || to_psm == PSMZ16S ? 64 : 32;
+  int behind_down = sy < dy && (sy & ~(page_h - 1)) + page_h > dy, behind_across = sx < dx && (sx & ~(page_w - 1)) + page_w > dx;
+  int backwards = across > 0 && meet && behind_across, rows_step = down;
+  if (across > 0 && meet && behind_down && down > 0) {
+    sy += height - 1;
+    dy += height - 1;
+    rows_step = -1;
+  }
+  for (int row = 0; row < height; row++, sy += rows_step, dy += rows_step) {
+    for (int column = 0; column < width; column++) {
+      int x = across < 0 ? -column : backwards ? width - 1 - column : column;
+      uint32_t value = gs_pixel(from, from_width, from_psm, (uint32_t)(sx + x) & WRAP, (uint32_t)sy & WRAP);
+      gs_pixel_set(to, to_width, to_psm, (uint32_t)(dx + x) & WRAP, (uint32_t)dy & WRAP, value, 0);
+    }
+  }
+}
+
 void gs_transfer_start(uint64_t direction) {
   uint64_t buffers = gs_registers[GS_BITBLTBUF], place = gs_registers[GS_TRXPOS], size = gs_registers[GS_TRXREG];
   uint32_t w = field(size, 0, 12), h = field(size, 32, 12);
@@ -154,22 +191,7 @@ void gs_transfer_start(uint64_t direction) {
     if (!w || !h) transfer.direction = -1;
     break;
   }
-  case 2: {
-    // from one place to another, a pixel at a time, from the corner TRXPOS's DIR names, so a copy onto itself moved
-    // along comes out as the console's does
-    int from_psm = (int)field(buffers, 24, 6), to_psm = (int)field(buffers, 56, 6), order = (int)field(place, 59, 2);
-    uint32_t from = field(buffers, 0, 14), from_width = field(buffers, 16, 6), to = field(buffers, 32, 14), to_width = field(buffers, 48, 6);
-    uint32_t sx = field(place, 0, 11), sy = field(place, 16, 11), dx = field(place, 32, 11), dy = field(place, 48, 11);
-    for (uint32_t row = 0; row < h; row++) {
-      uint32_t y = order & 1 ? h - 1 - row : row;
-      for (uint32_t column = 0; column < w; column++) {
-        uint32_t x = order & 2 ? w - 1 - column : column;
-        uint32_t value = gs_pixel(from, from_width, from_psm, (sx + x) & WRAP, (sy + y) & WRAP);
-        gs_pixel_set(to, to_width, to_psm, (dx + x) & WRAP, (dy + y) & WRAP, value, 0);
-      }
-    }
-    break;
-  }
+  case 2: copy_within(buffers, place, w, h); break;
   default: break;
   }
 }
