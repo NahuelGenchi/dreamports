@@ -254,6 +254,8 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
     for (const r of textRelocations) {
       if (r.at < f.at || r.at >= f.at + f.length || !data.has(r.symbol)) continue;
       const theirs = wordAt(f.address + r.at - f.at), low = ((theirs & 0xFFFF) ^ 0x8000) - 0x8000, key = `${r.symbol}+${r.addend}`;
+      // a place where the original's instruction isn't the twin's, but for its 16 bits, says nothing of where a value is
+      if ((code.readUInt32LE(r.at) & 0xFFFF0000) !== (theirs & 0xFFFF0000)) continue;
       if (r.kind === 'hi16') halves.set(key, (theirs & 0xFFFF) << 16);
       else if (r.kind === 'lo16' && halves.has(key)) propose(r.symbol, halves.get(key) + low - r.addend);
       else if (r.kind === 'gprel16' && gp) propose(r.symbol, gp + low - r.addend);
