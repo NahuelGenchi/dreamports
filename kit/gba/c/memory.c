@@ -10,6 +10,12 @@ void gba_console_memory(int cartridge) {
   // lowest first, as kit_memory_keep takes them
   kit_memory_keep(GBA_EWRAM, GBA_EWRAM + GBA_EWRAM_BYTES);
   kit_memory_keep(GBA_IWRAM, GBA_IWRAM + GBA_IWRAM_BYTES);
+#ifdef GBA_CONSOLE_ADDRESSES
+  // the colours, the video memory and the sprites' list, which such a build keeps where the console has them (gba.h)
+  kit_memory_keep(GBA_PALETTE, GBA_PALETTE + sizeof gba_pal);
+  kit_memory_keep(GBA_VRAM, GBA_VRAM + sizeof gba_vram);
+  kit_memory_keep(GBA_OAM, GBA_OAM + sizeof gba_oam);
+#endif
   if (!cartridge) return;
   // the player's copy again, where the console has the cartridge, so the addresses its data is known by are real
   kit_memory_keep(GBA_CARTRIDGE, GBA_CARTRIDGE + kit_copy_size);

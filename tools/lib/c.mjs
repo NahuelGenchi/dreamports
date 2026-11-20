@@ -42,8 +42,9 @@ const OWN = {
   gba: {
     folder: fileURLToPath(new URL('../../kit/gba/c/', import.meta.url)), sources: ['gba.c', 'video.c', 'apu.c', 'm4a.c', 'sound.c', 'memory.c', 'clock.c', 'stack.c'],
     // what the console's compiler takes for granted, which C written for it leans on: a char with no sign, and code
-    // that reads a value through a pointer of another type or through address 0
-    twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks'],
+    // that reads a value through a pointer of another type or through address 0; and, as twins keep every value where
+    // the console does, the colours, the video memory and the sprites' list at the console's addresses (gba.h)
+    twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-DGBA_CONSOLE_ADDRESSES'],
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
