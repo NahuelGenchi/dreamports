@@ -4,6 +4,11 @@
   "content": [],
   "ways": [
     [
+      "0800298A",
+      "not taken",
+      "The branch at 0800298A goes by the flags the instruction at 08002988 sets from numbers in the code and what the branch at 08002982 compared, in the run of instructions from 08002986, which only that branch comes into, gone its one way, and no word of the cartridge points into, so it's never not taken."
+    ],
+    [
       "0809778C",
       "taken",
       "The branch at 0809778C goes by the flags the instruction at 0809778A sets from numbers in the code alone, in the run of instructions from 08097760, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
