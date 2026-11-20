@@ -20,6 +20,20 @@ Play! didn't wait for the read, and what a program read back changed from one ru
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
+And it tells the tools what the console does, when they ask before a game loads (dreamports_watch, Source/DreamportsWatch.h,
+tools/libretro/ran-ps2.h): each block of instructions the EE, the IOP or a vector unit runs, as the block ends, with which
+way its branch went and the words it was compiled from, on the EE and the IOP each instruction with what the registers
+hold before it runs, and every sector of the disc read. A block that runs only says so, so the console does the same
+with it or without; while the tools watch, the processors compile each block for itself rather than reuse the code of
+another block of the same bytes, which would name that one.
+
+It says where the console's memories are (dreamports_memory: the EE's, the IOP's and the SPU2's, each the console's size)
+and its memory cards' files (dreamports_memory_card), with how many times the game has changed a card, for the tools to
+compare with a Dreamport's (tools/libretro/held.h). And it gives the console a clock of its own, the same in every run:
+midnight on 1 January 2001, Coordinated Universal Time, as it starts, going on as its V-blanks do, for the time the game
+reads and for the times of a card's files, which Play! took from the computer's clock. How far the clock has got is
+kept in a saved state, so a search that brings one back has the time it was saved at (tools/route.mjs).
+
 When DP_VU_DUMP names a file, the vector units' memories go there at each V-blank, vector unit 0's code and data and
 then vector unit 1's, for the tools to compare with a Dreamport's (kit/ps2/c/vu.c, tools/test/ps2-ee-vu.mjs).
 
@@ -33,6 +47,168 @@ are kept, the upper half's result is the one kept when both halves of a pair wri
 program left on its way lands as it ends. SUBAq, which Play! left out, is there (kit/ps2/c/README.md says where each
 rule comes from, and what the emulator still does its own way).
 
+diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
+index 4c460e6..7a0c6ef 100644
+--- a/Source/BasicBlock.cpp
++++ b/Source/BasicBlock.cpp
+@@ -3,6 +3,8 @@
+ #include "offsetof_def.h"
+ #include "MipsJitter.h"
+ #include "Jitter_CodeGenFactory.h"
++#include "DreamportsWatch.h"
++#include <vector>
+ 
+ #if defined(AOT_BUILD_CACHE) || defined(AOT_USE_CACHE)
+ #define AOT_ENABLED
+@@ -42,6 +44,116 @@ extern "C"
+ 
+ #define INVALID_LINK_SLOT (~0U)
+ 
++// Dreamports: what the tools' program asks to be told, and every block it's been told of, which a block's code names by
++// its place here. A block is kept as long as the program runs, as code compiled from it can still name it
++void* Dreamports::g_processors[Dreamports::PROCESSORS] = {};
++void (*Dreamports::g_blockRan)(DREAMPORTS_BLOCK*, uint32) = nullptr;
++void (*Dreamports::g_step)(DREAMPORTS_BLOCK*, uint32, const void*) = nullptr;
++void (*Dreamports::g_sectorRead)(uint32) = nullptr;
++uint64 Dreamports::g_vblanks = 0;
++uint32 Dreamports::g_vblankMilliHertz = 59940;
++uint32 Dreamports::g_memoryCardChanges = 0;
++static std::vector<DREAMPORTS_BLOCK*> g_dreamportsBlocks;
++
++extern "C" void DreamportsBlockRan(CMIPS* context, uint32 index)
++{
++	// a conditional branch was taken when it left where to jump to
++	Dreamports::g_blockRan(g_dreamportsBlocks[index], context->m_State.nDelayedJumpAddr != MIPS_INVALID_PC);
++}
++
++extern "C" void DreamportsStep(CMIPS* context, uint32 index, uint32 position)
++{
++	Dreamports::g_step(g_dreamportsBlocks[index], position, context->m_State.nGPR);
++}
++
++// What kind of branch ends a block, from the word of its branch and, on a vector unit, its delay slot's upper word: one
++// whose way the code alone decides, as BEQ with a register against itself, is no conditional branch, as `b` is written
++static uint32 DreamportsBranchKind(uint32 processor, uint32 word, uint32 delayUpper)
++{
++	uint32 op = word >> 26, rs = (word >> 21) & 0x1F, rt = (word >> 16) & 0x1F;
++	if(processor == Dreamports::PROCESSOR_VU0 || processor == Dreamports::PROCESSOR_VU1)
++	{
++		// IBEQ, IBNE, IBLTZ, IBGTZ, IBLEZ and IBGEZ, the lower instructions that branch on a condition
++		uint32 lower = word >> 25, it = (word >> 16) & 0x1F, is = (word >> 11) & 0x1F;
++		bool conditional = lower == 0x28 || lower == 0x29 || (lower >= 0x2C && lower <= 0x2F);
++		if(!conditional || (lower == 0x28 && it == is)) return 0;
++		return (delayUpper & 0x40000000) ? 3 : 1;
++	}
++	switch(op)
++	{
++	case 0x01:
++		// BLTZ, BGEZ, BLTZL, BGEZL, BLTZAL, BGEZAL, BLTZALL, BGEZALL: against zero itself, BGEZ always goes
++		if(rt > 0x13 || (rt > 0x03 && rt < 0x10)) return 0;
++		if(rs == 0 && (rt & 1)) return 0;
++		return (rt & 2) ? 2 : 1;
++	case 0x04: case 0x14: // BEQ, BEQL
++		if(rs == rt) return 0;
++		return op == 0x14 ? 2 : 1;
++	case 0x05: case 0x15: // BNE, BNEL
++		return op == 0x15 ? 2 : 1;
++	case 0x06: case 0x16: // BLEZ, BLEZL: zero is never more than zero
++		if(rs == 0) return 0;
++		return op == 0x16 ? 2 : 1;
++	case 0x07: case 0x17: // BGTZ, BGTZL
++		return op == 0x17 ? 2 : 1;
++	case 0x10: case 0x11: case 0x12: // BC0, BC1 and BC2, false or true, likely or not
++		if(rs != 0x08) return 0;
++		return (rt & 2) ? 2 : 1;
++	default:
++		return 0;
++	}
++}
++
++// The block being compiled, as the tools are told of it: its place in g_dreamportsBlocks, or ~0 when they aren't
++// watching it. Compile starts it again for each block
++static struct
++{
++	const CBasicBlock* block;
++	uint32 index;
++} g_dreamportsCompiling = {nullptr, ~0U};
++
++static uint32 DreamportsIndexOf(const CBasicBlock* compiling, CMIPS& context, uint32 begin, uint32 end, bool empty)
++{
++	if(g_dreamportsCompiling.block == compiling) return g_dreamportsCompiling.index;
++	g_dreamportsCompiling = {compiling, ~0U};
++	if(!Dreamports::g_blockRan || empty) return ~0U;
++	uint32 processor = 0;
++	while(processor < Dreamports::PROCESSORS && Dreamports::g_processors[processor] != &context) processor++;
++	if(processor == Dreamports::PROCESSORS) return ~0U;
++	bool vu = processor == Dreamports::PROCESSOR_VU0 || processor == Dreamports::PROCESSOR_VU1;
++	uint32 step = vu ? 8 : 4, count = vu ? ((end - 4 - begin) / 8 + 1) : ((end - begin) / 4 + 1);
++	auto block = static_cast<DREAMPORTS_BLOCK*>(calloc(1, sizeof(DREAMPORTS_BLOCK) + (count + 1) * sizeof(uint32)));
++	block->processor = processor;
++	block->begin = begin;
++	block->count = count;
++	block->step = step;
++	for(uint32 i = 0; i < count; i++)
++	{
++		block->words[i] = context.m_pMemoryMap->GetInstruction(begin + i * step);
++	}
++	if(count >= 2)
++	{
++		uint32 delayUpper = vu ? context.m_pMemoryMap->GetInstruction(begin + (count - 1) * step + 4) : 0;
++		block->branch = DreamportsBranchKind(processor, block->words[count - 2], delayUpper);
++		// the pair a vector unit runs after the delay slot when its branch isn't taken
++		if(block->branch == 3) block->words[count] = context.m_pMemoryMap->GetInstruction(begin + count * step);
++	}
++	g_dreamportsCompiling.index = static_cast<uint32>(g_dreamportsBlocks.size());
++	g_dreamportsBlocks.push_back(block);
++	return g_dreamportsCompiling.index;
++}
++
++// on the EE and the IOP, when the tools follow each instruction, a call before it with what the registers hold
++static void CompileDreamportsStep(CMipsJitter* jitter, uint32 index, uint32 position)
++{
++	if(index == ~0U || !Dreamports::g_step) return;
++	if(g_dreamportsBlocks[index]->processor > Dreamports::PROCESSOR_IOP) return;
++	jitter->PushCtx();
++	jitter->PushCst(index);
++	jitter->PushCst(position);
++	jitter->Call(reinterpret_cast<void*>(&DreamportsStep), 3, Jitter::CJitter::RETURN_VALUE_NONE);
++}
++
+ CBasicBlock::CBasicBlock(CMIPS& context, uint32 begin, uint32 end, BLOCK_CATEGORY category)
+     : m_begin(begin)
+     , m_end(end)
+@@ -76,6 +188,7 @@ void CBasicBlock::SetAotBlockOutputStream(Framework::CStdStream* outputStream)
+ 
+ void CBasicBlock::Compile()
+ {
++	g_dreamportsCompiling = {nullptr, ~0U};
+ #ifndef AOT_USE_CACHE
+ 
+ 	Framework::CMemStream stream;
+@@ -225,6 +338,7 @@ void CBasicBlock::CompileRange(CMipsJitter* jitter)
+ 
+ 	for(uint32 address = m_begin; address <= m_end; address += 4)
+ 	{
++		CompileDreamportsStep(jitter, DreamportsIndexOf(this, m_context, m_begin, m_end, IsEmpty()), (address - m_begin) / 4);
+ 		m_context.m_pArch->CompileInstruction(
+ 		    address,
+ 		    jitter,
+@@ -257,6 +371,15 @@ void CBasicBlock::CompileProlog(CMipsJitter* jitter)
+ 
+ void CBasicBlock::CompileEpilog(CMipsJitter* jitter, bool loopsOnItself)
+ {
++	//Dreamports: the block ran, and its branch went the way it left
++	uint32 dreamportsIndex = DreamportsIndexOf(this, m_context, m_begin, m_end, IsEmpty());
++	if(dreamportsIndex != ~0U)
++	{
++		jitter->PushCtx();
++		jitter->PushCst(dreamportsIndex);
++		jitter->Call(reinterpret_cast<void*>(&DreamportsBlockRan), 2, Jitter::CJitter::RETURN_VALUE_NONE);
++	}
++
+ 	//Update cycle quota
+ 	jitter->PushRel(offsetof(CMIPS, m_State.cycleQuota));
+ 	jitter->PushCst(((m_end - m_begin) / 4) + 1);
 diff --git a/Source/CMakeLists.txt b/Source/CMakeLists.txt
 index 0eb6a2e..1216ff7 100644
 --- a/Source/CMakeLists.txt
@@ -431,6 +607,107 @@ index 438943a..04f2901 100644
  	SetCCBit(true, m_ccMask[((m_nOpcode >> 8) & 0x07)]);
  }
  
+diff --git a/Source/DreamportsWatch.h b/Source/DreamportsWatch.h
+new file mode 100644
+index 0000000..fa5a952
+--- /dev/null
++++ b/Source/DreamportsWatch.h
+@@ -0,0 +1,59 @@
++#pragma once
++
++// Dreamports: what the tools' program is told of the console as it plays (tools/libretro/play.patch, ran-ps2.h). Nothing
++// here changes what the console does: a block that runs only says so, and a sector read only says which it was.
++
++#include "Types.h"
++#include <ctime>
++
++// A block of instructions as the processor compiled it, the same as ran-ps2.h's struct dpBlock
++struct DREAMPORTS_BLOCK
++{
++	uint32 processor; // 0 the EE, 1 the IOP, 2 vector unit 0, 3 vector unit 1
++	uint32 begin;     // the address of its first instruction
++	uint32 count;     // how many instructions it has, or on a vector unit how many pairs
++	uint32 step;      // how many bytes apart they are: 4, or 8 on a vector unit
++	uint32 branch;    // 0 it ends with no conditional branch, 1 with one, 2 a likely one, whose delay slot runs only when it's
++	                  // taken, 3 a vector unit's whose delay slot has its E bit, so the pair after runs when it isn't
++	uint32 kept[7];   // the tools' own
++	uint32 words[1];  // each instruction's word as compiled, the lower of a pair on a vector unit
++};
++
++namespace Dreamports
++{
++	enum
++	{
++		PROCESSOR_EE,
++		PROCESSOR_IOP,
++		PROCESSOR_VU0,
++		PROCESSOR_VU1,
++		PROCESSORS
++	};
++
++	// set by the frontend before a block compiles: the processors' contexts, which processor each is, and what to tell
++	extern void* g_processors[PROCESSORS];
++	extern void (*g_blockRan)(DREAMPORTS_BLOCK*, uint32 jumped);
++	extern void (*g_step)(DREAMPORTS_BLOCK*, uint32 position, const void* registers);
++	extern void (*g_sectorRead)(uint32 sector);
++
++	inline void SectorRead(uint32 sector)
++	{
++		if(g_sectorRead) g_sectorRead(sector);
++	}
++
++	// The console's clock, the same in every run: midnight on 1 January 2001, Coordinated Universal Time, as the console
++	// starts, going on as its V-blanks do, which the frontend counts, with how many thousand a second (main_libretro.cpp)
++	enum : time_t
++	{
++		CLOCK_START = 978307200
++	};
++	extern uint64 g_vblanks;
++	extern uint32 g_vblankMilliHertz;
++	inline time_t ConsoleTime()
++	{
++		return CLOCK_START + static_cast<time_t>(g_vblanks * 1000 / g_vblankMilliHertz);
++	}
++
++	// how many times a memory card has been changed, for the tools to read its files again (Iop_McServ.cpp)
++	extern uint32 g_memoryCardChanges;
++}
+diff --git a/Source/ISO9660/BlockProvider.h b/Source/ISO9660/BlockProvider.h
+index 3ca3d52..6f98142 100644
+--- a/Source/ISO9660/BlockProvider.h
++++ b/Source/ISO9660/BlockProvider.h
+@@ -4,6 +4,7 @@
+ #include <cassert>
+ #include "Types.h"
+ #include "Stream.h"
++#include "../DreamportsWatch.h"
+ 
+ namespace ISO9660
+ {
+@@ -35,6 +36,8 @@ namespace ISO9660
+ 
+ 		void ReadBlock(uint32 address, void* block) override
+ 		{
++			//Dreamports: the tools are told of every sector read of the disc
++			Dreamports::SectorRead(address + m_offset);
+ 			m_stream->Seek(static_cast<uint64>(address + m_offset) * BLOCKSIZE, Framework::STREAM_SEEK_SET);
+ 			m_stream->Read(block, BLOCKSIZE);
+ 		}
+@@ -78,12 +81,14 @@ namespace ISO9660
+ 
+ 		void ReadBlock(uint32 address, void* block) override
+ 		{
++			Dreamports::SectorRead(address);
+ 			m_stream->Seek((static_cast<uint64>(address) * INTERNAL_BLOCKSIZE) + BLOCKHEADER_SIZE, Framework::STREAM_SEEK_SET);
+ 			m_stream->Read(block, BLOCKSIZE);
+ 		}
+ 
+ 		void ReadMediaBlock(uint32 address, void* block) override
+ 		{
++			Dreamports::SectorRead(address);
+ 			m_stream->Seek(static_cast<uint64>(address) * INTERNAL_BLOCKSIZE, Framework::STREAM_SEEK_SET);
+ 			m_stream->Read(block, MEDIA_BLOCKSIZE);
+ 		}
 diff --git a/Source/MIPS.h b/Source/MIPS.h
 index fc28a8f..b5db527 100644
 --- a/Source/MIPS.h
@@ -507,6 +784,26 @@ index e6d64d7..1697e0e 100644
  	void VADDA();
  	void VSUBA();
  	void VMOVE();
+diff --git a/Source/ee/EeExecutor.cpp b/Source/ee/EeExecutor.cpp
+index c8c72f9..9367819 100644
+--- a/Source/ee/EeExecutor.cpp
++++ b/Source/ee/EeExecutor.cpp
+@@ -1,4 +1,5 @@
+ #include "EeExecutor.h"
++#include "../DreamportsWatch.h"
+ #include "../Ps2Const.h"
+ #include "AlignedAlloc.h"
+ #include "EeBasicBlock.h"
+@@ -169,7 +170,8 @@ BasicBlockPtr CEeExecutor::BlockFactory(CMIPS& context, uint32 start, uint32 end
+ 	static_assert(sizeof(hash) == sizeof(xxHash));
+ 	auto blockKey = std::make_pair(hash, blockSize);
+ 
+-	bool hasBreakpoint = m_context.HasBreakpointInRange(start, end);
++	//Dreamports: while the tools are told of each block, code compiled for another address isn't used, as it names that block
++	bool hasBreakpoint = m_context.HasBreakpointInRange(start, end) || Dreamports::g_blockRan;
+ 
+ 	std::optional<Jitter::CJitter::ROUNDINGMODE> blockFpRoundingModeOverride;
+ 	if(auto blockFpRoundingModeIterator = m_blockFpRoundingModes.find(start);
 diff --git a/Source/ee/Ee_SubSystem.cpp b/Source/ee/Ee_SubSystem.cpp
 index ba72195..a23433e 100644
 --- a/Source/ee/Ee_SubSystem.cpp
@@ -2067,6 +2364,26 @@ index a1ca3ca..44a9b36 100644
  			    (hiOps.writeF == loOps.readF0) ||
  			    (hiOps.writeF == loOps.readF1))
  			{
+diff --git a/Source/ee/VuExecutor.cpp b/Source/ee/VuExecutor.cpp
+index 72e80fc..7952e38 100644
+--- a/Source/ee/VuExecutor.cpp
++++ b/Source/ee/VuExecutor.cpp
+@@ -1,4 +1,5 @@
+ #include "VuExecutor.h"
++#include "../DreamportsWatch.h"
+ #include "VuBasicBlock.h"
+ #include "VUShared.h"
+ #include "xxhash.h"
+@@ -45,7 +46,8 @@ BasicBlockPtr CVuExecutor::BlockFactory(CMIPS& context, uint32 begin, uint32 end
+ 	auto blockKey = std::make_pair(hash, blockSizeByte);
+ 
+ 	//Don't use the cached blocks of we have a breakpoint in our block range.
+-	bool hasBreakpoint = m_context.HasBreakpointInRange(begin, end);
++	//Dreamports: while the tools are told of each block, code compiled for another address isn't used, as it names that block
++	bool hasBreakpoint = m_context.HasBreakpointInRange(begin, end) || Dreamports::g_blockRan;
+ 	if(!hasBreakpoint)
+ 	{
+ 		auto beginBlockIterator = m_cachedBlocks.lower_bound(blockKey);
 diff --git a/Source/ee/dreamports/Glue.cpp b/Source/ee/dreamports/Glue.cpp
 new file mode 100644
 index 0000000..914a233
@@ -2673,6 +2990,122 @@ index 66bfe59..478f3d1 100644
  
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
+diff --git a/Source/iop/Iop_Cdvdman.cpp b/Source/iop/Iop_Cdvdman.cpp
+index 71aed53..dbebf05 100644
+--- a/Source/iop/Iop_Cdvdman.cpp
++++ b/Source/iop/Iop_Cdvdman.cpp
+@@ -5,6 +5,7 @@
+ #include "../TimeUtils.h"
+ #include "IopBios.h"
+ #include "Iop_Cdvdman.h"
++#include "../DreamportsWatch.h"
+ 
+ #define LOG_NAME "iop_cdvdman"
+ 
+@@ -88,8 +89,9 @@ static uint8 Uint8ToBcd(uint8 input)
+ 
+ uint32 CCdvdman::CdReadClockDirect(uint8* clockBuffer)
+ {
+-	auto currentTime = time(0);
+-	auto localTime = localtime(&currentTime);
++	//Dreamports: the console's own clock, the same in every run, not the computer's (DreamportsWatch.h)
++	auto currentTime = Dreamports::ConsoleTime();
++	auto localTime = gmtime(&currentTime);
+ 	clockBuffer[0] = 0;                                                        //Status (0 = ok, anything else = error)
+ 	clockBuffer[1] = Uint8ToBcd(static_cast<uint8>(localTime->tm_sec));        //Seconds
+ 	clockBuffer[2] = Uint8ToBcd(static_cast<uint8>(localTime->tm_min));        //Minutes
+diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
+index 4ef7854..c790578 100644
+--- a/Source/iop/Iop_McServ.cpp
++++ b/Source/iop/Iop_McServ.cpp
+@@ -18,6 +18,8 @@
+ #include "StringUtils.h"
+ #include "MIPSAssembler.h"
+ #include "FilesystemUtils.h"
++#include "../DreamportsWatch.h"
++#include <map>
+ 
+ using namespace Iop;
+ 
+@@ -204,6 +206,32 @@ void CMcServ::Invoke(CMIPS& context, unsigned int functionId)
+ 	}
+ }
+ 
++//Dreamports: when each entry of a memory card last changed by the console's clock, as its file's own time is the
++//computer's: by its path, the computer's time it was seen with and the console's. What's there as the game starts the
++//cards is from the clock's start
++static std::map<std::string, std::pair<fs::file_time_type, time_t>> g_dreamportsStamps;
++
++static void DreamportsStamp(const fs::path& card, time_t now)
++{
++	std::error_code error;
++	if(!fs::exists(card, error)) return;
++	auto stamp = [now](const fs::path& path) {
++		std::error_code error;
++		auto hostTime = fs::last_write_time(path, error);
++		if(error) return;
++		auto found = g_dreamportsStamps.find(path.generic_string());
++		if(found == g_dreamportsStamps.end() || found->second.first != hostTime) g_dreamportsStamps[path.generic_string()] = {hostTime, now};
++	};
++	stamp(card);
++	for(const auto& element : fs::recursive_directory_iterator(card, error)) stamp(element.path());
++}
++
++static time_t DreamportsStampOf(const fs::path& path)
++{
++	auto found = g_dreamportsStamps.find(path.generic_string());
++	return found == g_dreamportsStamps.end() ? Dreamports::CLOCK_START : found->second.second;
++}
++
+ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
+ {
+ 	bool isDirectCall = (method & CMD_FLAG_DIRECT) != 0;
+@@ -285,6 +313,33 @@ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret,
+ 		return true;
+ 	}
+ 
++	//Dreamports: what a call changed of a card is stamped with the console's clock, and the tools are told
++	switch(method)
++	{
++	case 0xFE:
++	case 0x70:
++		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::CLOCK_START);
++		break;
++	case CMD_ID_OPEN:
++	case 0x71:
++	case CMD_ID_CLOSE:
++	case 0x72:
++	case CMD_ID_WRITE:
++	case 0x74:
++	case 0x0A:
++	case 0x7A:
++	case CMD_ID_SETFILEINFO:
++	case 0x7C:
++	case CMD_ID_DELETE:
++	case 0x79:
++	case 0x1B:
++		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::ConsoleTime());
++		Dreamports::g_memoryCardChanges++;
++		break;
++	default:
++		break;
++	}
++
+ 	if(!isDirectCall)
+ 	{
+ 		// Delay all commands a bit (except ReadFast, which has a different mecanism)
+@@ -1308,8 +1363,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+ 
+ 			//Fill in modification date info
+ 			{
+-				auto changeSystemTime = Framework::ConvertFsTimeToSystemTime(element.last_write_time());
+-				auto localChangeDate = std::localtime(&changeSystemTime);
++				//Dreamports: by the console's clock, as the card's entry was stamped
++				auto changeSystemTime = DreamportsStampOf(element.path());
++				auto localChangeDate = std::gmtime(&changeSystemTime);
+ 
+ 				entry.modificationTime.second = localChangeDate->tm_sec;
+ 				entry.modificationTime.minute = localChangeDate->tm_min;
 diff --git a/Source/iop/Iop_SpuBase.cpp b/Source/iop/Iop_SpuBase.cpp
 index 231400b..3a15387 100644
 --- a/Source/iop/Iop_SpuBase.cpp
@@ -2825,20 +3258,22 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..f7bb43a 100644
+index 8a07c26..195d320 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
-@@ -19,6 +19,9 @@
+@@ -19,6 +19,11 @@
  
  #include <vector>
  #include <cstdlib>
 +#include <condition_variable>
++#include "DreamportsWatch.h"
++#include "states/MemoryStateFile.h"
 +#include <cstdint>
 +#include <mutex>
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +40,112 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +42,175 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -2915,6 +3350,9 @@ index 8a07c26..f7bb43a 100644
 +		Iop::SoundList::count = 0;
 +	}
 +	g_vblanksReached++;
++	// the console's clock goes on as its V-blanks do: 59.94 a second, or 50 on a PAL screen (DreamportsWatch.h)
++	Dreamports::g_vblanks++;
++	if(auto gs = m_virtualMachine ? m_virtualMachine->GetGSHandler() : nullptr) Dreamports::g_vblankMilliHertz = gs->GetCrtFrameRate() == 50 ? 50000 : 59940;
 +	g_vblankCondition.notify_all();
 +	g_vblankCondition.wait(lock, [] { return g_vblanksAllowed >= g_vblanksReached; });
 +}
@@ -2935,6 +3373,66 @@ index 8a07c26..f7bb43a 100644
 +	*count = g_soundListCount;
 +}
 +
++// Dreamports: what the tools' program asks to be told as the console plays, set before a game loads (DreamportsWatch.h):
++// each block of instructions that runs on the EE, the IOP or a vector unit, with which way its branch went, and on the EE
++// and the IOP each instruction with what the registers hold, and each sector read of the disc. Any can be none
++extern "C" RETRO_API void dreamports_watch(void (*blockRan)(DREAMPORTS_BLOCK*, uint32_t), void (*step)(DREAMPORTS_BLOCK*, uint32_t, const void*), void (*sectorRead)(uint32_t))
++{
++	Dreamports::g_processors[Dreamports::PROCESSOR_EE] = &m_virtualMachine->m_ee->m_EE;
++	Dreamports::g_processors[Dreamports::PROCESSOR_IOP] = &m_virtualMachine->m_iop->m_cpu;
++	Dreamports::g_processors[Dreamports::PROCESSOR_VU0] = &m_virtualMachine->m_ee->m_VU0;
++	Dreamports::g_processors[Dreamports::PROCESSOR_VU1] = &m_virtualMachine->m_ee->m_VU1;
++	Dreamports::g_blockRan = blockRan;
++	Dreamports::g_step = blockRan ? step : nullptr;
++	Dreamports::g_sectorRead = sectorRead;
++}
++
++// The console's memories, as the tools compare them (tools/lib/memory.mjs): `memory` 0 the EE's, at its own addresses (main
++// memory from 0, the scratchpad at 0x70000000, vector unit 0's code and data at 0x11000000 and 0x11004000, vector unit
++// 1's at 0x11008000 and 0x1100C000), 1 the IOP's (its memory from 0, its scratchpad at 0x1F800000) and 2 the SPU2's.
++// Each is the console's size, though Play! keeps more of some. Where `bytes` from `address` are, or none when they
++// aren't all in one of them. Read as the console waits at a V-blank
++extern "C" RETRO_API const uint8_t* dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++{
++	auto& ee = m_virtualMachine->m_ee;
++	auto& iop = m_virtualMachine->m_iop;
++	const struct
++	{
++		uint32_t memory, from, size;
++		uint8* at;
++	} regions[] = {
++	    {0, 0, 0x02000000, ee->m_ram}, {0, 0x70000000, PS2::EE_SPR_SIZE, ee->m_spr},
++	    {0, PS2::MICROMEM0ADDR, PS2::MICROMEM0SIZE, ee->m_microMem0}, {0, PS2::VUMEM0ADDR, PS2::VUMEM0SIZE, ee->m_vuMem0},
++	    {0, PS2::MICROMEM1ADDR, PS2::MICROMEM1SIZE, ee->m_microMem1}, {0, PS2::VUMEM1ADDR, PS2::VUMEM1SIZE, ee->m_vuMem1},
++	    {1, 0, 0x00200000, iop->m_ram}, {1, 0x1F800000, 0x400, iop->m_scratchPad}, {2, 0, PS2::SPU_RAM_SIZE, iop->m_spuRam},
++	};
++	for(const auto& region : regions)
++	{
++		if(region.memory == memory && address >= region.from && static_cast<uint64_t>(address) + bytes <= static_cast<uint64_t>(region.from) + region.size)
++		{
++			return region.at + (address - region.from);
++		}
++	}
++	return nullptr;
++}
++
++// Where a memory card's files are, for port 0 or 1, and how many times the game has changed a card so far, for the tools
++// to read them again when it has (Iop_McServ.cpp)
++extern "C" RETRO_API const char* dreamports_memory_card(uint32_t port, uint32_t* changes)
++{
++	static std::string folders[2];
++	folders[port & 1] = CAppConfig::GetInstance().GetPreferencePath(port & 1 ? PREF_PS2_MC1_DIRECTORY : PREF_PS2_MC0_DIRECTORY).string();
++	*changes = Dreamports::g_memoryCardChanges;
++	return folders[port & 1].c_str();
++}
++
++// How many V-blanks the console has passed, which goes back with a saved state: how long it has played, for a search
++// to spread over (tools/lib/explore.h)
++extern "C" RETRO_API uint64_t dreamports_frames()
++{
++	return Dreamports::g_vblanks;
++}
++
 +static void AllowVBlanks(uint64_t count)
 +{
 +	std::lock_guard<std::mutex> lock(g_vblankMutex);
@@ -2951,7 +3449,24 @@ index 8a07c26..f7bb43a 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -446,15 +555,24 @@ void retro_run()
+@@ -258,6 +432,8 @@ bool retro_serialize(void* data, size_t size)
+ 		m_virtualMachine->m_ee->SaveState(archive);
+ 		m_virtualMachine->m_iop->SaveState(archive);
+ 		m_virtualMachine->m_ee->m_gs->SaveState(archive);
++		// Dreamports: how far the console's clock has got is part of its state
++		archive.InsertFile(std::make_unique<CMemoryStateFile>("dreamports/vblanks", &Dreamports::g_vblanks, sizeof(Dreamports::g_vblanks)));
+ 
+ 		archive.Write(stateStream);
+ 		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
+@@ -285,6 +461,7 @@ bool retro_unserialize(const void* data, size_t size)
+ 			m_virtualMachine->m_ee->LoadState(archive);
+ 			m_virtualMachine->m_iop->LoadState(archive);
+ 			m_virtualMachine->m_ee->m_gs->LoadState(archive);
++			archive.BeginReadFile("dreamports/vblanks")->Read(&Dreamports::g_vblanks, sizeof(Dreamports::g_vblanks));
+ 		}
+ 		catch(...)
+ 		{
+@@ -446,15 +623,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -2979,7 +3494,7 @@ index 8a07c26..f7bb43a 100644
  	}
  }
  
-@@ -554,7 +672,7 @@ void retro_init()
+@@ -554,7 +740,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -2988,7 +3503,7 @@ index 8a07c26..f7bb43a 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +692,7 @@ void retro_deinit()
+@@ -574,6 +760,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{

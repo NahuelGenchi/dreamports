@@ -30,9 +30,10 @@
     if (typeof dreamportsProof.memory !== 'function') throw new Error('The game\'s original.json lists work memory to compare, and its kit doesn\'t say where the game keeps it.');
     const all = keep ? new Uint8Array(MEMORY_BYTES) : null;
     let hash = 0x811C9DC5, kept = 0;
-    for (const { address, bytes } of stretches) {
-      const held = dreamportsProof.memory(address, bytes);
-      if (!held) throw new Error(`The game's original.json lists work memory to compare, and the game doesn't keep its memory at the console's addresses: nothing of it reaches 0x${address.toString(16).toUpperCase().padStart(8, '0')}. A game does with the kit's gba_console_memory (kit/gba/c/gba.h).`);
+    for (const { address, bytes, memory } of stretches) {
+      // a console with several memories says which (lib/memory.mjs)
+      const held = dreamportsProof.memory(address, bytes, memory);
+      if (!held) throw new Error(`The game's original.json lists work memory to compare, and the game doesn't keep its memory at the console's addresses: nothing of it reaches 0x${address.toString(16).toUpperCase().padStart(8, '0')}. A game does with the kit's ${__console.id === 'ps2' ? 'ps2_console_memory (kit/ps2/c/ps2.h)' : 'gba_console_memory (kit/gba/c/gba.h)'}.`);
       for (let i = 0; i < bytes; i++) hash = Math.imul(hash ^ held[i], 0x01000193);
       all?.set(held, kept);
       kept += bytes;

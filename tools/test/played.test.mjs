@@ -7,6 +7,8 @@ import { CELL, NOT_TAKEN, RAN, TAKEN, contentCells, contentIn, finderOf, instruc
 import { findFunctions } from '../nes/functions.mjs';
 import { madeUpNes } from './made-up-nes.mjs';
 import { gameplayText, playedPercent, proofOf } from '../../src/lib/entries.mjs';
+// the PlayStation 2's part of this, in a file of its own, run with it
+import './ps2-ledger.test.mjs';
 
 const thumb = (...ops) => Uint8Array.from(ops.flatMap(op => [op & 0xFF, op >> 8]));
 // 0: cmp r0, #0   2: beq +2 (to 8)   4: mov r0, #1   6: bx lr   8: mov r0, #2   A: bx lr   C: a word of data

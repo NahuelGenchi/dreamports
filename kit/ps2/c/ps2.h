@@ -139,6 +139,13 @@ enum {
   EE_FCSR_SI = 1 << 6, EE_FCSR_SD = 1 << 5, EE_FCSR_SO = 1 << 4, EE_FCSR_SU = 1 << 3,
 };
 
+// The console's memory, for a game that keeps it where the console does, for the proof tools to compare after every
+// frame (ps2.c): `memory` is PS2_EE, PS2_IOP or PS2_SPU2, `address` where the stretch starts in that memory, as the
+// console's own addresses go (main memory from 0, the scratchpad at 0x70000000, vector unit 1's data at 0x1100C000),
+// `size` its bytes, and `at` where the game keeps them.
+enum { PS2_EE, PS2_IOP, PS2_SPU2 };
+void ps2_console_memory(uint32_t memory, uint32_t address, uint32_t size, void *at);
+
 // The vector units (vu.c). A program on one runs from its code memory as the console runs it, started by the VIF's
 // MSCAL or by VCALLMS, with its floats on the EE's rules. A vector is four floats, x, y, z and w, or the same bits as
 // whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
