@@ -789,3 +789,65 @@ export function madeUpHdmaCartridge() {
   rom.set(w(sum & 0xFFFF), header + 0x1E);
   return { rom };
 }
+
+// The raster program, for the kit's test of the main processor's own writes partway down the frame: the picture
+// program's backgrounds, and an IRQ handler the timers call three ways in each frame. At line 40, by the V timer alone,
+// it switches mode 1 to mode 0 and scrolls BG3, and sets the H and V timers for dot 180 of line 100; there it halves
+// the brightness, turns mosaic on and leaves the H timer alone, which calls it at dot 180 of each line after, where it
+// writes the backdrop's colour, 40 lines of it, with what $4212 says there, and then turns the timers off. The
+// V-blank's handler puts it all back, scrolls BG1, and scrolls BG2 by what $4212 says as V-blank starts.
+export const RASTER = { ...PICTURE };
+const RASTER_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01, 0x64, 0x10, 0x64, 0x11,
+  ...store(0x80, 0x2100), 0x9C, ...w(0x4200),
+  ...store(0x80, 0x2115), 0xA2, ...w(0x0000), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, RASTER.TILES, RASTER.TILES_BYTES),
+  0xA2, ...w(0x1000), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, RASTER.SMALL, RASTER.SMALL_BYTES),
+  0xA2, ...w(0x0400), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, RASTER.MAP, 0x800),
+  0xA2, ...w(0x0C00), 0x8E, ...w(0x2116), ...dma(0x01, 0x18, RASTER.SMALL_MAP, 0x800),
+  0x9C, ...w(0x2121), ...dma(0x00, 0x22, RASTER.PALETTE, 0x200),
+  ...store(0x09, 0x2105), ...store(0x04, 0x2107), ...store(0x04, 0x2108), ...store(0x0C, 0x2109), ...store(0x00, 0x210B), ...store(0x01, 0x210C), ...store(0x07, 0x212C),
+  // the H timer at dot 180, IRQs let in, and the NMI on, whose handler turns the V timer's IRQ on for each frame
+  ...store(0xB4, 0x4207), 0x9C, ...w(0x4208), 0x58,
+  ...store(0x0F, 0x2100), ...store(0x81, 0x4200),
+  here('spin'), 0x80, rel('spin'),
+  // the V-blank: stage 0, mode 1, full brightness, no mosaic, BG1 across, and the V timer's IRQ at line 40 again
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210), 0x64, 0x10,
+  ...store(0x09, 0x2105), ...store(0x0F, 0x2100), 0x9C, ...w(0x2106),
+  0xA5, 0x00, 0x8D, ...w(0x210D), 0x9C, ...w(0x210D),
+  // $4212 as V-blank starts, its defined bits, as BG2's scroll across
+  0xAD, ...w(0x4212), 0x29, 0xC1, 0x8D, ...w(0x210F), 0x9C, ...w(0x210F),
+  ...store(0x28, 0x4209), 0x9C, ...w(0x420A), ...store(0xA1, 0x4200),
+  0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x40,
+  // the timers' IRQ, by the stage at $10
+  here('irq'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4211), 0xA5, 0x10, 0xF0, rel('first'), 0xC9, 0x01, 0xF0, rel('second'),
+  // each line from 101: the backdrop's colour from the line's count at $11 and $4212's defined bits, and after 40
+  // lines the timers off
+  0xAD, ...w(0x4212), 0x29, 0xC1, 0x85, 0x12,
+  0x9C, ...w(0x2121), 0xA5, 0x11, 0x0A, 0x0A, 0x8D, ...w(0x2122), 0xA5, 0x11, 0x4A, 0x05, 0x12, 0x8D, ...w(0x2122),
+  0xE6, 0x11, 0xA5, 0x11, 0xC9, 0x28, 0xD0, rel('done'), ...store(0x81, 0x4200), 0xE6, 0x10,
+  here('done'), 0x40,
+  // line 40: mode 0, BG3 down by half the frame's count, and the H and V timers for dot 180 of line 100
+  here('first'), 0x9C, ...w(0x2105), 0xA5, 0x00, 0x4A, 0x8D, ...w(0x2112), 0x9C, ...w(0x2112),
+  ...store(0x64, 0x4209), 0x9C, ...w(0x420A), ...store(0xB1, 0x4200), 0xE6, 0x10, 0x40,
+  // line 100: half brightness, mosaic of 4 on BG1, and the H timer alone, on each line after
+  here('second'), ...store(0x08, 0x2100), ...store(0x31, 0x2106), ...store(0x91, 0x4200), 0x64, 0x11, 0xE6, 0x10, 0x40,
+];
+
+/** The raster program's cartridge: { rom }, with its data where RASTER says. */
+export function madeUpRasterCartridge() {
+  const { rom, end } = assemble(RASTER_PROGRAM, { title: 'DREAMPORTS RASTER', nmi: 'nmi', irq: 'irq' });
+  if (end > RASTER.TILES) throw new Error('The raster program runs into its data.');
+  const { tiles, small, map, smallMap, palette } = pictureData();
+  const at = address => address - ORIGIN;
+  rom.set(tiles, at(RASTER.TILES));
+  rom.set(small, at(RASTER.SMALL));
+  rom.set(map, at(RASTER.MAP));
+  rom.set(smallMap, at(RASTER.SMALL_MAP));
+  rom.set(palette, at(RASTER.PALETTE));
+  const header = 0x7FC0;
+  rom.set([0, 0, 0, 0], header + 0x1C);
+  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
+  rom.set(w(~sum & 0xFFFF), header + 0x1C);
+  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  return { rom };
+}
