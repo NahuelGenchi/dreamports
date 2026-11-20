@@ -26,8 +26,8 @@
 // registers it started with, so a function is called with what the game really gave it.
 //
 // A twin can name a function outside the program the disc boots by its code map's key, as 0x00000120@SOUND.IRX: a
-// module for the IOP (twin-iop.mjs) or another program for the EE, each checked in a build of its own, as its
-// addresses are its own. And the EE's code works on vector unit 0 in macro mode, so every call gives the twin the
+// module for the IOP (twin-iop.mjs), another program for the EE, or a vector unit's program, 0x00340010~vu
+// (twin-vu.mjs), each checked in a build of its own, as its addresses are its own. And the EE's code works on vector unit 0 in macro mode, so every call gives the twin the
 // unit's registers through the kit and compares what each side left in them.
 //
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
@@ -60,6 +60,8 @@ import { keyIn } from '../gba/match.mjs';
 import { findFunctions, findModuleFunctions, programOf as discProgram, ps2Program } from './functions.mjs';
 import { keepPiece, keepProgram, programReader } from './original-program.mjs';
 import { iopMachine, LOAD, loadModule } from './twin-iop.mjs';
+import { checkProgram, KICKS_CODE, statusOf, unitRegister } from './twin-vu.mjs';
+import { vuInstructionsOf } from './ledger.mjs';
 import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
 import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU, VU_REGISTERS } from './original.mjs';
 
@@ -429,22 +431,13 @@ export const EE = {
     for (let n = 0; n < 4; n++) words[V.acc + n] = registers[E.acc + n] >>> 0;
     for (let n = 1; n < 16; n++) words[V.vi + n] = registers[E.vi + n] & 0xFFFF;
     for (const name of ['q', 'i', 'p', 'r']) words[V[name]] = registers[E[name]] >>> 0;
-    const mac = registers[E.mac] >>> 0, sticky = registers[E.status] >>> 0;
-    words[V.status] = [0x000F, 0x00F0, 0x0F00, 0xF000].reduce((status, lanes, bit) => status | (mac & lanes ? 1 << bit : 0) | (sticky & lanes ? 0x40 << bit : 0), registers[E.divide] >>> 0);
-    words[V.mac] = mac;
+    words[V.status] = statusOf(registers[E.mac], registers[E.status], registers[E.divide]);
+    words[V.mac] = registers[E.mac] >>> 0;
     words[V.clip] = registers[E.clip] >>> 0;
     return words;
   },
 };
 
-// a word of a unit's registers by its name, as a line says it
-function unitRegister(k) {
-  const V = VU_REGISTERS, field = 'xyzw'[k & 3];
-  if (k < V.acc) return `VF${k >> 2}.${field}`;
-  if (k < V.vi) return `ACC.${field}`;
-  if (k < V.q) return `VI${k - V.vi}`;
-  return { [V.q]: 'Q', [V.i]: 'I', [V.p]: 'P', [V.r]: 'R', [V.status]: 'status flag', [V.mac]: 'MAC flag', [V.clip]: 'clip flag' }[k] ?? `word ${k}`;
-}
 
 /**
  * Calls one function of the original and its twin until `options.calls` calls were compared, each from the image with
@@ -564,10 +557,13 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   const hardware = result?.hardware ? ' The original used the hardware\'s registers in this call, which are compared as memory.' : '';
   if (result?.kind === 'differs') {
     const word = value => `0x${value.toString(16).toUpperCase().padStart(result.gave.digits, '0')}`;
-    const gave = result.gave ? `the twin gave back ${word(result.gave.ours)} and the original ${word(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
+    const gave = result.gave?.stop ? `the twin says the program stops at ${word(result.gave.ours)} and the original's stopped at ${word(result.gave.theirs)}` : result.gave ? `the twin gave back ${word(result.gave.ours)} and the original ${word(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
     const memory = result.memory ? `at ${at(result.memory.address)}, in ${result.memory.name}, the twin left ${byte(result.memory.ours)} and the original ${byte(result.memory.theirs)}` : null;
-    const register = result.register ? `in vector unit 0's ${result.register.name} the twin left ${at(result.register.ours)} and the original ${at(result.register.theirs)}` : null;
-    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, register, gave].filter(Boolean).join(', and ')}.${hardware}` };
+    const packet = !result.packet ? null : result.packet.count ? `the twin sent the GS ${result.packet.count.ours} packet${result.packet.count.ours === 1 ? '' : 's'} and the original ${result.packet.count.theirs}`
+      : result.packet.at ? `the twin's packet ${result.packet.number} starts at ${at(result.packet.at.ours)} of the unit's data memory and the original's at ${at(result.packet.at.theirs)}`
+        : `at byte ${result.packet.byte} of packet ${result.packet.number} the twin sent the GS ${result.packet.ours === null ? 'nothing' : byte(result.packet.ours)} and the original ${result.packet.theirs === null ? 'nothing' : byte(result.packet.theirs)}`;
+    const register = result.register ? `in vector unit ${result.register.unit ?? 0}'s ${result.register.name} the twin left ${at(result.register.ours)} and the original ${at(result.register.theirs)}` : null;
+    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, register, packet, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
   if (result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, result)}: the original came back and the twin stopped (${result.why}).` };
@@ -582,6 +578,7 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     vu: `the original ${aside.vuText}`,
     kept: `the original changed ${aside.keptText}, which a function keeps for its caller`,
     unbuilt: `the twin calls ${aside.unbuiltText}, which nothing built is the twin of`,
+    code: 'the original wrote its own code memory, which a program in C can\'t follow',
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
   }).filter(([key]) => aside[key]).sort(([a], [b]) => aside[b] - aside[a]).map(([key, text]) => `${text} (${count(aside[key])} calls)`).join(', and ');
   if (!compared) return { kind: 'unchecked', line: `no call could be compared: ${why}.` };
@@ -592,8 +589,8 @@ const NO_REGISTER = 'it takes or gives something no register carries, a struct o
 const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came back', stopped: 'Stopped', few: 'Too few calls', unchecked: 'Not checked' };
 
 /** The twins of a version, ready to be built for the check a file at a time (../gba/twin.mjs). */
-export function openPs2Build({ root, files, shifts, givenOf, includes, placed, own = LAYOUT.own }) {
-  return openBuild({ root, files, shifts, givenOf, console: 'ps2', layout: { ...LAYOUT, own }, includes, signature: signatureOf, wrap: wrapOf, kitNames: ['vu_registers'], ...(placed ? { placed } : {}) });
+export function openPs2Build({ root, files, shifts, givenOf, includes, placed, own = LAYOUT.own, more = '' }) {
+  return openBuild({ more, kitNames: ['vu_registers', 'vu_data'], root, files, shifts, givenOf, console: 'ps2', layout: { ...LAYOUT, own }, includes, signature: signatureOf, wrap: wrapOf, ...(placed ? { placed } : {}) });
 }
 
 /**
@@ -722,6 +719,9 @@ export async function twin(asked, options = {}, log = console.log) {
   // IOP, or another program's for the EE
   const keyed = files.flatMap(file => twinsOf.get(file).filter(t => t.keyed).map(t => ({ ...t.keyed, name: t.name, file })));
   const modules = [...new Set(keyed.filter(t => !t.vu).map(t => t.program))].sort();
+  // and the vector units' programs, by the file each is uploaded from, the boot program first
+  const placeOf = t => (t.vu ? `${t.program ?? ''}~vu` : t.program);
+  const uploads = [...new Set(keyed.filter(t => t.vu).map(placeOf))].sort();
   let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null, onlyIn = null;
   if (all.function) {
     // one of another program's, by its key or its twin's name
@@ -730,10 +730,9 @@ export async function twin(asked, options = {}, log = console.log) {
     const asked = typed?.[2] ? keyIn(`0x${typed[1].padStart(8, '0')}${typed[2]}`) : null, byName = keyed.filter(t => t.name === all.function);
     const other = asked ? keyed.find(t => t.address === asked.address && t.program === asked.program && Boolean(t.vu) === Boolean(asked.vu)) ?? asked : byName.length === 1 ? byName[0] : null;
     if (other) {
-      if (other.vu) throw new Error(`${all.function} is a vector unit's program, which twin doesn't call yet.`);
       if (!other.file) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the key, as in /** 0x${functionKey(other)}: what it does */.`);
       only = other.address;
-      onlyIn = other.program;
+      onlyIn = placeOf(other);
       chosen = [];
     } else {
       only = twins.get(all.function)?.size === 1 ? [...twins.get(all.function)][0]
@@ -744,8 +743,9 @@ export async function twin(asked, options = {}, log = console.log) {
       if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the address, as in /** 0x${hex(only)}: what it does */.`);
     }
   }
-  const groups = modules.filter(program => (onlyIn === null ? !all.function : program === onlyIn));
-  if (!chosen.length && !groups.length) {
+  const wanted = place => (onlyIn === null ? !all.function : place === onlyIn);
+  const groups = modules.filter(wanted), units = uploads.filter(wanted);
+  if (!chosen.length && !groups.length && !units.length) {
     log(`games/${game}/ has no twins yet.`);
     return 0;
   }
@@ -767,7 +767,7 @@ export async function twin(asked, options = {}, log = console.log) {
     const where = inRepo(file);
     if (result.error) {
       const said = result.error.split('\n');
-      if (chosen.length + groups.length === 1) log(`${where}\n  Didn't build: ${said.join('\n  ')}`);
+      if (chosen.length + groups.length + units.length === 1) log(`${where}\n  Didn't build: ${said.join('\n  ')}`);
       failed.push(`${where}: ${said.find(line => /error/.test(line)) ?? said[0]}`);
       return;
     }
@@ -856,8 +856,72 @@ export async function twin(asked, options = {}, log = console.log) {
       caller.close();
     }
   }
+  // each file's vector unit programs, in vector unit 1 by themselves
+  for (const place of units) {
+    const from = place.slice(0, -3) || null, own = keyed.filter(t => t.vu && placeOf(t) === place);
+    const bytes = from ? await discProgram(copy.path, from) : null;
+    if (from && !bytes) {
+      log(`Your copy has no ${from}, which ${count(own.length)} twins name: npm run dp -- codemap ${base} lists the disc's files.`);
+      totals.unchecked += own.length;
+      continue;
+    }
+    // an upload's pairs, by where its first is: an EE address in the boot program, or a place in a file
+    const boot = programReader(elf), read = (address, size) => (from ? bytes.subarray(address, address + size) : boot(address, size));
+    const mapped = codeMap.functions.filter(f => f.vu && (f.program ?? null) === from);
+    // where the VIF's MPG command, in the word before an upload, says the unit keeps it
+    const unitAddress = address => { const word = read(address - 4, 4); return word.length === 4 ? (word.readUInt16LE(0) * 8) & 0x3FF8 : null; };
+    const keyOf = address => ({ key: functionKey({ address, ...(from ? { program: from } : {}), vu: true }), text: `0x${hex(address)}${from ? `@${from}` : ''}~vu` });
+    const unitBuild = openPs2Build({ root: folder, files, shifts, givenOf, includes, more: KICKS_CODE, placed: t => (t.keyed?.vu && placeOf(t.keyed) === place ? t.keyed.address : null) });
+    const caller = new Original(program, 'vu1');
+    try {
+      for (const file of [...new Set(own.filter(t => only === null || t.address === only).map(t => t.file))]) {
+        const linked = await unitBuild.link({ file, only, addressOf: () => null });
+        if (linked.error || linked.missing?.length) {
+          say(file, linked.error ? { error: linked.error } : { missing: linked.missing }, keyOf);
+          continue;
+        }
+        const runner = new Runner(foldAddresses(linked.module, { table: TABLE, written: WRITTEN }), all.seconds, { image: KINDS.vu1.image });
+        const functions = [];
+        try {
+          const choose = chooser(all.seed);
+          for (const call of linked.calls) {
+            const size = mapped.find(f => f.address === call.address)?.size ?? null, starts = size && unitAddress(call.address);
+            if (!size || starts === null || starts + size > 0x4000) {
+              functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: 'no vector unit program of the code map starts there' });
+              continue;
+            }
+            if (call.params.length || !call.returns) {
+              functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: 'a vector unit program\'s twin takes nothing and gives back where the program stops, as unsigned name(void)' });
+              continue;
+            }
+            // the unit's image: its data memory, empty, and its code memory with every program this file uploads
+            // where the unit keeps it, this one last
+            const image = new Uint8Array(KINDS.vu1.image);
+            for (const other of [...mapped.filter(f => f.address !== call.address), { address: call.address, size }]) {
+              const where = unitAddress(other.address);
+              if (where !== null && where + other.size <= 0x4000) image.set(read(other.address, other.size), 0x4000 + where);
+            }
+            await caller.image(image);
+            await runner.set(image);
+            const f = { ...call, address: starts, size };
+            const checked = await checkProgram({ f, original: caller, runner, options: all, choose, image });
+            const { kind, line } = outcome(f, checked, all);
+            const { total, left } = waysLeft(vuInstructionsOf(read(call.address, size)), starts, checked.ran, new Map());
+            // said by where in the program each is, as its key goes by where it's uploaded from
+            functions.push({ name: f.name, address: call.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left: left.map(([address, how]) => [call.address + address - starts, how]), total });
+            keepPiece(original.sha1, keyOf(call.address).key, Buffer.from(read(call.address, size)));
+          }
+        } finally {
+          await runner.close();
+        }
+        say(file, { functions }, keyOf);
+      }
+    } finally {
+      caller.close();
+    }
+  }
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_00123450.`);
-  if (failed.length && chosen.length + groups.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
+  if (failed.length && chosen.length + groups.length + units.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of, and the program as the console loads it for the rest` : 'from the program as the console loads it'} (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);

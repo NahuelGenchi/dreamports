@@ -5,7 +5,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { proofOf, percentText } from '../../src/lib/entries.mjs';
-import { LANGUAGES, versionOf } from '../../src/lib/languages.mjs';
+import { languageOf, versionOf } from '../../src/lib/languages.mjs';
 import { notesIn } from '../../src/lib/notes.mjs';
 import { UPSTREAM, api, signedInAs } from './github.mjs';
 import { REPO } from './paths.mjs';
@@ -44,7 +44,7 @@ const gameplay = proof => (proof?.gameplay ? `${percentText(proof.gameplay.perce
  * them, with the parts the step adds: { ported, gameplay }.
  */
 export function numberLines(game, before, after) {
-  const { language } = versionOf(game), named = language === 'js' ? '' : ` in ${LANGUAGES[language].name}`;
+  const { language } = versionOf(game), named = language === 'js' ? '' : ` in ${languageOf(language).name}`;
   const proven = proof => new Set((proof?.gameplay?.parts ?? []).filter(part => part.proven).map(part => part.name));
   const had = proven(before), added = [...proven(after)].filter(name => !had.has(name));
   return {
