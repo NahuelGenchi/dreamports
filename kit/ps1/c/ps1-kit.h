@@ -1,10 +1,24 @@
-// What the PlayStation kit's own files share (gpu.c, ps1.c), which a game doesn't need.
+// What the PlayStation kit's own files share (gpu.c, draw.c, ps1.c), which a game doesn't need.
 
 #ifndef DREAMPORTS_PS1_KIT_H
 #define DREAMPORTS_PS1_KIT_H
 
 #include "ps1.h"
 #include "kit.h"
+
+// Around the emulator's own code the kit carries as it is, psx_gpu, which draw.c includes: what a compiler would warn
+// of in it says nothing of a Dreamport's own C, so it isn't said.
+#if defined(__clang__)
+#define EMULATOR_CODE _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Weverything\"")
+#define END_EMULATOR_CODE _Pragma("clang diagnostic pop")
+#else
+#define EMULATOR_CODE _Pragma("GCC diagnostic push") \
+  _Pragma("GCC diagnostic ignored \"-Wsign-compare\"") _Pragma("GCC diagnostic ignored \"-Wstrict-aliasing\"") \
+  _Pragma("GCC diagnostic ignored \"-Wuninitialized\"") _Pragma("GCC diagnostic ignored \"-Wmaybe-uninitialized\"") \
+  _Pragma("GCC diagnostic ignored \"-Wempty-body\"") _Pragma("GCC diagnostic ignored \"-Wabsolute-value\"") \
+  _Pragma("GCC diagnostic ignored \"-Wunused-function\"") _Pragma("GCC diagnostic ignored \"-Wimplicit-fallthrough\"")
+#define END_EMULATOR_CODE _Pragma("GCC diagnostic pop")
+#endif
 
 /** Puts the GPU as the console starts it: nothing shown, and video memory as it was. */
 void gpu_power(void);

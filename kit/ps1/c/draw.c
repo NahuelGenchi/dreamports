@@ -29,9 +29,11 @@ extern const unsigned char cmd_lengths[256];
 // the emulator's copy of video memory at a larger size, which the kit doesn't keep
 static void sync_enhancement_buffers(int x, int y, int w, int h) {}
 
+EMULATOR_CODE
 #include "psx_gpu/gpu.h"
 #include "psx_gpu/psx_gpu.c"
 #include "psx_gpu/psx_gpu_parse.c"
+END_EMULATOR_CODE
 
 // PCSX ReARMed's plugins/gpulib/gpu.c, at the commit tools/consoles.mjs fixes (GPL-2.0-or-later or LGPL-2.1-or-later)
 const unsigned char cmd_lengths[256] = {
