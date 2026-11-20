@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { arch } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
@@ -167,16 +167,23 @@ function sourceIsAt(source, commit) {
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export async function buildCaller(log = console.log) {
   const { core } = consoleOf('ps2');
-  // built once for this commit of the emulator and these flags, and call.cpp again whenever it changes
-  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(FLAGS.join(' ')).digest('hex').slice(0, 8)}`);
+  // built once for this commit of the emulator, the tools' patch of it and these flags, and call.cpp again whenever it
+  // changes: the patch gives Play!'s processors the console's own rules (../libretro/play.patch), so another patch is
+  // another program
+  const patch = core.patch ? createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 12) : '';
+  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(`${FLAGS.join(' ')} ${patch}`).digest('hex').slice(0, 8)}`);
   const program = join(folder, `call${process.platform === 'win32' ? '.exe' : ''}`), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('ps2');
   const objects = join(folder, 'objects');
   let source = join(LOCAL, 'libretro', `${core.built}-source`);
-  if (!sourceIsAt(source, core.commit)) {
+  // the source as this patch leaves it, which the stamp beside it says: what builds the emulator patches it too, and
+  // doesn't say with which
+  const stamped = join(LOCAL, 'libretro', `${core.built}-source.patch`);
+  if (!sourceIsAt(source, core.commit) || !existsSync(stamped) || readFileSync(stamped, 'utf8') !== patch) {
     log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
     source = fetchSource(machine);
+    writeFileSync(stamped, patch);
   }
   const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
@@ -261,6 +268,14 @@ export class Original {
     this.child.stdin.write(bytes);
     const answer = await this.take(1);
     if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take the image.');
+  }
+
+  /** Says where the code a call may run is, from `from` to `to`: a call that goes outside it ends as one that went
+   *  where the check can't follow. Until it's said, anywhere the processor has code. */
+  async code(from, to) {
+    this.child.stdin.write(Buffer.concat([Buffer.from('R'), words([from, to])]));
+    const answer = await this.take(1);
+    if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take where its code is.');
   }
 
   /**
