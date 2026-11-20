@@ -27,7 +27,7 @@ import { IMAGE, inImage } from './twin-memory.mjs';
 
 // how many memories a function keeps, and how the files are laid out: another number here takes them again
 export const EACH = 4;
-const LAYOUT = 1;
+const LAYOUT = 2;
 // how many unpacked memories are held at once, 395 KB each
 const HELD = 24;
 // how many of the words a place held a call is aimed with, at most
@@ -120,9 +120,10 @@ export function hasMemories(folder, key) {
 /**
  * The memories kept in `folder`, for the check to start calls from. Answers { count, functions, of(address), any(choose) }:
  * `of` gives the memories taken as the function at that address started, and `any` one of them all, chosen by
- * `choose.below`. A memory is { recording, frame, top, own, image(), arg(i) }: where it's from, the stack the function
- * started on, whether it's the function's own (from `of`), the console's memory as an image, and the function's
- * i-th argument as play gave it, from the registers and then the stack.
+ * `choose.below`. A memory is { recording, frame, top, own, image(), arg(i), register(i) }: where it's from, the stack
+ * the function started on, whether it's the function's own (from `of`), the console's memory as an image, the
+ * function's i-th argument as play gave it, from the registers and then the stack, and what register ri held, r0 to r7,
+ * for a routine written by hand that takes its values in them (#1728).
  */
 export function openMemories(folder) {
   const { memories } = JSON.parse(readFileSync(join(folder, 'memories.json'), 'utf8'));
@@ -142,10 +143,12 @@ export function openMemories(folder) {
     held.set(key, whole);
     return whole;
   };
-  const all = memories.map(([address, recording, frame, time, r0, r1, r2, r3, stack, at, length]) => {
+  const all = memories.map(([address, recording, frame, time, r0, r1, r2, r3, r4, r5, r6, r7, stack, at, length]) => {
     const memory = {
       address, recording, frame, time, top: stack & ~3, own: false,
       image: () => image(at, length),
+      // r0 to r7 as the function started, for a hand-written routine that takes them (#1728)
+      register: i => [r0, r1, r2, r3, r4, r5, r6, r7][i] ?? 0,
       arg(i) {
         if (i < 4) return [r0, r1, r2, r3][i];
         const where = inImage(stack + 4 * (i - 4));
