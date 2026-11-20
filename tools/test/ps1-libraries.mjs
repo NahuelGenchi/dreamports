@@ -21,6 +21,8 @@ import { spawnSync } from 'node:child_process';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { formatCodeMap } from '../lib/proof-files.mjs';
 import { compileFile, stopCompiler } from '../ps1/match.mjs';
+import { builtLibrary, compilerOf, findLibrary } from '../ps1/libraries.mjs';
+import { readLibrary } from '../lib/libraries.mjs';
 
 const LIBRARY = 'ps1/test-made-up', FOLDER = join(REPO, 'kit', 'ps1', 'c', 'lib', 'test-made-up');
 const SOURCE = join(FOLDER, 'test-made-up-ps1.c');
@@ -209,6 +211,19 @@ async function main() {
     run = dp('libraries', '--shared', first.name, second.name);
     check(run.status === 0 && /3 functions of test-ps1-libraries-a are in test-ps1-libraries-b too/.test(run.out) && /0x80010100  0x80010600 {2}\d+ bytes/.test(run.out), `--shared lists what the two copies share: ${last(run)}`);
     check(dp('libraries', '--check').status === 0, 'and every rule holds');
+
+    console.log('A function whose instructions aren\'t the library\'s, placed by its file\'s order:');
+    // the library's functions one after another, as a linker lays a file, and LibTwice with a bigger stack frame
+    const third = { functions: { LibAdd: 0x80010100 }, values: { gLibTotal: 0x80012000, gLibCount: 0x80012004 } };
+    third.functions.LibTwice = third.functions.LibAdd + sizeOf('LibAdd');
+    third.functions.LibTriple = third.functions.LibTwice + sizeOf('LibTwice');
+    const laid = programOf(built.made, third), twice = 0x800 + third.functions.LibTwice - LOAD;
+    check(laid.exe.readUInt32LE(twice) >>> 16 === 0x27BD, 'LibTwice opens with its stack frame');
+    laid.exe.writeUInt32LE(laid.exe.readUInt32LE(twice) - 8, twice);
+    const library = readLibrary(LIBRARY);
+    const placed = findLibrary({ library, files: library.files, built: await builtLibrary(library, compilerOf(library)), exe: laid.exe, codeMap: { functions: [...laid.sizes].map(([address, size]) => ({ address, size })) } });
+    check(placed.functions.get('LibTwice') === third.functions.LibTwice && [...placed.unmatched].join() === 'LibTwice' && placed.functions.get('LibAdd') === third.functions.LibAdd && placed.functions.get('LibTriple') === third.functions.LibTriple && placed.values.get('gLibCount') === third.values.gLibCount,
+      `--find puts it where the function before it in its file ends, and says its instructions aren't the library's: ${JSON.stringify(Object.fromEntries([...placed.functions].map(([name, address]) => [name, hexOf(address)])))}`);
     writeFileSync(SOURCE, TEXT.replace('extern int gLibCount;', 'extern int gLibCount; /* at D_80012004 */'));
     run = dp('libraries', '--check');
     check(run.status !== 0 && /names D_80012004, an address of a game/.test(run.out), `--check refuses a library that names a PlayStation address: ${last(run)}`);
