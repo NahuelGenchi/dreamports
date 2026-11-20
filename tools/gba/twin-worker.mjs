@@ -69,6 +69,17 @@ function putBack() {
   if (registers) memory.set(registers, exports.console_io.value);
 }
 
+// A version built with the console's stack keeps its twins' locals and pushes there (kit/gba/c/stack.c): each call
+// starts the stack where the original's call starts, and what the twins left on it is put back after it, as far down
+// as they went, as the program that calls the original puts back what the original's call left there (call.c)
+const STACK_ROOM = 0x2000;
+const stacked = workerData.stacked && exports.gba_stack_begin && exports.gba_stack_lowest;
+function stackPutBack(sp, saved) {
+  fresh();
+  const low = exports.gba_stack_lowest() >>> 0;
+  if (low < sp && low >= sp - STACK_ROOM) memory.set(saved.subarray(low - (sp - STACK_ROOM)), low);
+}
+
 function give(image) {
   for (const { at, address, bytes } of regions) memory.set(image.subarray(at, at + bytes), address);
 }
@@ -95,11 +106,15 @@ parentPort.on('message', message => {
     else if (bytes === 2) view.setUint16(address, value, true);
     else view.setUint32(address, value, true);
   }
+  const sp = stacked && message.sp ? message.sp >>> 0 : 0;
+  const saved = sp ? memory.slice(sp - STACK_ROOM, sp) : null;
+  if (sp) exports.gba_stack_begin(sp);
   let gave;
   try {
     gave = exports[message.call](...message.args) >>> 0;
   } catch (error) {
     if (stack !== undefined) exports.__stack_pointer.value = stack;
+    if (sp) stackPutBack(sp, saved);
     // WebAssembly stops a call through a pointer to a function that takes or gives something else, where the console
     // just runs it: that says nothing of the twin, only that the check gave it such a pointer
     if (error instanceof Unbuilt) parentPort.postMessage({ stopped: 'unbuilt', unbuilt: error.message });
@@ -107,6 +122,7 @@ parentPort.on('message', message => {
     else parentPort.postMessage({ stopped: String(error.message ?? error) });
     return;
   }
+  if (sp) stackPutBack(sp, saved);
   fresh();
   const image = new Uint8Array(IMAGE);
   for (const { at, address, bytes } of regions) image.set(memory.subarray(address, address + bytes), at);
