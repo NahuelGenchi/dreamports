@@ -28,8 +28,9 @@ const STAND_IN = `
   Object.defineProperty(Navigator.prototype, 'getGamepads', { value: () => (window.__padOn ? [window.__pad] : []), configurable: true });
   window.__press = (i, on) => { __pad.buttons[i].pressed = on; __pad.buttons[i].value = on ? 1 : 0; };
 `;
-// the screen's first pixel, as the game's backdrop is all that a new game draws
-const COLOUR = `(() => { const [r, g, b] = document.getElementById('screen').getContext('2d').getImageData(0, 0, 1, 1).data; return g > b ? 'green' : b > g ? 'blue' : 'neither'; })()`;
+// the middle of the screen, as the game's backdrop is all that a new game draws, and a console's picture can have a
+// black border round it, as the Nintendo 64's has where its emulator shows no picture
+const COLOUR = `(() => { const screen = document.getElementById('screen'); const [r, g, b] = screen.getContext('2d').getImageData(screen.width >> 1, screen.height >> 1, 1, 1).data; return g > b ? 'green' : b > g ? 'blue' : 'neither'; })()`;
 
 // a step failed that the ones after it need: the test ends there and says so, in place of whatever those would throw
 class Stopped extends Error {}

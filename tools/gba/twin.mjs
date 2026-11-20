@@ -60,7 +60,8 @@ const OWN_BASE = 0x0A000000;
 // How a twin is built: as the game's own build builds C, with what its console's compiler takes for granted, which
 // the kit names (cKit's twinFlags). What's the check's own: GNU C, which C written for the console's compiler is, and
 // no warnings, which are the game's build's to give.
-const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twinFlags, '-w', '-Wno-int-conversion'];
+// with what only the function check's build of a kit asks for, as a kit that notes what the check compares does
+const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twinFlags, ...(kit.checkFlags ?? []), '-w', '-Wno-int-conversion'];
 // where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
@@ -448,7 +449,9 @@ const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 
  *     for as many as the linker says, how the original keeps a function's address: another console's (../ps1/twin.mjs),
  *     and the address below which a function's address is the module's own, 0x02000000 unless said
  *   signature(text, name): what a twin takes and gives, as signatureOf says it, and wrap(call): the line of C that
- *     calls it from the check, for a console whose calls carry more than whole words (../ps2/twin.mjs)
+ *     calls it from the check, for a console whose calls carry more than whole words (../ps2/twin.mjs), given the
+ *     twin as twinsIn finds it, its call's name, and the file as the compiler sees it, for a #line, or whose twins are
+ *     a contract's call (../snes/twin.mjs)
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
  *   placed(twin): where this build has a twin, for one whose twins aren't all in one memory: a PlayStation 2 module's
  *     or a vector unit's, named by its key, has its address only in a build of its own program (../ps2/twin.mjs)
@@ -498,9 +501,10 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const build = () => {
           const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
-          for (const { name: twin, params, returns, call } of calls) {
+          for (const each of calls) {
+            const { name: twin, params, returns, call } = each;
             if (wrap) {
-              lines.push(wrap({ name: twin, params, returns, call }));
+              lines.push(wrap({ ...each, name: twin, params, returns, call, file: placeOf(file) }));
               continue;
             }
             const taken = params.map((_, i) => `unsigned a${i}`).join(', ') || 'void', passed = params.map((_, i) => `a${i}`).join(', ');
