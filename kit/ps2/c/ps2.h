@@ -132,12 +132,21 @@ int32_t ee_to_int(float value);
 /** A whole number as a float, cut to 24 bits as CVT.S.W cuts it. */
 float ee_from_int(int32_t value);
 /** The FPU's control and status register, FCSR, as CFC1 reads it: the condition bit C, and overflow, underflow,
- *  division by zero and invalid, each with the sticky bit that keeps it until the game clears it with CTC1. */
+ *  division by zero and invalid, each with the sticky bit that keeps it until the game clears it with CTC1, and bits 0
+ *  and 24, which always read as one. */
 extern uint32_t ee_fcsr;
 enum {
   EE_FCSR_C = 1 << 23, EE_FCSR_I = 1 << 17, EE_FCSR_D = 1 << 16, EE_FCSR_O = 1 << 15, EE_FCSR_U = 1 << 14,
   EE_FCSR_SI = 1 << 6, EE_FCSR_SD = 1 << 5, EE_FCSR_SO = 1 << 4, EE_FCSR_SU = 1 << 3,
+  /** what a console reads in FCSR before a game writes it, and keeps whatever is written */
+  EE_FCSR_ONES = 1 << 24 | 1 << 0,
+  /** the bits CTC1 writes: the flags, their sticky bits and C */
+  EE_FCSR_WRITTEN = EE_FCSR_C | EE_FCSR_I | EE_FCSR_D | EE_FCSR_O | EE_FCSR_U | EE_FCSR_SI | EE_FCSR_SD | EE_FCSR_SO | EE_FCSR_SU,
 };
+/** CFC1: control register 0 to 15 read as the FPU's number, 0x2E30, and 16 to 31 as FCSR. */
+uint32_t ee_cfc1(int reg);
+/** CTC1: only FCSR, register 31, takes a write, and only in the bits EE_FCSR_WRITTEN names. */
+void ee_ctc1(int reg, uint32_t value);
 
 // The console's memory, for a game that keeps it where the console does, for the proof tools to compare after every
 // frame (ps2.c): `memory` is PS2_EE, PS2_IOP or PS2_SPU2, `address` where the stretch starts in that memory, as the

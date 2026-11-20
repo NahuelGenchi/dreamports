@@ -14,16 +14,16 @@
 //   --seed      what the calls are made up from, 1 unless said
 //   --seconds   how long a twin may take over one call before it's stopped: 2 unless said, and on the NES a fifth of one
 //   --memories  takes real memories from the game's recordings, or those named, for the calls to start from, kept
-//               in .dreamports/twin/ on this computer only: on the Game Boy Advance and the PlayStation 2 the console's
-//               memory as it was each time a function started in play, with what it was given, and on the NES the work
-//               memory every so many frames
+//               in .dreamports/twin/ on this computer only: on the Game Boy Advance, the PlayStation and the
+//               PlayStation 2 the console's memory as it was each time a function started in play, with what it was
+//               given, and on the NES the work memory every so many frames
 // and on the Game Boy Advance (gba/twin.mjs):
 //   --frames    how long the original plays from power-on before the first call, 600 frames unless said
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
-// and on the PlayStation (ps1/twin.mjs) every call starts from the program as the console loads it, with no --frames
-// and no --memories yet, and --addresses is as on the Game Boy Advance; on the PlayStation 2 (ps2/twin.mjs) the same, but
-// --memories takes each function's memories as it starts in play, in the console's emulator, and a function can be
-// named by its code map's key, as 120@SOUND.IRX, when it's in another program of the disc; and on the NES, where
+// and on the PlayStation (ps1/twin.mjs) and the PlayStation 2 (ps2/twin.mjs) a call starts from the program as the
+// console loads it, with no --frames, or with --memories from each function's memories as it starts in play, in the
+// console's emulator, and --addresses is as on the Game Boy Advance; on the PlayStation 2 a function can also be named
+// by its code map's key, as 120@SOUND.IRX, when it's in another program of the disc; and on the NES, where
 // each twin has a contract beside it and several functions can be named (nes/twin.mjs):
 //   --from      another folder of the game's C than its src/
 //   --without   bytes of the work memory left out of what's compared
@@ -48,7 +48,7 @@ const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- h
 // the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
 const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]]`;
 // the consoles the check knows, and where each one's is
-const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs', snes: './snes/twin.mjs', ps1: './ps1/twin.mjs', ps2: './ps2/twin.mjs' };
+const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs', snes: './snes/twin.mjs', ps1: './ps1/twin.mjs', n64: './n64/twin.mjs', ps2: './ps2/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
 
 // how a console's check ended, as a number: its own, or 3 when not every twin tried was the same

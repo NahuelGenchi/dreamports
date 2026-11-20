@@ -40,7 +40,8 @@
 //
 // A PlayStation game's file is built and compared by ps1/match.mjs, with GCC 2.x and what Sony's assembler made of its
 // assembly, and the same names and proofs. A PlayStation 2 game's is by ps2/match.mjs, with Sony's own compiler and
-// assembler for the EE, built from Sony's source.
+// assembler for the EE, built from Sony's source, and a Nintendo 64 game's by n64/match.mjs, with IDO, translated into
+// C from its own programs and built on this computer (n64/ido.mjs).
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -110,10 +111,11 @@ export async function run(args) {
   const original = readOriginal(game);
   if (original.console === 'ps1') return (await import('./ps1/match.mjs')).matchGame({ game, what, more, whole, original });
   if (original.console === 'ps2') return (await import('./ps2/match.mjs')).matchGame({ game, what, more, whole, original });
+  if (original.console === 'n64') return (await import('./n64/match.mjs')).matchGame({ game, what, more, whole, original });
   // a Super Nintendo game was written by hand in its processor's own language, or with a compiler no one can have, so
   // there's no compiler to give its bytes back, and the same memory is its functions' proof (docs/CONSOLES.md)
   if (original.console === 'snes') throw new Error('match builds a twin with the compiler its game was built with and compares the bytes, and a Super Nintendo game was written by hand in its processor\'s own language, or with a compiler no one can have now: its functions are proven by the same memory, npm run dp -- twin (docs/CONSOLES.md).');
-  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's, the PlayStation's and the PlayStation 2's compilers and no other console's yet (docs/CONSOLES.md).`);
+  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's, the PlayStation's, the PlayStation 2's and the Nintendo 64's compilers and no other console's yet (docs/CONSOLES.md).`);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
   const compiler = readCompiler(original, `games/${base}/proof/original.json`);
   const codeMap = readCodeMap(game);
