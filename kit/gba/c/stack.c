@@ -12,6 +12,7 @@ static int return_known;
 static uint32_t gaps;
 // whether a game started it: a build that never does, as the function check's, has every call cost nothing
 static int started;
+static uint32_t (*console_address)(uint32_t pointer);
 
 // each function running: the stack pointer and the saved registers as it was called
 static struct { uint32_t sp, value[SAVED_LAST + 1]; uint16_t known; } calls[DEPTH];
@@ -29,6 +30,10 @@ void gba_stack_start(uint32_t start) {
   depth = 0;
   gaps = 0;
 }
+
+void gba_stack_addresses(uint32_t (*console)(uint32_t pointer)) { console_address = console; }
+
+uint32_t gba_stack_address(uint32_t pointer) { return console_address ? console_address(pointer) : pointer; }
 
 void gba_stack_reg(int reg, uint32_t v) {
   value[reg] = v;
@@ -53,13 +58,17 @@ uint32_t gba_stack_enter(const gba_frame *frame) {
   depth++;
   for (int i = 0; i < frame->count; i++) {
     const gba_push *push = &frame->pushes[i];
-    int has = !frame->unproven && (push->reg == LR ? return_known : (known >> push->reg) & 1);
+    int has = frame->unproven != GBA_STACK_UNPROVEN && (push->reg == LR ? return_known : (known >> push->reg) & 1);
     if (has) store(sp + (uint32_t)(int32_t)push->slot, push->reg == LR ? return_address : value[push->reg], 4);
     else gaps += 4;
     if (push->slot < lowest) lowest = push->slot;
   }
   return_known = 0;
-  if (frame->unproven) known = 0;
+  // what's known in it of its caller's registers: none in one not proven at all, and in one proven at its start those
+  // it doesn't push, which the console's compiler leaves alone
+  if (frame->unproven == GBA_STACK_UNPROVEN) known = 0;
+  else if (frame->unproven == GBA_STACK_START_PROVEN)
+    for (int i = 0; i < frame->count; i++) known &= (uint16_t) ~(1u << frame->pushes[i].reg);
   sp = sp + (uint32_t)lowest - frame->frame;
   return (uint32_t)depth;
 }
