@@ -15,7 +15,7 @@
 #include "check.h"
 
 // where a call comes back to: an address no cartridge has code at
-#define RETURN_TO 0x4100
+#define RETURN_TO TWIN_RETURN_TO
 enum { MOST_STEPS = 2000000 };
 
 uint8_t *RAM;
@@ -29,6 +29,7 @@ uint8_t orig_ram[0x800];
 twin_events orig_events;
 int orig_bank, orig_astray, orig_bank_reads;
 uint8_t orig_stored[0x100], orig_read[0x800];
+uint8_t orig_lowest;
 // which of the program's instructions a call ran, by where each is in the program, and how each went on, so the
 // check can say which of the function's paths its calls took: for a branch, taken or not
 uint32_t *orig_ran_at;
@@ -89,7 +90,7 @@ static void note_first_page(void) {
 }
 
 int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
-  enum { S = 0xE0 };
+  uint8_t s = r->S;
   orig_bank = bank < 0 ? 0 : bank;
   bank_said = bank >= 0;
   orig_events.count = 0;
@@ -104,10 +105,11 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   X.A = r->A; X.X = r->X; X.Y = r->Y;
   X.P = (uint8_t)(U_FLAG | I_FLAG | (r->N ? N_FLAG : 0) | (r->V ? V_FLAG : 0) | (r->Z ? Z_FLAG : 0) | (r->C ? C_FLAG : 0));
   X.mooPI = X.P;
-  // as a JSR leaves the stack: the address before the one to come back to, high byte first
-  orig_ram[0x100 + S] = (RETURN_TO - 1) >> 8;
-  orig_ram[0x100 + S - 1] = (RETURN_TO - 1) & 0xFF;
-  X.S = S - 2;
+  // as the JSR that called it leaves the stack, above S: the address before the one to come back to, high byte first
+  orig_ram[0x100 | (uint8_t)(s + 2)] = (RETURN_TO - 1) >> 8;
+  orig_ram[0x100 | (uint8_t)(s + 1)] = (RETURN_TO - 1) & 0xFF;
+  X.S = s;
+  orig_lowest = s;
   X.PC = pc;
   uint32_t began = timestamp;
   long steps = 0;
@@ -117,6 +119,7 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
     uint32_t place = pc < 0x8000 ? prg_size : pc < 0xC000 ? ((uint32_t)orig_bank * 0x4000 + (pc - 0x8000)) % prg_size : prg_size - 0x4000 + (pc - 0xC000);
     X.count = 0;      // one instruction a time
     X6502_Run(1);
+    if ((uint8_t)(s - X.S) < 0x80 && (uint8_t)(s - X.S) > (uint8_t)(s - orig_lowest)) orig_lowest = X.S;
     if (orig_ran_ways && place < prg_size) {
       if (!orig_ran_ways[place]) orig_ran_at[orig_ran_count++] = place;
       // a branch is two bytes long, so it wasn't taken when the next instruction is the one after it
@@ -126,5 +129,5 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   *cycles = (long)(timestamp - began);
   r->A = X.A; r->X = X.X; r->Y = X.Y;
   r->N = !!(X.P & N_FLAG); r->V = !!(X.P & V_FLAG); r->Z = !!(X.P & Z_FLAG); r->C = !!(X.P & C_FLAG);
-  return X.jammed ? 2 : X.PC != RETURN_TO ? 1 : X.S != S ? 3 : 0;
+  return X.jammed ? 2 : X.PC != RETURN_TO ? 1 : X.S != (uint8_t)(s + 2) ? 3 : 0;
 }

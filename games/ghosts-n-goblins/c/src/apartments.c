@@ -119,7 +119,7 @@ static void killed(uint8_t object, uint8_t weapon) {
   RAM[0x26] = 0;
   RAM[0x27] = 1;
   took(WINDOW_KILLED_SCORE);
-  add_score(object, weapon);
+  add_score(object, RAM[0xD4]);   // Y as the sound leaves it
 }
 
 // $AB35: down a screen line at a time, 5 a round, until it's as low as Arthur, and across faster the lower it gets.
@@ -136,11 +136,12 @@ static void drop(uint8_t object) {
   took(WINDOW_DROPS);
   move_down(object);
   own = RAM[OBJECT_SCREEN_Y + object];
-  if (own < 0x78) { took(WINDOW_DROPS_HIGH); move_object(object, 0, Y_NOT_FOLLOWED); return; }
+  // Y as move_down leaves it
+  if (own < 0x78) { took(WINDOW_DROPS_HIGH); move_object(object, 0, RAM[0x23]); return; }
   RAM[0x22] = (uint8_t)((uint8_t)(RAM[OBJECT_SCREEN_Y + ARTHUR] - own) >> 2);
-  if (RAM[0x22] <= 0x1C) { took(WINDOW_DROPS_LOW); move_object(object, (uint8_t)(0x1C - RAM[0x22]), Y_NOT_FOLLOWED); return; }
+  if (RAM[0x22] <= 0x1C) { took(WINDOW_DROPS_LOW); move_object(object, (uint8_t)(0x1C - RAM[0x22]), RAM[0x23]); return; }
   took(WINDOW_DROPS_LOWEST);
-  move_object(object, 0, Y_NOT_FOLLOWED);
+  move_object(object, 0, RAM[0x23]);
 }
 
 // $AB88: eight rounds of a hop, up 4 lines a round as it goes, turning round on the fourth, and then it runs off.
@@ -164,10 +165,11 @@ static void hop(uint8_t object) {
   RAM[0x77] = 0xFF;
   move_down(object);
   took(WINDOW_HOP_MOVES);
-  move_object(object, 0x0F, Y_NOT_FOLLOWED);
+  move_object(object, 0x0F, RAM[0x23]);   // Y as move_down leaves it
 }
 
-void window_thing(uint8_t object) {
+// dp:twin sub_04_AA4F window_thing(X, Y) if X >= 1 && X < 0x16 && RAM[0xBA] < 2
+void window_thing(uint8_t object, uint8_t y) {
   if (flag(object, HIT)) { took(WINDOW_IS_HIT); hit_enemy_falls(object); return; }
   took(WINDOW_IS_NOT_HIT);
   RAM[OBJECT_COLOURS + object] = 0;
@@ -204,8 +206,8 @@ void window_thing(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 6;
   took(WINDOW_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
-  if (HITS(object)) { killed(object, weapon); return; }
+  enemy_touch_tests(object, &arthur_touched, &y);
+  if (HITS(object)) { killed(object, y); return; }   // the weapon the tests leave in Y
   took(WINDOW_NOT_KILLED);
   // $AB04: its two shapes, by its count, one way round or the other
   RAM[OBJECT_COUNT + object]++;
@@ -228,12 +230,12 @@ void window_thing(uint8_t object) {
         return;
       }
       took(WINDOW_RUNS);
-      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), Y_NOT_FOLLOWED);
+      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), y);
       return;
     case HOPS: took(WINDOW_MODE_HOPS); hop(object); return;
     default:
       took(WINDOW_RUNS_OFF);
-      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), Y_NOT_FOLLOWED);
+      move_object(object, (uint8_t)(0x10 + SPEED_ADDED), y);
       return;
   }
 }
@@ -265,15 +267,16 @@ static void block_place(uint8_t object, int16_t ahead, uint8_t down, cost across
   RAM[0x77]++;
   took(BIG_PLACE_NEXT_DONE);
 }
-static int way_shut(uint8_t object) {
+static int way_shut(uint8_t object, uint16_t at) {
+  int s = call_from(stack_of(TASK_OBJECTS, 2), at);   // the stack pointer sub_04_AE24 runs with
   int right = RAM[OBJECT_HEADING + object] == 0x04;
   if (object >= 0x0F) took(READ_PAST_PAGE);
   if (right) block_place(object, 2, 0x10, BIG_FLOOR_X_RIGHT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_RIGHT);   // sub_FFAC
   else block_place(object, -2, 0x10, BIG_FLOOR_X_LEFT, BIG_PLACE_SCREEN_ACROSS, BIG_FLOOR_SCREEN_DOWN_LEFT);         // sub_FFBE
-  if (block_at_stage_place() < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
+  if (block_at_stage_place(call_from(s, right ? 0xAE2B : 0xAE3B)) < BLOCK_SOLID) { took(BIG_NO_FLOOR); return 1; }
   if (right) block_place(object, 8, 4, BIG_WALL_X, BIG_WALL_SCREEN_RIGHT, BIG_WALL_SCREEN_DOWN);   // sub_E9F1
   else block_place(object, -8, 4, BIG_WALL_X, BIG_WALL_SCREEN_LEFT, BIG_WALL_SCREEN_DOWN);         // sub_EA01
-  if (block_at_stage_place() >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
+  if (block_at_stage_place(call_from(s, right ? 0xAE32 : 0xAE42)) >= BLOCK_SOLID) { took(BIG_WALL); return 1; }
   took(right ? BIG_NO_WALL_RIGHT : BIG_NO_WALL_LEFT);
   return 0;
 }
@@ -316,7 +319,7 @@ static void throwing_shape(uint8_t object) {
 }
 
 // $AD17: it has stopped over Arthur, and throws down at him every 32 rounds while he's below it and near.
-static void throws_down(uint8_t object) {
+static void throws_down(uint8_t object, uint8_t y) {
   uint8_t *count = &RAM[OBJECT_COUNT + object];
   if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) { took(OBJECT_SHOWN_READ); flags_read(object); took(BIG_NOT_SHOWN); throwing_shape(object); return; }
   took(OBJECT_SHOWN_READ);
@@ -326,7 +329,7 @@ static void throws_down(uint8_t object) {
   RAM[0x27] = 0x80;
   RAM[0x26] = 0x10;
   took(BIG_LOOKS_BELOW);
-  if (!arthur_near(object, Y_NOT_FOLLOWED)) { took(BRANCH_TAKEN); throwing_shape(object); return; }
+  if (!arthur_near(object, y)) { took(BRANCH_TAKEN); throwing_shape(object); return; }
   ++*count;
   took(BIG_THROWS_DOWN);
   uint8_t shot = throw_one(object);
@@ -337,11 +340,11 @@ static void throws_down(uint8_t object) {
 }
 
 // $ACAE: it walks its floor, a stretch at a time, turning where the way is shut, and stops over Arthur when he's near below.
-static void walks(uint8_t object) {
+static void walks(uint8_t object, uint8_t y) {
   uint8_t *count = &RAM[OBJECT_COUNT + object], *heading = &RAM[OBJECT_HEADING + object];
-  if (flag(object, THROWS)) { took(BIG_WALK_THROWS); throws_down(object); return; }
+  if (flag(object, THROWS)) { took(BIG_WALK_THROWS); throws_down(object, y); return; }
   took(BIG_WALKS);
-  if (way_shut(object)) {
+  if (way_shut(object, 0xACB6)) {
     RAM[OBJECT_FLAGS + object] ^= FACES_LEFT;
     took(BIG_TURNS);
     flags_read(object);
@@ -355,7 +358,7 @@ static void walks(uint8_t object) {
     RAM[0x26] = 0x10;
     RAM[0x27] = 0x60;
     took(BIG_LOOKS);
-    if (!arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
+    if (!arthur_near(object, RAM[0xD4])) took(BRANCH_TAKEN);   // Y as the look-up of its way leaves it
     else {
       *count = RAM[0x83] & 0x0F;
       took(BIG_STOPS_OVER_HIM);
@@ -363,7 +366,7 @@ static void walks(uint8_t object) {
     }
   }
   took(BIG_STEPS);
-  move_object(object, (uint8_t)(6 + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(6 + WALK_SPEED_ADDED), RAM[0xD4]);
   RAM[OBJECT_SHAPE + object] = 0xD0;
   took(BIG_WALK_SHAPE);
   if (flag(object, FACES_LEFT)) { RAM[OBJECT_SHAPE + object] = 0xE0; took(BIG_WALK_SHAPE_LEFT); }
@@ -374,7 +377,8 @@ static void walks(uint8_t object) {
 
 // $AC58: a new stretch: its length and its side from the lists, by its own number and a count of stretches. On the
 // second stage it keeps right before the seventh screen, and left from the middle of the ninth.
-static void new_stretch(uint8_t object) {
+// It leaves Y its place in those lists.
+static uint8_t new_stretch(uint8_t object) {
   uint8_t *state = &RAM[OBJECT_STATE + object];
   *state = (*state + 1) & 0x0F;
   uint8_t i = (uint8_t)((object + *state) & 0x0F);
@@ -394,6 +398,7 @@ static void new_stretch(uint8_t object) {
   flags_read(object);
   if (RAM[OBJECT_FLAGS + object] & FACES_LEFT) { RAM[OBJECT_HEADING + object] = 0x0C; took(BIG_STRETCH_LEFT); }
   else took(BIG_STRETCH_RIGHT);
+  return i;
 }
 
 // $AD69: on Arthur's floor it faces him, throws along the floor every 16 rounds, and walks at him while the way is open.
@@ -452,12 +457,13 @@ static void on_his_floor(uint8_t object) {
     return;
   }
   took(BIG_FLOOR_NOT_THROWING);
-  if (way_shut(object)) { took(BIG_FLOOR_WAY_SHUT); return; }
+  if (way_shut(object, 0xAE16)) { took(BIG_FLOOR_WAY_SHUT); return; }
   took(BIG_FLOOR_STEPS);
-  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), RAM[0xD4]);   // Y as the look-up of its way leaves it
 }
 
-void big_man(uint8_t object) {
+// dp:twin sub_04_ABC1 big_man(X, Y) if X >= 1 && X < 0x16 && RAM[0xBA] < 2 && S == stack_of(TASK_OBJECTS, 2)
+void big_man(uint8_t object, uint8_t y) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object];
   uint8_t set = RAM[0xCF];
   if (set == 4 || set == 5) {
@@ -481,7 +487,7 @@ void big_man(uint8_t object) {
   RAM[0x26] = 0x08;
   took(BIG_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_spark_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_spark_tests(object, &arthur_touched, &y);
   if (weapon) {
     *count = 0;
     took(BIG_SPARKS);
@@ -495,7 +501,7 @@ void big_man(uint8_t object) {
     RAM[0x26] = 0;
     *count = 0;
     took(BIG_KILLED_SCORE);
-    add_score(object, weapon);
+    add_score(object, RAM[0xD4]);   // Y as the sound leaves it
     set_flag(object, BIG_HIT);
     took(JUMPS);
     enemy_burns_away(object);
@@ -504,7 +510,7 @@ void big_man(uint8_t object) {
   took(BIG_STILL_STANDS);
   if (flag(object, ON_HIS_FLOOR)) { took(BIG_IS_ON_HIS_FLOOR); on_his_floor(object); return; }
   took(BIG_IS_NOT_ON_HIS_FLOOR);
-  if ((int8_t)--*count >= 0) { took(BIG_STRETCH_GOES_ON); walks(object); return; }
+  if ((int8_t)--*count >= 0) { took(BIG_STRETCH_GOES_ON); walks(object, y); return; }
   took(BIG_STRETCH_OVER);
   took(OBJECT_SHOWN_READ);
   flags_read(object);
@@ -518,7 +524,6 @@ void big_man(uint8_t object) {
     }
     took(BIG_NOT_ON_HIS_FLOOR);
   } else took(BRANCH_TAKEN);
-  new_stretch(object);
-  walks(object);
+  walks(object, new_stretch(object));
 }
 
