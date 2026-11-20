@@ -351,6 +351,163 @@ export function madeUpPs2Effects(depth) {
   }, depth === 16 ? PSM.CT16 : PSM.CT32);
 }
 
+// ---- The shapes program
+
+/** What varies across a shape, which no free GS draws exactly, so its proof is the same pixels covered as the strict
+ *  reference and every channel within a step of it (kit/ps2/c/README.md): lines and line strips every way round, in
+ *  one colour and shaded, textured and in the fog; triangles in lists, strips and fans, shaded, textured by whole
+ *  texels and by floats over Q, in the fog and under the depth test; and the same lines and triangles antialiased,
+ *  blended and not. Nothing here crosses anything else in depth, where the strict reference itself changes its mind. */
+export function madeUpPs2Shapes(antialiased = false) {
+  return program(place => {
+    // a texture whose neighbouring texels are a step of colour apart, so a place on the border of two is within a step
+    // whichever it takes
+    const smooth = Array.from({ length: 64 * 64 }, (_, n) => (0x80000000 | (64 + (n & 63)) | (64 + (n >> 6)) << 8 | (128 + (((n & 63) + (n >> 6)) >> 1)) << 16) >>> 0);
+    const texture = at(270, PSM.CT32), upload64 = upload(texture, 0, 0, 64, 64, smooth);
+    const aa = antialiased ? 1 << 7 : 0, one = 0x3F800000, bits = float => new Uint32Array(new Float32Array([float]).buffer)[0];
+    const corner = (x16, y16, colour, z = 0, fog = 255) => [write(0x01, colour, one), write(0x04, (x16 | y16 << 16) >>> 0, (z | fog << 24) >>> 0)];
+    const colours = [0x80F04020, 0x8020F040, 0x804020F0, 0x80F0F020, 0x8020F0F0, 0x80F020F0];
+    const list = [...startFrame(0, PSM.CT32, 0x80402010), tex0(texture, 64, 64), write(0x3D, 0x00204060), write(0x42, 0x44)];
+    // lines from a middle to sixteen places round it, at sixteenths of a pixel, in one colour, then shaded, then blended
+    const star = (cx, cy, prim) => {
+      list.push(write(0x00, prim));
+      for (let n = 0; n < 16; n++) {
+        const angle = n * Math.PI / 8 + 0.1, x = Math.round((cx + Math.cos(angle) * 44) * 16) + n, y = Math.round((cy + Math.sin(angle) * 44) * 16) + 3 * n;
+        list.push(...corner(cx * 16 + 5, cy * 16 + 9, colours[n % 6], 0, 255), ...corner(x, y, colours[(n + 2) % 6], 0, 60));
+      }
+    };
+    star(50, 50, 1 | aa);
+    star(150, 50, 1 | 1 << 3 | aa);
+    star(250, 50, 1 | 1 << 3 | 1 << 5 | aa);
+    star(350, 50, 1 | 1 << 3 | 1 << 6 | aa);
+    // a line strip, and lines flat, upright and a pixel long
+    list.push(write(0x00, 2 | 1 << 3 | aa));
+    for (let n = 0; n < 12; n++) list.push(...corner((410 + n * 18) * 16 + n * 3, (20 + (n % 3) * 30) * 16 + n * 5, colours[n % 6]));
+    list.push(write(0x00, 1 | aa));
+    for (let n = 0; n < 8; n++) list.push(...corner(410 * 16 + n * 2, (100 + n * 3) * 16 + n * 2, colours[n % 6]), ...corner(470 * 16 + n * 2, (100 + n * 3) * 16 + n * 2, colours[n % 6]));
+    for (let n = 0; n < 8; n++) list.push(...corner((490 + n * 3) * 16 + n * 2, 100 * 16 + n * 2, colours[n % 6]), ...corner((490 + n * 3) * 16 + n * 2, 126 * 16 + n * 2, colours[n % 6]));
+    for (let n = 0; n < 16; n++) list.push(...corner((530 + n * 4) * 16 + n, 100 * 16 + n, colours[n % 6]), ...corner((530 + n * 4) * 16 + n + 16, 100 * 16 + n + (n & 1 ? 16 : 0), colours[n % 6]));
+    // triangles: a list, shaded and flat, a strip and a fan, at sixteenths of a pixel
+    const tri = (x, y, n) => [[x + 3, y + 5], [x + 70 + n, y + 20 + 2 * n], [x + 20 + 3 * n, y + 75 + n]];
+    list.push(write(0x00, 3 | 1 << 3 | aa));
+    for (let n = 0; n < 3; n++) tri(10 + n * 90, 110, n).forEach(([x, y], i) => list.push(...corner(x * 16 + n * 5 + i, y * 16 + n * 3 + i, colours[(n + i) % 6])));
+    list.push(write(0x00, 3 | aa));
+    for (let n = 0; n < 2; n++) tri(280 + n * 90, 140, n + 3).forEach(([x, y], i) => list.push(...corner(x * 16 + i, y * 16 + 7, colours[(n + i + 3) % 6])));
+    list.push(write(0x00, 4 | 1 << 3 | aa));
+    for (let n = 0; n < 8; n++) list.push(...corner((20 + n * 30) * 16 + n, (200 + (n & 1) * 50) * 16 + n * 2, colours[n % 6]));
+    list.push(write(0x00, 5 | 1 << 3 | aa));
+    list.push(...corner(360 * 16, 240 * 16, 0x80F0F0F0));
+    for (let n = 0; n < 7; n++) list.push(...corner(Math.round((360 + Math.cos(n * 0.5) * 60) * 16), Math.round((240 + Math.sin(n * 0.5) * 40) * 16), colours[n % 6]));
+    // in the fog, each corner its own, and blended by its alpha
+    list.push(write(0x00, 3 | 1 << 3 | 1 << 5 | aa));
+    tri(450, 200, 2).forEach(([x, y], i) => list.push(...corner(x * 16, y * 16, colours[i], 0, [255, 128, 0][i])));
+    list.push(write(0x00, 3 | 1 << 3 | 1 << 6 | aa));
+    tri(540, 200, 4).forEach(([x, y], i) => list.push(...corner(x * 16, y * 16, [0x40F04020, 0x4020F040, 0x404020F0][i])));
+    // textured by whole texels, and by floats over Q with Q different at each corner
+    list.push(write(0x00, 3 | 1 << 3 | 1 << 4 | 1 << 8 | aa), write(0x01, 0x80808080, one));
+    [[20, 290, 4, 4], [140, 300, 60, 6], [40, 400, 8, 60]].forEach(([x, y, u, v]) => list.push(write(0x03, UV(u, v)), write(0x05, XY(x, y))));
+    list.push(write(0x00, 3 | 1 << 3 | 1 << 4 | aa));
+    [[180, 290, 0.1, 0.1, 1], [300, 300, 0.9, 0.15, 0.5], [200, 400, 0.2, 0.9, 2]].forEach(([x, y, s, t, q]) => list.push(write(0x02, bits(s * q), bits(t * q)), write(0x01, 0x80808080, bits(q)), write(0x05, XY(x, y))));
+    // and under the depth test, a triangle behind one drawn before it, their depths between their corners' and apart
+    list.push(write(0x4E, 140), write(0x47, 0x30000), write(0x00, 6), write(0x01, 0x80402010, one), write(0x05, XY(330, 290), 0), write(0x05, XY(640, 448), 0), write(0x47, 0x50000));
+    list.push(write(0x00, 3 | 1 << 3 | aa));
+    [[340, 300, 0x40000], [470, 310, 0x50000], [360, 420, 0x60000]].forEach(([x, y, z], i) => list.push(write(0x01, colours[i], one), write(0x05, XY(x, y), z)));
+    [[380, 300, 0x10000], [520, 330, 0x20000], [400, 430, 0x30000]].forEach(([x, y, z], i) => list.push(write(0x01, colours[i + 3], one), write(0x05, XY(x, y), z)));
+    list.push(write(0x47, 0x30000), write(0x4E, 0, 1));
+    const frame = writes(list, true);
+    return { start: [gif(place(upload64), upload64)], frames: [[gif(place(frame), frame)]] };
+  });
+}
+
+// ---- The filters program
+
+/** A texture sampled between its texels, and its smaller copies. Sprites drawn four times their texture's size with
+ *  MMAG linear, by whole texels and by floats; then the texture and three smaller copies of it, each in its own
+ *  colours, drawn with the level of detail fixed by K, with each of MMIN's four ways of using the copies; and
+ *  triangles whose level comes from Q. With `rough`, the texture is every colour, texel by texel, and only what's
+ *  placed by whole texels is drawn, the sprites, which the strict reference draws exactly: a place worked out in floats
+ *  can fall either side of the border of two texels, which only a smooth texture forgives. */
+export function madeUpPs2Filters(rough = false) {
+  return program(place => {
+    const start = [], levels = [0, 1, 2, 3].map(level => ({ ...at(270 + level * 2, PSM.CT32), size: 64 >> level }));
+    for (const [level, { size, ...buffer }] of levels.entries()) {
+      // each copy leans to a colour of its own, and is a step from texel to texel, or with `rough` every colour
+      const texels = Array.from({ length: size * size }, (_, n) => rough ? mixed(n + level * 0x10000 + 0x700000) | 0x80000000 : (0x80000000 | (40 + level * 50 + (n % size)) | (60 + Math.floor(n / size)) << 8 | (200 - level * 40) << 16)) ;
+      const packet = upload(buffer, 0, 0, size, size, texels.map(v => v >>> 0));
+      start.push(gif(place(packet), packet));
+    }
+    const smaller = [levels[1].block | 1 << 14 | (levels[2].block & 0xFFF) << 20, levels[2].block >> 12 | 1 << 2 | levels[3].block << 8 | 1 << 22];
+    const tex1 = ({ lcm = 0, most = 0, larger = 0, smaller: way = 0, l = 0, k = 0 }) => write(0x14, lcm | most << 2 | larger << 5 | way << 6 | l << 19, Math.round(k * 16) & 0xFFF);
+    const bits = float => new Uint32Array(new Float32Array([float]).buffer)[0], one = 0x3F800000;
+    const list = [...startFrame(0, PSM.CT32, 0x80402010), tex0(levels[0], 64, 64), write(0x34, smaller[0] >>> 0, smaller[1] >>> 0)];
+    // four times its size, between texels: by whole texels, from a sixteenth of a texel in, and by floats
+    list.push(tex1({ larger: 1 }), write(0x03, UV(0, 0) + 1 + (3 << 16)), write(0x05, XY(8, 8)), write(0x03, UV(24, 24)), write(0x05, XY(104, 104)));
+    if (!rough) list.push(write(0x00, 6 | 1 << 4), write(0x01, 0x80808080, one), write(0x02, bits(0.25), bits(0.25)), write(0x05, XY(112, 8)), write(0x02, bits(0.75), bits(0.625)), write(0x05, XY(208, 104)));
+    // the copies: K from a half to three, down the screen, and MMIN's four ways across
+    list.push(write(0x00, 6 | 1 << 4 | 1 << 8));
+    // The two ways that mix two copies get whole levels alone here: between two, with the level fixed, the strict
+    // reference mixes red and green and leaves blue, which can't be right, and paraLLEl-GS takes the larger copy alone
+    [2, 3, 4, 5].forEach((way, column) => (way & 1 ? [1, 2] : [0.5, 1, 1.5, 2, 2.5, 3]).forEach((k, row) => {
+      list.push(tex1({ lcm: 1, most: 3, smaller: way, k }), ...sprite(216 + column * 66, 8 + row * 66, 64, 64));
+    }));
+    // and with fewer copies allowed than K asks for, and K below nothing, where MMAG decides
+    list.push(tex1({ lcm: 1, most: 1, smaller: 5, k: 2.5 }), ...sprite(480, 8, 64, 64), tex1({ lcm: 1, most: 3, larger: 1, smaller: 2, k: -1 }), ...sprite(480, 74, 64, 64));
+    // triangles whose level comes from Q: a half, so one level down, with K a half more, mixing two copies, then K
+    // alone rounding to the next, then L doubling Q's part
+    list.push(write(0x00, 3 | 1 << 4));
+    (rough ? [] : [[5, 0, 0.5], [2, 0, 0.75], [4, 1, -0.25]]).forEach(([way, l, k], n) => {
+      list.push(tex1({ most: 3, smaller: way, l, k }));
+      [[8, 0.1, 0.1], [100, 0.9, 0.2], [20, 0.2, 0.9]].forEach(([x, s, t], i) => list.push(write(0x02, bits(s * 0.5), bits(t * 0.5)), write(0x01, 0x80808080, bits(0.5)), write(0x05, XY(x + n * 100, [210, 230, 330][i] + 80))));
+    });
+    list.push(tex1({}));
+    const frame = writes(list, true);
+    return { start, frames: [[gif(place(frame), frame)]] };
+  });
+}
+
+// ---- The screens program
+
+/** What the screen shows: both read circuits, PMODE's merge and BGCOLOR, DISPLAY's rectangle, and an interlaced screen
+ *  in frame mode. Circuit 1 shows a buffer of four flat colours, each with its own alpha, and circuit 2 another of two,
+ *  and each frame in turn sets the screen up another way: the ways are SCREENS, with what a pixel shows in each. */
+const FIRST = [[0x40F04020, 0x8020F040], [0x004020F0, 0xFFF0F020]], SECOND = [0x8020A0E0, 0x80E0A020], BORDER = 0x00603090;
+const SPLIT_X = 300, SPLIT_Y = 100, SECOND_Y = 200;
+const firstAt = (x, y) => FIRST[y < SPLIT_Y ? 0 : 1][x < SPLIT_X ? 0 : 1], secondAt = (x, y) => SECOND[y < SECOND_Y ? 0 : 1];
+const over = (front, alpha, behind) => [0, 8, 16].reduce((out, shift) => out | Math.floor(((front >>> shift & 255) * alpha + (behind >>> shift & 255) * (255 - alpha)) / 255) << shift, 0) >>> 0;
+const ownAlpha = colour => Math.min((colour >>> 24) * 2, 255);
+/** Each way the screen is set up: PMODE, and what else differs from the usual, with the colour a pixel shows. */
+export const SCREENS = [
+  { about: 'circuit 1 alone', pmode: 1 | 1 << 5 | 0xFF << 8, shows: (x, y) => firstAt(x, y) & 0xFFFFFF },
+  { about: 'circuit 2 alone', pmode: 2 | 1 << 5 | 0xFF << 8, shows: (x, y) => secondAt(x, y) & 0xFFFFFF },
+  { about: 'circuit 1 over circuit 2 by ALP', pmode: 3 | 1 << 5 | 0x60 << 8, shows: (x, y) => over(firstAt(x, y), 0x60, secondAt(x, y)) },
+  { about: 'circuit 1 over circuit 2 by its own alpha', pmode: 3 | 0x60 << 8, shows: (x, y) => over(firstAt(x, y), ownAlpha(firstAt(x, y)), secondAt(x, y)) },
+  { about: 'circuit 1 over the border colour by ALP', pmode: 3 | 1 << 5 | 1 << 7 | 0x60 << 8, shows: (x, y) => over(firstAt(x, y), 0x60, BORDER) },
+  {
+    about: 'circuit 1 in a rectangle of its own over circuit 2', pmode: 3 | 1 << 5 | 0x60 << 8, rectangle: [160, 112, 320, 224],
+    shows: (x, y) => x >= 160 && x < 480 && y >= 112 && y < 336 ? over(firstAt(x - 160, y - 112), 0x60, secondAt(x, y)) : secondAt(x, y) & 0xFFFFFF,
+  },
+  { about: 'circuit 1 alone in a rectangle, the border round it', pmode: 1 | 1 << 5 | 0xFF << 8, rectangle: [160, 112, 320, 224], alone: true, shows: (x, y) => x < 320 && y < 224 ? firstAt(x, y) & 0xFFFFFF : BORDER },
+  { about: 'interlaced in frame mode, each line of the buffer on two', pmode: 1 | 1 << 5 | 0xFF << 8, smode2: 3, shows: (x, y) => firstAt(x, y >> 1) & 0xFFFFFF },
+];
+export function madeUpPs2Screens() {
+  return program(place => {
+    const flat = (colour, x0, y0, x1, y1) => [write(0x01, colour, 0x3F800000), write(0x05, XY(x0, y0)), write(0x05, XY(x1, y1))];
+    const drawn = writes([
+      ...startFrame(0, PSM.CT32, 0), write(0x00, 6),
+      ...flat(FIRST[0][0], 0, 0, SPLIT_X, SPLIT_Y), ...flat(FIRST[0][1], SPLIT_X, 0, WIDTH, SPLIT_Y), ...flat(FIRST[1][0], 0, SPLIT_Y, SPLIT_X, HEIGHT), ...flat(FIRST[1][1], SPLIT_X, SPLIT_Y, WIDTH, HEIGHT),
+      write(0x4C, 140 | FBW << 16), ...flat(SECOND[0], 0, 0, WIDTH, SECOND_Y), ...flat(SECOND[1], 0, SECOND_Y, WIDTH, HEIGHT),
+    ], true), frame = gif(place(drawn), drawn);
+    // DISPLAY: where its rectangle starts, in the screen's clock, four to a pixel across, and its size
+    const display = ([x, y, w, h]) => [(656 + x * 4 | (36 + y) << 12 | 3 << 23) >>> 0, (w * 4 - 1 | (h - 1) << 12) >>> 0];
+    const set = (address, [low, high]) => [{ screen: address, value: low >>> 0 }, { screen: address + 4, value: high >>> 0 }];
+    const frames = SCREENS.map(({ pmode, rectangle, smode2 = 1 }) => [
+      ...set(GS + 0x00, [pmode, 0]), ...set(GS + 0x20, [smode2, 0]), ...set(GS + 0x80, display(rectangle ?? [0, 0, WIDTH, HEIGHT])),
+      ...set(GS + 0x90, [140 | FBW << 9, 0]), ...set(GS + 0xA0, display([0, 0, WIDTH, HEIGHT])), ...set(GS + 0xE0, [BORDER, 0]), frame,
+    ]);
+    return { start: [], frames };
+  });
+}
+
 // ---- The masks program
 
 /** SCANMSK and FBMSK bit by bit, which Play! doesn't do exactly, for the strict reference to judge: sprites kept off

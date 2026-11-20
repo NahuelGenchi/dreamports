@@ -2,13 +2,14 @@
 // drawing (gs-reference.mjs): it writes everything the kit's GS was given as a PCSX2 GS dump, for PCSX2's software
 // renderer to replay, and each frame's picture as read circuit 1 shows it, the way PCSX2 saves one.
 //
-//   game <frames> <pictures.out> <dump.gs>
+//   game <frames> <pictures.out> <dump.gs> [<screen.out>]
 //
 // The build wraps the GS's ways in (gs_write, gs_image, gs_screen and gs_read_image), so what the game and the kit's GIF
 // give it is written to the dump as it goes in: register writes as A+D packets, pictures as IMAGE packets, reads back as
 // the replay's own reads, and the privileged registers at each V-blank. <pictures.out> gets each frame's picture,
 // SCREEN_W × SCREEN_H words from where DISPFB1 says, each a 32-bit colour, alpha in the top byte: a 32-bit pixel as it
-// is, a 24-bit one with 0x80 above it, and a 16-bit one widened with 0x80 or 0 as its top bit says.
+// is, a 24-bit one with 0x80 above it, and a 16-bit one widened with 0x80 or 0 as its top bit says. <screen.out> gets
+// what the kit shows of each frame, both circuits merged as the page would paint it, SCREEN_W × SCREEN_H words.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@
 uint8_t *dp_rom(uint32_t size);
 void dp_start(void);
 void dp_step(uint32_t buttons);
+uint32_t *dp_draw(void);
 void host_save_read(uint8_t *bytes, uint32_t size) { (void)bytes; (void)size; }
 void host_save_write(const uint8_t *bytes, uint32_t size) { (void)bytes; (void)size; }
 
@@ -94,13 +96,14 @@ static void vsync(int field) {
 }
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    fprintf(stderr, "Usage: %s <frames> <pictures.out> <dump.gs>\n", argv[0]);
+  if (argc != 4 && argc != 5) {
+    fprintf(stderr, "Usage: %s <frames> <pictures.out> <dump.gs> [<screen.out>]\n", argv[0]);
     return 2;
   }
   int frames = atoi(argv[1]);
   FILE *pictures = fopen(argv[2], "wb");
   dump = fopen(argv[3], "wb");
+  FILE *screen = argc == 5 ? fopen(argv[4], "wb") : NULL;
   if (!pictures || !dump) {
     fprintf(stderr, "Can't write %s or %s\n", argv[2], argv[3]);
     return 1;
@@ -137,9 +140,11 @@ int main(int argc, char **argv) {
         fwrite(&colour, 4, 1, pictures);
       }
     }
+    if (screen) fwrite(dp_draw(), 4, SCREEN_W * SCREEN_H, screen);
   }
   vsync(frames & 1);
   fclose(pictures);
+  if (screen) fclose(screen);
   fclose(dump);
   return 0;
 }
