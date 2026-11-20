@@ -138,7 +138,8 @@ function heldLocals(body, info, text, file) {
       else if (node.kind === 'UnaryOperator' && ['++', '--', '&'].includes(node.opcode) && isIt(kids(node)[0])) certain = false;
     }
     const at = places[0]?.written;
-    if (!certain || places.length !== 1 || !at || at.file !== file || at.endsInMacro) continue;
+    // an assignment that ends in a macro's use counts where the use's closing bracket was found
+    if (!certain || places.length !== 1 || !at || at.file !== file || (at.endsInMacro && !at.closed)) continue;
     if (!held.has(reg)) held.set(reg, []);
     const uses = all.filter(node => node.kind === 'DeclRefExpr' && node.referencedDecl?.id === decl.id).map(ref => ref.written?.begin ?? ref.name_at?.offset).filter(at => at !== undefined);
     held.get(reg).push({ name, pointer: isPointer(decl), from: lineOf(text, at.begin), to: lineOf(text, at.end), scope: { begin: declared.written.end, end: block.written.end }, uses });
@@ -165,6 +166,7 @@ export function withStack({ file, text, tree, map, matched, addressOf, starts = 
       else if (text[at] === ')' && --depth === 0) break;
     }
     w.end = at + 1;
+    w.closed = true;
   }
   const edits = [], gaps = [], header = ['#include "stack.h"'];
   // a pointer of the C's goes on the stack as the console's address of what it points to

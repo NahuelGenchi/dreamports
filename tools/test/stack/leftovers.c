@@ -72,10 +72,14 @@ void Far(char *far) {
   if (far) gSeen++;
 }
 
-/** Local, 0x08000440: keeps a value it worked out from memory across its call, in a register Deep saves. */
+// a sum written by a macro, as a game reads a register through one
+#define SUM(a, b) ((a) + (b))
+
+/** Local, 0x08000440: keeps a value it worked out from memory across its call, in a register Deep saves, assigned
+ *  through a function-like macro. */
 void Local(void) {
   int local;
-  local = gSeed + gSeen;
+  local = SUM(gSeed, gSeen);
   Deep();
   gLocal = local;
 }
