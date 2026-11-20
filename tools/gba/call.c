@@ -254,6 +254,11 @@ static void compared(uint32_t pc, uint32_t op, const uint32_t* r) {
 	else if ((op & 0xFFC0) == 0x4280) { kind = 0; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
 	else if ((op & 0xFF00) == 0x4500) { kind = 0; a = (op & 7) | (op >> 4 & 8); b = op >> 3 & 15; bValue = r[b]; }
 	else if ((op & 0xFFC0) == 0x4200) { kind = 1; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	// an AND leaves the flags a TST of the same two registers does, and a shift by a number what a TST of the bits it
+	// keeps does, for a branch on zero after it (#1709)
+	else if ((op & 0xFFC0) == 0x4000) { kind = 1; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	else if ((op & 0xF800) == 0x0800 && (op >> 6 & 31)) { kind = 1; a = op >> 3 & 7; b = -1; bValue = 0xFFFFFFFFu << (op >> 6 & 31); }
+	else if ((op & 0xF800) == 0x0000 && (op >> 6 & 31)) { kind = 1; a = op >> 3 & 7; b = -1; bValue = 0xFFFFFFFFu >> (op >> 6 & 31); }
 	else return;
 	struct origin none = { 0 }, oa = from[a], ob = b >= 0 ? from[b] : none;
 	const struct origin* both[2] = { &oa, &ob };
