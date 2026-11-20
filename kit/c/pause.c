@@ -1,9 +1,10 @@
 // Ending a frame from anywhere in a game's C, and going on from there in the next (kit.h: kit_wait_frame, kit_run), or
-// pausing partway through one until the page has what the game waits for (kit_pause). A
-// console's game waits for the screen from inside its own functions, as a fade written as a loop does, and its main
-// loop never returns. WebAssembly has no way to leave a function halfway, so the build runs one pass over a game that
-// calls these (Binaryen's Asyncify, tools/lib/c.mjs), which makes every function on the way to a wait able to put its
-// values away and come back to them. The pass's four calls are made from here, so the page needs nothing new.
+// pausing partway through one until the page has what the game waits for (kit_pause), and running a second program
+// beside the game's, in turns, as a console's second processor runs one (kit_run_beside). A console's game waits for
+// the screen from inside its own functions, as a fade written as a loop does, and its main loop never returns.
+// WebAssembly has no way to leave a function halfway, so the build runs one pass over a game that calls these
+// (Binaryen's Asyncify, tools/lib/c.mjs), which makes every function on the way to a wait able to put its values away
+// and come back to them. The pass's four calls are made from here, so the page needs nothing new.
 //
 // A game with no wait calls none of this, the linker leaves it out, and its build gets no pass.
 
@@ -85,6 +86,51 @@ __attribute__((noinline)) int kit_run(void (*game)(void)) {
   asyncify_stop_unwind();
   return !partway;
 }
+
+// A second program beside the game's, as a console's second processor runs one (kit_run_beside): the same pass, with
+// a place of its own for its waiting functions' values and a stack of its own, so the kit can run it from inside the
+// game's code, which is itself waiting or not, and each comes back to where it was.
+static struct { uint8_t *at, *end; } beside;
+static uint8_t *beside_kept, *beside_stack;
+static uintptr_t beside_stack_at;
+static int beside_started, beside_resuming, beside_waited;
+
+__attribute__((noinline)) void kit_wait_beside(void) {
+  if (beside_resuming) {
+    beside_resuming = 0;
+    asyncify_stop_rewind();
+    return;
+  }
+  beside_waited = 1;
+  beside.at = beside_kept;
+  beside.end = beside_kept + KEPT_BYTES;
+  asyncify_start_unwind(&beside);
+}
+
+__attribute__((noinline)) int kit_run_beside(void (*program)(void)) {
+  void (*volatile run)(void) = program;
+  if (!beside_kept) {
+    beside_kept = kit_alloc(KEPT_BYTES);
+    beside_stack = kit_alloc(STACK_BYTES);
+  }
+  uintptr_t ours = kit_stack_get();
+  beside_waited = 0;
+  if (beside_started) {
+    beside_resuming = 1;
+    kit_stack_set(beside_stack_at);
+    asyncify_start_rewind(&beside);
+  } else {
+    beside_started = 1;
+    kit_stack_set((uintptr_t)beside_stack + STACK_BYTES);
+  }
+  run();
+  beside_stack_at = kit_stack_get();
+  kit_stack_set(ours);
+  asyncify_stop_unwind();
+  // a program that came back starts again the next time
+  if (!beside_waited) beside_started = 0;
+  return beside_waited;
+}
 #else
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +142,12 @@ void kit_wait_frame(void) {
 void kit_pause(void) { kit_wait_frame(); }
 int kit_run(void (*game)(void)) {
   (void)game;
+  kit_wait_frame();
+  return 1;
+}
+void kit_wait_beside(void) { kit_wait_frame(); }
+int kit_run_beside(void (*program)(void)) {
+  (void)program;
   kit_wait_frame();
   return 1;
 }

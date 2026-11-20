@@ -34,6 +34,20 @@ test('a BL into the function\'s own code is a long jump, with only data after it
   assert.deepEqual([...instructionsOf(code).instructions].sort((a, b) => a - b), [0, 2]);
 });
 
+test('a BL into the function\'s own BX through another register than lr is a call through it, when the check asks', () => {
+  // 0: bl 8, to a call through r3, as m4a's call_r3   4: mov r0, #1   6: bx lr   8: bx r3
+  const code = thumb(0xF000, 0xF802, 0x2001, 0x4770, 0x4718);
+  assert.deepEqual([...instructionsOf(code, [], new Map(), { longJumps: true }).instructions].sort((a, b) => a - b), [0, 2, 4, 6, 8]);
+});
+
+test('code is read as ARM or Thumb as it\'s told, whatever its bytes look like', () => {
+  // add r2, pc, #0 and bx r2, then umull r2, r3, r0, r1, mov r0, r3 and bx lr: Thumb, though its words look like ARM
+  const code = Buffer.alloc(16);
+  [0x4710A200, 0xE0832190, 0xE1A00003, 0xE12FFF1E].forEach((word, i) => code.writeUInt32LE(word, 4 * i));
+  assert.deepEqual([...instructionsOf(code).instructions].sort((a, b) => a - b), [0, 4, 8, 12]);
+  assert.deepEqual([...instructionsOf(code, [], new Map(), { arm: false }).instructions].sort((a, b) => a - b), [0, 2]);
+});
+
 const codeMap = { functions: [{ key: '08000100', address: 0x08000100, size: 16 }, { key: '08000200', address: 0x08000200, size: 4 }], copies: [] };
 const find = finderOf(codeMap, () => null, new Map());
 const record = (address, code, what, from, to) => [address | 1, code, what, from, to];

@@ -102,6 +102,10 @@ function buildHere(machine, log, tools) {
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
+  // headers its source includes that a computer may not have, each with what installs it there
+  for (const { header, install } of core.headers?.[process.platform] ?? []) {
+    if (!existsSync(header)) throw new Error(`${name}'s emulator needs ${header}, which isn't on this computer. On Debian or Ubuntu, ${install} installs it.`);
+  }
   log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
