@@ -313,8 +313,9 @@ void console_wrote(const volatile void *where, u32 bytes) {
 // ---------------------------------------------------------------------------------------------------------------
 // The BIOS's work, which the game calls through its stubs.
 
-/** VBlankIntrWait: until the V-blank's interrupt has said it ran, the frame's lines drawn and the V-blank begun. The
- *  frame ends here: the kit draws it once the game's step is over, and the game goes on from here in the next. */
+/** VBlankIntrWait's work, for the BIOS library's stub (kit/gba/c/lib/bios): until the V-blank's interrupt has said it
+ *  ran, the frame's lines drawn and the V-blank begun. The frame ends here: the kit draws it once the game's step is
+ *  over, and the game goes on from here in the next. */
 // A frame that ends in the middle of the game's work, as the console's time says: the Dreamport's ends there too, and
 // the next starts as any does, with its V-blank and its sound.
 static void console_frame_inside(void) {
@@ -323,7 +324,7 @@ static void console_frame_inside(void) {
   console_vblank();
 }
 
-void VBlankIntrWait(void) {
+void console_vblank_intr_wait(void) {
   // from the game's first wait on, a frame ends at its wait, or inside its work where the console's time says
   gba_clock_on_frame_end(console_frame_inside);
   console_timed = 0;
@@ -361,8 +362,8 @@ static int console_memory(u32 address) {
     || (address >= 0x04000000u && address < 0x08000000u) || (address >= 0x08000000u && address - 0x08000000u < gba_rom_size);
 }
 
-/** CpuSet: `control`'s count of halfwords, or words with bit 26, from `src` to `dest`, or the one at `src` over all of
- *  them with bit 24, as the BIOS copies them, one at a time. */
+/** CpuSet's work, for the BIOS library's stub: `control`'s count of halfwords, or words with bit 26, from `src` to
+ *  `dest`, or the one at `src` over all of them with bit 24, as the BIOS copies them, one at a time. */
 // CpuSet's work, a halfword or a word at a time, as the console's time reaches each of the BIOS's stores
 static struct { u32 from, to, wide, fixed; } cpu_set;
 static void cpu_set_unit(u32 i) {
@@ -375,7 +376,7 @@ static void cpu_set_unit(u32 i) {
 // the cartridge's stub for CpuSet: swi 0x0B, then back
 #define CPU_SET_STUB 0x080997E0u
 
-void CpuSet(const void *src, void *dest, u32 control) {
+void console_cpu_set(const void *src, void *dest, u32 control) {
   u32 count = control & 0x1FFFFF, i;
   cpu_set.wide = control >> 26 & 1 ? 4 : 2;
   cpu_set.fixed = control >> 24 & 1;
@@ -455,17 +456,17 @@ void console_power_on(void) {
   gba_on_hblank(console_hblank);
 }
 
-// The BIOS's division, which the game calls through its two stubs, Div and Mod: the quotient and the remainder, each
-// rounded toward zero, as the console's BIOS gives them. Where the console's BIOS never comes back, dividing by 0, the
+// The BIOS's division, which the game calls through its two stubs, Div and Mod, the BIOS library's: the quotient and
+// the remainder, each rounded toward zero, as the console's BIOS gives them. Where the console's BIOS never comes back, dividing by 0, the
 // function check's emulator gives a quotient of 1, or -1 below 0, and the number as the remainder, and the one sum
 // that doesn't fit, the lowest number by -1, gives itself and 0: so does this, rather than stop the game, as a call
 // with made-up values may divide so, though play never does.
-s32 Div(s32 num, s32 denom) {
+s32 console_div(s32 num, s32 denom) {
   if (denom == 0) return num < 0 ? -1 : 1;
   if (denom == -1 && num == (s32)0x80000000u) return num;
   return num / denom;
 }
-s32 Mod(s32 num, s32 denom) {
+s32 console_mod(s32 num, s32 denom) {
   if (denom == 0) return num;
   if (denom == -1) return 0;
   return num % denom;
