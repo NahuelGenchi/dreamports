@@ -119,7 +119,7 @@ static int64_t spu_ticks, spu_total;
 static int32_t vblank_ticks, on_screen, in_blank;
 static int in_vblank, at_vblank;
 static uint32_t into_slice, dma_ticks, irq_ticks, irq_line;
-static uint64_t ee_now;
+static uint64_t ee_now, vblanks;
 
 void ps2_clock_power(void) {
   uint32_t frame = EE_HZ / (CONSOLE_CLOCK / CONSOLE_FRAME_TICKS);
@@ -132,12 +132,31 @@ void ps2_clock_power(void) {
   vblank_ticks = on_screen;
   in_vblank = at_vblank = 0;
   into_slice = dma_ticks = irq_ticks = 0;
-  ee_now = 0;
+  ee_now = vblanks = 0;
 }
 uint64_t ps2_ee_time(void) { return ee_now; }
 
+// The console's clock as the tools' emulator keeps it, the same in every run: from the first second of 2001, on by its
+// V-blanks, 59.94 a second. The date as its year, month, day, hour, minute and second.
+#define CLOCK_START 978307200u
+void ps2_console_date(uint32_t parts[6]) {
+  uint64_t now = CLOCK_START + vblanks * 1000 / 59940;
+  uint32_t days = (uint32_t)(now / 86400), left = (uint32_t)(now % 86400);
+  // the days since 1970 as a date (Howard Hinnant's civil_from_days)
+  uint32_t z = days + 719468, era = z / 146097, doe = z - era * 146097;
+  uint32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365, doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+  uint32_t mp = (5 * doy + 2) / 153, month = mp < 10 ? mp + 3 : mp - 9;
+  parts[0] = yoe + era * 400 + (month <= 2);
+  parts[1] = month;
+  parts[2] = doy - (153 * mp + 2) / 5 + 1;
+  parts[3] = left / 3600;
+  parts[4] = left / 60 % 60;
+  parts[5] = left % 60;
+}
+
 // the IOP's own ticks in a slice: its DMA goes on, and the sound chip's interrupt line follows the chip
 static void iop_ticks(uint32_t ticks) {
+  cdvd_ticks(ticks);
   dma_ticks += ticks;
   if (dma_ticks >= DMA_EVERY) {
     resume(0);
@@ -190,6 +209,7 @@ void ps2_time_pass(uint32_t ee_ticks_passing) {
     if (into_slice == SLICE) {
       slice_end();
       at_vblank = slice_top();
+      vblanks += at_vblank;
     }
   }
 }
@@ -201,6 +221,7 @@ void ps2_clock_to_vblank(void) {
     ee_ticks(SLICE - into_slice);
     slice_end();
     at_vblank = slice_top();
+    vblanks += at_vblank;
   }
   at_vblank = 0;
 }

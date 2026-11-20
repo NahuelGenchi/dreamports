@@ -26,6 +26,10 @@ reverb gives. The kit does the same (kit/ps2/c/spu2.c), so the two still match s
 A picture the console reads back from the GS is in its memory before it goes on: the libretro front has no GS thread, so
 Play! didn't wait for the read, and what a program read back changed from one run to the next (#1590).
 
+A disc's kind is the disc's, not its file's: Play! takes any file of 2048-byte sectors for a DVD, so a CD kept as an ISO
+was one too, where the console's drive says CD. It's judged as the kits judge it (kit/copy/disc.js): a DVD by its size or
+by the UDF's marks after its volume (#1593).
+
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
@@ -3123,7 +3127,7 @@ index 66bfe59..478f3d1 100644
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
 diff --git a/Source/iop/Iop_Cdvdman.cpp b/Source/iop/Iop_Cdvdman.cpp
-index 71aed53..dbebf05 100644
+index 71aed53..be44279 100644
 --- a/Source/iop/Iop_Cdvdman.cpp
 +++ b/Source/iop/Iop_Cdvdman.cpp
 @@ -5,6 +5,7 @@
@@ -3146,6 +3150,45 @@ index 71aed53..dbebf05 100644
  	clockBuffer[0] = 0;                                                        //Status (0 = ok, anything else = error)
  	clockBuffer[1] = Uint8ToBcd(static_cast<uint8>(localTime->tm_sec));        //Seconds
  	clockBuffer[2] = Uint8ToBcd(static_cast<uint8>(localTime->tm_min));        //Minutes
+@@ -114,8 +116,36 @@ uint32 CCdvdman::CdGetDiskTypeDirect(COpticalMedia* opticalMedia)
+ 		break;
+ 	case COpticalMedia::MEDIA_BLOCK_TYPE_2048:
+ 	default:
+-		return CCdvdman::CDVD_DISKTYPE_PS2DVD;
+-		break;
++	{
++		//Dreamports: a CD kept as its data alone, as an ISO file keeps it, is still a CD to the console. A DVD has more
++		//sectors than a CD can, or the UDF's marks after its volume, as every PlayStation 2 DVD does (kit/copy/disc.js)
++		static COpticalMedia* judged = nullptr;
++		static bool dvd = true;
++		if(judged != m_opticalMedia)
++		{
++			judged = m_opticalMedia;
++			auto provider = m_opticalMedia->GetBlockProvider();
++			auto told = Dreamports::g_sectorRead;
++			Dreamports::g_sectorRead = nullptr;
++			dvd = provider->GetBlockCount() > 400000;
++			for(uint32 lba = 17; !dvd && (lba < 32) && (lba < provider->GetBlockCount()); lba++)
++			{
++				uint8 block[0x800];
++				provider->ReadBlock(lba, block);
++				if(!memcmp(block + 1, "BEA01", 5) || !memcmp(block + 1, "NSR0", 4))
++				{
++					dvd = true;
++				}
++				else if(memcmp(block + 1, "CD001", 5) && memcmp(block + 1, "TEA01", 5) && memcmp(block + 1, "BOOT2", 5) && memcmp(block + 1, "CDW02", 5))
++				{
++					break;
++				}
++			}
++			Dreamports::g_sectorRead = told;
++		}
++		return dvd ? CCdvdman::CDVD_DISKTYPE_PS2DVD : CCdvdman::CDVD_DISKTYPE_PS2CD;
++	}
++	break;
+ 	}
+ }
+ 
 diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
 index 4ef7854..c790578 100644
 --- a/Source/iop/Iop_McServ.cpp
