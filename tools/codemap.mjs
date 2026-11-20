@@ -1,9 +1,10 @@
 // npm run dp -- codemap <game> [--from <list> | --fill]: makes games/<game>/proof/code-map.json, every function in the
 // original with its address and its size, and nothing of its code. It's what code ported is measured against.
 // Without --from, it finds the functions in the contributor's copy itself, in a Game Boy Advance game
-// (gba/functions.mjs), an NES game (nes/functions.mjs), a PlayStation game (ps1/functions.mjs) or a PlayStation 2 game
-// (ps2/functions.mjs), where it maps every program on the disc: the one it boots, its other programs, its modules for
-// the second processor and the vector units' programs. With --from, it takes them from a list: a decompilation's
+// (gba/functions.mjs), an NES game (nes/functions.mjs), a PlayStation game (ps1/functions.mjs), a Nintendo 64 game
+// (n64/functions.mjs), where it maps the code its cartridge starts, or a PlayStation 2 game (ps2/functions.mjs), where
+// it maps every program on the disc: the one it boots, its other programs, its modules for the second processor and the
+// vector units' programs. With --from, it takes them from a list: a decompilation's
 // symbols, as `nm -S` prints them from its ELF file, or a CSV with an address on each line and its size or its end, as
 // a disassembler such as Ghidra exports its list of functions. A list can stop short, so what the tools find in the
 // copy beyond it is added, and it can name data as a function, so those are left out. With --fill, the same is done to
@@ -34,6 +35,7 @@ import * as gbaFunctions from './gba/functions.mjs';
 import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
+import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -64,6 +66,13 @@ const FINDERS = {
     ...ps1Functions,
     file: 'tools/ps1/functions.mjs',
     read: ps1Functions.ps1Program,
+    address: address => address,
+  },
+  // a Nintendo 64 game's code as its cartridge starts it, read in the console's byte order whatever order the copy's in
+  n64: {
+    ...n64Functions,
+    file: 'tools/n64/functions.mjs',
+    read: n64Functions.n64Cartridge,
     address: address => address,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
