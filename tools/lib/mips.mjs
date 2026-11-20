@@ -72,8 +72,26 @@ export const FLOAT = {
 export const COMPARES = ['f', 'un', 'eq', 'ueq', 'olt', 'ult', 'ole', 'ule', 'sf', 'ngle', 'seq', 'ngl', 'lt', 'nge', 'le', 'ngt'];
 export const FORMATS = { 16: 's', 17: 'd', 20: 'w', 21: 'l' };
 
+// The Nintendo 64's RSP, the processor beside the VR4300 that runs the programs a game gives it, its microcode: a 32-bit
+// MIPS without multiplies, divides, 64-bit sums or likely branches, which runs from its own 4 KB of instructions, with
+// coprocessor 0 for its own registers and the RDP's, and its vector unit, coprocessor 2, with its own loads and stores.
+// coprocessor 0's registers, by number, as the RSP's manual names them
+export const COP0_RSP = ['SP_MEM_ADDR', 'SP_DRAM_ADDR', 'SP_RD_LEN', 'SP_WR_LEN', 'SP_STATUS', 'SP_DMA_FULL', 'SP_DMA_BUSY', 'SP_SEMAPHORE',
+  'DPC_START', 'DPC_END', 'DPC_CURRENT', 'DPC_STATUS', 'DPC_CLOCK', 'DPC_BUFBUSY', 'DPC_PIPEBUSY', 'DPC_TMEM'];
+// the vector unit's instructions, by their lowest six bits, and those that work on one element of a register
+export const VECTOR = { 0: 'vmulf', 1: 'vmulu', 2: 'vrndp', 3: 'vmulq', 4: 'vmudl', 5: 'vmudm', 6: 'vmudn', 7: 'vmudh', 8: 'vmacf', 9: 'vmacu',
+  10: 'vrndn', 11: 'vmacq', 12: 'vmadl', 13: 'vmadm', 14: 'vmadn', 15: 'vmadh', 16: 'vadd', 17: 'vsub', 19: 'vabs', 20: 'vaddc', 21: 'vsubc', 29: 'vsar',
+  32: 'vlt', 33: 'veq', 34: 'vne', 35: 'vge', 36: 'vcl', 37: 'vch', 38: 'vcr', 39: 'vmrg', 40: 'vand', 41: 'vnand', 42: 'vor', 43: 'vnor', 44: 'vxor', 45: 'vnxor',
+  48: 'vrcp', 49: 'vrcpl', 50: 'vrcph', 51: 'vmov', 52: 'vrsq', 53: 'vrsql', 54: 'vrsqh', 55: 'vnop' };
+const ONE_ELEMENT = new Set(['vrcp', 'vrcpl', 'vrcph', 'vmov', 'vrsq', 'vrsql', 'vrsqh']);
+// the vector unit's loads and stores, by the field after their register, with how many bytes the offset counts in
+export const VECTOR_LOADS = { 0: ['lbv', 1], 1: ['lsv', 2], 2: ['llv', 4], 3: ['ldv', 8], 4: ['lqv', 16], 5: ['lrv', 16], 6: ['lpv', 8], 7: ['luv', 8], 8: ['lhv', 16], 9: ['lfv', 16], 11: ['ltv', 16] };
+export const VECTOR_STORES = { 0: ['sbv', 1], 1: ['ssv', 2], 2: ['slv', 4], 3: ['sdv', 8], 4: ['sqv', 16], 5: ['srv', 16], 6: ['spv', 8], 7: ['suv', 8], 8: ['shv', 16], 9: ['sfv', 16], 10: ['swv', 16], 11: ['stv', 16] };
+const RSP_SPECIAL = new Set([0, 2, 3, 4, 6, 7, 8, 9, 13, 32, 33, 34, 35, 36, 37, 38, 39, 42, 43]);
+const RSP_PRIMARY = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 35, 36, 37, 40, 41, 43]);
+
 /** The processors this reads, by the name `processor` takes. */
-export const PROCESSORS = ['r3000a', 'vr4300'];
+export const PROCESSORS = ['r3000a', 'vr4300', 'rsp'];
 
 const r = n => `$${REGISTERS[n]}`;
 const f = n => `$f${n}`;
@@ -93,6 +111,7 @@ const BYTES = { lb: 1, lbu: 1, sb: 1, lh: 2, lhu: 2, sh: 2, ld: 8, ldl: 8, ldr: 
  */
 export function decode(word, address = 0, processor = 'r3000a') {
   word >>>= 0;
+  if (processor === 'rsp') return decodeRsp(word, address);
   const iii = processor === 'vr4300';
   const op = word >>> 26, rs = (word >>> 21) & 31, rt = (word >>> 16) & 31, rd = (word >>> 11) & 31, sa = (word >>> 6) & 31, fn = word & 63;
   const imm = (word << 16) >> 16, unsignedImm = word & 0xFFFF;
@@ -234,6 +253,57 @@ function decodeFloat(word, address, made, { rs, rt, rd, sa, fn, branchTo }) {
   } else if (format !== 's' && format !== 'd') return null;
   if (form === 'fd,fs' && ft) return null;
   return made(`${name}.${format}`, form === 'fd,fs' ? `${f(fd)}, ${f(fs)}` : `${f(fd)}, ${f(fs)}, ${f(ft)}`, 'float');
+}
+
+// A vector register's elements, as an instruction names them after the register: all of them, one of the two quarters,
+// one of the four halves or one of the eight elements, each repeated across the others
+const elements = e => (e < 2 ? '' : e < 4 ? `[${e - 2}q]` : e < 8 ? `[${e - 4}h]` : `[${e - 8}]`);
+
+// The RSP's instructions at `address` in its instruction memory, 0x04001000 to 0x04001FFF, where a branch or a jump goes
+// round within those 4 KB. Its scalar instructions are the R3000A's it has, read as the VR4300's are, and its own are
+// written as the N64's assemblers for it write them, as `vmudh $v1, $v2, $v3[0h]` and `lqv $v4[0], 16($a0)`.
+function decodeRsp(word, address) {
+  const op = word >>> 26, rs = (word >>> 21) & 31, rt = (word >>> 16) & 31, rd = (word >>> 11) & 31, sa = (word >>> 6) & 31, fn = word & 63;
+  const base = (address & ~0xFFF) >>> 0;
+  if (op === 0 && !RSP_SPECIAL.has(fn)) return null;
+  if (op === 1 && rt !== 0 && rt !== 1 && rt !== 16 && rt !== 17) return null;
+  if (op === 16) {
+    if ((rs !== 0 && rs !== 4) || (word & 0x7FF) || rd > 15) return null;
+    return { name: rs ? 'mtc0' : 'mfc0', text: `${(rs ? 'mtc0' : 'mfc0').padEnd(7)} ${r(rt)}, ${COP0_RSP[rd]}`, kind: 'other', rs, rt, rd, writes: rs ? null : rt || null };
+  }
+  if (op === 18) return decodeVector(word, { rs, rt, rd, sa, fn });
+  if (op === 50 || op === 58) {
+    const [name, scale] = (op === 50 ? VECTOR_LOADS : VECTOR_STORES)[rd] ?? [];
+    if (!name) return null;
+    const offset = ((word << 25) >> 25) * scale, e = (word >>> 7) & 15;
+    return { name, text: `${name.padEnd(7)} $v${rt}[${e}], ${offset}(${r(rs)})`, kind: op === 50 ? 'load' : 'store', rs, rt, rd, imm: offset, bytes: scale, vector: true, writes: null };
+  }
+  if (op > 1 && op !== 16 && op !== 18 && !RSP_PRIMARY.has(op)) return null;
+  // a branch's target, and a jump's, within the 4 KB the RSP runs from
+  const found = decode(word, address, 'vr4300');
+  if (!found) return null;
+  if (found.target === undefined) return found;
+  const target = (base | (found.name === 'j' || found.name === 'jal' ? (word << 2) & 0xFFF : (address + 4 + ((word << 16) >> 14)) & 0xFFF)) >>> 0;
+  return { ...found, text: found.text.replace(/0x[0-9A-F]+$/, `0x${target.toString(16).toUpperCase()}`), target };
+}
+
+// the RSP's vector unit, coprocessor 2: moves to and from its registers and its control registers, and its sums
+function decodeVector(word, { rs, rt, rd, sa, fn }) {
+  if (rs < 16) {
+    const name = ['mfc2', null, 'cfc2', null, 'mtc2', null, 'ctc2'][rs];
+    if (!name) return null;
+    if (rs === 2 || rs === 6) {
+      if ((word & 0x7FF) || rd > 2) return null;
+      return { name, text: `${name.padEnd(7)} ${r(rt)}, ${['$vco', '$vcc', '$vce'][rd]}`, kind: 'vector', rs, rt, rd, writes: rs === 2 ? rt || null : null };
+    }
+    if (word & 0x7F) return null;
+    return { name, text: `${name.padEnd(7)} ${r(rt)}, $v${rd}[${(word >>> 7) & 15}]`, kind: 'vector', rs, rt, rd, writes: rs === 0 ? rt || null : null };
+  }
+  const name = VECTOR[fn], e = rs & 15;
+  if (!name) return null;
+  if (name === 'vnop') return { name, text: name, kind: 'vector', rs, rt, rd, writes: null };
+  const text = ONE_ELEMENT.has(name) ? `$v${sa}[${rd & 7}], $v${rt}${elements(e)}` : `$v${sa}, $v${rd}, $v${rt}${elements(e)}`;
+  return { name, text: `${name.padEnd(7)} ${text}`, kind: 'vector', rs, rt, rd, writes: null };
 }
 
 /** Whether a word is one of `processor`'s instructions. */

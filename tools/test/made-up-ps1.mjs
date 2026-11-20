@@ -203,3 +203,70 @@ wait:
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return Buffer.concat([header, text]);
 }
+
+/** What the program for memories of play sets as it starts, and where: a level, and a count it makes in memory that
+ *  only play has, which each frame adds BY to. */
+export const PLAY = { LEVEL: 0x1234, LEVEL_AT: 0x80030000, COUNT_AT: 0x80100000, START: 100, BY: 5, LEVEL_FN: 0x80010100, ADD_FN: 0x80010200 };
+
+/** A program whose functions read what only play sets up, for the function check's memories of play: it sets a level
+ *  and makes a count, then each frame calls Level(), which gives the level one up, and Add(count, BY), which adds to
+ *  the count. As the console boots it: a PS-X EXE. */
+export async function madeUpPlayExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { LEVEL, LEVEL_AT, COUNT_AT, START, BY, LEVEL_FN, ADD_FN } = PLAY;
+  const words = source => assemble(`.set noreorder\n${source}`).sections.get('.text').bytes;
+  const start = words(`
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	lui	$s1, ${LEVEL_AT >>> 16}
+	li	$t1, ${LEVEL}
+	sw	$t1, 0($s1)
+	lui	$s2, ${COUNT_AT >>> 16}
+	li	$t1, ${START}
+	sw	$t1, 0($s2)
+wait:
+	lw	$t1, 0x1070($t0)
+	nop
+	andi	$t1, $t1, 1
+	beqz	$t1, wait
+	nop
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	jal	${LEVEL_FN}
+	nop
+	move	$a0, $s2
+	jal	${ADD_FN}
+	li	$a1, ${BY}
+	b	wait
+	nop
+`);
+  const level = words(`
+	lui	$v0, ${LEVEL_AT >>> 16}
+	lw	$v0, 0($v0)
+	nop
+	jr	$ra
+	addiu	$v0, $v0, 1
+`);
+  const add = words(`
+	lw	$v0, 0($a0)
+	nop
+	addu	$v0, $v0, $a1
+	jr	$ra
+	sw	$v0, 0($a0)
+`);
+  const text = Buffer.alloc(2048);
+  text.set(start, 0);
+  text.set(level, LEVEL_FN - LOAD);
+  text.set(add, ADD_FN - LOAD);
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}
