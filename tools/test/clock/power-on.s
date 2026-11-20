@@ -1,7 +1,12 @@
 @ The kit's clock's test (../clock.mjs): a made-up program's power-on, with nothing from any game in it, that keeps the
 @ console busy across its first frames' ends as a game's power-on does: the cartridge's wait states and prefetch set,
 @ the sound's FIFO fed by DMA 1 at timer 0's rate, a long DMA fill of video memory, a loop of multiplies and stores
-@ to the slow work memory, and each of the BIOS's four kinds of CpuSet, then a loop that waits for nothing.
+@ to the slow work memory, and each of the BIOS's four kinds of CpuSet, then a loop that waits for nothing, long
+@ enough for the test to leave a frame of it untimed. After it come the interrupts: a handler of the program's own,
+@ which the BIOS reaches through an ARM instruction or two the test puts in the cartridge (../clock.mjs); the
+@ V-blank's interrupt taken out of the BIOS's VBlankIntrWait; timer 1's every 4,096 cycles, taken in the middle of a
+@ loop of multiplies and stores, out of another VBlankIntrWait and out of an IntrWait for it; and both, with every
+@ line's H-blank's and line 100's, for as long as the last loop goes on.
 	.text
 	.code 16
 	.thumb_func
@@ -60,9 +65,72 @@ main:
 	ldr r1, .Lhalfwords_copy
 	ldr r2, .Lcopy_halfwords
 	swi 11
+	ldr r0, .Lidle
+.Lwait:
+	sub r0, #1
+	bne .Lwait
+	ldr r0, .Lhandler_at
+	ldr r1, .Lhandler
+	str r1, [r0]
+	ldr r0, .Ldispstat
+	mov r1, #8
+	strh r1, [r0]
+	ldr r0, .Lie
+	mov r1, #17
+	strh r1, [r0]
+	ldr r0, .Lime
+	mov r1, #1
+	strh r1, [r0]
+	swi 5
+	ldr r0, .Ltimer1
+	ldr r1, .Ltimer1_value
+	str r1, [r0]
+	ldr r2, .Lsquares
+	mov r3, #0
+	ldr r4, .Lcount
+.Lsquare_again:
+	mov r0, r3
+	mul r0, r3
+	strh r0, [r2]
+	add r2, #2
+	add r3, #1
+	cmp r3, r4
+	blt .Lsquare_again
+	swi 5
+	mov r0, #1
+	mov r1, #16
+	swi 4
+	ldr r0, .Ldispstat
+	ldr r1, .Ldispstat_all
+	strh r1, [r0]
+	ldr r0, .Lie
+	mov r1, #23
+	strh r1, [r0]
 .Lend:
 	b .Lend
+	.thumb_func
+	.type interrupt, function
+interrupt:
+	ldr r0, .Lif
+	ldrh r1, [r0]
+	strh r1, [r0]
+	ldr r0, .Lcheck
+	ldrh r2, [r0]
+	orr r2, r1
+	strh r2, [r0]
+	bx lr
 	.align 2
+.Lidle: .word 120000
+.Lhandler_at: .word 0x03007FFC
+.Lhandler: .word 0x080000CC
+.Ldispstat: .word 0x04000004
+.Ldispstat_all: .word 0x6438
+.Lie: .word 0x04000200
+.Lime: .word 0x04000208
+.Ltimer1: .word 0x04000104
+.Ltimer1_value: .word 0x00C0F000
+.Lif: .word 0x04000202
+.Lcheck: .word 0x03007FF8
 .Lwaitcnt: .word 0x04000204
 .Lwaitcnt_value: .word 0x4014
 .Lsoundcnt_x: .word 0x04000084
