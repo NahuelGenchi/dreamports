@@ -897,7 +897,7 @@ wait objects_task(void) {
         case 0x2F: thrown(object, y); break;
         case 0x0C: lift(object); break;
         case 0x0D: case 0x0E: platform(object); break;
-        case 0x0F: bridge_flame(object); break;
+        case 0x0F: bridge_flame(object, y); break;
         case 0x13: water_crow(object, y); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object, y); break;
