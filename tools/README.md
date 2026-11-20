@@ -366,6 +366,18 @@ A line such as `800100A8:  3C088001  lui     $t0, 0x8001`, made up for this guid
 
 The [PSX-SPX](https://psx-spx.consoledev.net/) describes the processor, the geometry processor and every register of the console. Name the function in a comment by its address, such as `0x800C1234`, so the port map counts it.
 
+### On the Nintendo 64
+
+On a Nintendo 64 game `read` prints the instructions of its processor, NEC's VR4300, from the code the cartridge starts, as the code map maps it ([Nintendo 64 code](../docs/CONSOLES.md#whats-different-from-the-game-boy-advance)), whichever of the three byte orders the copy is in. The function is an address, such as `0x80246000`, a name in the code map, or a label with an address in it, such as `func_80246000`, and `--bytes` is an option. The same table of the tools' own reads it, [`lib/mips.mjs`](lib/mips.mjs), with the VR4300's MIPS III, so it reads as the PlayStation's does, with these besides:
+
+- **64 bits.** Each register is 64 bits. Most of a game's code works on the low 32, as the console's compilers make it, and a 32-bit sum keeps its sign in the top half; `daddu`, `dsll32`, `ld` and `sd` work on all 64.
+- **Likely branches.** `beql`, `bnezl` and the rest run their delay slot only when they go.
+- **No load delay.** A load's register holds what it loaded from the next instruction.
+- **The floating-point unit.** `lwc1`, `ldc1`, `mtc1` and their opposites move values to and from its 32 registers, `add.s` and `mul.d` work on singles and doubles, `c.lt.s` sets its condition, which `bc1t` and `bc1f` branch on, and `cvt.s.w` and `trunc.w.s` turn numbers from one kind to another.
+- **Addresses.** The console's 8 MB of memory is at `0x80000000`, and again at `0xA0000000` past its cache, and the hardware's registers at `0xA4000000` and up, as the video interface's at `0xA4400000`.
+
+With `--rsp <address>` it reads the words at the function's address as the instructions of the RSP, the console's other processor, which runs the programs a game gives it, its microcode, kept among the game's own values: laid out from that address in the RSP's 4 KB of instructions, `0x1080` for a game's microcode, which runs after the RSP's boot program, so where a branch or a jump goes is where the RSP sends it. Its vector unit's instructions name a register's elements after it, as `vmudh $v1, $v2, $v3[0h]`, and its loads and stores name the element they start at, as `lqv $v4[0], 16($a0)`.
+
 ### On the PlayStation 2
 
 On a PlayStation 2 game `read` prints any code the code map has, read off the disc by the tools' own decoders ([#1588](https://github.com/NahuelGenchi/dreamports/issues/1588)): the EE's instructions, from the program the disc boots or another, a module of the IOP, the second processor, or a vector unit's program. The function is an address, such as `0x00123456`, a code map key, such as `00000120@MCMAN.IRX` or `00340010~vu`, an address with its program, such as `0x120@MCMAN.IRX`, a name in the code map, or a label with an address in it, such as `func_00123456`, and `--bytes` is its only option.
