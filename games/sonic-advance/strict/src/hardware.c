@@ -39,7 +39,8 @@ static uint32_t console_address(uint32_t pointer) {
 // the interrupts', the DMA channels', the timers', the sound's, the link cable's and the buttons', are kept here, as
 // the console keeps them, by how far each is from 0x04000000.
 enum {
-  IO_DISPSTAT = 0x004, IO_VCOUNT = 0x006, IO_KEYINPUT = 0x130, IO_RCNT = 0x134, IO_IE = 0x200, IO_IF = 0x202, IO_IME = 0x208,
+  IO_DISPSTAT = 0x004, IO_VCOUNT = 0x006, IO_SOUNDBIAS = 0x088, IO_KEYINPUT = 0x130, IO_RCNT = 0x134, IO_IE = 0x200,
+  IO_IF = 0x202, IO_IME = 0x208,
   STAT_VBLANK = 0x0001, STAT_HBLANK = 0x0002, STAT_VCOUNT = 0x0004, STAT_VBLANK_IRQ = 0x0008, STAT_HBLANK_IRQ = 0x0010,
   STAT_VCOUNT_IRQ = 0x0020, IRQ_VBLANK = 0x0001, IRQ_HBLANK = 0x0002, IRQ_VCOUNT = 0x0004, LINES = 228,
 };
@@ -470,6 +471,9 @@ void console_power_on(void) {
   // each line of the picture drawn as the console draws it, when its time reaches the line's H-blank
   gba_clock_on_line(gba_draw_line_now);
   console_io[IO_RCNT >> 1] = 0x8000;
+  // the sound's bias in the middle of its 10-bit range, as the console starts it: the sound library keeps it when it
+  // sets the bias's rate, so a sample below 0 swings below the middle, rather than clipped at 0
+  console_io[IO_SOUNDBIAS >> 1] = 0x200;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;
   // the kit as the sound hardware of the engine the game runs
