@@ -5,7 +5,10 @@
 // processor would, and the branch is decided only if the flags its condition reads are all known when it's reached.
 // The run starts after the last place anything could arrive from elsewhere: no instruction of the cartridge branches
 // or calls into it, and no word of the cartridge holds an address in it, so nothing gets to the branch but through the
-// whole run. Only Thumb code is read, as nearly all of a Game Boy Advance game is.
+// whole run. Where only one conditional branch of the function's own comes into the run's start, and nothing falls
+// into it, the run starts as that branch left things, with what it compared: the register its comparison read is
+// equal to the number, or isn't, as the way into the run says (#1751). A branch the run passes by says the same. Only
+// Thumb code is read, as nearly all of a Game Boy Advance game is.
 
 import { instructionsOf } from './played.mjs';
 
@@ -131,16 +134,21 @@ export function step(state, op, pc, word) {
 }
 
 /**
- * Every address something in the cartridge may arrive at from elsewhere: the targets of each branch and call of the
- * functions' code, and every address of the cartridge a word of it holds, whatever that word is. `rom` is the
- * cartridge's bytes and `functions` the code map's, those in the cartridge.
+ * Every address something in the cartridge may arrive at from elsewhere, with where from: the targets of each branch
+ * and call of the functions' code, each with the addresses of the branches and calls that go there, and every address
+ * of the cartridge a word of it holds, whatever that word is, with WORD. A Map of each address to a Set of those.
+ * `rom` is the cartridge's bytes and `functions` the code map's, those in the cartridge.
  */
 export function arrivals(rom, functions) {
-  const targets = new Set();
+  const targets = new Map();
+  const add = (target, from) => {
+    if (!targets.has(target)) targets.set(target, new Set());
+    targets.get(target).add(from);
+  };
   const view = new DataView(rom.buffer, rom.byteOffset, rom.length - rom.length % 4);
   for (let at = 0; at + 4 <= view.byteLength; at += 4) {
     const value = view.getUint32(at, true);
-    if (value >= CARTRIDGE && value < CARTRIDGE + rom.length) targets.add(value & ~1);
+    if (value >= CARTRIDGE && value < CARTRIDGE + rom.length) add(value & ~1, WORD);
   }
   for (const f of functions) {
     const start = f.address - CARTRIDGE, bytes = rom.subarray(start, start + f.size);
@@ -148,16 +156,19 @@ export function arrivals(rom, functions) {
     const { instructions } = instructionsOf(bytes);
     if (isArm(bytes)) continue;
     for (const at of instructions) {
-      const op = u16(at);
-      if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) targets.add(f.address + at + 4 + ((op & 0xFF) << 24 >> 23));
-      else if ((op & 0xF800) === 0xE000) targets.add(f.address + at + 4 + ((op & 0x7FF) << 21 >> 20));
+      const op = u16(at), from = f.address + at;
+      if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) add(from + 4 + ((op & 0xFF) << 24 >> 23), from);
+      else if ((op & 0xF800) === 0xE000) add(from + 4 + ((op & 0x7FF) << 21 >> 20), from);
       else if ((op & 0xF800) === 0xF000 && at + 4 <= bytes.length && (u16(at + 2) & 0xF800) === 0xF800) {
-        targets.add(u32(f.address + at + 4 + ((op & 0x7FF) << 21 >> 9) + ((u16(at + 2) & 0x7FF) << 1)));
+        add(u32(from + 4 + ((op & 0x7FF) << 21 >> 9) + ((u16(at + 2) & 0x7FF) << 1)), from);
       }
     }
   }
   return targets;
 }
+
+/** What arrivals gives for an address a word of the cartridge holds. */
+export const WORD = 'word';
 
 // a function in ARM instructions, by its first words, as instructionsOf tells them
 function isArm(bytes) {
@@ -166,32 +177,122 @@ function isArm(bytes) {
   return [0, 4, 8, 12].map(word).filter(w => w >>> 28 === 0xE).length >= 3;
 }
 
+// how many branches, one into the run of another, a run is read through
+const DEEPEST = 8;
+
+// Whether an instruction goes on to the one after it: an unconditional branch, a return and a jump don't. The second
+// half of a call's two is a call, which comes back.
+const goesOn = op => !((op & 0xF800) === 0xE000 || (op & 0xFF00) === 0xBD00 || (op & 0xFF87) === 0x4700 || (op & 0xFF87) === 0x4687);
+
+// A state of the run, as step takes it, with what's known of a register that isn't known as a number: `not`, the number
+// each isn't, and `zOf`, the register and number the zero flag says are equal or not, as the last comparison left it.
+// Whatever writes a register forgets both of it.
+function fresh() {
+  const not = new Array(16).fill(null), state = { not, zOf: null, n: null, z: null, c: null, v: null };
+  state.r = new Proxy(new Array(16).fill(null), {
+    set(r, key, value) {
+      r[key] = value;
+      if (/^\d+$/.test(key)) {
+        not[key] = null;
+        if (state.zOf?.reg === Number(key)) state.zOf = null;
+      }
+      return true;
+    },
+  });
+  return state;
+}
+
+// What a comparison of a register the run doesn't know with a number it knows, `cmp` with an immediate or with another
+// register, tells beyond what step worked out: what the zero flag says of the register, and the flags the number
+// decides, as the carry of anything compared with 0, or of 0 compared with a register known not to be 0. `before` is
+// what the registers held before it.
+function compared(state, op, before) {
+  let reg, value, reversed = false;
+  if ((op & 0xF800) === 0x2800) [reg, value] = [op >> 8 & 7, op & 0xFF];
+  else if ((op & 0xFFC0) === 0x4280 || (op & 0xFF00) === 0x4500) {
+    const high = (op & 0xFF00) === 0x4500, a = high ? (op & 7) | (op >> 4 & 8) : op & 7, b = op >> 3 & (high ? 15 : 7);
+    if (a === 15 || b === 15) return;
+    if (before[a] === null && before[b] !== null) [reg, value] = [a, before[b]];
+    else if (before[a] !== null && before[b] === null) [reg, value, reversed] = [b, before[a], true];
+    else return;
+  } else return;
+  if (before[reg] !== null) return;
+  state.zOf = { reg, value };
+  if (state.not[reg] === value) state.z = false;
+  // the carry is the first at least the second, unsigned: anything is at least 0, and 0 is at least only 0, and
+  // nothing less 0 overflows
+  if (value === 0 && !reversed) Object.assign(state, { c: true, v: false });
+  else if (value === 0 && state.not[reg] === 0) state.c = false;
+}
+
+// What a branch on the zero flag going one way says of the register the last comparison read: it's equal to the
+// number, or it isn't.
+function went(state, condition, taken) {
+  if (!state.zOf || (condition !== 0x0 && condition !== 0x1)) return;
+  const { reg, value } = state.zOf, equal = (condition === 0x0) === taken;
+  if (equal) state.r[reg] = value;
+  else state.not[reg] = value;
+  state.z = equal;
+}
+
 /**
- * The conditional branches of one function the code decides: each as { address, way, from, by }, `way` the one that
- * can't happen ("taken" or "not taken"), `from` where the run that decides it starts, and `by` the instruction that
- * set the flags it goes by. `bytes` are the function's, at `address`, `word(address)` reads a word of the cartridge and
- * `targets` is what arrivals gives.
+ * The conditional branches of one function the code decides: each as { address, way, from, by, through }, `way` the
+ * one that can't happen ("taken" or "not taken"), `from` where the run that decides it starts, `by` the instruction
+ * that set the flags it goes by, and `through` the branch the run is entered by, when only it comes there, or null.
+ * `bytes` are the function's, at `address`, `word(address)` reads a word of the cartridge and `targets` is what
+ * arrivals gives.
  */
 export function decidedIn(bytes, address, word, targets) {
   if (isArm(bytes)) return [];
   const u16 = at => bytes[at] | bytes[at + 1] << 8;
   const { instructions, branches } = instructionsOf(bytes);
+  // back from an instruction over those that lead straight to it, to the last place anything else can arrive at
+  const startOf = at => {
+    let start = at;
+    while (start >= 2 && instructions.has(start - 2) && !targets.has(address + start) && goesOn(u16(start - 2))) start -= 2;
+    return start;
+  };
+  // what's known as the run from `start` begins: as the one branch of the function's own that comes there left it,
+  // gone that way, when nothing else comes there and nothing falls into it, or else nothing
+  const entry = (start, depth) => {
+    const from = targets instanceof Map ? targets.get(address + start) : null;
+    const source = from?.size === 1 ? [...from][0] - address : null;
+    if (depth >= DEEPEST || source === null || !branches.has(source) || (instructions.has(start - 2) && goesOn(u16(start - 2)))) return { state: fresh(), through: null };
+    const op = u16(source);
+    if ((op & 0xF000) !== 0xD000 || (op >> 8 & 0xF) >= 0xE) return { state: fresh(), through: null };
+    const { state } = runTo(source, depth + 1);
+    if (holds(op >> 8 & 0xF, state) === false) return { state: fresh(), through: null };
+    went(state, op >> 8 & 0xF, true);
+    return { state, through: address + source };
+  };
+  // the run that leads to the instruction at `at`, as it leaves things there, and the last instruction of it that set
+  // the flags
+  const runTo = (at, depth) => {
+    const start = startOf(at), { state, through } = entry(start, depth);
+    let by = null;
+    for (let pc = start; pc < at; pc += 2) {
+      const op = u16(pc), before = [...state.r];
+      if (step(state, op, address + pc, word)) {
+        by = address + pc;
+        state.zOf = null;
+        compared(state, op, before);
+      }
+      // a branch passed by went its other way
+      if ((op & 0xF000) === 0xD000 && (op >> 8 & 0xF) < 0xE) went(state, op >> 8 & 0xF, false);
+    }
+    return { state, start, by, through };
+  };
   const found = [];
   for (const at of [...branches].sort((a, b) => a - b)) {
-    // back over the instructions that lead straight to it, to the last place anything else can arrive at
-    let start = at;
-    while (start >= 2 && instructions.has(start - 2) && !targets.has(address + start)) {
-      const before = u16(start - 2);
-      // nothing falls through an unconditional branch, a return, or the second half of a call's two
-      if ((before & 0xF800) === 0xE000 || (before & 0xFF00) === 0xBD00 || (before & 0xFF87) === 0x4700 || (before & 0xFF87) === 0x4687) break;
-      start -= 2;
+    // the run alone first, and then, only where that decides nothing, entered by the branch that comes into it
+    for (const entered of [false, true]) {
+      const { state, start, by, through } = runTo(at, entered ? 0 : DEEPEST);
+      if (start === at) break;
+      const taken = holds(u16(at) >> 8 & 0xF, state);
+      if (taken === null || by === null) continue;
+      found.push({ address: address + at, way: taken ? 'not taken' : 'taken', from: address + start, by, through });
+      break;
     }
-    if (start === at) continue;
-    const state = { r: new Array(16).fill(null), n: null, z: null, c: null, v: null };
-    let by = null;
-    for (let pc = start; pc < at; pc += 2) if (step(state, u16(pc), address + pc, word)) by = address + pc;
-    const taken = holds(u16(at) >> 8 & 0xF, state);
-    if (taken !== null && by !== null) found.push({ address: address + at, way: taken ? 'not taken' : 'taken', from: address + start, by });
   }
   return found;
 }
