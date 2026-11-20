@@ -6,8 +6,8 @@
 // what that model does its own way: it mixes at 44,100 samples a second, 45 at a time, and keeps decoded blocks in a
 // cache that a write into the middle of a block doesn't empty. Noise, pitch modulation and the master and effect
 // volumes, which Play! leaves out, are here as the console does them, checked against PCSX2's SPU2, and the tools'
-// patch gives Play! the same (tools/libretro/play.patch), so the two still match. Its reverb works in floats, each sum cut towards zero with tiny floats flushed, as Play!'s
-// emulation thread has them (ee.c).
+// patch gives Play! the same (tools/libretro/play.patch), so the two still match. Its reverb works in floats, each sum a computer's cut towards zero with tiny floats flushed, as Play!'s
+// emulation thread has them.
 //
 // Every write to the chip's registers, every block of sound data moved by DMA and every block of 45 samples mixed is
 // the frame's sound list, hashed in the order it came as the proof tools hash the original's (tools/libretro/play.patch).
@@ -517,6 +517,65 @@ static void mix(int32_t sample, int32_t volume, int16_t *out) {
 
 // ----------------------------------------------------------------------------------------------------------------
 // The reverb, in floats as the emulator's thread does them: each sum cut towards zero, tiny floats flushed
+//
+// These aren't the console's float rules (floats.c), which are the EE's and the vector units': the reverb is the
+// emulator's own, worked out with a computer's floats on a thread that cuts every result towards zero and flushes
+// tiny ones, so its sums are a computer's, cut. They're worked out here in whole numbers, so they're the same on
+// every computer and in WebAssembly, which has no way to cut towards zero.
+
+static uint32_t thread_bits(float value) {
+  uint32_t bits;
+  __builtin_memcpy(&bits, &value, 4);
+  return bits;
+}
+// a float from its sign, the exponent of its significand's lowest bit and the significand, cut to 24 bits; a computer
+// cutting towards zero gives its largest float, not infinity, for one too large
+static float thread_float(uint32_t sign, int32_t low, uint64_t significand) {
+  uint32_t bits = 0;
+  if (significand) {
+    int top = 63 - __builtin_clzll(significand);
+    int32_t exponent = low + top + 127;
+    uint32_t kept = (uint32_t)(top > 23 ? significand >> (top - 23) : significand << (23 - top));
+    bits = exponent > 254 ? sign | 0x7F7FFFFFu : exponent < 1 ? sign : sign | (uint32_t)exponent << 23 | (kept & 0x7FFFFF);
+  }
+  float value;
+  __builtin_memcpy(&value, &bits, 4);
+  return value;
+}
+static int thread_zero(uint32_t bits) { return !(bits & 0x7F800000); }
+static float thread_add(float a, float b) {
+  uint32_t x = thread_bits(a), y = thread_bits(b);
+  if (thread_zero(x) && thread_zero(y)) return x & y & 0x80000000u ? -0.0f : 0.0f;
+  if (thread_zero(x)) return b;
+  if (thread_zero(y)) return a;
+  if ((y & 0x7FFFFFFF) > (x & 0x7FFFFFFF)) {
+    uint32_t t = x;
+    x = y, y = t;
+  }
+  // the larger 39 bits up, the smaller as far as it reaches, and whether any of it was left below: a difference with
+  // something left below is a little less than what's kept, so it's cut one lower
+  int32_t shift = (int32_t)(x >> 23 & 0xFF) - (int32_t)(y >> 23 & 0xFF);
+  uint64_t big = (uint64_t)((x & 0x7FFFFF) | 0x800000) << 39, whole = (uint64_t)((y & 0x7FFFFF) | 0x800000) << 39;
+  uint64_t small = shift > 63 ? 0 : whole >> shift;
+  int below = shift > 63 ? 1 : (small << shift) != whole;
+  uint64_t sum = (x ^ y) & 0x80000000u ? big - small - (uint64_t)below : big + small;
+  if (!sum) return 0.0f;
+  return thread_float(x & 0x80000000u, (int32_t)(x >> 23 & 0xFF) - 127 - 23 - 39, sum);
+}
+static float thread_sub(float a, float b) { return thread_add(a, -b); }
+static float thread_mul(float a, float b) {
+  uint32_t x = thread_bits(a), y = thread_bits(b), sign = (x ^ y) & 0x80000000u;
+  if (thread_zero(x) || thread_zero(y)) return sign ? -0.0f : 0.0f;
+  uint64_t product = (uint64_t)((x & 0x7FFFFF) | 0x800000) * ((y & 0x7FFFFF) | 0x800000);
+  return thread_float(sign, (int32_t)(x >> 23 & 0xFF) + (int32_t)(y >> 23 & 0xFF) - 254 - 46, product);
+}
+// only ever by a whole power of two's worth here, 32768, but worked out whole
+static float thread_div(float a, float b) {
+  uint32_t x = thread_bits(a), y = thread_bits(b), sign = (x ^ y) & 0x80000000u;
+  if (thread_zero(x)) return sign ? -0.0f : 0.0f;
+  uint64_t quotient = ((uint64_t)((x & 0x7FFFFF) | 0x800000) << 39) / ((y & 0x7FFFFF) | 0x800000);
+  return thread_float(sign, (int32_t)(x >> 23 & 0xFF) - (int32_t)(y >> 23 & 0xFF) - 39, quotient);
+}
 
 static float reverb_sample(const core *c, uint32_t offset) {
   uint32_t at = c->reverb_now + offset;
@@ -539,7 +598,7 @@ static void reverb_write(const core *c, uint32_t offset, float value) {
   int16_t whole = (int16_t)value;
   __builtin_memcpy(spu.ram + at, &whole, 2);
 }
-static float coefficient(const core *c, int param) { return ee_div((float)(int16_t)c->reverb[param], 32768.0f); }
+static float coefficient(const core *c, int param) { return thread_div((float)(int16_t)c->reverb[param], 32768.0f); }
 #define R(param) reverb_sample(c, c->reverb[param])
 
 // The noise generator, a step each sample, at the rate the core's control says: the console's own, as PCSX2 has it
@@ -565,39 +624,39 @@ static void update_noise(core *c) {
 
 static void update_reverb(core *c, const int16_t in[2], int16_t *out) {
   if (c->reverb_ticks & 1) {
-    float input_l = ee_mul((float)in[0], 0.5f), input_r = ee_mul((float)in[1], 0.5f);
+    float input_l = thread_mul((float)in[0], 0.5f), input_r = thread_mul((float)in[1], 0.5f);
     float iir_coef = coefficient(c, IIR_COEF), in_l = coefficient(c, IN_COEF_L), in_r = coefficient(c, IN_COEF_R);
-    float input_a0 = ee_add(ee_mul(R(IIR_SRC_A0), iir_coef), ee_mul(input_l, in_l));
-    float input_a1 = ee_add(ee_mul(R(IIR_SRC_A1), iir_coef), ee_mul(input_r, in_r));
-    float input_b0 = ee_add(ee_mul(R(IIR_SRC_B1), iir_coef), ee_mul(input_l, in_l));
-    float input_b1 = ee_add(ee_mul(R(IIR_SRC_B0), iir_coef), ee_mul(input_r, in_r));
-    float alpha = coefficient(c, IIR_ALPHA), rest = ee_sub(1.0f, alpha);
-    float a0 = ee_add(ee_mul(input_a0, alpha), ee_mul(R(IIR_DEST_A0), rest));
-    float a1 = ee_add(ee_mul(input_a1, alpha), ee_mul(R(IIR_DEST_A1), rest));
-    float b0 = ee_add(ee_mul(input_b0, alpha), ee_mul(R(IIR_DEST_B0), rest));
-    float b1 = ee_add(ee_mul(input_b1, alpha), ee_mul(R(IIR_DEST_B1), rest));
+    float input_a0 = thread_add(thread_mul(R(IIR_SRC_A0), iir_coef), thread_mul(input_l, in_l));
+    float input_a1 = thread_add(thread_mul(R(IIR_SRC_A1), iir_coef), thread_mul(input_r, in_r));
+    float input_b0 = thread_add(thread_mul(R(IIR_SRC_B1), iir_coef), thread_mul(input_l, in_l));
+    float input_b1 = thread_add(thread_mul(R(IIR_SRC_B0), iir_coef), thread_mul(input_r, in_r));
+    float alpha = coefficient(c, IIR_ALPHA), rest = thread_sub(1.0f, alpha);
+    float a0 = thread_add(thread_mul(input_a0, alpha), thread_mul(R(IIR_DEST_A0), rest));
+    float a1 = thread_add(thread_mul(input_a1, alpha), thread_mul(R(IIR_DEST_A1), rest));
+    float b0 = thread_add(thread_mul(input_b0, alpha), thread_mul(R(IIR_DEST_B0), rest));
+    float b1 = thread_add(thread_mul(input_b1, alpha), thread_mul(R(IIR_DEST_B1), rest));
     reverb_write(c, c->reverb[IIR_DEST_A0] + 2, a0);
     reverb_write(c, c->reverb[IIR_DEST_A1] + 2, a1);
     reverb_write(c, c->reverb[IIR_DEST_B0] + 2, b0);
     reverb_write(c, c->reverb[IIR_DEST_B1] + 2, b1);
     float ca = coefficient(c, ACC_COEF_A), cb = coefficient(c, ACC_COEF_B), cc = coefficient(c, ACC_COEF_C), cd = coefficient(c, ACC_COEF_D);
-    float acc0 = ee_add(ee_add(ee_add(ee_mul(R(ACC_SRC_A0), ca), ee_mul(R(ACC_SRC_B0), cb)), ee_mul(R(ACC_SRC_C0), cc)), ee_mul(R(ACC_SRC_D0), cd));
-    float acc1 = ee_add(ee_add(ee_add(ee_mul(R(ACC_SRC_A1), ca), ee_mul(R(ACC_SRC_B1), cb)), ee_mul(R(ACC_SRC_C1), cc)), ee_mul(R(ACC_SRC_D1), cd));
+    float acc0 = thread_add(thread_add(thread_add(thread_mul(R(ACC_SRC_A0), ca), thread_mul(R(ACC_SRC_B0), cb)), thread_mul(R(ACC_SRC_C0), cc)), thread_mul(R(ACC_SRC_D0), cd));
+    float acc1 = thread_add(thread_add(thread_add(thread_mul(R(ACC_SRC_A1), ca), thread_mul(R(ACC_SRC_B1), cb)), thread_mul(R(ACC_SRC_C1), cc)), thread_mul(R(ACC_SRC_D1), cd));
     float fb_a0 = reverb_sample(c, c->reverb[MIX_DEST_A0] - c->reverb[FB_SRC_A]);
     float fb_a1 = reverb_sample(c, c->reverb[MIX_DEST_A1] - c->reverb[FB_SRC_A]);
     float fb_b0 = reverb_sample(c, c->reverb[MIX_DEST_B0] - c->reverb[FB_SRC_B]);
     float fb_b1 = reverb_sample(c, c->reverb[MIX_DEST_B1] - c->reverb[FB_SRC_B]);
     float fb_alpha = coefficient(c, FB_ALPHA), fb_x = coefficient(c, FB_X);
-    reverb_write(c, c->reverb[MIX_DEST_A0], ee_sub(acc0, ee_mul(fb_a0, fb_alpha)));
-    reverb_write(c, c->reverb[MIX_DEST_A1], ee_sub(acc1, ee_mul(fb_a1, fb_alpha)));
-    reverb_write(c, c->reverb[MIX_DEST_B0], ee_sub(ee_sub(ee_mul(fb_alpha, acc0), ee_mul(fb_a0, -fb_alpha)), ee_mul(fb_b0, fb_x)));
-    reverb_write(c, c->reverb[MIX_DEST_B1], ee_sub(ee_sub(ee_mul(fb_alpha, acc1), ee_mul(fb_a1, -fb_alpha)), ee_mul(fb_b1, fb_x)));
+    reverb_write(c, c->reverb[MIX_DEST_A0], thread_sub(acc0, thread_mul(fb_a0, fb_alpha)));
+    reverb_write(c, c->reverb[MIX_DEST_A1], thread_sub(acc1, thread_mul(fb_a1, fb_alpha)));
+    reverb_write(c, c->reverb[MIX_DEST_B0], thread_sub(thread_sub(thread_mul(fb_alpha, acc0), thread_mul(fb_a0, -fb_alpha)), thread_mul(fb_b0, fb_x)));
+    reverb_write(c, c->reverb[MIX_DEST_B1], thread_sub(thread_sub(thread_mul(fb_alpha, acc1), thread_mul(fb_a1, -fb_alpha)), thread_mul(fb_b1, fb_x)));
     c->reverb_now += 2;
     if (c->reverb_now >= c->reverb_end) c->reverb_now = c->reverb_start;
   }
   if (c->reverb_start != 0) {
-    float left = ee_mul(0.333f, ee_add(R(MIX_DEST_A0), R(MIX_DEST_B0)));
-    float right = ee_mul(0.333f, ee_add(R(MIX_DEST_A1), R(MIX_DEST_B1)));
+    float left = thread_mul(0.333f, thread_add(R(MIX_DEST_A0), R(MIX_DEST_B0)));
+    float right = thread_mul(0.333f, thread_add(R(MIX_DEST_A1), R(MIX_DEST_B1)));
     // at the effect volume
     mix((int32_t)left, c->effect_left, out + 0);
     mix((int32_t)right, c->effect_right, out + 1);
