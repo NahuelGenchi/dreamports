@@ -154,6 +154,16 @@ test('the file is a function to a line, read back as it was written, and nothing
   ]) assert.throws(() => parseProofs(wrong), /npm run dp -- match and npm run dp -- twin write it/);
 });
 
+test('a function that starts as the original\'s does is listed apart, and is no proof', () => {
+  const starts = new Map([['08000300', { twin: 'a'.repeat(16), original: 'b'.repeat(16), bytes: 6 }]]);
+  const text = formatProofs({ original: 'abc', functions: new Map(), starts });
+  assert.deepEqual(parseProofs(JSON.parse(text)), { original: 'abc', functions: new Map(), starts });
+  assert.equal(formatProofs({ original: 'abc', functions: new Map(), starts: new Map() }).includes('starts'), false);
+  for (const wrong of [[['08000300', 'a'.repeat(16), 'b'.repeat(16), 0]], [['08000300', 'a'.repeat(16), 'b'.repeat(16)]], 'yes']) {
+    assert.throws(() => parseProofs({ original: 'abc', functions: [], starts: wrong }), /only it writes which functions start/);
+  }
+});
+
 // a longer made-up map: 30 functions of 100 bytes in a row, a gap of data, then 3 more, and one in the work memory
 const long = { ...parseCodeMap({ original: 'abc', functions: [
   ...Array.from({ length: 30 }, (_, i) => [(0x08000200 + i * 100).toString(16).toUpperCase().padStart(8, '0'), 100]),
