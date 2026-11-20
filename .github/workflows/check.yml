@@ -15,8 +15,9 @@ name: Check
 # test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
 # test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
 # npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
-# and npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
-# and reads the program an eighth gives the sound processor. A pull request's code runs here, with a token that
+# npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
+# and reads the program a ninth gives the sound processor, and npm run test:n64-call, which runs the functions of an
+# eighth in Parallel N64's own processor. A pull request's code runs here, with a token that
 # can only read and no secrets.
 #
 # The tests run in four jobs side by side, as one after another they came near the 15-minute limit (#1503). The check
@@ -75,6 +76,7 @@ jobs:
               npm run test:ps1-twin
               npm run test:ps1-gcc
               npm run test:ps1-match
+              npm run test:n64-call
               npm run test:same-memory
               npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by

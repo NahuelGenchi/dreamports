@@ -384,6 +384,7 @@ uint32_t vif_receive(int unit, uint32_t address, uint32_t qwc, int tag) {
 
 uint32_t vif1_top(void) { return vifs[1].top; }
 uint32_t vif_itop(int unit) { return vifs[unit].itop; }
+void vif_tops(int unit, uint32_t top, uint32_t itop) { vifs[unit].top = top, vifs[unit].itop = itop; }
 
 uint32_t vif_read(uint32_t address) {
   struct vif *v = &vifs[address >= VIF1_STAT];

@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { assemble } from '../ps1/assemble.mjs';
-import { matchFile } from '../ps1/match.mjs';
+import { compilerPid, matchFile, stopCompiler } from '../ps1/match.mjs';
 import { runIn } from '../gba/match.mjs';
 
 const HERE = fileURLToPath(new URL('./ps1-match/', import.meta.url));
@@ -175,6 +175,13 @@ async function main() {
   const noGp = byName(await matching(join(HERE, 'small.c'), { ...against, compiler: SMALL, gp: 0 }));
   check(noGp.Bump?.same === false, 'and isn\'t when the program says nothing of where $gp points');
 
+  // the compiler's process crashing as it builds a file, as it did in #1661: match asks a new one, and the file builds the same
+  const building = matching(join(HERE, 'program.c'), against);
+  const crashed = compilerPid();
+  process.kill(crashed, 'SIGSEGV');
+  const rebuilt = byName(await building);
+  check(rebuilt.Score?.same === true && rebuilt.Say?.same === true && compilerPid() !== null && compilerPid() !== crashed, 'the compiler\'s process crashing in the middle of a file is started again, and the file builds the same');
+
   // C GCC won't take
   writeFileSync(join(changed, 'program.c'), `${source}\nvoid Broken(void) { return 1 +; }\n`);
   const broken = await matching(join(changed, 'program.c'), against);
@@ -222,7 +229,18 @@ async function wholeGame(exe) {
   check(tracked() === before, 'nothing the repository tracks has changed');
 }
 
+// a run that ends before its last check, as one whose process had nothing left to wait for would, fails
+let finished = false;
+process.on('exit', code => {
+  if (!finished && code === 0) {
+    console.log('\nThe test ended before its last check.');
+    process.exitCode = 1;
+  }
+});
+
 main().then(() => {
+  finished = true;
+  stopCompiler();
   rmSync(WORK, { recursive: true, force: true });
   if (failures.length) {
     console.log(`\n${failures.length} failed.`);
