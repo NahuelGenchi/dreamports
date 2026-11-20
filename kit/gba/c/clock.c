@@ -511,6 +511,7 @@ static uint32_t calls[CALLS];
 static int depth;
 
 void gba_clock_stop(void) { running = 0; }
+int gba_clock_running(void) { return running; }
 
 void gba_clock_start(void) {
   running = 1;
@@ -946,4 +947,6 @@ void gba_clock_resume(uint64_t time) {
     cycles += to - NOW;
     run_events();
   }
+  // the frames whose ends went by meanwhile are over: the next instruction doesn't end them again
+  while (gba_clock_frame_end(frame) <= (uint64_t)NOW) frame++;
 }

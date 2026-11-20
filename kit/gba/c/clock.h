@@ -82,6 +82,9 @@ void gba_clock_registers(const volatile uint16_t *file);
  *  for a frame, which a game's own frames time from then on. gba_clock_start starts it again. */
 void gba_clock_stop(void);
 
+/** Whether the console's time is going: between gba_clock_start or gba_clock_resume and gba_clock_stop. */
+int gba_clock_running(void);
+
 /** The console's time again from `time`, cycles from power-on, with the timers and the sound brought up to it: for a
  *  stretch a game times after power-on, as its work in the V-blank from a frame's end (gba_clock_frame_end). */
 void gba_clock_resume(uint64_t time);
