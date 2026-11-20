@@ -52,6 +52,12 @@ const OWN = {
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], generalPage: true },
 };
 
+// what the twins of a console with no kit of its own yet are built with besides: on the Nintendo 64, a char with no sign,
+// as IDO, which most of its games were built with, has it, code that reads a value through a pointer of another type or
+// through address 0, and no two stores the compiler sees side by side made into one, as the fold pass turns round each
+// number by its own size, which two merged in the module's own order would undo (wasm-fold.mjs)
+const TWIN_FLAGS = { n64: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'] };
+
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 /** console.h for a console with no kit in C of its own, from what kit/consoles.js says of it. */
@@ -122,7 +128,7 @@ export function cKit(id) {
     return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
-  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
+  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: TWIN_FLAGS[id] ?? [] };
 }
 
 /** How every build of a game's C works it out, the function check's too (../gba/twin.mjs): made fast the same way, and
@@ -344,8 +350,10 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
     const { stackSources } = await import('../gba/stack.mjs');
     const src = join(folder, 'src'), withSrc = [...all, src];
     const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
-    const made = await stackSources({ game, folder, own, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
-    const stacked = sources.map(file => made.sources[own.indexOf(file)] ?? file);
+    // the shared libraries' files too, whose functions proven by the same bytes leave the stack as the game's do
+    const stackable = [...own, ...libraries.flatMap(library => library.files)];
+    const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+    const stacked = sources.map(file => made.sources[stackable.indexOf(file)] ?? file);
     return buildWasm(stacked, out, { ...kit, folders: withSrc, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
   }
   return buildWasm(sources, out, { ...kit, folders: all, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });

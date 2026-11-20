@@ -34,6 +34,15 @@
 // calls it. The line is C, so the compiler reads it against the twin as it's declared, and the check tries every word
 // of it: a register it doesn't name gets any value, so a function that takes one the contract leaves out differs.
 //
+// S is the stack pointer as the function starts, after the JSR that called it, which left the address it comes back
+// to at $0101 + S and $0102 + S. Both sides start with that address in their memory, as the console has it. A
+// function that reads, through a pointer, a byte of the stack's page it may have pushed itself, its own calls' return
+// addresses, takes S, and its twin writes what those calls push, where they push it:
+//
+//   // dp:twin sub_E9AB find_block_tiles(S)
+//
+// A contract that names S has each call start with any stack pointer, and one that doesn't has them all start at $DE.
+//
 // A game that keeps the number of the bank switched in at $8000 in its work memory says where, once, as
 // `// dp:bank $C7`: the original then starts with that bank, and has to leave the one the twin's memory says.
 //
@@ -54,8 +63,8 @@
 // and one that differs loses that line. Only this tool and `match` write them.
 //
 // What it can't check yet: the registers a call starts with are drawn, not taken from play, so `if` has to say what
-// the game gives; the stack starts in one place; a cartridge that switches its program any other way than UNROM;
-// and a function that waits for the picture.
+// the game gives; a cartridge that switches its program any other way than UNROM; and a function that waits for the
+// picture.
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -84,7 +93,8 @@ const PROCESSOR = ['x6502.c', 'x6502.h', 'x6502struct.h', 'ops.h', 'fceu-types.h
 const STAND_INS = ['fceu.h', 'sound.h'];
 // the mappers whose program the check lays out: one that switches nothing, and UNROM, whose register is any store to the program
 const MAPPERS = new Set([0, 2, 3]);
-const REGISTERS = 'AXYNVZC';
+// the registers and flags a twin can be given by address, in the order of the contract's bits, and every name a contract has for the processor
+const REGISTERS = 'AXYNVZC', NAMES = 'AXYSNVZC';
 const RAM = 0x800, WORDS = RAM / 4;
 // how many calls of each kind, how long one may take, how many memories a game's recordings give, and the first frame one is taken at
 const CALLS = 5000, LIMIT = 200, MEMORIES = 2000, FIRST_FRAME = 200;
@@ -98,7 +108,7 @@ const cString = text => JSON.stringify(text).replace(/\?/g, '\\?');
 
 /**
  * The contracts in a file of a game's C, `text`, for a program of `banks` banks: { contracts, bank, errors }. Each
- * contract is { name, offset, line, text, call, back, given, allowance, byAddress }, `bank` the byte of work memory a
+ * contract is { name, offset, line, text, call, back, given, allowance, byAddress, stack }, `bank` the byte of work memory a
  * `dp:bank` line names, or null, and `errors` what couldn't be read, each with its line. In a file of a shared
  * library (../lib/libraries.mjs) a contract names the library's own function, and `placed`, a Map of its functions'
  * names to their offsets in the version's program, says where it is: a function the version gives no offset to isn't
@@ -140,7 +150,9 @@ export function contractsIn(text, banks, placed = null) {
     if (!/^[A-Za-z_]\w*\s*\(.*\)$/.test(call)) return errors.push({ line, error: `after ${found[1]} comes the call of its twin, as show_object(X), and "${call}" isn't one` });
     if (back === '' || given === '') return errors.push({ line, error: 'nothing comes after its -> or its if' });
     const byAddress = [...call.matchAll(/&\s*([AXYNVZC])\b/g)].reduce((bits, [, register]) => bits | 1 << REGISTERS.indexOf(register), 0);
-    contracts.push({ name: label[0], offset: label[1], line, text: found[2].replace(/\*\/\s*$/, '').trim(), call, back, given, allowance, byAddress });
+    if (/&\s*S\b/.test(call)) return errors.push({ line, error: 'S, the stack pointer, is the same after a function as before it, so a twin is given it as it is, without &' });
+    const stack = /\bS\b/.test(`${call} ${given ?? ''}`);
+    contracts.push({ name: label[0], offset: label[1], line, text: found[2].replace(/\*\/\s*$/, '').trim(), call, back, given, allowance, byAddress, stack });
   });
   return { contracts, bank, errors };
 }
@@ -150,9 +162,9 @@ export function contractsIn(text, banks, placed = null) {
 // file's own code, in the same unit, so a twin no other file sees can be called, and a name of the file's own that
 // is a register's letter is put aside first.
 function unitFor(file, contracts) {
-  const locals = constant => `  ${constant}uint8_t A = dp_r->A, X = dp_r->X, Y = dp_r->Y; ${constant}int N = dp_r->N, V = dp_r->V, Z = dp_r->Z, C = dp_r->C;\n  (void)A; (void)X; (void)Y; (void)N; (void)V; (void)Z; (void)C;\n`;
+  const locals = constant => `  ${constant}uint8_t A = dp_r->A, X = dp_r->X, Y = dp_r->Y, S = dp_r->S; ${constant}int N = dp_r->N, V = dp_r->V, Z = dp_r->Z, C = dp_r->C;\n  (void)A; (void)X; (void)Y; (void)S; (void)N; (void)V; (void)Z; (void)C;\n`;
   const at = contract => `#line ${contract.line} ${JSON.stringify(file)}\n`;
-  return `#include ${JSON.stringify(file)}\n${[...REGISTERS].map(register => `#undef ${register}\n`).join('')}#include "contract.h"\n${contracts.map(contract => `
+  return `#include ${JSON.stringify(file)}\n${[...NAMES].map(register => `#undef ${register}\n`).join('')}#include "contract.h"\n${contracts.map(contract => `
 static void dp_call_${contract.index}(twin_regs *dp_r, long *dp_gave) {
 ${locals('')}${at(contract)}  ${contract.back ? `*dp_gave = (long)(${contract.call});` : `(void)dp_gave; ${contract.call};`}
   dp_r->A = A; dp_r->X = X; dp_r->Y = Y; dp_r->N = N; dp_r->V = V; dp_r->Z = Z; dp_r->C = C;
@@ -163,7 +175,7 @@ ${locals('const ')}${at(contract)}  return (long)(${contract.back ?? '0'});
 static int dp_given_${contract.index}(const twin_regs *dp_r) {
 ${locals('const ')}${at(contract)}  return !!(${contract.given ?? '1'});
 }
-const twin_contract dp_twin_${contract.index} = { ${cString(contract.name)}, ${cString(contract.text)}, ${contract.offset}, ${contract.allowance}, ${contract.back ? 1 : 0}, ${contract.byAddress}, dp_call_${contract.index}, dp_back_${contract.index}, dp_given_${contract.index} };
+const twin_contract dp_twin_${contract.index} = { ${cString(contract.name)}, ${cString(contract.text)}, ${contract.offset}, ${contract.allowance}, ${contract.back ? 1 : 0}, ${contract.byAddress}, ${contract.stack ? 1 : 0}, dp_call_${contract.index}, dp_back_${contract.index}, dp_given_${contract.index} };
 `).join('')}`;
 }
 
