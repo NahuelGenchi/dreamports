@@ -19,6 +19,7 @@
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",
     "test:ps2-kit": "node tools/test/ps2-kit.mjs",
     "test:ps2-sound": "node tools/test/ps2-sound.mjs",
+    "test:ps2-disc": "node tools/test/ps2-disc.mjs",
     "test:ps2-gs": "node tools/test/ps2-gs.mjs",
     "test:ps2-ee-vu": "node tools/test/ps2-ee-vu.mjs",
     "test:ps2-flow": "node tools/test/ps2-flow.mjs",
