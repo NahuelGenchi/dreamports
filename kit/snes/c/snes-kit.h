@@ -14,6 +14,8 @@ enum { SNES_WIDTH = 256, SNES_HEIGHT = 224, SNES_FIRST_LINE = 1 };
 void ppu_power(void);
 /** A write to a register of the picture unit, $2100 to $2133. */
 void ppu_write(uint16_t address, uint8_t value);
+/** A read of $2134 to $2136, mode 7's product of its matrix's A and B's top byte. */
+uint8_t ppu_read(uint16_t address);
 /** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
 void ppu_frame(uint32_t *out);
 /** What the console does to the picture unit as V-blank starts, after the frame's last line. */

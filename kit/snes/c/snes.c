@@ -57,6 +57,10 @@ void snes_write(uint16_t address, uint8_t value) {
     port_next(to);
     return;
   }
+#ifndef DP_TWIN_CHECK
+  // the picture unit's registers from $2134 on are only read: a write there does nothing, as in Snes9x
+  if (address >= 0x2134 && address < 0x2140) return;
+#endif
   *at = value;
 #ifndef DP_TWIN_CHECK
   if (address < 0x2134) ppu_write(address, value);
@@ -88,6 +92,8 @@ uint8_t snes_read(uint16_t address) {
 #ifndef DP_TWIN_CHECK
   } else if (address >= 0x2140 && address < 0x2144) {
     value = apu_port_read(address & 3);
+  } else if (address >= 0x2134 && address <= 0x2136) {
+    value = ppu_read(address);
 #endif
   } else {
     value = *at;
