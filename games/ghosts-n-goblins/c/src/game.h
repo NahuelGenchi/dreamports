@@ -305,7 +305,7 @@ void dragon_piece(uint8_t object);
 /** $F3F1, kind $28: the dragon's fire (enemies.c). */
 void dragon_fire(uint8_t object, uint8_t y);
 void water_crow(uint8_t object, uint8_t y);
-void falling_thing(uint8_t object);
+void falling_thing(uint8_t object, uint8_t y);
 /** $F6F6: an enemy that a weapon has killed burns away. */
 void enemy_burns_away(uint8_t object);
 /** sub_EF25: the way from the place in $75, $79, $76 and $7A to the one in $73, $77, $74 and $78, one of 16. */

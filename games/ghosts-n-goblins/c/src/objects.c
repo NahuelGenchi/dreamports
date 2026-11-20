@@ -911,7 +911,7 @@ wait objects_task(void) {
         case 0x30: boss_shot(object, y); break;
         case 0x22: map_marker(object); break;
         case 0x36: rising_thing(object); break;
-        case 0x37: falling_thing(object); break;
+        case 0x37: falling_thing(object, y); break;
         case LANCE: case DAGGER: weapon(object, y); break;
         case AXE: axe(object); break;
         case 0x33: princess(object); break;
