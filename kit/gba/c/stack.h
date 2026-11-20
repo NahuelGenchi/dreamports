@@ -29,6 +29,12 @@ enum { GBA_STACK_PROVEN = 0, GBA_STACK_UNPROVEN = 1, GBA_STACK_START_PROVEN = 2 
  *  emulator's BIOS leaves them for the cartridge's first instruction, which the game's own start may then change. */
 void gba_stack_start(uint32_t sp);
 
+/** For the function check: a call of the original's starts on the stack at `sp`, with nothing of its registers known
+ *  to the twin's C, and gba_stack_lowest() then gives the lowest the stack pointer went since, as the check puts that
+ *  much of the stack back after a call, as it does after the original's (tools/README.md, The console's stack). */
+void gba_stack_begin(uint32_t sp);
+uint32_t gba_stack_lowest(void);
+
 /** The stack from `sp` after a soft reset through the BIOS, which leaves each register as it was. */
 void gba_stack_reset(uint32_t sp);
 
