@@ -25,9 +25,9 @@ name: Check
 # Parallel N64 with an eleventh, its RSP's microcodes and every sum of its vector unit among it. A pull request's code
 # runs here, with a token that can only read and no secrets.
 #
-# The tests run in eight jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695,
-# #1742), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and the
-# first-entry bot read, is the last job, Check, which passes only when all eight have.
+# The tests run in nine jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695,
+# #1742, #1744), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and
+# the first-entry bot read, is the last job, Check, which passes only when all nine have.
 on:
   pull_request:
 
@@ -125,7 +125,11 @@ jobs:
               npm run test:ps2-match
               npm run test:ps2-call
               npm run test:ps2-twin
-              npm run test:ps2-twin-programs
+          # the PlayStation 2's function check on the programs a disc has beside the one it boots, an IOP module, a second
+          # program for the EE and vector unit 1's programs, in a job of its own as with it the part above took 8 to 12 of
+          # its 15 minutes (#1744); it builds Play!'s processors and Sony's compiler again for itself
+          - part: ps2 programs
+            run: npm run test:ps2-twin-programs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -148,7 +152,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: All four parts passed
+      - name: Every part passed
         env:
           RESULT: ${{ needs.tests.result }}
         run: |
