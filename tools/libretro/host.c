@@ -16,7 +16,7 @@
 // each size its picture had, from which frame, as JSON. What the core prints goes nowhere.
 //
 // FUNCTIONS, a file or -, is where the code map's functions are, for a core that tells the tools of every instruction it
-// runs, as the NES's does with the tools' change to it (fceumm.patch). ran.h says what's in it, and what the environment's
+// runs, as the NES's and the Super Nintendo's do with the tools' changes to them (fceumm.patch, snes9x.patch). ran.h says what's in it, and what the environment's
 // DP_PLAYED, DP_ENTRIES and DP_REGISTERS ask to be written of what ran. The JSON on stderr then says how many instructions
 // ran outside every function of FUNCTIONS, in the program under "cartridge" and outside it under "memory".
 //
@@ -685,8 +685,10 @@ int main(int argc, char** argv) {
 		ps2Watch watch = dlsym(library, "dreamports_watch");
 		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
+			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
 			if (watch) ps2Open(watch, functions);
 			else if (tell) tell(ranInstruction);
+			else if (tell65816) tell65816(ranInstruction65816);
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;

@@ -4,8 +4,10 @@
 // no assembler.
 //
 // Its functions, in order, from where its ROM is seen at $00:8000:
-//   start      the console's start: into the processor's own mode, a stack, main, and waits for ever
-//   main       calls sum, fill, twice, lookup and leaves8, and each function in its table, through a pointer
+//   start      the console's start: into the processor's own mode, a stack, main, the interrupt at each frame's end,
+//              and waits for ever
+//   main       calls sum, fill, twice, lookup, leaves8 and pick, the first function in its table, through a pointer,
+//              and hidden, through a pointer it makes in the work memory
 //   sum        A + X, through the direct page, with A and X of 16 bits
 //   fill       writes Y bytes of A, of 8 bits, from X in the data bank, in a loop
 //   lookup     the Xth word of its table of values, read with a long address, called with JSL and back with RTL
@@ -25,8 +27,10 @@
 //   save       writes the save memory
 //   tick       an interrupt's handler, back with RTI
 //   pick       a switch on X, through a table of its cases, with JMP (table,X)
+//   nmi        the interrupt at each frame's end
 // and after the values:
 //   shine      reached only through the table of functions
+//   hidden     reached only through a pointer made as main runs, with A, X and Y of 8 bits, which only play finds
 
 /** Where the ROM is seen, and the stack main is given. */
 export const ORIGIN = 0x008000;
@@ -39,16 +43,20 @@ const rel = label => ({ size: 1, at: (labels, pc) => [(labels[label] - (pc + 1))
 const abs = label => ({ size: 2, at: labels => [labels[label] & 0xFF, (labels[label] >> 8) & 0xFF] });
 const long = label => ({ size: 3, at: labels => [labels[label] & 0xFF, (labels[label] >> 8) & 0xFF, (labels[label] >> 16) & 0xFF] });
 const here = name => ({ name });
+const low = label => ({ size: 1, at: labels => [labels[label] & 0xFF] });
+const high = label => ({ size: 1, at: labels => [(labels[label] >> 8) & 0xFF] });
 const w = n => [n & 0xFF, (n >> 8) & 0xFF];
 const l = n => [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF];
 
 const PROGRAM = [
-  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x38, 0xA2, ...w(STACK), 0x9A, 0x22, long('main'), here('spin'), 0x80, rel('spin'),
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x38, 0xA2, ...w(STACK), 0x9A, 0x22, long('main'),
+  0xE2, 0x20, 0xA9, 0x81, 0x8D, ...w(0x4200), 0xC2, 0x20, here('spin'), 0x80, rel('spin'),
   // main, with A, X and Y of 16 bits
   here('main'), 0xA9, ...w(2), 0xA2, ...w(3), 0x20, abs('sum'),
   0xE2, 0x20, 0xA9, 0x5A, 0xA2, ...w(0x0200), 0xA0, ...w(4), 0x20, abs('fill'), 0xC2, 0x20,
   0xA9, ...w(21), 0x20, abs('twice'), 0xA2, ...w(1), 0x22, long('lookup'),
-  0xA2, ...w(0), 0xFC, abs('functions'), 0x20, abs('leaves8'), 0xC2, 0x20, 0x6B,
+  0xA2, ...w(0), 0xFC, abs('functions'), 0x20, abs('leaves8'), 0xC2, 0x20, 0xA2, ...w(4), 0x20, abs('pick'),
+  0xE2, 0x30, 0xA9, low('hidden'), 0x85, 0x10, 0xA9, high('hidden'), 0x85, 0x11, 0xA2, 0x00, 0xFC, ...w(0x0010), 0xC2, 0x30, 0x6B,
   here('sum'), 0x86, 0x00, 0x18, 0x65, 0x00, 0x60,
   here('fill'), here('fill_loop'), 0xC0, ...w(0), 0xF0, rel('fill_done'), 0x9D, ...w(0), 0xE8, 0x88, 0x80, rel('fill_loop'), here('fill_done'), 0x60,
   here('lookup'), 0x8A, 0x0A, 0xAA, 0xBF, long('values'), 0x6B,
@@ -71,16 +79,17 @@ const PROGRAM = [
   here('pick_0'), 0xA9, ...w(10), 0x60,
   here('pick_1'), 0xA9, ...w(20), 0x60,
   here('pick_2'), 0xA9, ...w(30), 0x60,
-  here('nmi'), 0x40,
+  here('nmi'), 0x08, 0xE2, 0x20, 0xAD, ...w(0x4210), 0xEE, ...w(0x0030), 0x28, 0x40,
   here('values'), ...VALUES.flatMap(w),
   here('functions'), abs('shine'), abs('sum'),
   here('cases'), abs('pick_0'), abs('pick_1'), abs('pick_2'),
   here('shine'), 0xA9, ...w(1), 0x60,
+  here('hidden'), 0xA9, 0x12, 0x8D, ...w(0x0400), 0x60,
 ];
 
 // the functions, by where each starts and ends: the values and tables between pick_2 and shine aren't any
-const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'leaves8', 'forever', 'wait', 'halt', 'hardware', 'port', 'nowhere', 'romwrite', 'jumpout', 'bank', 'direct', 'move', 'save', 'tick', 'pick', 'shine'];
-const ENDS = { pick: 'nmi', shine: null };
+const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'leaves8', 'forever', 'wait', 'halt', 'hardware', 'port', 'nowhere', 'romwrite', 'jumpout', 'bank', 'direct', 'move', 'save', 'tick', 'pick', 'nmi', 'shine', 'hidden'];
+const ENDS = { pick: 'nmi', nmi: 'values' };
 
 /**
  * The made-up cartridge: { rom, labels, functions }, `rom` 32 KB with its header, `labels` each name's address as the
