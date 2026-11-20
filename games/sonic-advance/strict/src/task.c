@@ -207,7 +207,13 @@ void *IwramMalloc(u16 size) {
 
 /** IwramFree, 0x080017E8: frees a stretch of the tasks' memory and joins it to the free stretches beside it. */
 void IwramFree(void *space) {
-  struct IwramNode *node = space, *slow, *fast;
+  struct IwramNode *node = space, *fast;
+  // the register only tells the console's compiler where to keep it, as the original does: the C is the same in both
+#ifdef MATCHING
+  register struct IwramNode *slow asm("r1");
+#else
+  struct IwramNode *slow;
+#endif
 
   node--;
   slow = &gIwramHeap;
@@ -221,9 +227,12 @@ void IwramFree(void *space) {
   if (node->size < 0) node->size = -node->size;
 
   if ((struct IwramNode *)((u8 *)slow + slow->size) == node) {
+    // its size read once as it's added, before its sign is tested, as the original reads it
+    u16 size = slow->size;
+
     if (slow->size > 0) {
       slow->next = fast->next;
-      slow->size += node->size;
+      slow->size = size + node->size;
       node = slow;
     }
   }
