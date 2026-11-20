@@ -172,14 +172,11 @@ void EngineMainLoop(void) {
   while (TRUE) {
     // (the frame's work is timed where the recording goes: the sound each frame, no link cable)
     gExecSoundMain = FALSE;
-#ifdef MATCHING
-    if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) m4aSoundMain();
-#else
-    if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) {
-      TIME(0x080008A4, 0x080008B8, 0x080977D9, IW, IW);
-      m4aSoundMain();
-    }
+#ifndef MATCHING
+    if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) TIME(0x080008A4, 0x080008B8, 0x080977D9, IW, IW);
 #endif
+    // the call on the same line for both compilers, so the console's stack pairs the Dreamport's with the console's
+    if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) m4aSoundMain();
 
     if (sLastCalledVblankFuncId == VBLANK_FUNC_ID_NONE) {
       TIME(0x080008BA, 0x080008C4, 0x08001225, IW);
