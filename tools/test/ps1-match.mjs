@@ -26,7 +26,7 @@ const COMPILER = { name: 'gcc', version: '2.7.2', flags: ['-O2', '-G0'], maspsx:
 const SMALL = { ...COMPILER, flags: ['-O2', '-G8'] };
 // the made-up program: loaded at LOAD, its file SIZE bytes, its values at VALUES, and what starts at zero past its end
 const LOAD = 0x80010000, SIZE = 0x3000, VALUES = 0x80012000, ZEROED = 0x80020000, GP = 0x80020800;
-const FUNCTIONS = { Score: 0x80010100, Say: 0x80010200, func_80010300: 0x80010300, Bump: 0x80010400 };
+const FUNCTIONS = { Score: 0x80010100, Say: 0x80010200, func_80010300: 0x80010300, Bump: 0x80010400, Up: 0x80010500, Down: 0x80010600 };
 const NAMED = new Map([['gFrame', 0x80012800], ['gTotal', 0x80012804], ['Print', 0x80010800]]);
 
 const failures = [];
@@ -117,8 +117,10 @@ async function main() {
   check(!first.error, `the program builds with GCC ${COMPILER.version} and maspsx's rules${first.error ? `: ${first.error}` : ''}`);
   const small = await matching(join(HERE, 'small.c'), { compiler: SMALL });
   check(!small.error, `and small.c with -G8${small.error ? `: ${small.error}` : ''}`);
-  if (first.error || small.error) return;
-  const builds = ['program', 'small'].map(name => assemble(readFileSync(join(WORK, 'built', `${name}.aspsx.s`), 'utf8')));
+  const shared = await matching(join(HERE, 'shared.c'));
+  check(!shared.error, `and shared.c${shared.error ? `: ${shared.error}` : ''}`);
+  if (first.error || small.error || shared.error) return;
+  const builds = ['program', 'small', 'shared'].map(name => assemble(readFileSync(join(WORK, 'built', `${name}.aspsx.s`), 'utf8')));
   const image = Buffer.alloc(SIZE);
   const { where, sizes } = lay(builds, image);
   const program = { load: LOAD, text: image };
@@ -174,6 +176,16 @@ async function main() {
   check(readFileSync(join(WORK, 'built', 'small.aspsx.s'), 'utf8').includes('%gp_rel(gSmall)') && gp.Bump?.same === true, 'Bump reaches its small value through $gp, and is the same');
   const noGp = byName(await matching(join(HERE, 'small.c'), { ...against, compiler: SMALL, gp: 0 }));
   check(noGp.Bump?.same === false, 'and isn\'t when the program says nothing of where $gp points');
+
+  // a count two functions share, and one of them changed at the very instruction that reaches it, as a function another
+  // compiler made is: what that instruction holds says nothing of where the count is, and the other still finds it
+  const levels = builds[2], code = levels.sections.get('.text'), down = levels.functions.find(f => f.name === 'Down');
+  const high = code.relocations.find(r => r.kind === 'hi16' && r.symbol === 'sLevel' && r.at >= down.at && r.at < down.at + down.size);
+  const changedLevel = Buffer.from(image), at = FUNCTIONS.Down - LOAD + high.at - down.at, word = changedLevel.readUInt32LE(at);
+  changedLevel.writeUInt32LE(((word & 0xFFE00000) | ((((word >>> 16) & 31) + 1) % 32) << 16 | 0x1234) >>> 0, at);
+  const level = byName(await matching(join(HERE, 'shared.c'), { ...against, program: { load: LOAD, text: changedLevel } }));
+  check(level.Up?.same === true && level.Up.data.some(value => value.name === 'sLevel' && value.same) && level.Down?.same === false,
+    `a value two functions share is found by the one that's the same where the other differs at the instruction that reaches it: Up ${level.Up?.same ? 'the same' : 'differs'}, Down ${level.Down?.same ? 'the same' : 'differs'}`);
 
   // the compiler's process crashing as it builds a file, as it did in #1661: match asks a new one, and the file builds the same
   const building = matching(join(HERE, 'program.c'), against);
