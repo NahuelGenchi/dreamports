@@ -34,7 +34,7 @@ Each app sends players back only to the addresses it lists, `<site>/api/oauth/<s
 
 - `https://dreamports.net`
 - `http://localhost:8787`, for `npm run worker`
-- each pull request preview that should sign in, such as `https://<branch>-dreamports.<account>.workers.dev`. A new branch's preview needs its address added to the three apps; until then, its Google, Discord and GitHub buttons stop on the service's own page with an error. Steam works on any copy.
+- while previews are on (they're off since #1659), each pull request preview that should sign in, such as `https://<branch>-dreamports.<account>.workers.dev`. A new branch's preview needs its address added to the three apps; until then, its Google, Discord and GitHub buttons stop on the service's own page with an error. Steam works on any copy.
 
 To set or change a secret: `npx wrangler secret put <NAME>` for dreamports.net, `npx wrangler preview base-config secret put <NAME>` for previews made from then on, and `npx wrangler preview secret put <NAME> --name <preview>` for a preview that already exists. Each one asks for the value; never paste a secret anywhere else.
 

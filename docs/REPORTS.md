@@ -32,7 +32,7 @@ The edge rule is the zone's one free rate limiting rule.
 
 No limit is the player's to wait out. Where the site can't take a report at that moment, because it has had too many, the check didn't pass or the connection is down, the game keeps the report in the browser's own storage on the player's device and says **Report saved**. The next time a Dreamport opens it sends what waited, out of sight (`kit/gba/report-outbox.js`). Three reports wait at most, for a week at most, and nothing leaves the device until it's sent. Only a report the site says isn't one is turned down for good. A copy of a Dreamport run somewhere that takes no reports saves the presses as a file from the same button.
 
-A pull request's preview uses the keys Cloudflare publishes for testing Turnstile, which always pass, and its own database, so the whole way can be tried there and nothing of it reaches the live site.
+A preview at Cloudflare, while previews are on (they're off since #1659), uses the keys Cloudflare publishes for testing Turnstile, which always pass, and its own database, so the whole way can be tried there and nothing of it reaches the live site.
 
 ## Reading them
 
