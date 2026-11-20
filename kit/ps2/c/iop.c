@@ -139,8 +139,9 @@ uint64_t ps2_ee_time(void) { return ee_now; }
 // The console's clock as the tools' emulator keeps it, the same in every run: from the first second of 2001, on by its
 // V-blanks, 59.94 a second. The date as its year, month, day, hour, minute and second.
 #define CLOCK_START 978307200u
-void ps2_console_date(uint32_t parts[6]) {
-  uint64_t now = CLOCK_START + vblanks * 1000 / 59940;
+uint32_t ps2_console_seconds(void) { return (uint32_t)(CLOCK_START + vblanks * 1000 / 59940); }
+void ps2_console_date(uint32_t parts[6]) { ps2_date_of(ps2_console_seconds(), parts); }
+void ps2_date_of(uint32_t now, uint32_t parts[6]) {
   uint32_t days = (uint32_t)(now / 86400), left = (uint32_t)(now % 86400);
   // the days since 1970 as a date (Howard Hinnant's civil_from_days)
   uint32_t z = days + 719468, era = z / 146097, doe = z - era * 146097;
@@ -157,6 +158,7 @@ void ps2_console_date(uint32_t parts[6]) {
 // the IOP's own ticks in a slice: its DMA goes on, and the sound chip's interrupt line follows the chip
 static void iop_ticks(uint32_t ticks) {
   cdvd_ticks(ticks);
+  mc_ticks(ticks);
   dma_ticks += ticks;
   if (dma_ticks >= DMA_EVERY) {
     resume(0);
