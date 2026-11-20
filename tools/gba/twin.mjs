@@ -48,7 +48,7 @@ import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
 import { addressFinder, runIn, throughOf, twinsIn } from './match.mjs';
-import { addressAt, CARTRIDGE, IMAGE, inImage, REGIONS } from './twin-memory.mjs';
+import { addressAt, CARTRIDGE, IMAGE, inImage } from './twin-memory.mjs';
 import { hasMemories, memoriesKey, openMemories, takeMemories } from './twin-memories.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -65,9 +65,10 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 // where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
-// what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
-// and where the module's own values are, which the kit's and the version's hardware are among (twin-worker.mjs)
-const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
+// what of the kit the thread that runs the twins reaches by name: the copy, and where the module's own values are,
+// which the kit's and the version's hardware are among (twin-worker.mjs). Its video memory, colours and sprites are
+// where the console has them, as the check builds it (cKit's twinFlags)
+const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
