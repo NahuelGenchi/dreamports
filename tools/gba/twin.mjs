@@ -60,7 +60,8 @@ const OWN_BASE = 0x0A000000;
 // How a twin is built: as the game's own build builds C, with what its console's compiler takes for granted, which
 // the kit names (cKit's twinFlags). What's the check's own: GNU C, which C written for the console's compiler is, and
 // no warnings, which are the game's build's to give.
-const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twinFlags, '-w', '-Wno-int-conversion'];
+// with what only the function check's build of a kit asks for, as a kit that notes what the check compares does
+const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twinFlags, ...(kit.checkFlags ?? []), '-w', '-Wno-int-conversion'];
 // where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
