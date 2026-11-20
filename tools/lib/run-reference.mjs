@@ -79,8 +79,8 @@ function soundListsIn(listsFile, exactFile, frames) {
  * names, or null. With `soundLists`, for a console whose emulator keeps sound lists (libretro/host.c), also `soundLists`:
  * for each frame, the hash of what the console gave its sound chip and how many things, and its samples exactly as the
  * emulator made them, as soundListsIn says. With `entries`, on a console whose program says them (libretro/ran.h), also `entries`: where the
- * processor was sent in ways only play shows, each { address, way, frame }, `way` being 'called', 'jumped' through a
- * pointer or 'returned' to. With `registers`, there too, also `registers`: what the processor held as functions of
+ * processor was sent in ways only play shows, each { address, way, mode, frame }, `way` being 'called', 'jumped' through a
+ * pointer or 'returned' to, and `mode` the processor's mode there as its emulator says it, 0 on a console with none. With `registers`, there too, also `registers`: what the processor held as functions of
  * `functions` started, each { index, a, x, y, s, p, frame }, a few for each function.
  */
 export async function runReference({ program, args, env, width, height, stateBytes = 0, buttonBytes = 2, frames, buttons, functions = [], ramCode = false, played = false, saves = false, pictures = [], sound = false, sets = [], states = [], reads = [], draws = false, soundLists = false, memory = null, entries = false, registers = false }) {
@@ -193,7 +193,8 @@ export async function runReference({ program, args, env, width, height, stateByt
     const wordsOf = file => new Uint32Array(new Uint8Array(readFileSync(file)).buffer);
     const sent = !entries ? null : Array.from({ length: Math.floor(wordsOf(files.entries).length / 3) }, (_, i) => {
       const [address, way, frame] = wordsOf(files.entries).subarray(i * 3, i * 3 + 3);
-      return { address, way: [null, 'called', 'jumped', 'returned'][way], frame };
+      // above the way's lowest byte, the processor's mode there, on a console whose processor has modes (the Super Nintendo's)
+      return { address, way: [null, 'called', 'jumped', 'returned'][way & 0xFF], mode: way >>> 8, frame };
     });
     const heldAt = !registers ? null : Array.from({ length: Math.floor(wordsOf(files.registers).length / 3) }, (_, i) => {
       const [index, axys, rest] = wordsOf(files.registers).subarray(i * 3, i * 3 + 3);
