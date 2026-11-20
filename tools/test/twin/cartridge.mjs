@@ -27,7 +27,8 @@ export const DIVIDES = { Share: 0x08000540 };
 export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680, Fetch: 0x08000940, Ready: 0x08000980 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, one that runs code play put in the work memory, and the value play keeps the stage in
-export const PLAYED = { Shine: 0x08000400, Play: 0x08000440, Glow: 0x08000800 };
+// (Play, which grew with Spare, after every other function, where it has room)
+export const PLAYED = { Shine: 0x08000400, Play: 0x08000B00, Glow: 0x08000800, Spare: 0x08000880 };
 NAMED.set('gStage', 0x03000060);
 // a function that gives back what its caller keeps, and that caller, in a file of their own (gives.c)
 export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
@@ -61,6 +62,17 @@ export function withTurn(rom) {
   const turned = Buffer.from(rom);
   [0xE59F1008, 0xE5912000, 0xE5812002, 0xE12FFF1E, NAMED.get('gFrame') + 2].forEach((word, i) => turned.writeUInt32LE(word, TURN.Turn - CARTRIDGE + 4 * i));
   return turned;
+}
+
+// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does (withPeek, peek.c)
+export const PEEK = { Peek: 0x08000A40 };
+export const PEEK_LENGTH = 6;
+
+export function withPeek(rom) {
+  const peeked = Buffer.from(rom);
+  // ldrb r3, [r2, #0], add r3, #1, bx lr
+  [0x7813, 0x3301, 0x4770].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Peek - CARTRIDGE + 2 * i));
+  return peeked;
 }
 
 export function withTwice(rom) {

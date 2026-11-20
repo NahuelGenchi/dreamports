@@ -229,7 +229,13 @@ class Original {
    *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
    *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. `spare` is
    *  what the registers no argument fills hold, 0 unless given. */
-  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false }) {
+  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false, gives = 0 }) {
+    // a hand-written routine gives back in the register its twin's comment names (#1710)
+    if (gives !== (this.gives ?? 0)) {
+      this.ask('g', [gives]);
+      await this.take(4);
+      this.gives = gives;
+    }
     // a twin that says it follows reads and writes where no halfword or word starts has those calls compared
     if (Boolean(unaligned) !== Boolean(this.unaligned)) {
       this.ask('a', [unaligned ? 1 : 0]);
@@ -491,6 +497,12 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id).map(twin => ({ ...twin, address: placedAt(twin) })), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
+          // a hand-written routine's twin that says how it takes and gives in registers is called with the four of
+          // them, and gives back what its comment's C works out from them (#1710)
+          if (twin.registers && !wrap) {
+            calls.push({ ...twin, params: [0, 1, 2, 3].map(() => ({ bits: 32, signed: false, pointer: true })), returns: { bits: 32, signed: false }, call: `${CALL}${n}_${twin.name}` });
+            continue;
+          }
           const signature = signatureFor(text, twin.name);
           if (signature) calls.push({ ...twin, ...signature, call: `${CALL}${n}_${twin.name}` });
           else unknown.push(twin.name);
@@ -502,7 +514,11 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
           const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
           for (const each of calls) {
-            const { name: twin, params, returns, call } = each;
+            const { name: twin, params, returns, call, registers } = each;
+            if (registers && !wrap) {
+              lines.push(`unsigned ${call}(unsigned r0, unsigned r1, unsigned r2, unsigned r3) { (void)r0; (void)r1; (void)r2; (void)r3; return (unsigned)(${registers.expression}); }`);
+              continue;
+            }
             if (wrap) {
               lines.push(wrap({ ...each, name: twin, params, returns, call, file: placeOf(file) }));
               continue;
@@ -717,7 +733,7 @@ function throughSteps(value, steps) {
 // the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
 // give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-export function sourceFor(held, bytes, now, steps, wanted, other) {
+export function sourceFor(held, bytes, now, steps, wanted, other, seen = []) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
@@ -732,6 +748,9 @@ export function sourceFor(held, bytes, now, steps, wanted, other) {
     }
     return null;
   }
+  // a word the game itself kept there in a memory of play, as a pointer to one of its own things, which no number
+  // near another is: a pointer compared with 0 is then used (#1709)
+  for (const value of seen) if (value !== held && wanted(throughSteps(read(value), steps))) return value >>> 0;
   // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
   if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
   let sign = 1, added = 0;
@@ -748,7 +767,7 @@ const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, othe
 
 // The call a witness was, with one value a comparison read changed so that the branch goes the way `wanted` says:
 // an argument, or what came from the image. Null when it can't be had that way.
-function withValue(witness, origin, now, wanted, other) {
+function withValue(witness, origin, now, wanted, other, seenAt = () => []) {
   if (origin.kind === 2) {
     if (origin.where >= witness.args.length) return null;
     const value = sourceFor(witness.args[origin.where], 4, now, origin.steps, wanted, other);
@@ -760,7 +779,7 @@ function withValue(witness, origin, now, wanted, other) {
   if (origin.kind !== 1 || ![1, 2, 4].includes(origin.bytes) || inImage(origin.where) < 0) return null;
   const { where: address, bytes } = origin;
   const set = witness.changed.find(([at, size]) => at === address && size === bytes);
-  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other);
+  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other, bytes === 4 ? seenAt(address) : []);
   if (value === null) return null;
   return { args: witness.args, changed: [...witness.changed.filter(([at]) => at !== address), [address, bytes, value]] };
 }
@@ -768,7 +787,7 @@ function withValue(witness, origin, now, wanted, other) {
 // A call aimed at one of a function's branches its calls haven't taken both ways: a call that made the comparison
 // before it, again, with one of the two values it compared changed so that the branch goes the other way. Null when
 // there's none to aim at, or no value found does it.
-function aimed(f, choose) {
+function aimed(f, choose, seenAt = () => []) {
   // the calls that made the comparison just before a branch: at most four instructions before it, the nearest first
   const witnessesOf = branch => {
     for (let pc = branch.where - 2; pc >= branch.where - 8; pc -= 2) if (f.aim.witnesses.get(pc)?.length) return f.aim.witnesses.get(pc);
@@ -783,7 +802,7 @@ function aimed(f, choose) {
     if (!origin.kind) continue;
     const now = side ? compare.b : compare.a;
     const wanted = value => holds(branch.cond, side ? compare.a : value, side ? value : compare.b, compare.test) === branch.taken;
-    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b);
+    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b, seenAt);
     if (call) return { ...call, witness };
   }
   return null;
@@ -850,7 +869,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     f.tried++;
     since++;
     // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
-    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose) : null;
+    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose, address => memories?.heldAt?.(address) ?? []) : null;
     if (aim) {
       mirror = Buffer.from(aim.witness.start);
       await original.set(mirror);
@@ -909,7 +928,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0 });
     if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
@@ -1096,7 +1115,7 @@ export function outcome(f, { calls, seconds }) {
   const byte = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
   const hardware = f.result?.hardware ? ` The original used the hardware's register at ${at(f.result.hardware)} in this call, which a twin has to do through the kit.` : '';
   if (f.result?.kind === 'differs') {
-    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}` : null;
+    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}${f.registers ? ` in r${f.registers.gives}, as its comment's ${f.registers.text} works it out` : ''}` : null;
     const memory = f.result.memory ? `at ${at(f.result.memory.address)}, in ${f.result.memory.name}, the twin left ${byte(f.result.memory.ours)} and the original ${byte(f.result.memory.theirs)}` : null;
     return { kind: 'differs', line: `${callText(f.name, f.result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }

@@ -18,15 +18,16 @@ name: Check
 # npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
 # npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
 # and reads the program a ninth gives the sound processor, npm run test:snes-twin, which checks its twins against it,
+# npm run test:snes-kit, which proves the Super Nintendo's kit in C against Snes9x with programs of the project's own,
 # npm run test:n64-call and test:n64-twin, which run the functions of an eighth in Parallel N64's own processor and
 # check its twins against them, and npm run test:n64-match, which builds IDO from its translation's source and tries
 # match on the Nintendo 64 with a tenth, and npm run test:n64-kit, which proves the Nintendo 64's kit in C against
 # Parallel N64 with an eleventh, its RSP's microcodes and every sum of its vector unit among it. A pull request's code
 # runs here, with a token that can only read and no secrets.
 #
-# The tests run in five jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695). The
-# check main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only
-# when all five have.
+# The tests run in nine jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695,
+# #1742, #1744), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and
+# the first-entry bot read, is the last job, Check, which passes only when all nine have.
 on:
   pull_request:
 
@@ -50,9 +51,8 @@ jobs:
               npm run build
               npm run test:game
               npm run test:n64-kit
-          # the kits and the consoles' emulators; the Super Nintendo's processor running one function at a time, its
-          # emulator saying what ran for the code map, and its function check; and the Nintendo 64's function check,
-          # here as the functions job is near its time
+          # the kits and the consoles' emulators, and the Nintendo 64's function check, here as the functions job is near
+          # its time
           - part: consoles
             run: |
               npm run test:c-kit
@@ -61,16 +61,23 @@ jobs:
               npm run test:ps1-kit
               npm run test:ps1-memories
               npm run test:n64-twin
+          # the Super Nintendo: its processor running one function at a time, its emulator saying what ran for the code
+          # map, its function check, and the first half of its kit's programs, proven against Snes9x
+          - part: snes
+            run: |
               npm run test:snes-call
               npm run test:real-snes
               npm run test:snes-twin
+              npm run test:snes-kit -- --half 1
+          # the second half of the Super Nintendo kit's programs, beside the first
+          - part: snes kit
+            run: npm run test:snes-kit -- --half 2
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
           # program of the project's own as a cartridge and as a Dreamport from the same C, and has prove find every
           # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
-          # the project's own, found in a second made-up program by its short hash and proven there, and a PlayStation one,
-          # found in a second program by building it with GCC 2.7.2 and by its short hash; and the GBA kit's
+          # the project's own, found in a second made-up program by its short hash and proven there; and the GBA kit's
           # clock, measured against mGBA an instruction at a time on a made-up program's power-on; and the console's
           # stack in a Dreamport, which has to leave the same words as mGBA where a later function reads them unset;
           # and the kit as the sound hardware of a game that runs the sound engine itself
@@ -83,13 +90,18 @@ jobs:
               npm run test:match
               npm run test:rebuild
               npm run test:nes-twin
+              npm run test:n64-call
+              npm run test:same-memory
+              npm run test:nes-libraries
+          # the PlayStation's function check, its compiler and match, and a PlayStation library of the project's own,
+          # found in a second program by building it with GCC 2.7.2 and by its short hash; they took half of the part
+          # above when they ran in it, close to the 15-minute limit (#1742)
+          - part: ps1
+            run: |
               npm run test:ps1-call
               npm run test:ps1-twin
               npm run test:ps1-gcc
               npm run test:ps1-match
-              npm run test:n64-call
-              npm run test:same-memory
-              npm run test:nes-libraries
               npm run test:ps1-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
           # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
@@ -113,7 +125,11 @@ jobs:
               npm run test:ps2-match
               npm run test:ps2-call
               npm run test:ps2-twin
-              npm run test:ps2-twin-programs
+          # the PlayStation 2's function check on the programs a disc has beside the one it boots, an IOP module, a second
+          # program for the EE and vector unit 1's programs, in a job of its own as with it the part above took 8 to 12 of
+          # its 15 minutes (#1744); it builds Play!'s processors and Sony's compiler again for itself
+          - part: ps2 programs
+            run: npm run test:ps2-twin-programs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,7 +152,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: All four parts passed
+      - name: Every part passed
         env:
           RESULT: ${{ needs.tests.result }}
         run: |
