@@ -14,6 +14,7 @@ enum which { FIRST, SECOND, THIRD };
 extern const unsigned values[];
 extern unsigned char buffer[];
 extern int (*const functions[])(int);
+extern unsigned mode;
 
 /** 0x00100094: the sum of two numbers */
 int sum(int a, int b) {
@@ -97,6 +98,11 @@ int shine(int a) {
 /** 0x001001F0: ten numbers' sum, the last two on the stack */
 int ten(int a, int b, int c, int d, int e, int f, int g, int h, int i, int j) {
   return a + b + c + d + e + f + g + h + i + j;
+}
+
+/** 0x00100220: one more when the game is in the mode only play puts it in */
+int moded(int a) {
+  return mode == 0x1234ABCD ? a + 1 : a;
 }
 
 /** 0x0010001C: the rest, one after another, and the first of the table through its pointer */
