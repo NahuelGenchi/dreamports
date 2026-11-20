@@ -70,7 +70,7 @@ test('the program\'s bytes are where it runs, and a disc\'s sectors that hold an
   const read = programReader(elf);
   assert.equal(Buffer.from(read(LOAD_AT, 4)).readUInt32LE(), elf.readUInt32LE(elf.readUInt32LE(elf.readUInt32LE(28) + 4)), 'the first word of the program where it\'s loaded');
   assert.equal(read(0x01000000, 4).length, 0, 'nothing outside its segments');
-  const work = join(LOCAL, 'test-ps2-ledger-unit');
+  const work = join(LOCAL, `test-ps2-ledger-unit-${process.pid}`);
   mkdirSync(work, { recursive: true });
   try {
     const { disc, sectors } = madeUpPs2Iso({ 'SYSTEM.CNF': systemCnf('MADE_UP.ELF'), 'MADE_UP.ELF': elf, 'ZEROS.BIN': Buffer.alloc(2 * SECTOR), 'DATA.BIN': Buffer.alloc(SECTOR, 1).fill(2, 10) });
@@ -125,8 +125,23 @@ test('what a run says counts for the function whose bytes are what ran: the EE\'
   assert.equal(set.reduce((sum, byte) => sum + [...byte.toString(2)].filter(bit => bit === '1').length, 0), 5, 'and nothing else, the module\'s least of all');
 });
 
+test('what the IOP ran counts for the module loaded there at that moment, wherever the IOP put it', () => {
+  // a module with two functions, from 0, as the code map lists them, loaded at 0x12700 in frame 3 and again, higher,
+  // in frame 40, and another module's bytes, which the code map doesn't have, loaded over the first place in frame 50
+  const codeMap = { console: 'ps2', functions: [{ key: 'start', address: 0, size: 16, program: 'MADE_UP.IRX' }, { key: 'helper', address: 16, size: 8, program: 'MADE_UP.IRX' }] };
+  const cartridge = { code: () => ({ kind: 'iop', bytes: new Uint8Array(16) }), modules: () => new Map([[0xABCD1234, { program: 'MADE_UP.IRX', textAt: 0x20, load: 0 }]]) };
+  const loads = [{ frame: 3, base: 0x12700, end: 0x12800, hash: 0xABCD1234 }, { frame: 40, base: 0x20000, end: 0x20100, hash: 0xABCD1234 }, { frame: 50, base: 0x12700, end: 0x12800, hash: 0x11111111 }];
+  const find = finderOf(codeMap, cartridge, new Map(), loads);
+  assert.deepEqual(find(0x12720, 0, 1, 3), [0, 0], 'its code starts 0x20 into what the IOP loaded');
+  assert.deepEqual(find(0x12734, 0x0C001234, 1, 10), [1, 4], 'whatever the word, as the loader changes one that holds an address');
+  assert.equal(find(0x12720, 0, 1, 2), null, 'not before it was loaded');
+  assert.deepEqual(find(0x20028, 0, 1, 45), [0, 8], 'and where it was loaded again');
+  assert.equal(find(0x12720, 0, 1, 60), null, 'not once another module is there');
+  assert.equal(find(0x12710, 0, 1, 10), null, 'nor before its code, among what else the IOP loaded of it');
+});
+
 test('every piece of code on a disc is read as what it is: its programs, its modules and its vector unit programs', async () => {
-  const work = join(LOCAL, 'test-ps2-ledger-code');
+  const work = join(LOCAL, `test-ps2-ledger-code-${process.pid}`);
   mkdirSync(work, { recursive: true });
   try {
     const made = wholeDisc(), path = join(work, 'made-up.iso');
