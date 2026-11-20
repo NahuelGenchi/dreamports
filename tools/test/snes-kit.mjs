@@ -18,7 +18,9 @@
 // windows and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and
 // below. The high-resolution program goes through modes 5 and 6, pseudo high resolution and interlace, the sprites'
 // too, with mosaic, windows and colour maths, from the top and switched on at line 100, at the four sizes Snes9x
-// shows them, 256 or 512 across and 224 or 448 down. The music program sends the sound processor a program with its
+// shows them, 256 or 512 across and 224 or 448 down. The status program reads back the counters, both status bytes,
+// the sprites' table, video memory and the colours, and shows them; writes to video memory at line 100, which Snes9x
+// drops; and goes through mosaic on backgrounds with offsets, and overscan, turned on in V-blank. The music program sends the sound processor a program with its
 // samples through the console's start-up program, waits for its first answer, and gives it the frame's count each
 // frame; that program plays three voices through the sound chip, with envelopes, BRR's filters, a bent pitch,
 // noise and the echo, and changes them as its timer counts.
@@ -29,7 +31,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { COLOUR, HDMA, HIRES, madeUpColourCartridge, madeUpHdmaCartridge, madeUpHiresCartridge, madeUpMode7Cartridge, madeUpRasterCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, RASTER, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, HDMA, HIRES, STATUS, madeUpColourCartridge, madeUpHdmaCartridge, madeUpHiresCartridge, madeUpMode7Cartridge, madeUpRasterCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, madeUpStatusCartridge, MODE7, MODES, MUSIC, PICTURE, RASTER, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -112,6 +114,20 @@ const PROGRAMS = [
       [[['snes_write(0x2133, snes_bus(', 'snes_write(0x2133, 0xFE & snes_bus(']], 'no interlace', 160],
       [[['snes_write(0x2133, snes_bus(', 'snes_write(0x2133, 0xFD & snes_bus(']], 'the sprites not interlaced', 224],
       [[['snes_write(0x2133, IRQ_SETINI);', 'snes_write(0x2133, (uint8_t)(IRQ_SETINI & 0xFE));']], 'no interlace from line 100', 176],
+    ],
+  },
+  {
+    // the picture unit's status read back, mosaic on backgrounds with offsets, overscan, and video memory written while
+    // the screen's lines are drawn
+    name: 'status', game: 'test-snes-kit-status', title: 'DREAMPORTS STATUS', cartridge: madeUpStatusCartridge, data: STATUS, file: 'status.c', screen: [[256, 224], [512, 224], [512, 448]],
+    wrongs: [
+      [[['snes_write(0x2112, from_frame_2(snes_read(0x213E)));', 'snes_write(0x2112, (uint8_t)(from_frame_2(snes_read(0x213E)) & 0x3F));']], 'the sprites\' flags left out of the first status byte', 2],
+      [[['snes_write(0x2121, low);', 'snes_write(0x2121, (uint8_t)(low - 1));']], 'the colour before read back'],
+      [[['snes_write(0x2102, (uint8_t)(low & 0x3F));', 'snes_write(0x2102, (uint8_t)((low + 1) & 0x3F));']], 'the next sprite read back'],
+      [[['  snes_write(0x2116, 0xC2);\n', '  snes_write(0x2100, 0x80);\n  snes_write(0x2116, 0xC2);\n'], ['  snes_write(0x2119, 0x1C);\n', '  snes_write(0x2119, 0x1C);\n  snes_write(0x2100, 0x0F);\n']], 'the IRQ\'s tile written with the screen off', 1],
+      [[['snes_write(0x2106, snes_bus(', 'snes_write(0x2106, 0xFE & snes_bus(']], 'no mosaic on BG1, whose offsets mode 2 has', 32],
+      [[['snes_write(0x2111, (uint8_t)(frame >> 6 & 0x03));', 'snes_write(0x2111, 0x00);']], 'BG3 never past 255 across', 64],
+      [[['snes_write(0x2133, snes_bus(', 'snes_write(0x2133, 0xFB & snes_bus(']], 'no overscan', 129],
     ],
   },
   {
