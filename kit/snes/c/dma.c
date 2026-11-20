@@ -156,3 +156,8 @@ void hdma_lines_written(int c, uint8_t value) {
     hdma[c].repeat = !!(value & 0x80);
   }
 }
+
+void hdma_enable_written(uint8_t value) {
+  // as Snes9x has it, the channels written run on from where each is, all but those whose tables have ended
+  hdma_running = (uint8_t)(value & ~hdma_ended);
+}
