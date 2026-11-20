@@ -38,6 +38,8 @@ static struct ARMMemory memory;
 
 // the code the clock reads: the cartridge's, or what the program copied to memory
 uint16_t check_code(uint32_t at) { return (uint16_t) core->rawRead16(core, at, -1); }
+// and the words a sound's DMA reads, for its FIFO
+uint32_t check_data(uint32_t at) { return (uint32_t) core->rawRead32(core, at, -1); }
 
 // what the instruction running reached: each address, and the registers it wrote with their values
 #define MOST 64
