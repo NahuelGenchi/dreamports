@@ -35,6 +35,10 @@ export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
 // and the number it loads beside them
 export const TURN = { Turn: 0x08000900 };
 export const TURN_LENGTH = 16;
+// a Thumb start that goes on into ARM code, as a library's veneer does, with its ARM part an entry of its own as a code
+// map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
+export const TWICE = { Twice: 0x08000A80 };
+export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x08000A84, size: 24 }];
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -57,6 +61,15 @@ export function withTurn(rom) {
   const turned = Buffer.from(rom);
   [0xE59F1008, 0xE5912000, 0xE5812002, 0xE12FFF1E, NAMED.get('gFrame') + 2].forEach((word, i) => turned.writeUInt32LE(word, TURN.Turn - CARTRIDGE + 4 * i));
   return turned;
+}
+
+export function withTwice(rom) {
+  const twice = Buffer.from(rom);
+  // add r2, pc, #0 and bx r2: on into the ARM code after it
+  twice.writeUInt32LE(0x4710A200, TWICE.Twice - CARTRIDGE);
+  // ldr r1, [pc, #12], ldr r2, [r1, #4], lsl r2, r2, #1, str r2, [r1, #8], bx lr, and gFrame
+  [0xE59F100C, 0xE5912004, 0xE1A02082, 0xE5812008, 0xE12FFF1E, NAMED.get('gFrame')].forEach((word, i) => twice.writeUInt32LE(word, TWICE.Twice + 4 - CARTRIDGE + 4 * i));
+  return twice;
 }
 
 export function withVideo(rom, assembly) {

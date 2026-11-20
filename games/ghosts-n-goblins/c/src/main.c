@@ -8,7 +8,8 @@
 // for it in work memory, the scroll, the buttons and the sound.
 //
 // Here a task is a function that runs one turn and returns how it waits. What a task's stack held between turns is the
-// step it's at (task_step), and nothing of the stacks themselves is kept in work memory.
+// step it's at (task_step), and nothing of the stacks themselves is kept in work memory, but the return addresses a
+// routine whose original can read its own stack writes where the original's calls push them (call_pushes, game.h).
 
 #include "game.h"
 
