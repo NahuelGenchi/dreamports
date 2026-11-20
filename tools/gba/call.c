@@ -484,7 +484,8 @@ static void out32(uint32_t value) {
 	uint8_t b[4] = { value & 0xFF, value >> 8 & 0xFF, value >> 16 & 0xFF, value >> 24 };
 	out(b, 4);
 }
-static void send(void) {
+// sends the reply to the tools; not named send, as Windows declares one in winsock2.h, which mGBA's headers include there
+static void answer(void) {
 	fwrite(reply, 1, replied, stdout);
 	fflush(stdout);
 	replied = 0;
@@ -660,7 +661,7 @@ static void call(void* state) {
 	for (size_t i = 0; ended == CAME_BACK && i < ranCount; i++) { out32(own + ranAt[i] * 2); out32(ran[ranAt[i]]); }
 	out32(ended == CAME_BACK ? (uint32_t) aimCount : 0);
 	for (size_t i = 0; ended == CAME_BACK && i < aimCount; i++) for (int w = 0; w < AIM_WORDS; w++) out32(aims[i][w]);
-	send();
+	answer();
 }
 
 // the processor's reads and writes come through here, to see what a call does
@@ -707,7 +708,7 @@ static void watchFunctions(void) {
 		}
 	}
 	out32(0);
-	send();
+	answer();
 }
 
 static void play(void) {
@@ -754,7 +755,7 @@ static void play(void) {
 					out32((uint32_t) cpu->gprs[ARM_SP]);
 					takeImage(after);
 					out(after, IMAGE);
-					send();
+					answer();
 				}
 				break;
 			}
@@ -765,7 +766,7 @@ static void play(void) {
 	free(sets);
 	out32(0xFFFFFFFFu);
 	out32(frames);
-	send();
+	answer();
 }
 
 int main(int argc, char** argv) {
@@ -799,39 +800,39 @@ int main(int argc, char** argv) {
 		if (command == 'f') {
 			for (uint32_t frames = in32(); frames; frames--) core->runFrame(core);
 			out32(0);
-			send();
+			answer();
 		} else if (command == 'i') {
 			out32(stackTop(state));
 			out32(romSize);
-			send();
+			answer();
 		} else if (command == 'r') {
 			// the hardware's registers as the console has them now, as the calls start from them: each halfword at its
 			// distance from 0x04000000, as a version that keeps them itself has them (#1527)
 			out(gba->memory.io, sizeof gba->memory.io);
-			send();
+			answer();
 		} else if (command == 'm') {
 			takeImage(after);
 			out(after, IMAGE);
-			send();
+			answer();
 		} else if (command == 's') {
 			if (fread(after, 1, IMAGE, stdin) != IMAGE) return 1;
 			giveImage(after);
 			out32(0);
-			send();
+			answer();
 		} else if (command == 'u') {
 			giveImage(undo);
 			out32(0);
-			send();
+			answer();
 		} else if (command == 'a') {
 			followUnaligned = in32() != 0;
 			out32(0);
-			send();
+			answer();
 		} else if (command == 'c') {
 			call(state);
 		} else if (command == 't') {
 			askedTop = in32() & ~3u;
 			out32(0);
-			send();
+			answer();
 		} else if (command == 'w') {
 			watchFunctions();
 		} else if (command == 'p') {
