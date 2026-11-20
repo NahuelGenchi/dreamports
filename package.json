@@ -41,6 +41,7 @@
     "test:ps1-twin": "node tools/test/ps1-twin.mjs",
     "test:snes-call": "node tools/test/snes-call.mjs",
     "test:real-snes": "node tools/test/real-snes.mjs",
+    "test:snes-twin": "node tools/test/snes-twin.mjs",
     "test:ps1-gcc": "node tools/test/ps1-gcc.mjs",
     "test:ps2-gcc": "node tools/test/ps2-gcc.mjs",
     "test:ps2-match": "node tools/test/ps2-match.mjs",
