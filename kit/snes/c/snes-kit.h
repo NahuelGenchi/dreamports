@@ -16,8 +16,10 @@ void ppu_power(void);
 void ppu_write(uint16_t address, uint8_t value);
 /** A read of $2134 to $2136, mode 7's product of its matrix's A and B's top byte. */
 uint8_t ppu_read(uint16_t address);
-/** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
-void ppu_frame(uint32_t *out);
+/** Draws the frame's lines, as the registers are, into the picture Snes9x keeps from frame to frame. */
+void ppu_frame(void);
+/** The frame as shown: its words, `width` by `height`, 512 words to a row, as the page shows them. */
+uint32_t *ppu_picture(int *width, int *height);
 /** What the console does to the picture unit as V-blank starts, after the frame's last line. */
 void ppu_vblank(void);
 

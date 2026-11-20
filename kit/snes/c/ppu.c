@@ -1,14 +1,16 @@
 // The Super Nintendo's picture unit, as kit/snes/c/snes.h says: its registers, its memories, and a frame drawn from
 // them, a line at a time, as the console draws it. So far: the screen on and off and its brightness ($2100), the
-// sprites, with their table through its port ($2101 to $2104), the backgrounds of modes 0 to 4, of 8 or 16 pixels a
+// sprites, with their table through its port ($2101 to $2104), the backgrounds of modes 0 to 6, of 8 or 16 pixels a
 // tile and 2, 4 or 8 bits, with their maps, tiles, scrolling, mosaic, offsets for each column and direct colours
 // ($2105 to $2114), mode 7 with its matrix, flips, ways outside its field and second background ($211A to $2120,
-// $2133) and its product read back ($2134 to $2136), video memory through its port ($2115 to $2119), the
-// colours through theirs ($2121, $2122), a frame drawn a line at a time with HDMA between them (dma.c), the two windows ($2123 to $212B), which layers the main and sub screens show
-// and hide in their windows ($212C to $212F), and colour maths with the sub screen or the fixed colour ($2130 to
-// $2132). The brightness is each colour's 5 bits times the brightness over 15, rounded, as Snes9x, the reference the
-// proof tools run the original on, has it, its maths is Snes9x's on its 16-bit pixels, and a line's sprites are its
-// first 32 and, of their tiles, the last 34, as Snes9x has them too.
+// $2133) and its product read back ($2134 to $2136), video memory through its port ($2115 to $2119), the colours
+// through theirs ($2121, $2122), a frame drawn a line at a time with HDMA between them (dma.c), the two windows ($2123
+// to $212B), which layers the main and sub screens show and hide in their windows ($212C to $212F), colour maths with
+// the sub screen or the fixed colour ($2130 to $2132), and high resolution, pseudo or in modes 5 and 6, and interlace,
+// the sprites' too ($2133), the frame 512 across and 448 down when they say. The brightness is each colour's 5 bits
+// times the brightness over 15, rounded, as Snes9x, the reference the proof tools run the original on, has it, its
+// maths is Snes9x's on its 16-bit pixels, and a line's sprites are its first 32 and, of their tiles, the last 34, as
+// Snes9x has them too.
 
 #include "snes-kit.h"
 
@@ -63,6 +65,17 @@ static struct line_state {
   uint16_t hofs[4], vofs[4];
   int16_t m7[4], m7_x, m7_y, m7_hofs, m7_vofs;
 } lines[SNES_HEIGHT];
+// The picture as Snes9x keeps it: one buffer of rows that lasts from frame to frame, 512 pixels across, a frame's row
+// at its own row, or in an interlaced frame at twice its row and one more in the odd field, so an interlaced frame
+// shows its field's rows among the last field's. Whether the frame is 512 across, from the line it starts or the first
+// high-resolution row, and 448 down; how many frames are left of interlacing's pair, the field, which goes over every
+// frame; the size the frame is shown at; and $2133 as Snes9x last took it: interlace, sprites interlaced, and pseudo
+// high resolution.
+enum { BUFFER_ROWS = 239 * 2, BUFFER_WIDTH = 512 };
+static uint32_t picture[BUFFER_ROWS][BUFFER_WIDTH];
+static int wide, tall, interlacing, field, shown_width = SNES_WIDTH, shown_height = SNES_HEIGHT;
+static int interlace, interlace_sprites, pseudo_hires;
+
 // a write that ends Snes9x's stretch of lines before it, during the frame's lines
 static void ends_stretch(void) {
   if (drawing) stretch_start = rows_drawn;
@@ -72,6 +85,9 @@ void ppu_power(void) {
   ppu = (struct ppu_state){ 0 };
   fixed_pixel = 0;
   mosaic_start = stretch_start = rows_drawn = drawing = 0;
+  wide = tall = interlacing = field = interlace = interlace_sprites = pseudo_hires = 0;
+  shown_width = SNES_WIDTH;
+  shown_height = SNES_HEIGHT;
   for (int i = 0; i < 0x34; i++) written[i] = 0;
   ppu.screen = 0x80;
   for (int i = 0; i < 0x10000; i++) snes_vram[i] = 0;
@@ -173,7 +189,15 @@ void ppu_write(uint16_t address, uint8_t value) {
     ppu.m7_latch = value;
     break;
   }
-  case 0x2133: ppu.setini = value; break;
+  case 0x2133:
+    ppu.setini = value;
+    if ((before ^ value) & 0x08) pseudo_hires = value & 0x08;
+    if ((before ^ value) & 0x03) {
+      if ((before ^ value) & 0x02) sprites_changed = 1;
+      interlace = value & 0x01;
+      interlace_sprites = value & 0x02;
+    }
+    break;
   case 0x210D: case 0x210F: case 0x2111: case 0x2113: {
     // across: the byte, the shared one's top five bits and the low three of this one's high byte, as the console has it
     int n = (address - 0x210D) >> 1;
@@ -254,20 +278,30 @@ static uint16_t vram_word(uint32_t at) {
 }
 
 /** A background's tile's colour at (hpos, row) of its map, as tiles of `bpp` bits: its number in the tile, 0 where it
- *  shows nothing, with the map's entry for the tile in `entry`. Its tiles are 16 pixels a side where $2105 says. */
-static int bg_colour(int n, int bpp, uint32_t hpos, uint32_t row, uint16_t *entry) {
-  int big = ppu.mode >> (4 + n) & 1, size = big ? 16 : 8;
+ *  shows nothing, with the map's entry for the tile in `entry`. Its tiles are 16 pixels a side where $2105 says. In
+ *  modes 5 and 6 a map's entry is 8 of the screen's pixels across and 16 of its high-resolution ones, two tiles side by
+ *  side, and `half` says which of each pixel's two high-resolution ones, 0 the even and 1 the odd, or -1 elsewhere. */
+static int bg_colour(int n, int bpp, uint32_t hpos, uint32_t row, int half, uint16_t *entry) {
+  int big = ppu.mode >> (4 + n) & 1, size = big ? 16 : 8, across = half >= 0 ? 8 : size;
   int sx = (int)(hpos & 0x3FF), sy = (int)(row & 0x3FF);
-  int tx = sx / size, ty = sy / size;
+  int tx = sx / across, ty = sy / size;
   uint32_t at = ppu.map[n] + ((ty & 31) << 5) + (tx & 31);
   if ((tx & 32) && (ppu.map_size[n] & 1)) at += 0x400;
   if ((ty & 32) && (ppu.map_size[n] & 2)) at += ppu.map_size[n] == 3 ? 0x800 : 0x400;
   *entry = vram_word(at);
-  int px = sx % size, py = sy % size;
-  if (*entry & 0x4000) px = size - 1 - px;
+  int px = sx % across, py = sy % size;
   if (*entry & 0x8000) py = size - 1 - py;
   int tile = *entry & 0x3FF;
-  if (big) tile += (px >> 3) + ((py >> 3) << 4);
+  if (half >= 0) {
+    // the high-resolution pixel of the two tiles' 16, turned round with the tile
+    px = px * 2 + half;
+    if (*entry & 0x4000) px = 15 - px;
+    tile += px >> 3;
+  } else {
+    if (*entry & 0x4000) px = size - 1 - px;
+    if (big) tile += px >> 3;
+  }
+  if (big) tile += (py >> 3) << 4;
   px &= 7;
   py &= 7;
   uint32_t line = ppu.tiles[n] + (uint32_t)(tile & 0x3FF) * (uint32_t)(bpp * 4) + (uint32_t)py;
@@ -319,7 +353,8 @@ static void obj_setup(void) {
     else obj_visible[s] = (uint8_t)(width >> 3);
     int vflip = snes_oam[s * 4 + 3] >> 7;
     uint8_t y = snes_oam[s * 4 + 1];
-    for (int line = 0; line < height; line++, y++) {
+    // with $2133's bit 1, every other line of the sprite, from the field's, as Snes9x has it
+    for (int line = interlace_sprites ? field : 0; line < height; line += interlace_sprites ? 2 : 1, y++) {
       if (y >= OBJ_LINES) continue;
       int within = vflip ? line ^ (width - 1) : line;
       if (per_line) {
@@ -580,13 +615,15 @@ static void compute_spans(void) {
 // Each mode's backgrounds: how many bits their tiles have, and the depths of their two priorities, as Snes9x orders
 // layers: a sprite at 4, 8, 12 or 16 by its priority, and a background at the depth of its priority; 0 where a mode
 // has no such background.
-static const uint8_t BPP[5][4] = { { 2, 2, 2, 2 }, { 4, 4, 2, 0 }, { 4, 4, 0, 0 }, { 8, 4, 0, 0 }, { 8, 2, 0, 0 } };
-static const int8_t DEPTHS[5][4][2] = {
+static const uint8_t BPP[7][4] = { { 2, 2, 2, 2 }, { 4, 4, 2, 0 }, { 4, 4, 0, 0 }, { 8, 4, 0, 0 }, { 8, 2, 0, 0 }, { 4, 2, 0, 0 }, { 4, 0, 0, 0 } };
+static const int8_t DEPTHS[7][4][2] = {
   { { 11, 15 }, { 10, 14 }, { 3, 7 }, { 2, 6 } },
   { { 11, 15 }, { 10, 14 }, { 3, 7 }, { 0, 0 } },
   { { 7, 15 }, { 3, 11 }, { 0, 0 }, { 0, 0 } },
   { { 7, 15 }, { 3, 11 }, { 0, 0 }, { 0, 0 } },
   { { 7, 15 }, { 3, 11 }, { 0, 0 }, { 0, 0 } },
+  { { 7, 15 }, { 3, 11 }, { 0, 0 }, { 0, 0 } },
+  { { 7, 15 }, { 0, 0 }, { 0, 0 }, { 0, 0 } },
 };
 enum { BACKDROP = 5 };
 
@@ -610,9 +647,9 @@ static uint16_t bg_pixel(int bpp, int palettes, uint16_t entry, int colour, int 
 }
 
 // a background's pixel at screen x, from (hpos, row) of its map, into `into`, by the depth of its priority
-static void bg_put(int n, int mode, int x, uint32_t hpos, uint32_t row, int brightness, struct layer *into) {
+static void bg_put(int n, int mode, int x, uint32_t hpos, uint32_t row, int half, int brightness, struct layer *into) {
   uint16_t entry;
-  int bpp = BPP[mode][n], colour = bg_colour(n, bpp, hpos, row, &entry);
+  int bpp = BPP[mode][n], colour = bg_colour(n, bpp, hpos, row, half, &entry);
   if (!colour) return;
   int depth = DEPTHS[mode][n][entry >> 13 & 1];
   if (mode == 1 && n == 2 && (entry & 0x2000) && (ppu.mode & 0x0F) == 0x09) depth = 17;
@@ -624,11 +661,14 @@ static void bg_put(int n, int mode, int x, uint32_t hpos, uint32_t row, int brig
 // it: each column's scroll from BG3's map, of the row BG3's scroll down gives, the across offsets in that row and the
 // down ones in the next, or in mode 4 one word for either, by its top bit; and none for the leftmost column. `v_row` is
 // 8 in mode 2, where the down offsets are a row on.
-static void bg_offsets(int n, int mode, int y, const struct spans *c, int v_row, int brightness, struct layer *into) {
+static void bg_offsets(int n, int mode, int y, const struct spans *c, int v_row, int half, int interlaced, int brightness, struct layer *into) {
   uint32_t base = ppu.map[2], size = ppu.map_size[2];
   uint32_t p0 = base, p1 = size & 1 ? p0 + 1024 : p0, p2 = size & 2 ? p1 + 1024 : p0, p3 = size & 1 ? p2 + 1024 : p2;
-  int big = ppu.mode >> 6 & 1, shift = big ? 4 : 3;
-  uint32_t mask = big ? 0x3FF : 0x1FF, own_mask = ppu.mode >> (4 + n) & 1 ? 0x3FF : 0x1FF;
+  // in high resolution the table's tiles and the background's own are 8 across, whatever $2105 says
+  int big = half < 0 && (ppu.mode >> 6 & 1), shift = ppu.mode >> 6 & 1 ? 4 : 3;
+  uint32_t mask = big ? 0x3FF : 0x1FF, own_mask = half < 0 && (ppu.mode >> (4 + n) & 1) ? 0x3FF : 0x1FF;
+  // the row down, in an interlaced frame twice the line and the field's
+  uint32_t row_y = interlaced ? (uint32_t)(2 * y + field) : (uint32_t)y;
   uint32_t voff = ppu.vofs[2], hoff = ppu.hofs[2];
   uint32_t h_row = voff >> shift, v_row_n = (voff + (uint32_t)v_row) >> shift;
   uint32_t s1 = (h_row & 0x20 ? p2 : p0) + ((h_row & 0x1F) << 5), s2 = (h_row & 0x20 ? p3 : p1) + ((h_row & 0x1F) << 5);
@@ -658,9 +698,10 @@ static void bg_offsets(int n, int mode, int y, const struct spans *c, int v_row,
         voffset = v_cell & enable ? v_cell + 1u : ppu.vofs[n] + 1u;
         hoffset = h_cell & enable ? (uint32_t)((h_cell & ~7) | (hscroll & 7)) : hscroll;
       }
+      if (interlaced) voffset++;
       uint32_t hpos = (hoffset + left) & own_mask, w = 8 - (hpos & 7);
       if (w > width) w = width;
-      for (uint32_t x = left; x < left + w; x++) bg_put(n, mode, (int)x, hoffset + x, voffset + (uint32_t)y, brightness, into);
+      for (uint32_t x = left; x < left + w; x++) bg_put(n, mode, (int)x, hoffset + x, voffset + row_y, half, brightness, into);
       left += w;
       width -= w;
     }
@@ -729,7 +770,9 @@ static void mode7_span(int n, int y, int left, int right, int brightness, struct
 // it be drawn
 static void draw_layers(int screen, int line, const uint8_t *obj_colours, const uint8_t *obj_priorities, int brightness, struct layer *layers) {
   int mode = ppu.mode & 7, shown = screen == MAIN ? ppu.main : ppu.sub, y = line - SNES_FIRST_LINE;
-  int mosaic = (ppu.mosaic >> 4) + 1;
+  int mosaic = (ppu.mosaic >> 4) + 1, hires = mode == 5 || mode == 6;
+  // Snes9x interlaces a frame's backgrounds when it's both interlaced and 512 across
+  int interlaced = interlace && wide;
   for (int n = 0; n < 5; n++) for (int x = 0; x < SNES_WIDTH; x++) layers[n].depth[x] = 0;
   if (shown & 0x10) {
     const struct spans *c = &spans[screen][4];
@@ -749,19 +792,21 @@ static void draw_layers(int screen, int line, const uint8_t *obj_colours, const 
     }
     return;
   }
-  if (mode > 4) return;
   for (int n = 0; n < 4; n++) {
     if (!(shown >> n & 1) || !BPP[mode][n]) continue;
     const struct spans *c = &spans[screen][n];
-    if (mode == 2 || mode == 4) {
-      bg_offsets(n, mode, y, c, mode == 2 ? 8 : 0, brightness, &layers[n]);
+    // in modes 5 and 6 the main screen shows each pixel's odd high-resolution half and the sub screen its even one; with
+    // the background's mosaic bit the main screen the even one too, as Snes9x has it
+    int half = hires ? (screen == SUB || (ppu.mosaic >> n & 1) ? 0 : 1) : -1;
+    if (mode == 2 || mode == 4 || mode == 6) {
+      bg_offsets(n, mode, y, c, mode == 4 ? 0 : 8, half, interlaced, brightness, &layers[n]);
       continue;
     }
     // With mosaic, each block of pixels as its top left one. As Snes9x draws it, in the background's first span the
     // blocks start down from the line mosaic was written on, each with the scroll of its first line or of the
     // stretch's first, whichever is later; in its other spans they start down from the stretch's first line, as Snes9x
     // starts them again there.
-    int blocky = (ppu.mosaic >> n & 1) && mosaic > 1;
+    int blocky = (ppu.mosaic >> n & 1) && (mosaic > 1 || hires);
     for (int k = 0; k < c->count; k++) {
       int from_y = y, scrolled_y = y;
       if (blocky) {
@@ -771,20 +816,27 @@ static void draw_layers(int screen, int line, const uint8_t *obj_colours, const 
         scrolled_y = from_y > stretch_start || k ? from_y : stretch_start;
       }
       const struct line_state *at = &lines[scrolled_y];
+      // the row down: in an interlaced frame twice the line, and the field's but with mosaic, and one more
+      uint32_t row = interlaced ? (uint32_t)(2 * from_y + (blocky ? 0 : field) + SNES_FIRST_LINE + 1) : (uint32_t)(from_y + SNES_FIRST_LINE);
       for (int x = c->left[k]; x < c->right[k]; x++) {
         int from_x = blocky ? x - x % mosaic : x;
-        bg_put(n, mode, x, (uint32_t)(from_x + at->hofs[n]), (uint32_t)(from_y + SNES_FIRST_LINE + at->vofs[n]), brightness, &layers[n]);
+        bg_put(n, mode, x, (uint32_t)(from_x + at->hofs[n]), row + at->vofs[n], half, brightness, &layers[n]);
       }
     }
   }
 }
 
+// One row of the picture, `out`, 256 pixels across or 512. In a frame 512 across a row in low resolution is each
+// pixel twice, and a row in high resolution, modes 5 and 6 or pseudo high resolution, as Snes9x lays it: each pixel's
+// main screen colour in its odd column and in the next even one the sub screen's next pixel, with colour maths between
+// them the other way round, as Snes9x has it; the line's first column the sub screen's first.
 static void draw_line(uint32_t *out, int line) {
-  int brightness = ppu.screen & 15;
+  int brightness = ppu.screen & 15, mode = ppu.mode & 7, hires = mode == 5 || mode == 6 || pseudo_hires;
   uint8_t obj_colours[SNES_WIDTH], obj_priorities[SNES_WIDTH];
   if ((ppu.main | ppu.sub) & 0x10) obj_line(line - SNES_FIRST_LINE, obj_colours, obj_priorities);
-  // the sub screen is drawn only when maths can use it, as Snes9x has it: elsewhere maths uses the fixed colour
-  int sub_drawn = (ppu.colour_select & 0x30) != 0x30 && (ppu.colour_select & 2) && (ppu.colour_maths & 0x3F) && (ppu.sub & 0x1F);
+  // the sub screen is drawn when maths can use it or in high resolution, as Snes9x has it, its layers telling maths
+  // apart from its backdrop only when $2130 says maths uses it; elsewhere maths uses the fixed colour
+  int sub_drawn = hires || ((ppu.colour_select & 0x30) != 0x30 && (ppu.colour_select & 2) && (ppu.colour_maths & 0x3F) && (ppu.sub & 0x1F));
   static struct layer main[5], sub[5];
   draw_layers(MAIN, line, obj_colours, obj_priorities, brightness, main);
   if (sub_drawn) draw_layers(SUB, line, obj_colours, obj_priorities, brightness, sub);
@@ -793,8 +845,11 @@ static void draw_line(uint32_t *out, int line) {
   const struct spans *backdrop = &spans[MAIN][5];
   for (int k = 0; k < backdrop->count; k++) for (int x = backdrop->left[k]; x < backdrop->right[k]; x++) modes[x] = backdrop->mode[k];
   uint16_t backdrop_pixel = screen_colour(snes_cgram[0], brightness);
+  // each pixel's main screen colour as shown, its own colour, whether it's black and has maths, and the sub screen's
+  // colour and whether that's one of its layers for maths
+  static uint16_t shade[SNES_WIDTH], own[SNES_WIDTH], sub_shade[SNES_WIDTH];
+  static uint8_t black[SNES_WIDTH], maths[SNES_WIDTH], sub_layer[SNES_WIDTH];
   for (int x = 0; x < SNES_WIDTH; x++) {
-    // the layer in front on each screen
     int front = BACKDROP, sub_front = BACKDROP, depth = 0, sub_depth = 0;
     for (int n = 0; n < 5; n++) {
       if (main[n].depth[x] > depth) {
@@ -806,15 +861,32 @@ static void draw_line(uint32_t *out, int line) {
         sub_depth = sub[n].depth[x];
       }
     }
-    int black = !(modes[x] & 1);
-    uint16_t pixel = black ? 0 : front == BACKDROP ? backdrop_pixel : main[front].pixel[x];
+    black[x] = !(modes[x] & 1);
+    own[x] = front == BACKDROP ? backdrop_pixel : main[front].pixel[x];
     // maths for the layer's bit of $2131, the backdrop's bit 5, and of the sprites only those of palettes 4 to 7
-    int maths = (modes[x] & 2) && (ppu.colour_maths >> front & 1) && (front != 4 || obj_colours[x] >= 128 + 64);
-    if (maths) {
-      int sub_layer = sub_front != BACKDROP;
-      pixel = with_maths(pixel, sub_layer ? sub[sub_front].pixel[x] : backdrop_pixel, sub_layer, black, brightness);
+    maths[x] = (modes[x] & 2) && (ppu.colour_maths >> front & 1) && (front != 4 || obj_colours[x] >= 128 + 64);
+    sub_shade[x] = sub_front != BACKDROP ? sub[sub_front].pixel[x] : backdrop_pixel;
+    sub_layer[x] = sub_drawn && (ppu.colour_select & 2) && sub_front != BACKDROP;
+    uint16_t pixel = black[x] ? 0 : own[x];
+    shade[x] = maths[x] ? with_maths(pixel, sub_shade[x], sub_layer[x], black[x], brightness) : pixel;
+  }
+  if (!wide) {
+    for (int x = 0; x < SNES_WIDTH; x++) out[x] = shown(shade[x]);
+    return;
+  }
+  for (int x = 0; x < SNES_WIDTH; x++) {
+    if (!hires) {
+      out[2 * x] = out[2 * x + 1] = shown(shade[x]);
+      continue;
     }
-    out[x] = shown(pixel);
+    out[2 * x + 1] = shown(shade[x]);
+    // the sub screen's pixel, black where the main one is, with the main screen's own colour for maths
+    for (int at = x == 0 ? 0 : 1; at <= 1; at++) {
+      int column = 2 * x + 2 * at, from = x + at;
+      if (column >= 2 * SNES_WIDTH) break;
+      uint16_t pixel = black[x] ? 0 : sub_shade[from];
+      out[column] = shown(maths[x] ? with_maths(pixel, own[x], sub_layer[x], black[x], brightness) : pixel);
+    }
   }
 }
 
@@ -845,7 +917,24 @@ static void fixed_colour(void) {
 // HDMA starts at line 0 and writes in each line's H-blank, from line 0 to 224, and what it writes shows from the next
 // line down, as does what the game's IRQ handler writes after the point where Snes9x draws the line before; the
 // sprites' lines are found again, and the windows' spans cut again, when their registers have changed.
-static uint32_t *frame_out;
+
+// the buffer's row for one of the frame's rows
+static uint32_t *buffer_row(int y) { return picture[tall ? 2 * y + (interlacing && field ? 1 : 0) : y]; }
+
+// the frame's size, as Snes9x chooses it as its rows start: 512 across in modes 5 and 6 or pseudo high resolution, and
+// 448 down when interlaced
+static void frame_size(void) {
+  int mode = ppu.mode & 7;
+  interlace = ppu.setini & 0x01;
+  interlace_sprites = ppu.setini & 0x02;
+  pseudo_hires = ppu.setini & 0x08;
+  wide = mode == 5 || mode == 6 || pseudo_hires;
+  shown_width = wide ? 2 * SNES_WIDTH : SNES_WIDTH;
+  tall = interlace;
+  shown_height = tall ? 2 * SNES_HEIGHT : SNES_HEIGHT;
+  if (interlace) interlacing++;
+}
+
 static void draw_row(int y) {
   if (!y || sprites_changed) obj_setup();
   if (!y || windows_changed) compute_spans();
@@ -861,19 +950,47 @@ static void draw_row(int y) {
   now->m7_hofs = ppu.m7_hofs;
   now->m7_vofs = ppu.m7_vofs;
   fixed_colour();
+  int mode = ppu.mode & 7;
+  if (!(ppu.screen & 0x80)) {
+    if (!wide && (mode == 5 || mode == 6 || pseudo_hires)) {
+      // high resolution partway down: the rows before, at the buffer's rows Snes9x widens, each pixel twice
+      for (int before = 0; before < stretch_start; before++) {
+        uint32_t *row = picture[tall ? 2 * before : before];
+        for (int x = SNES_WIDTH - 1; x >= 0; x--) row[2 * x] = row[2 * x + 1] = row[x];
+      }
+      wide = 1;
+      shown_width = 2 * SNES_WIDTH;
+    }
+    if (!tall && interlace && (mode == 5 || mode == 6)) {
+      // interlace partway down: the rows so far moved apart as Snes9x moves them, two at a time
+      tall = 1;
+      shown_height = 2 * SNES_HEIGHT;
+      interlacing = 2;
+      for (int before = stretch_start - 2; before >= 0; before--) {
+        for (int x = 0; x < BUFFER_WIDTH; x++) {
+          picture[2 * before + 2][x] = picture[before][x];
+          picture[2 * before + 3][x] = picture[before + 1][x];
+        }
+      }
+    }
+  }
+  uint32_t *out = buffer_row(y);
   if (ppu.screen & 0x80) {
-    for (int x = 0; x < SNES_WIDTH; x++) frame_out[y * SNES_WIDTH + x] = 0xFF000000u;
+    for (int x = 0; x < shown_width; x++) out[x] = 0xFF000000u;
   } else {
-    draw_line(frame_out + y * SNES_WIDTH, y + SNES_FIRST_LINE);
+    draw_line(out, y + SNES_FIRST_LINE);
   }
   rows_drawn = y + 1;
 }
 
-void ppu_frame(uint32_t *out) {
-  frame_out = out;
+void ppu_frame(void) {
+  // the field goes over as each frame starts
+  field ^= 1;
   for (int line = 0; line <= SNES_HEIGHT; line++) {
-    // the frame's rows start at line 1, with mosaic's blocks from the top, as Snes9x starts them
+    // the frame's rows start at line 1, with its size, and mosaic's blocks from the top, as Snes9x starts them
     if (line == SNES_FIRST_LINE) {
+      if (interlacing) interlacing--;
+      if (!interlacing || !field) frame_size();
       mosaic_start = stretch_start = rows_drawn = 0;
       drawing = 1;
     }
@@ -881,4 +998,10 @@ void ppu_frame(uint32_t *out) {
   }
   drawing = 0;
   timing_at(SNES_HEIGHT + SNES_FIRST_LINE, 0);
+}
+
+uint32_t *ppu_picture(int *width, int *height) {
+  *width = shown_width;
+  *height = shown_height;
+  return picture[0];
 }
