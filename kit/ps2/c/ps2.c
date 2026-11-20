@@ -45,6 +45,7 @@ EXPORT("dp_start") void dp_start(void) {
   iop_bios_power();
   pad_power();
   cdvd_power();
+  mc_power();
   spu2_list_start();
   game_start();
   // a game whose start waits for its disc goes on with it in the page's next call
@@ -99,6 +100,18 @@ EXPORT("dp_sound_heard_count") uint32_t dp_sound_heard_count(void) {
   uint32_t pairs;
   spu2_heard(&pairs);
   return pairs;
+}
+/** The memory cards, for the page to keep and the proof tools to compare with the original's (mc.c, kit/ps2/card.js):
+ *  how many times the game has changed them, and their bytes. */
+EXPORT("dp_memory_cards_changes") uint32_t dp_memory_cards_changes(void) { return mc_changes(); }
+EXPORT("dp_memory_cards") const uint8_t *dp_memory_cards(void) {
+  uint32_t size;
+  return mc_bytes(&size);
+}
+EXPORT("dp_memory_cards_size") uint32_t dp_memory_cards_size(void) {
+  uint32_t size;
+  mc_bytes(&size);
+  return size;
 }
 // The console's memory, for the proof tools to compare with the original's after every frame (tools/lib/memory.mjs): a
 // game that keeps its memory where the console keeps it, as one whose every function is a twin does, says where each

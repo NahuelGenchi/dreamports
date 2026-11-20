@@ -177,7 +177,9 @@ const NOTHING = new Uint8Array(0);
  * - 'vu' for a vector unit's program, with the bytes of its pairs and `vuAddress`, where the MPG command before them
  *   puts them in the unit's code memory, or null when no command is there.
  *
- * Once it has, loadedCopy gives it at once.
+ * `modules` maps what the emulator says of a module the IOP loaded, the FNV-1a hash of the bytes it loads, to
+ * { program, textAt, load }: the module's name in the code map, where its code starts in what's loaded, and the
+ * address the code map counts its functions from. Once it has, loadedCopy gives it at once.
  */
 export async function loadCopy(path) {
   const key = keyOf(path);
@@ -188,7 +190,9 @@ export async function loadCopy(path) {
     const s = sectionOf(boot, address);
     return s && address + count <= s.address + s.size ? boot.subarray(s.offset + address - s.address, s.offset + address - s.address + count) : read(address, count);
   };
-  const programs = new Map(code.programs.map(p => [p.path, p.kind === 'iop' ? { kind: 'iop', ...moduleCode(p.bytes) } : { kind: 'ee', read: programReader(p.bytes) }]));
+  const programs = new Map(code.programs.map(p => [p.path, p.kind === 'iop' ? { kind: 'iop', ...moduleCode(p.bytes), ...loadedOf(p.bytes) } : { kind: 'ee', read: programReader(p.bytes) }]));
+  // each module by the hash of what the IOP loads of it, which is how the emulator names the one it loaded
+  const modules = new Map([...programs].filter(([, p]) => p.kind === 'iop' && p.hash !== null).map(([path, p]) => [p.hash, { program: path, textAt: p.textAt, load: p.load }]));
   // the vector unit programs in the disc's other files, each read from its file with the command before it
   const inFiles = [];
   let cells = null;
@@ -236,9 +240,26 @@ export async function loadCopy(path) {
     if (program.kind === 'ee') return { kind: 'ee', bytes: program.read(f.address, f.size) };
     return { kind: 'iop', bytes: program.text.subarray(f.address - program.load, f.address - program.load + f.size) };
   };
-  const found = { program: boot, read, cells, codeOf };
+  const found = { program: boot, read, cells, codeOf, modules };
   loaded.set(key, found);
   return found;
+}
+
+// What the IOP loads of a module, its one loaded stretch as the file holds it: its hash, as the tools' change to Play!
+// makes it (play.patch, FNV-1a), and where the module's code starts in it. { hash: null } for a file with none
+function loadedOf(module) {
+  const none = { hash: null, textAt: 0 };
+  if (module.length < 52 || module.readUInt32BE(0) !== 0x7F454C46) return none;
+  for (let i = 0; i < module.readUInt16LE(44); i++) {
+    const o = module.readUInt32LE(28) + i * 32;
+    if (o + 32 > module.length || module.readUInt32LE(o) !== 1) continue;
+    const offset = module.readUInt32LE(o + 4), size = module.readUInt32LE(o + 16);
+    let hash = 0x811C9DC5;
+    for (let at = offset; at < offset + size && at < module.length; at++) hash = Math.imul(hash ^ module[at], 0x01000193);
+    const { text } = moduleCode(module);
+    return { hash: hash >>> 0, textAt: text.byteOffset - module.byteOffset - offset };
+  }
+  return none;
 }
 
 /** What loadCopy has read of a copy already, at once: it says so when nothing has. */
