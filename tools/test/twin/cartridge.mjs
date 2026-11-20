@@ -40,6 +40,10 @@ export const TURN_LENGTH = 16;
 // map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
 export const TWICE = { Twice: 0x08000A80 };
 export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x08000A84, size: 24 }];
+// a function that goes through a list of pointers to structs, empty in the memory it's called from, and the list, its
+// count and the total it adds to, in a file of their own (through.c)
+export const THROUGH = { Tally: 0x08000E00 };
+NAMED.set('gShapes', 0x030000A0).set('gShapeCount', 0x030000B0).set('gTotal', 0x030000B4);
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -136,6 +140,13 @@ export function withAimed(rom, assembly) {
   const aimed = Buffer.from(rom);
   place(aimed, assembly, AIMED);
   return aimed;
+}
+
+// The same cartridge with the function of twin/through.c, which goes through a list of pointers to structs.
+export function withThrough(rom, assembly) {
+  const through = Buffer.from(rom);
+  place(through, assembly, THROUGH);
+  return through;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of
