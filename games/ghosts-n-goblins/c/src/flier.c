@@ -39,21 +39,24 @@ int arthur_near(uint8_t object, uint8_t y) {
   return arthur_touches(object, y);
 }
 
-// sub_F585, with its call: the tests every enemy has, and a weapon that hits it stays as a spark, with its sound.
-uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched) {
+// sub_F585, with its call: the tests every enemy has, and a weapon that hits it stays as a spark, with its sound. The
+// original keeps the weapon in $A9 round the sound, so Y is still the weapon after it. `y` gets Y as it leaves it.
+uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched, uint8_t *y) {
   took(CALLS);
   took(CALLS);
-  uint8_t weapon = enemy_touch_tests(object, arthur_touched, NULL);
+  uint8_t weapon = enemy_touch_tests(object, arthur_touched, y);
   if (!weapon) { took(*arthur_touched ? SPARK_TESTS_TOUCHED : SPARK_TESTS_NOTHING); return 0; }
   RAM[OBJECT_FLAGS + weapon] = 0x41;
+  RAM[0xA9] = weapon;
   took(SPARK_BEGINS);
   sound_play(0x1C);
   took(SPARK_ENDS);
+  if (y) *y = weapon;
   return weapon;
 }
-static void spark_tests(uint8_t object) {
+static void spark_tests(uint8_t object, uint8_t *y) {
   int arthur_touched;
-  enemy_spark_tests(object, &arthur_touched);
+  enemy_spark_tests(object, &arthur_touched, y);
 }
 
 // It heads right or left, to the side Arthur is on.
@@ -430,7 +433,7 @@ static void wait_to_dive(uint8_t object) {
 static void in_the_air(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 8;
   took(FLIER_TESTS_BOX);
-  spark_tests(object);
+  spark_tests(object, NULL);
   if (MODE(object) & COMES_LEVEL) { took(FLIER_MODE_IS); come_level(object); return; }
   took(FLIER_MODE_IS_NOT);
   if (MODE(object) & PULLS_UP) { took(FLIER_MODE_IS); pull_up(object); return; }
@@ -485,7 +488,7 @@ static void awake_on_the_ground(uint8_t object) {
   uint8_t hits = HITS(object);
   RAM[0x26] = RAM[0x27] = 0x0A;
   took(FLIER_GROUND_TESTS);
-  spark_tests(object);
+  spark_tests(object, NULL);
   took(FLIER_GROUND_HITS_READ);
   if (hits == HITS(object)) took(FLIER_NOT_YET);
   else if (hits >= 3) { took(FLIER_GROUND_LAST_HIT); return; }
@@ -652,7 +655,7 @@ void flier(uint8_t object) {
   }
   RAM[0x26] = RAM[0x27] = 8;
   took(FLIER_TESTS_BOX);
-  spark_tests(object);
+  spark_tests(object, NULL);
   if (!HITS(object)) { took(FLIER_SLEEPS_ON); return; }
   took(FLIER_WOKEN_BY_HIT);
   wake(object);

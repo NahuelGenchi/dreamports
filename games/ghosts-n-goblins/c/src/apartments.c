@@ -482,7 +482,7 @@ void big_man(uint8_t object) {
   RAM[0x26] = 0x08;
   took(BIG_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_spark_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_spark_tests(object, &arthur_touched, NULL);
   if (weapon) {
     *count = 0;
     took(BIG_SPARKS);

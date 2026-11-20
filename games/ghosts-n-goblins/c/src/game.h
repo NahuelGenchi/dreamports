@@ -280,7 +280,7 @@ void key(uint8_t object, uint8_t y);
 void boss(uint8_t object);
 void boss_shot(uint8_t object, uint8_t y);
 /** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
-uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
+uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched, uint8_t *y);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
 uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched, uint8_t *y);
@@ -300,7 +300,7 @@ void bat(uint8_t object);
 void cave_shooter(uint8_t object);
 void cave_shot(uint8_t object, uint8_t y);
 /** sub_04_B0E3, kind $15: the cave dragon's head; sub_04_B355, kinds $16 to $1D: its pieces (dragon.c). */
-void dragon_head(uint8_t object);
+void dragon_head(uint8_t object, uint8_t y);
 void dragon_piece(uint8_t object);
 /** $F3F1, kind $28: the dragon's fire (enemies.c). */
 void dragon_fire(uint8_t object, uint8_t y);

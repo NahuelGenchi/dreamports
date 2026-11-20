@@ -20,7 +20,8 @@
 
 // MOST_DRAWS: the registers tried for one call before its `if` is taken to say no, enough for an `if` that holds one
 // stack pointer and one register in 25
-enum { MOST_DRAWS = 1 << 17, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
+// PER_MEMORY: how many of those with one memory, before another is taken
+enum { MOST_DRAWS = 1 << 17, PER_MEMORY = 1 << 11, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
 // the stack pointer a call starts with when its twin isn't given it: below where a game's stack starts, at $01FF
 enum { STACK_AT = 0xDE };
 
@@ -97,19 +98,23 @@ static void place_return(uint8_t *start, uint8_t s) {
   start[0x100 | (uint8_t)(s + 1)] = (TWIN_RETURN_TO - 1) & 0xFF;
 }
 
-// A memory and registers for one call. 0 when the contract's `if` took none of the registers tried.
+// A memory and registers for one call: registers are drawn until the contract's `if` takes them, with another memory
+// every so many tries, as an `if` can ask something of the memory too, such as the kind of the object in X. 0 when
+// the `if` took none of them.
 static int draw(uint8_t *start, twin_regs *r, int changed) {
-  if (memory_count) memcpy(start, memories + (long)rnd((uint32_t)memory_count) * 0x800, 0x800);
-  else for (int i = 0; i < 0x800; i++) start[i] = (uint8_t)rnd(256);
-  if (own_bank >= 0 && twin_bank_at >= 0) start[twin_bank_at] = (uint8_t)own_bank;
-  int tries = 0;
-  do {
+  for (int tries = 0; ; tries++) {
+    if (tries == MOST_DRAWS) return 0;
+    if (tries % PER_MEMORY == 0) {
+      if (memory_count) memcpy(start, memories + (long)rnd((uint32_t)memory_count) * 0x800, 0x800);
+      else for (int i = 0; i < 0x800; i++) start[i] = (uint8_t)rnd(256);
+      if (own_bank >= 0 && twin_bank_at >= 0) start[twin_bank_at] = (uint8_t)own_bank;
+    }
     r->A = any_byte(); r->X = any_byte(); r->Y = any_byte();
     r->S = twin->stack ? any_byte() : STACK_AT;
     r->N = (int)rnd(2); r->V = (int)rnd(2); r->Z = (int)rnd(2); r->C = (int)rnd(2);
     place_return(start, r->S);
-  } while (!is_given(start, r) && ++tries < MOST_DRAWS);
-  if (tries == MOST_DRAWS) return 0;
+    if (is_given(start, r)) break;
+  }
   // what the function reads, changed: the original runs to say what it reads, a few of those bytes get other values,
   // and it runs again, as other values lead it to read other bytes
   for (int round = 0; changed && round < ROUNDS; round++) {
