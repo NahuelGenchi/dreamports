@@ -3,7 +3,8 @@
 // it's told into the GPU's own 1 MB of video memory and shows the part the GPU is told to show. It writes the sound
 // chip, the SPU, a halfword at a time to its registers, and moves sound data into its memory as DMA does, and the kit
 // mixes what it's told. It reads the pads a byte at a time through their serial port, SIO0, and the kit's pads answer
-// as the console's do (kit/ps1/c/README.md).
+// as the console's do. It gives the CD drive commands a byte at a time and takes its answers and the sectors it reads
+// from the player's disc, and the kit's drive answers as the emulator's does (kit/ps1/c/README.md).
 
 #ifndef DREAMPORTS_PS1_H
 #define DREAMPORTS_PS1_H
@@ -54,6 +55,25 @@ uint32_t sio_read(uint32_t address);
 /** The 16 bits the pad in `port` (0 or 1) sends back for its buttons this frame, low byte first, a bit clear for each
  *  button held, as the console's BIOS keeps them in its pad buffers. */
 uint16_t pad_buttons(int port);
+
+// where the processor sees the CD drive's four registers, a byte each, whose meaning the index the first one holds, in
+// its low two bits, picks (kit/ps1/c/README.md, The CD drive)
+enum { CD_BASE = 0x1F801800 };
+
+/** What a read of one of the drive's registers gives: its status at CD_BASE; the next byte of its answer at
+ *  CD_BASE + 1; the next byte of a sector at CD_BASE + 2; and at CD_BASE + 3, the interrupts it lets in, with index 0,
+ *  or those it has set, with index 1. */
+uint8_t cd_read(uint32_t address);
+/** A write to one: the index at CD_BASE; with index 0, a command at CD_BASE + 1, after its parameters at CD_BASE + 2,
+ *  and at CD_BASE + 3 that the game wants the sector read; with index 1, the interrupts it lets in at CD_BASE + 2 and
+ *  those it acknowledges at CD_BASE + 3. */
+void cd_write(uint32_t address, uint8_t value);
+/** What DMA's channel 3 moves from the drive into `to`: its block control and channel control as the original writes
+ *  them to 0x1F8010B4 and 0x1F8010B8, as many words as the block control's low half says. The processor waits while it
+ *  moves, as the original's does, unless the transfer goes in steps. */
+void cd_dma_read(void *to, uint32_t block, uint32_t control);
+/** What a read of DMA channel 3's channel control gives: bit 24 is set until the transfer has ended. */
+uint32_t cd_dma_status(void);
 
 // The console's time and its interrupts (kit/ps1/c/README.md, The clock and interrupts). A frame's step runs just after
 // a V-blank; the kit then runs the frame's events to the next V-blank, at the cycles the console has them.

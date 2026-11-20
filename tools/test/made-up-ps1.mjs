@@ -976,3 +976,371 @@ colours:
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return Buffer.concat([header, text]);
 }
+
+// --- the CD drive ----------------------------------------------------------------------------------------------------
+
+/** Where the CD program keeps what it counts and logs, and what's where on its disc: its frames' V-blanks, how many
+ *  bytes it has logged, its place in its script, how many words of a sector DMA moves and how many bytes it reads one
+ *  at a time before them, counter 0 as it started, its registers in its handler, the sector DMA moves, and its log, of
+ *  4,096 bytes; the sector its file of made-up data starts at, and how long it is; and its colours. */
+export const CD = {
+  BASE: 0x80100000, VBLANKS: 0x0, COUNT: 0x4, SCRIPT: 0x8, WORDS: 0xC, BYTES: 0x10, START: 0x14, SAVED: 0x40, SECTOR: 0x100, LOG: 0x1000,
+  LOG_SIZE: 4096, DATA_AT: 40, DATA_SECTORS: 300, BACKGROUND: 0x201008, HANDOFF: 0x40C0F0,
+};
+
+// a number in BCD
+const bcd = n => (Math.floor(n / 10) << 4) | (n % 10);
+/** Sector `lba` of a disc as a time, as Setloc takes it. */
+export const cdTime = lba => [bcd(Math.floor((lba + 150) / 4500)), bcd(Math.floor((lba + 150) / 75) % 60), bcd((lba + 150) % 75)];
+
+/** The CD program's script: at each frame, the command it gives the drive and its parameters, as 8 bytes each, the
+ *  frame's low and high byte, the command, how many parameters, and up to four of them, ending in frame 0xFFFF. The
+ *  drive is asked about itself and the disc, read from in each of its modes at both speeds, sought, paused, given a
+ *  command it doesn't have and a time that can't be, and stopped. */
+export function cdScript() {
+  const entries = [];
+  const at = (frame, command, ...params) => entries.push([frame & 0xFF, frame >> 8, command, params.length, ...params, 0, 0, 0, 0].slice(0, 8));
+  const { DATA_AT } = CD;
+  // Getstat, twice, as the first answer still says the lid was open; Test's version; the tracks; the end; the ID; Init,
+  // which starts the drive over, and Getparam, which cuts its start short
+  at(1, 0x01); at(2, 0x01); at(3, 0x19, 0x20); at(4, 0x13); at(5, 0x14, 0x01); at(6, 0x14, 0x00); at(7, 0x1A);
+  at(9, 0x1C); at(10, 0x0F);
+  // double speed, 2,048 bytes a sector: Setloc, ReadN, and Pause, then where it stopped, by the sector's header and by
+  // the subchannel
+  at(12, 0x0E, 0x80); at(13, 0x02, ...cdTime(DATA_AT)); at(14, 0x06); at(26, 0x09); at(34, 0x10); at(35, 0x11);
+  // single speed, the whole 2,340 bytes: Setloc, SeekL, and ReadS from there, then Pause
+  at(36, 0x0E, 0x20); at(37, 0x02, ...cdTime(DATA_AT + 40)); at(38, 0x15); at(46, 0x1B); at(64, 0x09);
+  // a command the drive doesn't have, a time with 99 seconds, Demute, and Getstat
+  at(72, 0x1F); at(73, 0x02, 0x00, 0x99, 0x00); at(74, 0x0C); at(75, 0x01);
+  // rounds of reading, each in another mode, from somewhere else on the disc
+  const modes = [0x80, 0x00, 0xA0, 0x20];
+  for (let round = 0, frame = 80; frame + 14 < 280; round++, frame += 20) {
+    at(frame, 0x0E, modes[round % 4]);
+    at(frame + 1, 0x02, ...cdTime(DATA_AT + 7 + (round * 23) % 200));
+    at(frame + 2, round % 2 ? 0x1B : 0x06);
+    at(frame + 10, 0x09);
+  }
+  // Stop, and Getstat once it has
+  at(282, 0x08); at(298, 0x01);
+  entries.push([0xFF, 0xFF, 0, 0, 0, 0, 0, 0]);
+  return entries.flat();
+}
+
+/** The disc's made-up data: `sectors` sectors' worth of bytes, a different pattern in each. */
+export function cdData(sectors = CD.DATA_SECTORS) {
+  const bytes = Buffer.alloc(sectors * 2048);
+  for (let i = 0, x = 0x1D872B41; i < bytes.length; i++) bytes[i] = (x = (x * 1103515245 + 12345) >>> 0) >>> 24;
+  return bytes;
+}
+
+/**
+ * A program that drives the CD drive as a game does, from a disc of its own: it reads counter 0 as it starts, which says
+ * how long the BIOS took to hand it over, takes interrupts with a handler of its own, the V-blank's and the drive's,
+ * and just after each V-blank gives the drive the commands its script has for that frame. The handler logs each of
+ * the drive's interrupts, its answer, and for each sector read its first bytes taken one at a time, in the mode that
+ * gives the whole sector, and the sum of its words, moved by DMA. Each frame it draws the last 1,024 bytes of its log,
+ * a block each, and how long the BIOS took, as a bar.
+ */
+export async function madeUpCdExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { BASE, VBLANKS, COUNT, SCRIPT, WORDS, BYTES, START, SAVED, SECTOR, LOG, LOG_SIZE, BACKGROUND, HANDOFF } = CD;
+  const at = (labels, name) => LOAD + (labels.get(name)?.at ?? 0);
+  const hi = value => value >>> 16, lo = value => value & 0xFFFF;
+  let logs = 0;
+  // a byte to the log, from `register`, while there's room, with $t8 and $t9
+  const log = register => {
+    const skip = `logged_${logs++}`;
+    return `
+	lw	$t8, ${COUNT}($k1)
+	nop
+	sltiu	$t9, $t8, ${LOG_SIZE}
+	beqz	$t9, ${skip}
+	addu	$t9, $k1, $t8
+	sb	${register}, ${LOG}($t9)
+	addiu	$t8, $t8, 1
+	sw	$t8, ${COUNT}($k1)
+${skip}:`;
+  };
+  const saved = ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9'];
+  const source = labels => {
+    logs = 0;
+    return `
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	lhu	$t1, 0x1100($t0)
+	lui	$s1, ${hi(BASE)}
+	sw	$t1, ${START}($s1)
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE5000000
+	sw	$t1, 0x1810($t0)
+	sw	$zero, ${VBLANKS}($s1)
+	sw	$zero, ${COUNT}($s1)
+	lui	$t1, ${hi(at(labels, 'script'))}
+	ori	$t1, $t1, ${lo(at(labels, 'script'))}
+	sw	$t1, ${SCRIPT}($s1)
+	li	$t1, 512
+	sw	$t1, ${WORDS}($s1)
+	sw	$zero, ${BYTES}($s1)
+	lui	$t2, 0x8000
+	lui	$t1, ${hi(at(labels, 'handler'))}
+	ori	$t1, $t1, ${lo(at(labels, 'handler'))}
+	sll	$t1, $t1, 4
+	srl	$t1, $t1, 6
+	lui	$t3, 0x0800
+	or	$t1, $t1, $t3
+	sw	$t1, 0x80($t2)
+	sw	$zero, 0x84($t2)
+	sw	$zero, 0x1070($t0)
+	li	$t1, 0x05
+	sw	$t1, 0x1074($t0)
+	li	$t1, 0x401
+	mtc0	$t1, $12
+	move	$s0, $zero
+wait:
+	lw	$t1, ${VBLANKS}($s1)
+	nop
+	beq	$t1, $s0, wait
+	nop
+	move	$s0, $t1
+	lw	$s2, ${SCRIPT}($s1)
+	nop
+issue:
+	lhu	$t1, 0($s2)
+	nop
+	bne	$t1, $s0, issued
+	nop
+	lbu	$t2, 2($s2)
+	lbu	$t3, 3($s2)
+	lbu	$t5, 4($s2)
+	li	$t4, 0x0E
+	bne	$t2, $t4, parameters
+	nop
+	andi	$t5, $t5, 0x20
+	li	$t6, 512
+	beqz	$t5, words
+	move	$t7, $zero
+	li	$t6, 582
+	li	$t7, 12
+words:
+	sw	$t6, ${WORDS}($s1)
+	sw	$t7, ${BYTES}($s1)
+parameters:
+	sb	$zero, 0x1800($t0)
+	addiu	$t4, $s2, 4
+parameter:
+	beqz	$t3, command
+	nop
+	lbu	$t5, 0($t4)
+	addiu	$t4, $t4, 1
+	sb	$t5, 0x1802($t0)
+	b	parameter
+	addiu	$t3, $t3, -1
+command:
+	sb	$t2, 0x1801($t0)
+	b	issue
+	addiu	$s2, $s2, 8
+issued:
+	sw	$s2, ${SCRIPT}($s1)
+	li	$t1, ${0x02000000 | BACKGROUND}
+	sw	$t1, 0x1810($t0)
+	sw	$zero, 0x1810($t0)
+	li	$t1, ${240 << 16 | 320}
+	sw	$t1, 0x1810($t0)
+	lw	$t1, ${START}($s1)
+	nop
+	srl	$t1, $t1, 7
+	andi	$t1, $t1, 0x7F
+	sll	$t1, $t1, 1
+	addiu	$t1, $t1, 1
+	li	$t2, ${0x60000000 | HANDOFF}
+	sw	$t2, 0x1810($t0)
+	lui	$t2, 230
+	sw	$t2, 0x1810($t0)
+	lui	$t2, 6
+	or	$t1, $t1, $t2
+	sw	$t1, 0x1810($t0)
+	lw	$s3, ${COUNT}($s1)
+	nop
+	addiu	$t3, $s3, -1024
+	bgez	$t3, cell
+	nop
+	move	$t3, $zero
+cell:
+	beq	$t3, $s3, wait
+	nop
+	addu	$t4, $s1, $t3
+	lbu	$t5, ${LOG}($t4)
+	andi	$t6, $t3, 1023
+	xori	$t7, $t5, 0xFF
+	sll	$t7, $t7, 8
+	or	$t7, $t7, $t5
+	lui	$t8, 0x6080
+	or	$t7, $t7, $t8
+	sw	$t7, 0x1810($t0)
+	andi	$t8, $t6, 31
+	sll	$t9, $t8, 3
+	sll	$t8, $t8, 1
+	addu	$t8, $t8, $t9
+	srl	$t9, $t6, 5
+	sll	$t7, $t9, 3
+	subu	$t9, $t7, $t9
+	sll	$t9, $t9, 16
+	or	$t8, $t8, $t9
+	sw	$t8, 0x1810($t0)
+	li	$t8, ${6 << 16 | 9}
+	sw	$t8, 0x1810($t0)
+	b	cell
+	addiu	$t3, $t3, 1
+handler:
+	lui	$k0, ${hi(BASE + SAVED)}
+	ori	$k0, $k0, ${lo(BASE + SAVED)}
+${saved.map((name, i) => `	sw	$${name}, ${i * 4}($k0)`).join('\n')}
+	lui	$k1, ${hi(BASE)}
+	lui	$t0, 0x1F80
+	lw	$t1, 0x1070($t0)
+	lw	$t2, 0x1074($t0)
+	nop
+	and	$t1, $t1, $t2
+	nor	$t2, $t1, $zero
+	sw	$t2, 0x1070($t0)
+	andi	$t2, $t1, 1
+	beqz	$t2, not_vblank
+	nop
+	lw	$t2, ${VBLANKS}($k1)
+	nop
+	addiu	$t2, $t2, 1
+	sw	$t2, ${VBLANKS}($k1)
+not_vblank:
+	andi	$t2, $t1, 4
+	beqz	$t2, done
+	nop
+	li	$t1, 1
+	sb	$t1, 0x1800($t0)
+	lbu	$t2, 0x1803($t0)
+	nop
+	andi	$t2, $t2, 7
+	ori	$t3, $t2, 0xF0
+${log('$t3')}
+answer:
+	lbu	$t3, 0x1800($t0)
+	nop
+	andi	$t3, $t3, 0x20
+	beqz	$t3, answered
+	nop
+	lbu	$t3, 0x1801($t0)
+	nop
+${log('$t3')}
+	b	answer
+	nop
+answered:
+	li	$t3, 1
+	bne	$t2, $t3, acknowledge
+	nop
+	sb	$zero, 0x1800($t0)
+	li	$t3, 0x80
+	sb	$t3, 0x1803($t0)
+	lw	$t4, ${BYTES}($k1)
+	nop
+byte:
+	beqz	$t4, dma
+	nop
+	lbu	$t3, 0x1802($t0)
+	nop
+${log('$t3')}
+	b	byte
+	addiu	$t4, $t4, -1
+dma:
+	lui	$t3, ${hi(BASE + SECTOR)}
+	ori	$t3, $t3, ${lo(BASE + SECTOR)}
+	sw	$t3, 0x10B0($t0)
+	lw	$t3, ${WORDS}($k1)
+	nop
+	lui	$t4, 1
+	or	$t3, $t3, $t4
+	sw	$t3, 0x10B4($t0)
+	lui	$t3, 0x1100
+	sw	$t3, 0x10B8($t0)
+moving:
+	lw	$t3, 0x10B8($t0)
+	nop
+	lui	$t4, 0x0100
+	and	$t3, $t3, $t4
+	bnez	$t3, moving
+	nop
+acknowledge:
+	li	$t3, 1
+	sb	$t3, 0x1800($t0)
+	li	$t3, 0x1F
+	sb	$t3, 0x1803($t0)
+	sb	$zero, 0x1800($t0)
+	li	$t3, 1
+	bne	$t2, $t3, done
+	nop
+	lw	$t4, ${WORDS}($k1)
+	lui	$t5, ${hi(BASE + SECTOR)}
+	ori	$t5, $t5, ${lo(BASE + SECTOR)}
+	move	$t6, $zero
+sum:
+	lw	$t3, 0($t5)
+	addiu	$t5, $t5, 4
+	addiu	$t4, $t4, -1
+	bnez	$t4, sum
+	addu	$t6, $t6, $t3
+${[0, 1, 2, 3].map(n => `	srl	$t3, $t6, ${n * 8}
+	andi	$t3, $t3, 0xFF
+${log('$t3')}`).join('\n')}
+done:
+${saved.map((name, i) => `	lw	$${name}, ${i * 4}($k0)`).join('\n')}
+	mfc0	$k0, $14
+	nop
+	jr	$k0
+	rfe
+	.align	2
+script:
+	.byte	${cdScript().join(', ')}
+`;
+  };
+  const made = assemble(source(assemble(source(new Map())).symbols));
+  const code = Buffer.from(made.sections.get('.text').bytes);
+  const size = Math.ceil(code.length / 2048) * 2048;
+  const text = Buffer.alloc(size);
+  code.copy(text);
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}
+
+/** The CD program's disc, a BIN and its .cue named `name`: its program, MADE_UP.EXE, its SYSTEM.CNF, which asks the
+ *  BIOS for 32 events, more than its own 16, and its file of made-up data, each sector whole, Mode 2 Form 1, as a
+ *  PlayStation's CD holds them. */
+export async function madeUpCdDisc(name) {
+  const { madeUpPs2Disc, toRaw } = await import('./made-up-disc.mjs');
+  const exe = await madeUpCdExe();
+  const cnf = Buffer.from('BOOT = cdrom:\\MADE_UP.EXE;1\r\nTCB = 4\r\nEVENT = 20\r\nSTACK = 801FFF00\r\n');
+  const iso = madeUpPs2Disc({ console: 'ps1', code: 'MADE_UP.EXE', files: { 'SYSTEM.CNF': cnf, 'MADE_UP.EXE': exe, 'DATA.BIN': cdData() }, at: { 'DATA.BIN': CD.DATA_AT }, sectors: CD.DATA_AT + CD.DATA_SECTORS + 16 });
+  return { bin: toRaw(iso, 2), cue: `FILE "${name}.bin" BINARY\r\n  TRACK 01 MODE2/2352\r\n    INDEX 01 00:00:00\r\n` };
+}

@@ -49,17 +49,26 @@ __attribute__((weak)) void game_interrupt(void) {}
 
 uint32_t clock_now(void) { return clock.now; }
 
-void clock_event(int which, uint32_t after, void (*run)(void)) {
+void clock_event(int which, uint32_t after, void (*run)(void)) { clock_event_at(which, clock.now + after, run); }
+
+void clock_event_at(int which, uint32_t at, void (*run)(void)) {
   clock.events[which].set = 1;
-  clock.events[which].at = clock.now + after;
+  clock.events[which].at = at;
   clock.events[which].run = run;
 }
 
+void clock_spend(uint32_t cycles) { clock.now += cycles; }
+
 void clock_cancel(int which) { clock.events[which].set = 0; }
 
-// the handler runs while an interrupt is set that the game lets in, and it has interrupts on
+// the handler runs while an interrupt is set that the game lets in, and it has interrupts on; and not again from inside
+// itself, as the processor takes no interrupt while its handler runs, but once it returns, if one is still set
+static int handling;
 static void deliver(void) {
+  if (handling) return;
+  handling = 1;
   for (int times = 0; times < 16 && clock.interrupts_on && clock.status & clock.mask; times++) game_interrupt();
+  handling = 0;
 }
 
 void clock_interrupt(uint32_t bits) {
@@ -179,6 +188,7 @@ void clock_power(void) {
   clock.status = 0x1;
   clock.mask = 0xC;
   clock.interrupts_on = 0;
+  handling = 0;
   for (int i = 0; i < CLOCK_EVENTS; i++) clock.events[i].set = 0;
   for (int i = 0; i < 3; i++) {
     counters[i].target = 0;
@@ -205,7 +215,8 @@ int ps1_wait(void) {
 
 void clock_frame_end(void) {
   while (ps1_wait()) {}
-  clock.now = clock.frame_end;
+  // a V-blank the processor waited past, for a DMA transfer, comes as soon as it can
+  if ((int32_t)(clock.now - clock.frame_end) < 0) clock.now = clock.frame_end;
   clock.frame_end += FRAME;
   clock_interrupt(0x1);
 }

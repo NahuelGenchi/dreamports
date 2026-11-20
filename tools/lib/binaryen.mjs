@@ -1,8 +1,9 @@
 // Binaryen, the WebAssembly toolkit (github.com/WebAssembly/binaryen, under the Apache License 2.0), as its JavaScript
 // build on npm, binaryen: the build runs one of its passes, Asyncify, over a game whose C waits for the screen from
-// inside a function (lib/c.mjs, kit/c/pause.c). It's a download of 23 MB and few games need it, so it isn't among what
-// `npm ci` installs: the first build that needs it gets it from npm's registry, checks it's the one this names, and
-// keeps the one file the pass needs, 15 MB, in .dreamports/binaryen/, which never goes in a commit. `npm run dp -- setup` gets it beforehand.
+// inside a function (lib/c.mjs, kit/c/pause.c), as every PlayStation game does. It's a download of 23 MB and only games
+// that wait need it, so it isn't among what `npm ci` installs: the first build that needs it gets it from npm's
+// registry, checks it's the one this names, and keeps the one file the pass needs, 15 MB, in .dreamports/binaryen/,
+// which never goes in a commit. `npm run dp -- setup` gets it beforehand.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
