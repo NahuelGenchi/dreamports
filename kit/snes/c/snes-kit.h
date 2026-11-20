@@ -14,6 +14,8 @@ enum { SNES_WIDTH = 256, SNES_HEIGHT = 224, SNES_FIRST_LINE = 1 };
 void ppu_power(void);
 /** A write to a register of the picture unit, $2100 to $2133. */
 void ppu_write(uint16_t address, uint8_t value);
+/** A read of $2134 to $2136, mode 7's product of its matrix's A and B's top byte. */
+uint8_t ppu_read(uint16_t address);
 /** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
 void ppu_frame(uint32_t *out);
 /** What the console does to the picture unit as V-blank starts, after the frame's last line. */
@@ -21,6 +23,12 @@ void ppu_vblank(void);
 
 /** Moves memory by DMA on each channel `channels` has a bit for, as a write to $420B does, one after another. */
 void dma_start(uint8_t channels);
+/** Starts HDMA on the channels $420C turns on, as line 0 of a frame starts. */
+void hdma_start(void);
+/** HDMA's writes for one line, as its H-blank comes, which show from the next line down. */
+void hdma_line(void);
+/** A write to a channel's $43xA, its lines left. */
+void hdma_lines_written(int c, uint8_t value);
 
 /** Puts the sound side as the console starts it: its memory cleared, its timers off, the sound chip reset, and the
  *  start-up program waiting for the main processor. */
@@ -45,6 +53,24 @@ void dsp_run(uint32_t cycles);
 uint8_t dsp_read(uint8_t address);
 /** A write to the sound chip's register at `address`, as the sound processor writes $F3. */
 void dsp_write(uint8_t address, uint8_t value);
+
+/** Sets where the console is: a line, 0 to 261, and a cycle of the main clock from its start. */
+void timing_at(int line, int cycle);
+/** The line the console is on. */
+int timing_line(void);
+/** Runs the game's IRQ handler for each time the timers' interrupt comes on `line` from cycle `from` up to `to`. */
+void timing_run(int line, int from, int to);
+/** The moment of V-blank's interrupt, NMI, where a game's step runs: line 225, as Snes9x times it. */
+void timing_nmi(void);
+/** V-blank's lines after the frame's, from 225, with the IRQs that come on them. */
+void timing_vblank(void);
+/** One line of the frame, its events at their times: HDMA's start on line 0, `draw` of the row before at cycle 512,
+ *  HDMA's writes in H-blank, and the IRQs between. */
+void timing_line_run(int line, void (*draw)(int row), void (*hdma_init)(void), void (*hdma)(void));
+/** $4212 as read now: V-blank, H-blank and auto-joypad's reading. */
+uint8_t timing_4212(void);
+/** A write to $420C partway down the frame: the channels that haven't ended run from the next line. */
+void hdma_enable_written(uint8_t value);
 
 /** Reads the cartridge's header from the player's copy, as the console's wiring sees it. */
 void cartridge_load(void);

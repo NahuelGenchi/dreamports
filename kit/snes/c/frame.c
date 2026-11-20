@@ -25,7 +25,10 @@ EXPORT("dp_start") void dp_start(void) {
 /** Runs the game's step, with the buttons in `buttons` held, the sound side on to the frame's end, and draws the
  *  frame's lines. */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
+  // the step is the NMI's handler, as V-blank starts; then V-blank's lines, with any IRQs on them, and the frame's
+  timing_nmi();
   game_step(buttons);
+  timing_vblank();
   apu_frame();
   ppu_frame(frame);
   // V-blank starts: the picture unit's sprite table goes back, and $4210 says so, with the processor's version, 2

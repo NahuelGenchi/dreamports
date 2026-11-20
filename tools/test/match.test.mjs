@@ -52,7 +52,7 @@ test('ARM code written the older way comes out as the ARM processor reads it, an
   const made = assemble([
     '\t.arm', 'start:', '\tmov r0, #18', '\tmsr cpsr_cf, r0', '\tldr sp, [pc, #40]', '\tadd r0, pc, #24', '\tstr r0, [r1, #0]', '\tmov lr, pc', '\tbx r1',
     '\tmov r3, #67108864', '\tadd r3, r3, #512', '\tand r1, r2, r2, lsr #16', '\tands r0, r1, #8192', '\tbne start', '\tstrh r0, [r3, #2]', '\tldrb r2, [r1, #-3]',
-    '\tldr r1, =0x03000470', '\tmrs r0, cpsr', '\tb elsewhere', '\tmla r0, r1, r2, r3', '\t.pool', '',
+    '\tldr r1, =0x03000470', '\tmrs r0, cpsr', '\tb elsewhere', '\tswp r0, r1, [r2]', '\t.pool', '',
   ].join('\n'));
   const bytes = made.sections['.text'].bytes, words = Array.from({ length: bytes.length / 4 }, (_, i) => bytes.readUInt32LE(i * 4));
   assert.deepEqual(words, [0xE3A00012, 0xE129F000, 0xE59FD028, 0xE28F0018, 0xE5810000, 0xE1A0E00F, 0xE12FFF11, 0xE3A03301, 0xE2833C02, 0xE0021822, 0xE2110A02,
@@ -64,6 +64,25 @@ test('ARM code written the older way comes out as the ARM processor reads it, an
   assert.deepEqual(assemble('\t.arm\n\t.type start,function\nstart:\n\tb start\n').relocations, [{ section: '.text', at: 0, kind: 'arm-branch', name: 'start', addend: 0 }]);
   // a decompilation's ARM, after .syntax unified, is left as zeros, as m4a's table of frames has it
   assert.deepEqual(assemble('\t.syntax unified\n\t.arm\n\tmov r0, #18\n').unassembled, [{ section: '.text', at: 0, bytes: 4 }]);
+});
+
+test('ARM\'s multiplies, its loads and stores of every kind, ldm and stm, and a register shifted by a register come out as the ARM processor reads them', () => {
+  const made = assemble([
+    '\t.arm', 'back:', '\tmul r1, r0, r3', '\tmla r0, r1, r2, r3', '\tumull r0, r1, r2, r3', '\tsmlals r4, r5, r6, r7',
+    '\tldrsb r1, [r7], #1', '\tldrsb r0, [r5, r6]', '\tldrnesb r6, [r1, r10]!', '\tstrb r0, [r5], #1', '\tstr r6, [r5], #4',
+    '\tldr r0, [r1, -r2, lsl #2]!', '\tldrh r0, [r1, #-6]', '\tstrh r2, [r3], r4', '\tldrsh r0, [r1, #2]!', '\tldmia sp!, {r4, r12}',
+    '\tstmdb sp!, {r4-r7, lr}', '\tldmfd sp!, {r0-r3, pc}^', '\tstmib r0, {r1}', '\tmov r0, r1, ror r2', '\tadd r0, r1, r2, lsl r3',
+    '\tmovs r0, r1, rrx', '\tldr r2, back', '\tldrb r0, [r1, #-3]!', '\tldr r0, [r1], -r2, asr #3', '\tldrgtb r3, [r4, r5, lsr #1]',
+    '\tldr r1, ahead', 'ahead:', '\t.word 0x12345678', '',
+  ].join('\n'));
+  const bytes = made.sections['.text'].bytes, words = Array.from({ length: bytes.length / 4 }, (_, i) => bytes.readUInt32LE(i * 4));
+  // each as mGBA's decoder reads it back, the line it was written as
+  assert.deepEqual(words, [0xE0010390, 0xE0203291, 0xE0810392, 0xE0F54796, 0xE0D710D1, 0xE19500D6, 0x11B160DA, 0xE4C50001, 0xE4856004,
+    0xE7310102, 0xE15100B6, 0xE08320B4, 0xE1F100F2, 0xE8BD1010, 0xE92D40F0, 0xE8FD800F, 0xE9800002, 0xE1A00271, 0xE0810312, 0xE1B00061,
+    0xE51F2058, 0xE5710003, 0xE61101C2, 0xC7D430A5, 0xE51F1004, 0x12345678]);
+  assert.deepEqual(made.unassembled, []);
+  // what no ARM processor has: a store of a byte with its sign, and a shift by a register in an address
+  assert.deepEqual(assemble('\t.arm\n\tstrsb r0, [r1]\n\tldr r0, [r1, r2, lsl r3]\n').unassembled.length, 2);
 });
 
 test('a twin of the function at a base address, as a cartridge\'s first instruction, names it with its own name right after it', () => {
