@@ -236,4 +236,10 @@ typedef int iop_start(int argc, char **argv);
 void iop_module_twin(const char *name, iop_start *start);
 void iop_each_vblank(void (*thread)(void));
 
+// The disc drive (cdvd.c). A game's EE code reaches it through the IOP's RPC servers, which the kit answers as the
+// emulator does, through the SIF. ps2_disc_sectors reads `count` sectors' 2048 bytes of data from `lba`, as the drive
+// gives them, for a game's start, which the console's loader does for it, and for twins of IOP code that read the disc
+// themselves. A game that reads its disc runs under kit_run (kit.h), in game_start and game_step alike.
+void ps2_disc_sectors(uint32_t lba, uint32_t count, uint8_t *to);
+
 #endif
