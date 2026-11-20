@@ -62,6 +62,13 @@ test('a twin of a run is the twin of each function of it, with one mark', () => 
   assert.ok([...marks.values()].every(each => each.name === 'Fall' && each.mark === marks.get('08000200').mark));
 });
 
+test('a twin that gives its routine\'s length is the twin of each function of the run it covers, and of its first alone when the length ends in a function', () => {
+  const run = length => marksOf(PROGRAM.replace('/** Fall, 0x08000200: the ball a frame further down. */', `/** Fall, 0x08000200, dp:run ${length}: the ball a frame further down, as one routine. */`).replace(/\/\*\* Step[^\n]*\n[^\n]*\n\n\/\*\* Skip[^\n]*\n[^\n]*\n/, ''));
+  assert.deepEqual([...run(0x6C).keys()], ['08000200', '08000240', '08000260']);
+  assert.deepEqual([...run(0x4C).keys()], ['08000200', '08000240']);
+  assert.deepEqual([...run(0x50).keys()], ['08000200']);
+});
+
 test('a twin is marked by its code and its file\'s own headers, and not by its comments or its spaces', () => {
   const marks = marksOf();
   assert.deepEqual([...marks.keys()], ['08000200', '08000240', '08000260']);

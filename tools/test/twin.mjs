@@ -23,10 +23,10 @@ import { LOCAL, REPO } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
-import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
+import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
+import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -85,7 +85,7 @@ const rare = await matchFile({
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))));
+writeFileSync(copy, withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8')))));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -173,6 +173,21 @@ try {
   writeFileSync(join(unmarked, 'turn.c'), readFileSync(join(HERE, 'turn.c'), 'utf8').replace(', dp:unaligned:', ':'));
   const aside = await checking(join(unmarked, 'turn.c'), {}, arm);
   check(aside.by.Turn?.kind !== 'same' && /where a twin can't follow/.test(aside.by.Turn?.line ?? ''), `and without the mark its calls are set aside, as before: ${aside.by.Turn?.line ?? aside.error}`);
+
+  console.log('A routine the code map holds as two functions, a Thumb start and the ARM code it goes on into:');
+  const isArm = armIn(readFileSync(copy));
+  check(!isArm(TWICE.Twice) && isArm(TWICE_PIECES[1].address) && isArm(TURN.Turn), 'its Thumb start is called as Thumb, though the words after it look like ARM, and its ARM part is ARM');
+  const pieces = {
+    isArm, sizeOf: address => TWICE_PIECES.find(piece => piece.address === address)?.size ?? sizeOf(address),
+    runOf: twin => (throughOf(twin, TWICE_PIECES) === null ? null : runIn(TWICE_PIECES, twin.address, throughOf(twin, TWICE_PIECES))),
+  };
+  const twice = await checking(join(HERE, 'twice.c'), {}, pieces);
+  check(twice.by.Twice?.kind === 'same' && twice.by.Twice.whole === true && twice.by.Twice.run?.join() === TWICE_PIECES.map(piece => piece.address).join(), `a twin that says how long the routine is, dp:run, leaves the same memory, its calls took every path of both, each read as the code it is, and it's the twin of both${twice.by.Twice?.kind === 'same' ? `: ${twice.by.Twice.line}` : `: ${twice.by.Twice?.line ?? twice.error}`}`);
+  const longer = join(work, `changed-${++variants}`);
+  cpSync(HERE, longer, { recursive: true });
+  writeFileSync(join(longer, 'twice.c'), readFileSync(join(HERE, 'twice.c'), 'utf8').replace('dp:run 28', 'dp:run 30'));
+  const unended = await checking(join(longer, 'twice.c'), {}, pieces);
+  check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));
@@ -277,7 +292,7 @@ writeFileSync(played, withPlay(readFileSync(copy), readFileSync(join(work, 'buil
 // 150 frames of someone's play, a bit for each button held: nothing, then A, which makes the stage, then B for a while
 const held = frame => (frame >= 20 && frame < 30 ? 1 : 0) | (frame >= 60 && frame < 90 ? 2 : 0);
 const plays = [{ name: 'made-up-play', buttons: Array.from({ length: 150 }, (_, frame) => held(frame)), sets: [] }];
-const addresses = [...Object.values(FUNCTIONS), PLAYED.Shine, PLAYED.Glow];
+const addresses = [...Object.values(FUNCTIONS), PLAYED.Shine, PLAYED.Glow, PLAYED.Spare];
 const taking = async name => {
   const folder = join(work, name);
   const taken = await takeMemories({ open: () => openCaller(played), addresses, plays, folder, key: memoriesKey({ sha1: 'made up', addresses, plays }) });
@@ -285,14 +300,14 @@ const taking = async name => {
 };
 const kept = await taking('memories');
 const own = kept.memories.of(PLAYED.Shine);
-check(kept.taken.functions === 2 && own.length >= 2 && own.length <= 4 && kept.memories.of(PLAYED.Glow).length >= 2, `the play gives Shine ${own.length} memories of its own, Glow some too, and the functions it never ran none`);
+check(kept.taken.functions === 3 && own.length >= 2 && own.length <= 4 && kept.memories.of(PLAYED.Glow).length >= 2, `the play gives Shine ${own.length} memories of its own, Glow and Spare some too, and the functions it never ran none`);
 check(own.every(memory => memory.frame >= 20 && memory.image().readUInt32LE(0x40060) === 0x02000400 && [1, 7].includes(memory.arg(0))), 'each from a frame after the stage was made, with the stage in it and what Shine was given');
 
 // how long Shine is in the cartridge, as a game's code map says it, so the check can say which of its paths ran
-const shineLength = play.functions.find(f => f.name === 'Shine').length, glowLength = play.functions.find(f => f.name === 'Glow').length;
+const shineLength = play.functions.find(f => f.name === 'Shine').length, glowLength = play.functions.find(f => f.name === 'Glow').length, spareLength = play.functions.find(f => f.name === 'Spare').length;
 const second = await openOriginal(played, 2);
 const shining = async (file, options = {}, memories = null) => {
-  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : address === PLAYED.Glow ? glowLength : null), options: { calls: CALLS, seconds: 1, ...options } });
+  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : address === PLAYED.Glow ? glowLength : address === PLAYED.Spare ? spareLength : null), options: { calls: CALLS, seconds: 1, ...options } });
   return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
 };
 // play.c as it is, or with one thing replaced, in a folder of its own
@@ -317,6 +332,9 @@ try {
   // Glow runs code play put in the fast work memory, which loads a constant from beside itself: that's the code's, and
   // the check never changes it, as it would a value the function read (#1518)
   check(warm.by.Glow?.kind === 'same' && warm.by.Glow.compared === CALLS, `a function that runs code in the work memory leaves the same memory over ${CALLS} calls, the constant that code keeps beside itself left as it is${warm.by.Glow?.kind === 'same' ? '' : `: ${warm.by.Glow?.line ?? warm.error}`}`);
+  // Spare's own memories never have a spare room, and the room another memory of play has is what a call is aimed with
+  check(kept.memories.of(PLAYED.Spare).length >= 2 && kept.memories.of(PLAYED.Spare).every(memory => memory.image().readUInt32LE(0x408) === 0), 'Spare\'s own memories of play have no spare room');
+  check(warm.by.Spare?.kind === 'same' && warm.by.Spare.whole === true, `and its calls still take both ways, aimed with the room the game kept there in another memory (#1709): ${warm.by.Spare?.line ?? warm.error}`);
   const one = await shining(playFile(), { calls: 1 }, kept.memories);
   check(one.by.Shine?.kind === 'same' && one.by.Shine.whole === false && /left out/.test(one.by.Shine.line), `and a single call from a memory of play, which can't take a branch both ways, is the same and no proof: ${one.by.Shine?.line}`);
   const others = await checkFile({ original: second.original, start: second.start, copy: played, file: program(), addressOf, memories: kept.memories, options: { calls: CALLS, seconds: 1 } });

@@ -50,6 +50,16 @@ void look(uint8_t place) { RAM[0x33] = in_bank(RAM[0x10], (uint16_t)(0x9000 + pl
 // dp:twin sub_01_8100 own_table(X)
 void own_table(uint8_t place) { RAM[0x32] = in_bank(1, (uint16_t)(0x9000 + place)); }
 
+/** sub_C480: the byte at `place` in the stack's page, to $34. The original reads it in a routine it calls, so it can
+ *  read that call's return address: `s`, the stack pointer as it starts, says where the call pushes it. Its second
+ *  call pushes over it, which the twin leaves out: that's where the call's own frames were, free once it returns. */
+// dp:twin sub_C480 peek(X, S)
+void peek(uint8_t place, uint8_t s) {
+  RAM[0x100 | s] = 0xC4;                  // JSR $C490 leaves $C482, the address before the one it comes back to
+  RAM[0x100 | (uint8_t)(s - 1)] = 0x82;
+  RAM[0x34] = RAM[0x100 | place];
+}
+
 /** sub_C090: switches `bank` in at $8000, and keeps which at $10. */
 // dp:twin sub_C090 switch_to(A)
 void switch_to(uint8_t bank) { RAM[0x10] = bank; }

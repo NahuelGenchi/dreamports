@@ -86,9 +86,9 @@ static void head_for_him(uint8_t object) {
 }
 
 // sub_F0A0's call and what follows it: it moves, and is hidden once it's out of the view.
-static void move(uint8_t object, uint8_t speed) {
+static void move(uint8_t object, uint8_t speed, uint8_t y) {
   took(CALLS);
-  move_object(object, speed, Y_NOT_FOLLOWED);
+  move_object(object, speed, y);
   if (object_in_view(object)) { took(BOSS_STAYS_IN_VIEW); return; }
   took(GOES_ON);
   hide_object(object);
@@ -136,7 +136,7 @@ static void walk(uint8_t object) {
   RAM[OBJECT_SHAPE + object] += (RAM[OBJECT_COUNT + object] >> 2) & 1;
   uint8_t speed = (uint8_t)(step_speed(object) + RAM[0xD3]);
   took(BOSS_WALK_MOVES);
-  move(object, speed);
+  move(object, speed, STEP(object) & 0x0F);   // Y, its step, as $FE24 loads it to read the list
 }
 
 // $FE34: a round of a stand. It shoots on the second, and the step is over on the sixth.
@@ -157,14 +157,14 @@ static void stand(uint8_t object) {
 // $FD6F: a step is over. The next lasts a count from the game's dice, and the boss turns round, or towards Arthur when
 // he's outside a box of $68 by $10, or away from him when he's within one of $50 by $10. Every 64th step is a leap and
 // every eighth a charge; a stand begins at once, and a walk has its first round now.
-static void next_step(uint8_t object) {
+static void next_step(uint8_t object, uint8_t y) {
   RAM[OBJECT_COUNT + object] = (uint8_t)(RAM[0x83] + RAM[0x4D]) & 0x1F;
   STEP(object)++;
   RAM[OBJECT_HEADING + object] = (RAM[OBJECT_HEADING + object] ^ 0x08) | 0x04;
   RAM[0x26] = 0x68;
   RAM[0x27] = 0x10;
   took(BOSS_NEXT_STEP);
-  if (!arthur_near(object, Y_NOT_FOLLOWED)) {
+  if (!arthur_near(object, y)) {
     RAM[OBJECT_HEADING + object] = 0x04;
     took(BOSS_FAR);
     if (arthur_is_right_of(object)) took(BOSS_FAR_RIGHT);
@@ -176,7 +176,7 @@ static void next_step(uint8_t object) {
     RAM[0x26] = 0x50;
     RAM[0x27] = 0x10;
     took(BOSS_NEAR_LOOKS);
-    if (!arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
+    if (!arthur_near(object, y)) took(BRANCH_TAKEN);
     else {
       RAM[OBJECT_HEADING + object] = 0x04;
       took(BOSS_CLOSE);
@@ -215,7 +215,7 @@ static void next_step(uint8_t object) {
 }
 
 // $FE58: a charge: 24 rounds at speed $18, turning towards Arthur every fourth.
-static void charge(uint8_t object) {
+static void charge(uint8_t object, uint8_t y) {
   took(BOSS_STAND_BEGINS);
   face_him(object, 0xB1);
   if (RAM[OBJECT_COUNT + object] & 3) took(BOSS_CHARGE_NO_TURN);
@@ -231,12 +231,16 @@ static void charge(uint8_t object) {
   }
   RAM[OBJECT_SHAPE + object] += (count >> 1) & 1;
   took(BOSS_CHARGE_MOVES);
-  move(object, (uint8_t)(0x18 + RAM[0xD3]));
+  move(object, (uint8_t)(0x18 + RAM[0xD3]), y);
 }
 
 // sub_FF36, with its call: the height of a jump's round, from the copy's list at $FEDD.
+// dp:twin sub_FF36 +6 jump_height(X) if X >= 1 && X < 0x16
 static void jump_height(uint8_t object) {
-  uint16_t listed = (uint16_t)(0xFEDD + RAM[OBJECT_COUNT + object] * 2);
+  uint8_t at = (uint8_t)(RAM[OBJECT_COUNT + object] * 2);   // the processor's Y, which wraps round at 256
+  uint16_t listed = (uint16_t)(0xFEDD + at);
+  if (0xDD + at > 0xFF) took(READ_PAST_PAGE);
+  if (0xDE + at > 0xFF) took(READ_PAST_PAGE);
   RAM[0x7B] = 0;
   RAM[0x73] = cart(7, listed);
   RAM[0x77] = cart(7, (uint16_t)(listed + 1));
@@ -265,7 +269,7 @@ static void dodge(uint8_t object) {
   uint8_t speed = cart(7, (uint16_t)(0xFF0D + (STEP(object) & 0x0F)));
   took(BOSS_DODGE_SPEED);
   took(CALLS);
-  move_object(object, speed, Y_NOT_FOLLOWED);
+  move_object(object, speed, STEP(object) & 0x0F);   // Y, its step, as $FD0C loads it to read the list
   if (object_in_view(object)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
@@ -296,7 +300,7 @@ static void leap(uint8_t object) {
   jump_height(object);
   took(BOSS_LEAP_SPEED);
   took(CALLS);
-  move_object(object, 0x2E, Y_NOT_FOLLOWED);
+  move_object(object, 0x2E, RAM[0x23]);   // Y as move_down leaves it
   if (object_in_view(object)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
@@ -310,16 +314,17 @@ static void leap(uint8_t object) {
 }
 
 // $FC3F: awake.
-static void awake(uint8_t object) {
+static void awake(uint8_t object, uint8_t y) {
   RAM[0xE8] = 0x0F;
   RAM[0xE9] = 0x18;
-  if (flag(object, CHARGES)) { took(BOSS_TURN_ELSEWHERE); charge(object); return; }
+  if (flag(object, CHARGES)) { took(BOSS_TURN_ELSEWHERE); charge(object, y); return; }
   took(BRANCH_TAKEN);
   if (flag(object, READY)) { took(BOSS_TURN_ELSEWHERE); leap(object); return; }
   took(BRANCH_TAKEN);
   if (flag(object, DODGES)) { took(BOSS_TURN_ELSEWHERE); dodge(object); return; }
   took(BOSS_TURN_STEPS);
-  // $FD3F: a step
+  // $FD3F: a step, with Y its number, to read the list
+  y = STEP(object) & 0x0F;
   uint8_t speed = step_speed(object);
   took(BOSS_STEP_READ);
   if (!speed) { took(BOSS_STEP_STANDS); stand(object); return; }
@@ -333,7 +338,9 @@ static void awake(uint8_t object) {
     if (!(RAM[OBJECT_FLAGS + object] & OBJECT_FLAG_SHOWN)) took(BOSS_WEAPONS_NOT_SHOWN);
     else {
       took(BOSS_WEAPONS_SHOWN);
-      if (weapon_that_touches(object)) {
+      uint8_t weapon = weapon_that_touches(object);
+      y = weapon ? weapon : FIRST_WEAPON + WEAPONS;   // Y as sub_F5F9 leaves it
+      if (weapon) {
         RAM[OBJECT_COUNT + object] = 0;
         RAM[OBJECT_FLAGS + object] |= DODGES;
         took(BOSS_DODGE_SET);
@@ -344,11 +351,11 @@ static void awake(uint8_t object) {
   }
   if (RAM[OBJECT_COUNT + object]) { took(BOSS_STEP_GOES_ON); walk(object); return; }
   took(BOSS_STEP_OVER);
-  next_step(object);
+  next_step(object, y);
 }
 
 /** $FBC4, kind 5. */
-void boss(uint8_t object) {
+void boss(uint8_t object, uint8_t y) {
   enum { CROSS = 0x27 };
   if (flag(object, HIT)) {
     took(BOSS_DEAD);
@@ -363,7 +370,7 @@ void boss(uint8_t object) {
     RAM[0x26] = RAM[0x27] = 0x10;
     took(BOSS_IN_VIEW);
     int arthur_touched;
-    uint8_t weapon = enemy_spark_tests(object, &arthur_touched);
+    uint8_t weapon = enemy_spark_tests(object, &arthur_touched, &y);
     if (!weapon) took(arthur_touched ? BOSS_TOUCHED : BOSS_NOT_HIT);
     else if (RAM[OBJECT_KIND + weapon] != CROSS) took(BOSS_HIT);
     else {
@@ -389,13 +396,13 @@ void boss(uint8_t object) {
     RAM[0x26] = RAM[0x27] = RAM[0x25] = 0;
     RAM[0x24] = 2;   // 2,000 points
     took(BOSS_DIES_SCORE);
-    add_score_with_thousands(object, 0);
+    add_score_with_thousands(object, RAM[0xD4]);   // Y as the sound leaves it
     RAM[0xE8] = 0xFF;
     took(BOSS_DIES_ENDS);
     enemy_burns_away(object);
     return;
   }
-  if (AWAKE(object)) { took(BOSS_AWAKE); awake(object); return; }
+  if (AWAKE(object)) { took(BOSS_AWAKE); awake(object, y); return; }
   took(BOSS_ASLEEP);
   // $FC62: asleep
   took(OBJECT_SHOWN_READ);
@@ -405,7 +412,12 @@ void boss(uint8_t object) {
   RAM[0x26] = 0x50;
   RAM[0x27] = 0x10;
   took(BOSS_LOOKS);
-  if (arthur_near(object, Y_NOT_FOLLOWED)) took(BOSS_NEAR);
+  if (RAM[0xCF] == 5) {
+    // in the fifth set of stages it sleeps with another shape
+    RAM[OBJECT_SHAPE + object] = 0xB0;
+    took(BOSS_ASLEEP_FIFTH_SET);
+  }
+  if (arthur_near(object, y)) took(BOSS_NEAR);
   else {
     RAM[OBJECT_COUNT + object]++;
     if ((uint8_t)(RAM[OBJECT_SCREEN_Y + object] + 0x10) < RAM[OBJECT_SCREEN_Y + ARTHUR]) { took(BOSS_ARTHUR_BELOW); return; }

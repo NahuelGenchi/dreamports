@@ -38,10 +38,11 @@ import { proofFolder, REPO } from './paths.mjs';
 import { cartridgeOf, functionKey, hex, inBootProgram, readCodeMap, readOriginal } from './proof-files.mjs';
 import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
-import { codeOf, piecesIn } from '../gba/match.mjs';
+import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
+import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
@@ -198,8 +199,9 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
       if (twin.keyed) keep(functionKey(twin.keyed), twin, file);
       if (twin.address === null) continue;
       keep(twin.address, twin, file);
-      // a twin of a run (gba/match.mjs, throughIn) is the twin of each function of it
-      if (twin.through) for (const f of codeMap.functions) if (inBootProgram(f) && f.address > twin.address && f.address <= twin.through) keep(f.address, twin, file);
+      // a twin of a run (gba/match.mjs, throughOf) is the twin of each function of it
+      const through = throughOf(twin, codeMap.functions);
+      if (through) for (const f of codeMap.functions) if (inBootProgram(f) && f.address > twin.address && f.address <= through) keep(f.address, twin, file);
     }
   }
   return marks;
@@ -216,6 +218,12 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
     // another program's, or a vector unit's, is somewhere else on the disc: its bytes are kept by its key once the
     // function check has read it, and until then nothing is known of it, which is null
     return read && (f => (f.program || f.vu ? (keptPiece(original.sha1, f.key) ? markOf(keptPiece(original.sha1, f.key)) : null) : markOf(read(f.address, f.size))));
+  }
+  // a PlayStation game's, from the program its disc boots, as match and twin keep it on this computer as they read it,
+  // and until one has nothing is known of it
+  if ((codeMap?.console ?? original.console) === 'ps1') {
+    const exe = readProgram(copy.path) ?? keptPs1Program(original.sha1);
+    return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));
