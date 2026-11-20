@@ -1,11 +1,12 @@
-// What the console holds, for a core that says where it keeps it, as the PlayStation 2's does with the tools' patch
-// (play.patch): its memory, hashed as every frame ends, for DP_MEMORY, and its memory cards' files, each time a frame
+// What the console holds, for a core that says where it keeps it, as the PlayStation 2's and the Super Nintendo's do
+// with the tools' patches (play.patch, snes9x.patch): its memory, hashed as every frame ends, for DP_MEMORY, and its memory cards' files, each time a frame
 // changed them, for DP_SAVES. The program that drives the emulators includes this (host.c), and writes what the Game Boy
 // Advance's writes (../gba/original.c), for the same tools (lib/memory.mjs, lib/saves.mjs).
 //
 // DP_MEMORY names a file as lib/memory.mjs writes it: the frame whose bytes to write too, or 0xFFFFFFFF, then each stretch
-// as three 32-bit words, which of the console's memories (0 the EE's, 1 the IOP's, 2 the SPU2's, as the core's
-// dreamports_memory numbers them), its first address there, and how many bytes. To the same name with ".out" go, for
+// as three 32-bit words, which of the console's memories (on the PlayStation 2 0 the EE's, 1 the IOP's, 2 the SPU2's,
+// as the core's dreamports_memory numbers them, and on the Super Nintendo 0 the work memory, 1 the sound processor's, 2
+// the video memory, 3 the colours and 4 the sprites' table, as its retro_dreamports_memory does), its first address there, and how many bytes. To the same name with ".out" go, for
 // every frame, the FNV-1a hash of the stretches' bytes, in order, as the frame ends, 32 bits each, and after them the
 // bytes at the frame asked for.
 //
