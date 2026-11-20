@@ -19,8 +19,7 @@ name: Check
 # npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
 # and reads the program a ninth gives the sound processor, npm run test:snes-twin, which checks its twins against it,
 # and npm run test:n64-call, which runs the functions of an eighth in Parallel N64's own processor. A pull request's
-# code runs here, with a token that
-# can only read and no secrets.
+# code runs here, with a token that can only read and no secrets.
 #
 # The tests run in five jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695). The
 # check main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only
