@@ -617,6 +617,24 @@ static void draw_line(int y, uint32_t *out) {
   for (int i = 0; i < SCREEN_W; i++) out[i] = (row[i] & 0xFFFFFF) | 0xFF000000u;
 }
 
+// the frame's lines drawn already, each when the console's time reached it (gba_draw_lines_to)
+static int lines_drawn;
+
+void gba_draw_lines_to(int y, uint32_t *out) {
+  if (y < lines_drawn) {
+    // a new frame's first line, the last frame's left unshown: its rotating layers start from their reference points
+    lines_drawn = 0;
+    for (int k = 0; k < 2; k++) { cur[k][0] = ref[k][0]; cur[k][1] = ref[k][1]; }
+  }
+  if (y >= SCREEN_H || y < lines_drawn) return;
+  gba_update_colors();
+  clean_oam();
+  for (; lines_drawn <= y; lines_drawn++) {
+    draw_line(lines_drawn, out + lines_drawn * SCREEN_W);
+    if (hblank_fn) hblank_fn(lines_drawn);
+  }
+}
+
 void gba_draw_frame(uint32_t *out) {
   uint16_t before[GBA_IO_HALFWORDS];
   int32_t before_ref[2][2];
@@ -624,10 +642,12 @@ void gba_draw_frame(uint32_t *out) {
   for (int k = 0; k < 2; k++) { before_ref[k][0] = ref[k][0]; before_ref[k][1] = ref[k][1]; }
   gba_update_colors();
   clean_oam();
-  for (int y = 0; y < SCREEN_H; y++) {
+  // the lines not drawn already as the console's time reached them
+  for (int y = lines_drawn; y < SCREEN_H; y++) {
     draw_line(y, out + y * SCREEN_W);
     if (hblank_fn) hblank_fn(y);
   }
+  lines_drawn = 0;
   for (int i = 0; i < GBA_IO_HALFWORDS; i++) gba_io[i] = before[i];
   for (int k = 0; k < 2; k++) { ref[k][0] = before_ref[k][0]; ref[k][1] = before_ref[k][1]; }
   // the V-blank starts the rotating layers from their reference points again
