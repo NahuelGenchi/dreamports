@@ -48,5 +48,6 @@ void VramFree(void *addr) {
   if (gVramHeapNone != addr) {
     segment = (u32)((u8 *)addr - gVramHeapStartAddr) / VRAM_HEAP_SEGMENT_SIZE;
     gVramHeapState[segment] = 0;
+    TIME(0x08006C34, 0x08006C52, BACK, EW, IW, IW);
   }
 }

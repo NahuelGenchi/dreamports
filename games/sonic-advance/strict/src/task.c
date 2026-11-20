@@ -96,12 +96,23 @@ void TaskDestroy(struct Task *task) {
     struct Task *prev = TASK_AT(task->prev);
     struct Task *next = TASK_AT(task->next);
     if (prev != TASK_AT(0) && next != TASK_AT(0)) {
+      // (timed for a task between two others, with a destructor and memory of its own, which isn't the one to run next)
+#ifdef MATCHING
       if (task->dtor != NULL) CALL(task->dtor)(task);
+#else
+      if (task->dtor != NULL) {
+        TIME(0x08001620, 0x08001650, 0x08099849, IW, IW, IW, IW);
+        TIME(0x08099848, 0x08099848, (u32)task->dtor);
+        CALL(task->dtor)(task);
+      }
+#endif
       if (task == gNextTask) gNextTask = TASK_AT(task->next);
       prev = TASK_AT(task->prev);
       next = TASK_AT(task->next);
       prev->next = (u32)next;
       next->prev = (u32)prev;
+      TIME(0x08001652, 0x0800165A, 0x08001663, IW, IW);
+      TIME(0x08001662, 0x08001676, 0x080017E9, IW, IW, IW, IW);
       if (task->data != 0) IwramFree(NODE_AT(task->data));
       gTaskPtrs[--gNumTasks] = task;
       task->parent = 0;
@@ -110,6 +121,7 @@ void TaskDestroy(struct Task *task) {
       task->priority = 0;
       task->flags = 0;
       task->data = 0;
+      TIME(0x08001678, 0x0800169A, BACK, IW, IW, IW, IW, IW, IW, IW, IW, IW);
     }
   }
 }
@@ -120,12 +132,33 @@ void TasksExec(void) {
   if (!(gFlags & FLAGS_PAUSED)) {
     while (gCurTask != TASK_AT(0)) {
       gNextTask = TASK_AT(gCurTask->next);
+#ifdef MATCHING
       if (!(gCurTask->flags & TASK_INACTIVE)) CALL(gCurTask->main)();
       gCurTask = gNextTask;
       if (gExecSoundMain != 0) {
         m4aSoundMain();
         gExecSoundMain = 0;
       }
+#else
+      // (timed for tasks that run, with no sound asked for in the middle)
+      if (!(gCurTask->flags & TASK_INACTIVE)) {
+        if (gCurTask == gTaskPtrs[0]) TIME(0x080016AC, 0x080016EE, 0x08099845, IW, IW, IW, IW, IW, IW, IW, IW);
+        else TIME(0x080016D8, 0x080016EE, 0x08099845, IW, IW, IW, IW, IW);
+        TIME(0x08099844, 0x08099844, (u32)gCurTask->main);
+        CALL(gCurTask->main)();
+        gCurTask = gNextTask;
+        if (gExecSoundMain == 0) {
+          TIME(0x080016F0, 0x080016FA, 0x08001705, IW, IW, IW);
+          if (gCurTask != TASK_AT(0)) TIME(0x08001704, 0x08001708, 0x080016D9, IW);
+        }
+      } else {
+        gCurTask = gNextTask;
+      }
+      if (gExecSoundMain != 0) {
+        m4aSoundMain();
+        gExecSoundMain = 0;
+      }
+#endif
     }
   } else {
     while (gCurTask != TASK_AT(0)) {
@@ -201,6 +234,9 @@ void IwramFree(void *space) {
       node->next = fast->next;
     }
   }
+  // (timed for the heap's first stretch given back, with the free one after it joined to it)
+  TIME(0x080017E8, 0x0800181A, 0x08001833, IW, IW, IW, IW, IW);
+  TIME(0x08001832, 0x0800185C, BACK, IW, IW, IW, IW, IW, IW, IW, IW);
 }
 
 /** 0x08001864: moves each taken stretch of the tasks' memory down over the free one before it, and points its task at
@@ -276,10 +312,10 @@ void TasksDestroyInPriorityRange(u16 lowest, u16 highest) {
 }
 
 /** 0x080019B4: what the list's first end runs. */
-void TaskMainDummy1(void) {}
+void TaskMainDummy1(void) { TIME(0x080019B4, 0x080019B4, BACK); }
 
 /** 0x080019B8: what the list's last end runs. */
-void TaskMainDummy2(void) {}
+void TaskMainDummy2(void) { TIME(0x080019B8, 0x080019B8, BACK); }
 
 /** 0x080019BC: what a destroyed task is left with. */
 void TaskMainDummy3(void) {}
