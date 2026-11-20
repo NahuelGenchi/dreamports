@@ -390,8 +390,8 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
 // where the program a disc boots is and where it points $gp, and how its code names an address
 const PLAYSTATION = {
   console: 'ps1', place: 'the PlayStation', compiler: 'GCC', label: LABEL, labelExample: 'D_800D8408', readCompiler, wayAt, wayText, matchFile,
-  programOf: async path => {
-    const exe = await ps1Program(path);
+  programOf: async (path, sha1) => {
+    const exe = await ps1Program(path, sha1);
     return { program: exeOf(exe), gp: gpOf(exe) };
   },
   resolve: (game, codeMap, what) => ps1Resolve(game, codeMap, what).address,
@@ -414,11 +414,12 @@ export async function matchGameOn(on, { game, what = null, more = null, whole = 
   const copy = copyWith(original.sha1);
   if (!copy) throw new Error(`match compares with ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  const { program, gp } = await on.programOf(copy.path);
+  const { program, gp } = await on.programOf(copy.path, original.sha1);
 
   const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   const { folder, shifts, files, twinsOf, twins, named, libraries, givenOf } = versionTwins(game, more ? resolvePath(more) : null);
-  const libraryFiles = new Set(libraries.flatMap(library => library.files));
+  // the shared library each of the version's files from the kit is of (../lib/libraries.mjs)
+  const libraryOf = new Map(libraries.flatMap(library => library.files.map(file => [file, library.library])));
   // a name the version gives an address: its own, a twin's in another file, or a label's
   const addressOf = name => named.get(name) ?? (twins.get(name)?.size === 1 ? [...twins.get(name)][0] : null) ?? (on.label.test(name) ? addressIn(name, shifts, on.console) : null);
 
@@ -441,24 +442,31 @@ export async function matchGameOn(on, { game, what = null, more = null, whole = 
   let same = 0, all = 0, sameBytes = 0, bytes = 0, kept = null;
   const failed = [], unknown = new Set(), proven = [], differing = [];
   for (const file of chosen) {
-    const inside = !relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file));
+    const library = libraryOf.get(file) ?? null;
+    const inside = library !== null || (!relative(folder, file).startsWith('..') && !isAbsolute(relative(folder, file)));
     const where = inside ? inRepo(file) : file;
-    if (libraryFiles.has(file)) {
-      log(`${where}\n  Not compared: a shared library's file, which match builds on the Game Boy Advance and not yet on ${on.place}.`);
-      continue;
+    // a shared library's file is built as its library.json says it was, whichever game it's in, from its folder alone
+    let built = null;
+    if (library) {
+      const given = library.compilers[on.console];
+      if (!given) {
+        log(`${where}\n  Not compared: ${library.id}'s library.json names no compiler for ${on.place}, which match needs to build it.`);
+        continue;
+      }
+      built = on.wayAt(on.readCompiler({ compiler: given }, inRepo(join(library.folder, 'library.json'))), -1);
     }
     // a file is built the way the original's code its twins are of was built: the game's, or a stretch's
-    const ways = new Map(twinsOf.get(file).filter(twin => twin.address !== null).map(twin => on.wayAt(compiler, twin.address)).map(way => [on.wayText(way), way]));
+    const ways = new Map(library ? [] : twinsOf.get(file).filter(twin => twin.address !== null).map(twin => on.wayAt(compiler, twin.address)).map(way => [on.wayText(way), way]));
     if (ways.size > 1) {
       log(`${where}\n  Not compared: its twins are of code the original built two ways, ${[...ways.keys()].join(' and ')}, as original.json's compiler says, and a file is built one way. Put each way's twins in a file of its own.`);
       failed.push(`${where}: its twins are of code built two ways`);
       continue;
     }
     const result = await on.matchFile({
-      file, compiler: ways.size === 1 ? [...ways.values()][0] : on.wayAt(compiler, -1), shifts, addressOf, program, gp, given: givenOf(file),
-      root: inside ? folder : dirname(file),
-      includes: [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
-      work: join(LOCAL, 'match', game, inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', basename(file, '.c'))),
+      file, compiler: built ?? (ways.size === 1 ? [...ways.values()][0] : on.wayAt(compiler, -1)), shifts, addressOf, program, gp, given: givenOf(file),
+      root: library ? library.folder : inside ? folder : dirname(file),
+      includes: library ? [library.folder] : [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
+      work: join(LOCAL, 'match', game, library ? join('lib', ...library.id.split('/'), basename(file, '.c')) : inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', basename(file, '.c'))),
       sizeOf: address => sizes.get(address) ?? null,
       runOf: (address, through) => runIn(codeMap.functions.filter(inBootProgram), address, through),
       log,
@@ -475,7 +483,8 @@ export async function matchGameOn(on, { game, what = null, more = null, whole = 
     for (const f of shown) {
       const at = f.address === null ? null : `0x${hex(f.address)}`;
       if (at === null) {
-        log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
+        if (library) log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: games/${game}/proof/libraries.json gives ${library.id} none for it`);
+        else log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
         continue;
       }
       if (f.elsewhere) {
