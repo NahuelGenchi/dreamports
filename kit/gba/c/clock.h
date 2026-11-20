@@ -4,8 +4,9 @@
 //
 // It is one helper that owns every cycle: each instruction's time, by its kind, from the wait states of the memory it
 // runs from and reaches, with the cartridge's prefetch; the DMA channels', the timers' and the sound's FIFO time
-// between instructions; the BIOS's own code for the calls a game makes to it; and where each frame ends. A game says
-// which of the original's instructions it has just done the work of, and the clock says when a frame is over.
+// between instructions; the interrupts the processor takes, and its waits for one; the BIOS's own code for the calls a
+// game makes to it; and where each frame ends. A game says which of the original's instructions it has just done the
+// work of, and the clock says when a frame is over.
 
 #ifndef DREAMPORTS_GBA_CLOCK_H
 #define DREAMPORTS_GBA_CLOCK_H
@@ -26,7 +27,8 @@ uint64_t gba_clock_now(void);
 /** When the instruction timed last started. */
 uint64_t gba_clock_started(void);
 
-/** When frame `frame` ends: the first instruction that starts at this time or later is the frame's last. */
+/** When frame `frame` ends, which is when the display reaches its V-blank: the first instruction that starts at this
+ *  time or later is the frame's last. For a frame still to come it's when it will with no interrupt taken before. */
 uint64_t gba_clock_frame_end(uint32_t frame);
 
 /** One Thumb instruction of the original, at `pc`, with its opcode `op`, which went on to `next` (odd to stay in Thumb
@@ -38,12 +40,49 @@ void gba_clock_thumb(uint32_t pc, uint16_t op, uint32_t next, uint32_t value, co
 void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint32_t value, const gba_access *access, int count);
 
 /** A swi, from the Thumb instruction at `pc`: the BIOS's code for it, as the emulator's own BIOS runs it, with its
- *  arguments, and back to the instruction after. CpuSet calls `unit` for each halfword or word it fills or copies, as
- *  its store runs, for the game to do that work then. Gives 0, or -1 for a call the clock doesn't know. */
+ *  arguments, and back to the instruction after. CpuSet (11) calls `unit` for each halfword or word it fills or
+ *  copies, as its store runs, for the game to do that work then. Halt (2), IntrWait (4) and VBlankIntrWait (5) halt
+ *  the processor until an interrupt wakes it, the frames that end meanwhile ended and the game's handler run from
+ *  inside the call, and the two waits go on until the handler has acknowledged one they wait for (gba_clock_on_wait);
+ *  they leave IME on. Gives 0, or -1 for a call the clock doesn't know. */
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index));
 
 /** A register the instruction timed last writes, as it runs: the DMA channels', the timers', the sound's and WAITCNT. */
 void gba_clock_write16(uint32_t address, uint16_t value);
+
+// ---------------------------------------------------------------------------------------------------------------
+// The interrupts. The clock keeps IE, IF, IME and DISPSTAT as the game's stores of them say, and raises the display's
+// three interrupts, the V-blank's as each frame ends, each line's H-blank's and the line count's, and each timer's, as
+// it overflows with its interrupt on. With a bit of IF that IE has too, the processor is asked 7 cycles later, as in
+// the emulator: halted, it wakes, and with IME on and a handler given it takes the interrupt before the next
+// instruction told to the clock. The clock then times the BIOS's code to the handler, calls the game's, which does
+// the handler's work and says its runs, and times the BIOS's way back to the instruction. In the emulator the jump to
+// the interrupt's vector can move the display's lines, and so every frame's end after it, 2 cycles on, and the clock
+// moves them the same. A game with no handler given takes none, and its frames end where they did.
+
+/** The game's interrupt handler, the code at `address`, which the game keeps at 0x03007FFC: `handler` does its work
+ *  and says its runs, the last going back to GBA_CLOCK_BIOS_BACK, or to GBA_CLOCK_BACK from Thumb code. A write of
+ *  IF has to be told with gba_clock_written, as what it writes isn't what the register holds after. */
+void gba_clock_on_interrupt(uint32_t address, void (*handler)(void));
+
+/** Where a handler goes back to in the emulator's BIOS, in ARM code. */
+#define GBA_CLOCK_BIOS_BACK 0x00000194u
+
+/** IF as it stands: a bit for each interrupt raised and not yet acknowledged. */
+uint16_t gba_clock_interrupts(void);
+
+/** Raises interrupt `interrupt` (IF's bit, 0 to 13) as the time stands, for the ones the clock doesn't raise itself:
+ *  the link cable's, the DMA channels', the buttons' and the cartridge's. */
+void gba_clock_raise(int interrupt);
+
+/** The events due before the instruction at `pc` (odd in Thumb code), and an interrupt if the processor takes one
+ *  there, before the game does that instruction's work. A run does the same for each of its instructions, after the
+ *  game did the run's work. */
+void gba_clock_before(uint32_t pc);
+
+/** The game's halfword at 0x03007FF8, where its handler says which interrupts it acknowledged and the BIOS's waits
+ *  look for them: `read` gives it and `write` stores it, as gba_clock_swi's IntrWait and VBlankIntrWait do. */
+void gba_clock_on_wait(uint16_t (*read)(void), void (*write)(uint16_t value));
 
 /** The frame the clock is in, from 0 at power-on. */
 uint32_t gba_clock_frame(void);
