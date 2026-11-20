@@ -7,9 +7,9 @@
 // cartridge whose boot code puts it 1 MB or 2 MB lower. So the tools take, of those three, the one where most of the
 // code's calls land on a function's opening, as a call names its target's address: with the code at the wrong place,
 // nearly none do. Where it's right, a third or more of the calls that stay inside the code land on one, or a fifth in a
-// game whose first code is a small program that unpacks the rest; where fewer than a tenth do at all three, as a few
-// cartridges' own boot code puts their code somewhere else again, the tools say they can't tell where it runs rather
-// than map it in the wrong place. Then the functions are found by reading it, as every MIPS console's program is
+// game whose first code is a small program that unpacks the rest; where fewer than a tenth of twenty or more do at all
+// three, as a few cartridges' own boot code puts their code somewhere else again, the tools say they can't tell where
+// it runs rather than map it in the wrong place, and with fewer they take the header's. Then the functions are found by reading it, as every MIPS console's program is
 // (../lib/mips-functions.mjs), with the VR4300's instructions (../lib/mips.mjs): its start, every call's target
 // anywhere in it, as #1451's trial found that the start jumps on through a register, every opening right after a
 // return, and every word that holds the address of one. Code the game copies from the rest of the cartridge as it runs,
@@ -58,7 +58,9 @@ export function programOf(cartridge) {
   const calls = places.map(load => callsThatLand({ load, text, processor: 'vr4300', bigEndian: true }));
   const best = calls.reduce((most, found, i) => (found.landed > calls[most].landed ? i : most), 0);
   const { landed, inside } = calls[best];
-  if (inside && landed < inside / 10) {
+  // too few calls say nothing either way, as a small program's are, and a compiler can put a function's first steps
+  // before its opening
+  if (inside >= 20 && landed < inside / 10) {
     throw new Error(`The tools can't tell where this cartridge's code runs: at none of the three places its boot code can put it, 0x${places.map(at => at.toString(16).toUpperCase()).join(', 0x')}, do a tenth of its calls land on a function's opening (${landed} of ${inside} at best). --from takes a list of its functions from a decompilation or a disassembler.`);
   }
   const load = places[best];
