@@ -251,22 +251,45 @@ void m4aSoundVSync(void)
     struct SoundMixerState *soundInfo = SOUND_INFO_PTR;
     s32 counter;
 
-    if (soundInfo->lockStatus - ID_NUMBER > 1)
+    if (soundInfo->lockStatus - ID_NUMBER > 1) {
+        M4A_TIME(m4aSoundVSync, 0x0, 0xC, M4A_AT(m4aSoundVSync, 0x40), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
+        M4A_TIME(m4aSoundVSync, 0x40, 0x40, M4A_BACK);
         return;
+    }
+    M4A_TIME(m4aSoundVSync, 0x0, 0xC, M4A_AT(m4aSoundVSync, 0xE), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
     counter = soundInfo->dmaCounter - 1;
     soundInfo->dmaCounter = counter;
-    if (counter > 0)
+    if (counter > 0) {
+        M4A_TIME(m4aSoundVSync, 0xE, 0x14, M4A_AT(m4aSoundVSync, 0x40), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+        M4A_TIME(m4aSoundVSync, 0x40, 0x40, M4A_BACK);
         return;
+    }
+    M4A_TIME(m4aSoundVSync, 0xE, 0x14, M4A_AT(m4aSoundVSync, 0x16), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
     soundInfo->dmaCounter = soundInfo->framesPerDmaCycle;
 
-    if (REG_DMA1CNT & (DMA_REPEAT << 16))
+    // each write of a channel's control is timed as it's made, before the next write of it
+    if (REG_DMA1CNT & (DMA_REPEAT << 16)) {
+        M4A_TIME(m4aSoundVSync, 0x16, 0x20, M4A_AT(m4aSoundVSync, 0x22), M4A_REACH(soundInfo), M4A_REACH(soundInfo), 0x040000C4);
         M4A_SET(REG_DMA1CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
-    if (REG_DMA2CNT & (DMA_REPEAT << 16))
+        M4A_TIME(m4aSoundVSync, 0x22, 0x24, M4A_AT(m4aSoundVSync, 0x26), 0x040000C4);
+    } else {
+        M4A_TIME(m4aSoundVSync, 0x16, 0x20, M4A_AT(m4aSoundVSync, 0x26), M4A_REACH(soundInfo), M4A_REACH(soundInfo), 0x040000C4);
+    }
+    if (REG_DMA2CNT & (DMA_REPEAT << 16)) {
+        M4A_TIME(m4aSoundVSync, 0x26, 0x2A, M4A_AT(m4aSoundVSync, 0x2C), 0x040000D0);
         M4A_SET(REG_DMA2CNT, ((DMA_ENABLE | DMA_START_NOW | DMA_32BIT | DMA_SRC_INC | DMA_DEST_FIXED) << 16) | 4);
+        M4A_TIME(m4aSoundVSync, 0x2C, 0x2E, M4A_AT(m4aSoundVSync, 0x30), 0x040000D0);
+    } else {
+        M4A_TIME(m4aSoundVSync, 0x26, 0x2A, M4A_AT(m4aSoundVSync, 0x30), 0x040000D0);
+    }
     M4A_SET(REG_DMA1CNT_H, DMA_32BIT);
+    M4A_TIME(m4aSoundVSync, 0x30, 0x34, M4A_AT(m4aSoundVSync, 0x36), 0x040000C6);
     M4A_SET(REG_DMA2CNT_H, DMA_32BIT);
+    M4A_TIME(m4aSoundVSync, 0x36, 0x36, M4A_AT(m4aSoundVSync, 0x38), 0x040000D2);
     M4A_SET(REG_DMA1CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
+    M4A_TIME(m4aSoundVSync, 0x38, 0x3C, M4A_AT(m4aSoundVSync, 0x3E), 0x040000C6);
     M4A_SET(REG_DMA2CNT_H, DMA_ENABLE | DMA_START_SPECIAL | DMA_32BIT | DMA_REPEAT);
+    M4A_TIME(m4aSoundVSync, 0x3E, 0x40, M4A_BACK, 0x040000D2);
 }
 
 /**

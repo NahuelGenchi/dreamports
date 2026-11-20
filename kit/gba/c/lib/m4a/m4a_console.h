@@ -77,7 +77,8 @@ void CpuSet(const void *src, void *dest, u32 control);
     && defined(ADDRESS_CpuSet) && defined(ADDRESS___divsi3) && defined(ADDRESS__call_via_r1) \
     && defined(ADDRESS_m4aSoundMain) && defined(ADDRESS_SoundMain) && defined(ADDRESS_SoundMainRAM) \
     && defined(ADDRESS_SoundMainRAM_Buffer) && defined(ADDRESS_MP2KPlayerMain) && defined(ADDRESS_CgbSound) \
-    && defined(ADDRESS_m4aMPlayAllStop) && defined(ADDRESS_MPlayStop) && defined(ADDRESS_TrackStop)
+    && defined(ADDRESS_m4aMPlayAllStop) && defined(ADDRESS_MPlayStop) && defined(ADDRESS_TrackStop) \
+    && defined(ADDRESS_m4aSoundVSync)
 #define M4A_TIMED
 #endif
 #endif
