@@ -95,6 +95,16 @@ export function throughIn(text, shifts = [], console = 'gba') {
   return null;
 }
 
+/** What a twin's comment says of how its original takes and gives in registers, `dp:registers r3 = <C>`: { gives,
+ *  expression, text }, the register it gives back in, the C over r0 to r3 that works out what it gives, and the
+ *  words as written, or null for a twin of a function as C calls one. The C ends with its line, or where the comment
+ *  does. */
+export function registersIn(text) {
+  const found = /\bdp:registers\s+r(\d{1,2})\s*=\s*([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
+  if (!found || Number(found[1]) > 12 || !found[2]) return null;
+  return { gives: Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim() };
+}
+
 /** The functions of a code map from `from` through the one at `through`, each { address, size, key }, when each starts
  *  where the one before ends, as one routine's do; or null when they don't, or no function starts at either end. */
 export function runIn(functions, from, through) {
@@ -227,7 +237,10 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
-      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      // dp:registers and C in the comment: how a hand-written routine takes and gives in registers no C function
+      // uses, as `r3 = chk_adr_r2((const void *)r2) ? r3 : 0`, which the function check works out and compares (#1710)
+      const registers = registersIn(above.join('\n'));
+      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), ...(registers ? { registers } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
