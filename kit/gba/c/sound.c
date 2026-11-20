@@ -10,6 +10,7 @@
 // with the game, which makes each frame's sound right after the frame, as the console mixes it.
 
 #include "sound.h"
+#include "clock.h"
 
 #define CALLS 256
 #define RENDER_MAX 4096
@@ -327,11 +328,14 @@ void gba_sound_manager_call(int op, int a, int b, int c) { if (op >= SOUND_OP_MA
 // console's memory: the kit is then only the sound hardware. The game hands it each register of the sound as it writes
 // it, and each frame the samples the console's DMA would feed the two FIFOs during it.
 static int console, consoleSamples, consoleNext;
+// whether the FIFOs' samples come from the kit's clock (gba_sound_console_fifo)
+static int fifoClock;
 
 void gba_sound_console(void) {
   apu_init(&apu);
   clear_buffers();
   console = running = 1;
+  fifoClock = 0;
   consoleSamples = consoleNext = 0;
   cycle = 0;
   nextFrame = 0;
@@ -339,6 +343,42 @@ void gba_sound_console(void) {
 
 void gba_sound_console_write(int reg, int value) {
   if (console && reg >= 0x60 && reg < 0xA0) apu_write(&apu, reg, value & 0xFF);
+}
+
+// With the console's time (gba_sound_console_fifo), each FIFO's samples from the kit's clock instead, each with the
+// first of the mix's steps it plays in, as the emulator's GBAAudioSampleFIFO puts them there at its timer's overflows
+// (clock.c), and the mix sampled on the emulator's own steps: every 256 cycles from power-on, at the console's mix
+// rate of 65536 a second.
+#define LATCHES 2048
+static struct latch { uint64_t when; int8_t value; } latches[2][LATCHES];
+static int latchFirst[2], latchCount[2];
+static int8_t fifoNow[2];
+static uint64_t stepAt;      // the console's time of the next step the mix is sampled at
+
+static void fifo_latch(int which, uint64_t when, int value) {
+  if (latchCount[which] == LATCHES) { latchFirst[which] = (latchFirst[which] + 1) % LATCHES; latchCount[which]--; }
+  struct latch *l = &latches[which][(latchFirst[which] + latchCount[which]++) % LATCHES];
+  l->when = when;
+  l->value = (int8_t)value;
+}
+
+// a FIFO's sample for the step at `at`: the last the clock put in a step at or before it
+static int fifo_at(int which, uint64_t at) {
+  while (latchCount[which] && latches[which][latchFirst[which]].when <= at) {
+    fifoNow[which] = latches[which][latchFirst[which]].value;
+    latchFirst[which] = (latchFirst[which] + 1) % LATCHES;
+    latchCount[which]--;
+  }
+  return fifoNow[which];
+}
+
+void gba_sound_console_fifo(uint64_t from) {
+  if (!console) return;
+  fifoClock = 1;
+  latchFirst[0] = latchFirst[1] = latchCount[0] = latchCount[1] = 0;
+  fifoNow[0] = fifoNow[1] = 0;
+  stepAt = from & ~(uint64_t)(APU_TICK - 1);
+  gba_clock_on_fifo(fifo_latch);
 }
 
 void gba_sound_console_samples(const int8_t *a, const int8_t *b, int count) {
@@ -386,7 +426,10 @@ static void tick(void) {
   if (i >= n) i = n ? n - 1 : 0;
   apu_run(&apu, APU_TICK);
   int out[2];
-  apu_mix(&apu, n ? playing[i] : 0, n ? playing[n + i] : 0, out);
+  if (console && fifoClock) {
+    apu_mix(&apu, fifo_at(0, stepAt), fifo_at(1, stepAt), out);
+    stepAt += APU_TICK;
+  } else apu_mix(&apu, n ? playing[i] : 0, n ? playing[n + i] : 0, out);
   curL = out[0]; curR = out[1];
   cycle += APU_TICK;
 }

@@ -1,0 +1,16 @@
+{
+  "about": "The C library's memcpy and memset as a game links them from its newlib, Thumb code the console's compiler gives back byte for byte, in the console's build alone: a Dreamport has the kit's own",
+  "compilers": {
+    "gba": {
+      "name": "agbcc",
+      "flags": [
+        "-mthumb-interwork",
+        "-O2"
+      ]
+    }
+  },
+  "functions": [
+    ["memcpy",94,"newlib.c"],
+    ["memset",82,"newlib.c"]
+  ]
+}

@@ -32,6 +32,8 @@ test('GCC\'s short forms, as GNU\'s assembler writes them', () => {
   assert.deepEqual(hex(text('.set noreorder\nsubu $sp,$sp,24\naddu $2,$2,1\nsltu $2,$4,6\nand $2,$2,0x12345')),
     ['27bdffe8', '24420001', '2c820006', '3c010001', '34212345', '00411024']);
   assert.deepEqual(hex(text('.set noreorder\nj $31\njal $31,$2\njal $2')), ['03e00008', '0040f809', '0040f809']);
+  // a shift by a register, written as a shift by a number, is the variable shift, as GCC writes 1 << n
+  assert.deepEqual(hex(text('.set noreorder\nsll $2,$2,$3\nsrl $2,$4,$5\nsra $2,$4,$5\nsll $2,$4,3')), ['00621004', '00a41006', '00a41007', '000410c0']);
 });
 
 test('a division with a register to give the result to is checked, as GNU\'s assembler checks it for a MIPS I', () => {
