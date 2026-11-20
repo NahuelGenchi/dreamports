@@ -27,6 +27,13 @@ static u8 *console_at(u32 address, int writing) {
   }
 }
 
+// the console's address of a pointer into the save's flash, which the kit keeps elsewhere, for the console's stack
+u8 *console_flash(void);
+static uint32_t console_address(uint32_t pointer) {
+  uint32_t flash = (uint32_t)(uintptr_t)console_flash();
+  return pointer - flash < 0x10000u ? 0x0E000000u + (pointer - flash) : pointer;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // The registers. The display's are the kit's, gba_io, written through gba_write so the kit draws with them. The rest,
 // the interrupts', the DMA channels', the timers', the sound's, the link cable's and the buttons', are kept here, as
@@ -412,6 +419,7 @@ void console_start(void) {
   gba_clock_run_arm(0x080000C0, 0x080000EC, 0x08001495, vector, 1);
   *(u32 *)0x03007FFC = 0x080000FC;
   // the system mode's stack, as the start sets it, and AgbMain called with lr from its mov lr, pc at 0x080000E8
+  gba_stack_addresses(console_address);
   gba_stack_start(0x03007F00);
   gba_stack_call(0x080000F0);
   AgbMain();

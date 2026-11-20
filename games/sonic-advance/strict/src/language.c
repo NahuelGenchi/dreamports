@@ -186,7 +186,8 @@ void Task_806ABD4(void) {
     TaskDestroy(gCurTask);
 
     if (screen->unk18C == 1) {
-      u16 irqEnable, irqMasterEnable, dispStat;
+      // each held as a word, as the compiler holds them, which its debugging records then place
+      u32 irqEnable, irqMasterEnable, dispStat;
 
       TIME(0x0806AA3A, 0x0806AA46, 0x08097919, IW);
       m4aMPlayAllStop();
