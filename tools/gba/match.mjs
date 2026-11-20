@@ -107,13 +107,16 @@ export function throughOf(twin, functions) {
 }
 
 /** What a twin's comment says of how its original takes and gives in registers, `dp:registers r3 = <C>`: { gives,
- *  expression, text }, the register it gives back in, the C over r0 to r3 that works out what it gives, and the
- *  words as written, or null for a twin of a function as C calls one. The C ends with its line, or where the comment
- *  does. */
+ *  expression, text, takes }, the register it gives back in, the C over r0 to r7 that works out what it gives, the
+ *  words as written, and how many registers from r0 the call takes, 4 or up to r7 when the C names one (#1728); or
+ *  null for a twin of a function as C calls one. A routine that gives nothing back is written with no `rN =`, as
+ *  `dp:registers ChnVolSetAsm((struct MixerSource *)r4, (struct MP2KTrack *)r5)`, and `gives` is then null. The C
+ *  ends with its line, or where the comment does. */
 export function registersIn(text) {
-  const found = /\bdp:registers\s+r(\d{1,2})\s*=\s*([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
-  if (!found || Number(found[1]) > 12 || !found[2]) return null;
-  return { gives: Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim() };
+  const found = /\bdp:registers\s+(?:r(\d{1,2})\s*=\s*)?([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
+  if (!found || (found[1] !== undefined && Number(found[1]) > 12) || !found[2]) return null;
+  const takes = Math.max(3, ...[...found[2].matchAll(/\br([0-7])\b/g)].map(named => Number(named[1]))) + 1;
+  return { gives: found[1] === undefined ? null : Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim(), takes };
 }
 
 // A twin of a function at an address code uses as the base of others, as a Game Boy Advance cartridge's first
