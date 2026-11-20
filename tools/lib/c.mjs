@@ -1,6 +1,7 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/ and the PlayStation 2 kit/ps2/c/, and
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
+// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
@@ -50,13 +51,15 @@ const OWN = {
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and until
   // it draws, a game draws its own picture, as on a console with no kit of its own (kit/c/console.c)
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], generalPage: true },
+  n64: {
+    folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
+    // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
+    // pointer of another type or through address 0, and no two stores the compiler sees side by side made into one, as
+    // the fold pass turns round each number by its own size, which two merged in the module's own order would undo
+    // (wasm-fold.mjs)
+    twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
+  },
 };
-
-// what the twins of a console with no kit of its own yet are built with besides: on the Nintendo 64, a char with no sign,
-// as IDO, which most of its games were built with, has it, code that reads a value through a pointer of another type or
-// through address 0, and no two stores the compiler sees side by side made into one, as the fold pass turns round each
-// number by its own size, which two merged in the module's own order would undo (wasm-fold.mjs)
-const TWIN_FLAGS = { n64: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'] };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
@@ -128,7 +131,7 @@ export function cKit(id) {
     return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
-  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: TWIN_FLAGS[id] ?? [] };
+  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
 }
 
 /** How every build of a game's C works it out, the function check's too (../gba/twin.mjs): made fast the same way, and
