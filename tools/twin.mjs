@@ -14,15 +14,15 @@
 //   --seed      what the calls are made up from, 1 unless said
 //   --seconds   how long a twin may take over one call before it's stopped: 2 unless said, and on the NES a fifth of one
 //   --memories  takes real memories from the game's recordings, or those named, for the calls to start from, kept
-//               in .dreamports/twin/ on this computer only: on the Game Boy Advance and the PlayStation 2 the console's
-//               memory as it was each time a function started in play, with what it was given, and on the NES the work
-//               memory every so many frames
+//               in .dreamports/twin/ on this computer only: on the Game Boy Advance, the PlayStation and the
+//               PlayStation 2 the console's memory as it was each time a function started in play, with what it was
+//               given, and on the NES the work memory every so many frames
 // and on the Game Boy Advance (gba/twin.mjs):
 //   --frames    how long the original plays from power-on before the first call, 600 frames unless said
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
-// and on the PlayStation (ps1/twin.mjs) every call starts from the program as the console loads it, with no --frames
-// and no --memories yet, and --addresses is as on the Game Boy Advance; on the PlayStation 2 (ps2/twin.mjs) the same, but
-// --memories takes each function's memories as it starts in play, in the console's emulator; and on the NES, where
+// and on the PlayStation (ps1/twin.mjs) and the PlayStation 2 (ps2/twin.mjs) a call starts from the program as the
+// console loads it, with no --frames, or with --memories from each function's memories as it starts in play, in the
+// console's emulator, and --addresses is as on the Game Boy Advance; and on the NES, where
 // each twin has a contract beside it and several functions can be named (nes/twin.mjs):
 //   --from      another folder of the game's C than its src/
 //   --without   bytes of the work memory left out of what's compared

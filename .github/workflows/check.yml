@@ -5,7 +5,8 @@ name: Check
 # npm run test:c-kit, which tries the kit in C against the JavaScript kit's drawing and starting point, and
 # npm run test:consoles and test:real-console, which do the same on a made-up console and on a real NES emulator, built
 # from its makers' source, with a small program of the project's own, and say which of its functions ran, and
-# npm run test:ps1-kit, which proves the PlayStation's kit in C against its real emulator with another, and npm run test:match, which builds the Game Boy
+# npm run test:ps1-kit, which proves the PlayStation's kit in C against its real emulator with another, and
+# npm run test:ps1-memories, which takes memories of play in that emulator for the function check, and npm run test:match, which builds the Game Boy
 # Advance's compiler from its keepers' source and tries match with another small program of the project's own, and
 # npm run test:nes-twin, which tries the NES's function check on the real emulator's own processor with a third, and
 # npm run test:ps1-call and test:ps1-twin, which run the functions of a fourth in the PlayStation's emulator's own
@@ -47,6 +48,7 @@ jobs:
               npm run test:consoles
               npm run test:real-console
               npm run test:ps1-kit
+              npm run test:ps1-memories
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
