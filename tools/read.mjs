@@ -15,6 +15,13 @@
 // nes/read.mjs): <function> is a bank and an address, such as 04:923F, a label as a game's code names it, such as
 // sub_04_923F or sub_C39C, or an offset in the program as the code map numbers it, and --bytes is its only option.
 //
+// On a Super Nintendo game it prints the function's 65816 instructions, each at the length the processor's mode gives
+// it, which the tools' own table reads (snes/65816.mjs, snes/read.mjs): <function> is a place in the ROM as the code map
+// keys it, such as 00012345, an address, such as $80:8123, a name in the code map or a label, such as sub_808123, and
+// --mode a8i8, a8i16, a16i8, a16i16 or e gives the mode it starts in where the code map doesn't say. With --spc it
+// prints the program the game gave the sound processor instead, from an address in its memory, such as 0400, as that
+// memory is --frame frames after power-on, 60 unless it says (snes/spc700.mjs).
+//
 // On a PlayStation game it prints the function's MIPS instructions, from the program the copy boots, which the tools'
 // own decoder reads (ps1/mips.mjs, ps1/read.mjs): <function> is an address, such as 0x800C1234, a name in the code map
 // or a label with an address, such as func_800C1234, and --bytes is its only option.
@@ -41,8 +48,9 @@ import { NOTES_CAUTION, notesAbout, showAll } from './notes.mjs';
 import { readNes } from './nes/read.mjs';
 import { readPs1 } from './ps1/read.mjs';
 import { readPs2 } from './ps2/read.mjs';
+import { readSnes } from './snes/read.mjs';
 
-const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>]';
+const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc]';
 const CARTRIDGE = 0x08000000;
 // the work RAMs, where games copy code to run it faster
 const MEMORY = [[0x02000000, 0x02040000], [0x03000000, 0x03008000]];
@@ -52,7 +60,7 @@ const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
 // the consoles whose instructions read knows, and what reads each
-const READERS = { gba: readGba, nes: readNes, ps1: readPs1, ps2: readPs2 };
+const READERS = { gba: readGba, nes: readNes, snes: readSnes, ps1: readPs1, ps2: readPs2 };
 // the consoles whose reader reads the program a disc boots itself, rather than the whole copy
 const OFF_DISC = new Set(['ps1', 'ps2']);
 const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(', ').replace(/, ([^,]+)$/, ' and $1');
@@ -180,7 +188,11 @@ function options(args) {
   const rest = [], flags = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--arm' || arg === '--thumb') flags[arg.slice(2)] = true;
+    if (arg === '--arm' || arg === '--thumb' || arg === '--spc') flags[arg.slice(2)] = true;
+    else if (arg === '--mode') {
+      flags.mode = args[++i];
+      if (!flags.mode) throw new Error(`--mode needs a mode. ${USAGE}`);
+    }
     else if (arg === '--bytes' || arg === '--frame') {
       const value = Number(args[++i]);
       if (!Number.isInteger(value) || value < (arg === '--bytes' ? 1 : 0)) throw new Error(`${arg} needs a whole number. ${USAGE}`);
