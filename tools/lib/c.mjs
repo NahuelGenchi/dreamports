@@ -47,8 +47,9 @@ const OWN = {
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
-  // the function check builds it noting each read and write of the hardware, to compare with the original's
-  snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c'], header: true, twinFlags: ['-DDP_TWIN_CHECK'] },
+  // the function check builds it noting each read and write of the hardware, to compare with the original's; and until
+  // it draws, a game draws its own picture, as on a console with no kit of its own (kit/c/console.c)
+  snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], generalPage: true },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -117,8 +118,8 @@ export function cKit(id) {
     writeFileSync(header, text);
   }
   if (own) {
-    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [] };
+    const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...(own.generalPage ? [base('console.c')] : []), ...own.sources.map(name => join(own.folder, name))];
+    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
   return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
