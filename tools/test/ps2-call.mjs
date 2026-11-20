@@ -33,7 +33,7 @@ console.log('The EE:');
     await ee.image(image);
     const of = name => functions.find(f => f.name === name);
     // the registers of a call: ra and sp as the check gives them, and each argument as a caller spreads it
-    const call = async (name, args = [], { floats = [], limit } = {}) => {
+    const call = async (name, args = [], { floats = [], limit, changes = [] } = {}) => {
       const registers = new Array(EE_REGISTERS.words).fill(0);
       registers[31 * 4] = 0x1000;
       registers[29 * 4] = 0x01FFFF00;
@@ -42,7 +42,7 @@ console.log('The EE:');
         registers[(4 + k) * 4 + 1] = Number(BigInt.asUintN(32, BigInt(value) >> 32n));
       });
       floats.forEach((bits, k) => { registers[EE_REGISTERS.fpr + 12 + k] = bits; });
-      return ee.call({ address: of(name).address, span: of(name).size, registers, limit });
+      return ee.call({ address: of(name).address, span: of(name).size, registers, limit, changes });
     };
     const v0 = answer => (BigInt(answer.registers[9]) << 32n) | BigInt(answer.registers[8]);
 
@@ -95,7 +95,7 @@ console.log('The EE:');
     check(answer.end === OUT_OF_STEPS && answer.steps >= 1000 && answer.steps < 1010, `a loop that never ends stops after its instructions: ${endText(answer)}, ${answer.steps}`);
     answer = await call('misaligned', [0x01800000]);
     check(answer.end === MISALIGNED && answer.detail === 0x01800001, `a word where none starts stops it: ${endText(answer)}`);
-    answer = await call('vu0', [0x3F800000]);
+    answer = await call('vu0', [0x01800000], { changes: [[0x01800000, 4, 0x3F800000]] });
     check(answer.end === CAME_BACK && answer.vu0 && answer.registers[EE_REGISTERS.vf + 2 * 4] === 0x40000000, 'vector unit 0\'s registers left changed in macro mode are said');
     answer = await call('sum', [1, 1]);
     check(!answer.vu0 && !answer.chunks.length && !answer.hardware, 'and nothing is said of a call that changed none of them');

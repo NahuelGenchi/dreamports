@@ -13,6 +13,7 @@ name: Check
 # GNU's source as WebAssembly and compiles a C file of the project's own with it, and npm run test:ps1-match, which
 # tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
 # test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
+# test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
 # npm run test:n64-call and test:n64-twin, which run the functions of a seventh in Parallel N64's own processor and
 # check its twins against them. A pull
 # request's code runs here, with a token that
@@ -93,6 +94,7 @@ jobs:
               npm run test:ps2-match
               npm run test:ps2-call
               npm run test:ps2-twin
+              npm run test:ps2-twin-programs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

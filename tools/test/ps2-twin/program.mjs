@@ -23,7 +23,7 @@
 //   kernel     calls the console's kernel
 //   forever    a loop that never ends
 //   misaligned reads a word where none starts
-//   vu0        doubles a0 on vector unit 0, in macro mode
+//   vu0        doubles the four floats a0 points at on vector unit 0, in macro mode, with LQC2, VADD and SQC2
 //   shine      reached only through the table of functions
 //   ten        the sum of ten arguments, the last two on the stack, eight bytes apart from where sp points
 //   moded      a0 + 1 when the program's mode is the one play sets, and a0 otherwise
@@ -64,8 +64,8 @@ const mulS = (fd, fs, ft) => ((0x11 << 26) | (16 << 21) | (ft << 16) | (fs << 11
 // MMI's PMAXW, the larger of each of four words
 const pmaxw = (rd, rs, rt) => ((0x1C << 26) | (R[rs] << 21) | (R[rt] << 16) | (R[rd] << 11) | (3 << 6) | 0x08) >>> 0;
 // vector unit 0 in macro mode: a register to and from one of its vectors, and VADD.xyzw
-const qmtc2 = (rt, vf) => ((0x12 << 26) | (5 << 21) | (R[rt] << 16) | (vf << 11)) >>> 0;
-const qmfc2 = (rt, vf) => ((0x12 << 26) | (1 << 21) | (R[rt] << 16) | (vf << 11)) >>> 0;
+const lqc2 = (vf, offset, base) => ((0x36 << 26) | (R[base] << 21) | (vf << 16) | (offset & 0xFFFF)) >>> 0;
+const sqc2 = (vf, offset, base) => ((0x3E << 26) | (R[base] << 21) | (vf << 16) | (offset & 0xFFFF)) >>> 0;
 const vadd = (fd, fs, ft) => ((0x12 << 26) | (1 << 25) | (0xF << 21) | (ft << 16) | (fs << 11) | (fd << 6) | 0x28) >>> 0;
 // what needs to know where things are: a branch to a label, a call, and the two halves of an address
 const branch = op => (rs, rt, label) => ({ at: (labels, pc) => i(op, rs, rt, (labels[label] - pc - 4) >> 2) });
@@ -115,7 +115,7 @@ const PROGRAM = [
   here('kernel'), addiu('v1', 'zero', 0x3C), syscall, jr('ra'), nop,
   here('forever'), b('forever'), nop,
   here('misaligned'), lw('v0', 1, 'a0'), jr('ra'), nop,
-  here('vu0'), qmtc2('a0', 1), vadd(2, 1, 1), qmfc2('v0', 2), jr('ra'), nop,
+  here('vu0'), lqc2(1, 0, 'a0'), vadd(2, 1, 1), sqc2(2, 0, 'a0'), jr('ra'), nop,
   here('shine'), jr('ra'), addiu('v0', 'zero', 1),
   here('ten'), lw('v0', 0, 'sp'), lw('v1', 8, 'sp'), addu('v0', 'v0', 'v1'), addu('v0', 'v0', 'a0'), addu('v0', 'v0', 'a1'), addu('v0', 'v0', 'a2'),
   addu('v0', 'v0', 'a3'), addu('v0', 'v0', 't0'), addu('v0', 'v0', 't1'), addu('v0', 'v0', 't2'), jr('ra'), addu('v0', 'v0', 't3'),

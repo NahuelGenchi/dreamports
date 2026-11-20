@@ -73,7 +73,7 @@ async function tried(changes = [], options = {}, memories = null) {
 try {
   console.log('The twins as they are:');
   const right = await tried();
-  const same = TWINS.filter(name => !['kernel', 'misaligned', 'vu0'].includes(name));
+  const same = TWINS.filter(name => !['kernel', 'misaligned'].includes(name));
   check(same.every(name => right[name]?.kind === 'same' && right[name].compared === CALLS), `${same.join(', ')}: the same memory on all ${CALLS} calls (${same.filter(name => right[name]?.kind !== 'same').map(name => `${name} ${right[name]?.line}`).join('; ')})`);
   // moded's other way needs the mode only play sets
   const whole = same.filter(name => name !== 'moded');
@@ -81,7 +81,7 @@ try {
   check(right.moded?.kind === 'same' && !right.moded.whole && right.moded.left.some(([, how]) => how === 'always taken'), `but the one whose other way needs what only play sets up: ${right.moded?.left?.map(([at, how]) => `${at.toString(16)} ${how}`).join(', ')}`);
   check(right.kernel?.kind === 'unchecked' && /called the console's kernel \(syscall 60\)/.test(right.kernel.line), `a function whose original calls the kernel isn't checked, and says so: ${right.kernel?.line}`);
   check(right.misaligned?.kind === 'unchecked' && /where none of its size starts/.test(right.misaligned.line), `nor one whose original reads where no word starts: ${right.misaligned?.line}`);
-  check(right.vu0?.kind === 'unchecked' && /vector unit 0's registers/.test(right.vu0.line), `nor one whose original leaves vector unit 0's registers changed: ${right.vu0?.line}`);
+  check(right.vu0?.kind === 'same' && right.vu0.whole, `one that works on vector unit 0 in macro mode is compared, registers and all: ${right.vu0?.line}`);
   check(right.product?.address === null, 'a function of the C\'s own, with no address, is named as one');
 
   console.log('A line changed, a twin at a time:');
@@ -94,6 +94,8 @@ try {
   };
   await wrong('sum', [['return a + b;', 'return a - b;']], 'differs', 'a difference instead of a sum', /the twin gave back .* and the original/);
   await wrong('fill', [['while (count != 0) {', 'while (count-- >= 0) {\n    count++;']], 'differs', 'a byte too many', /in the console's memory, the twin left 0x/);
+  await wrong('vu0', [['vu0_macro(0x4BE108A8);', 'vu_add(vu0_vf(2), vu0_vf(1), vu0_vf(1), VU_XYZW);']], 'differs', 'a sum on vector unit 0 that leaves its flags as they were, where VADD sets them', /in vector unit 0's (status|MAC) flag the twin left/);
+  await wrong('vu0', [['*at = *vu0_vf(2);', '*at = *vu0_vf(2);\n  *vu0_vf(3) = *at;']], 'differs', 'a register of vector unit 0 the original leaves alone', /in vector unit 0's VF3\.[xyzw] the twin left/);
   await wrong('lookup', [['return values[index];', 'return values[index + 1];']], 'differs', 'the value one along');
   await wrong('wide', [['return a + b;\n}\n\n// a product', 'return (int)a + b;\n}\n\n// a product']], 'differs', 'a 64-bit sum with one of its numbers cut to 32 bits', /gave back 0x[0-9A-F]{16}/);
   await wrong('scale', [['return ee_mul(a, b);', 'return a * b;']], 'differs', 'a product rounded to the nearest, as a computer rounds, where the EE cuts', /as floats' bits/);
@@ -161,8 +163,8 @@ try {
     run = dp('codemap', NAME);
     check(run.status === 0 && /22 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--calls', '200');
-    check(run.status === 0 && /16 of 19 functions left the same memory/.test(run.out) && /15 of those 16 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
-    check((run.out.match(/The same memory/g) ?? []).length === 16 && (run.out.match(/Not checked/g) ?? []).length === 3, 'a line for each twin');
+    check(run.status === 0 && /17 of 19 functions left the same memory/.test(run.out) && /16 of those 17 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+    check((run.out.match(/The same memory/g) ?? []).length === 17 && (run.out.match(/Not checked/g) ?? []).length === 2, 'a line for each twin');
     run = dp('twin', '--seed', '9', VERSION, 'func_00100158', '--calls', '200');
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'lookup', '--calls', '200');
