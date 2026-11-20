@@ -83,7 +83,6 @@ export async function run(args) {
   }
   const beyond = why => [...states.values()].filter(state => state.beyond === why).length;
   if (beyond('start')) console.log(`\nThe cartridge's start, ${plural(beyond('start'), 'function')}, is in no task: it runs once before any function is called and never comes back, which is the kit's to do in a Dreamport, and neither proof reaches it yet.`);
-  if (beyond('elsewhere')) console.log(`\n${plural(beyond('elsewhere'), 'function')} of the disc's vector units' programs ${beyond('elsewhere') === 1 ? 'is' : 'are'} in no task: neither proof reaches one yet.`);
   if (beyond('memory')) console.log(`\n${plural(beyond('memory'), 'function')} the game makes in its work memory ${beyond('memory') === 1 ? 'is' : 'are'} in no task: neither proof reaches one yet.`);
   console.log(`\nnpm run dp -- proofs ${version} <a task's first address> lists a task's functions, each with its twin and its proof.`);
   return 0;
