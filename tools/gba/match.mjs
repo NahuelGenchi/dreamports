@@ -96,6 +96,38 @@ export function throughIn(text, shifts = [], console = 'gba') {
   return null;
 }
 
+/** What a twin's comment says of how its original takes and gives in registers, `dp:registers r3 = <C>`: { gives,
+ *  expression, text, takes }, the register it gives back in, the C over r0 to r7 that works out what it gives, the
+ *  words as written, and how many registers from r0 the call takes, 4 or up to r7 when the C names one (#1728); or
+ *  null for a twin of a function as C calls one. A routine that gives nothing back is written with no `rN =`, as
+ *  `dp:registers ChnVolSetAsm((struct MixerSource *)r4, (struct MP2KTrack *)r5)`, and `gives` is then null. The C
+ *  ends with its line, or where the comment does. */
+export function registersIn(text) {
+  const found = /\bdp:registers\s+(?:r(\d{1,2})\s*=\s*)?([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
+  if (!found || (found[1] !== undefined && Number(found[1]) > 12) || !found[2]) return null;
+  const takes = Math.max(3, ...[...found[2].matchAll(/\br([0-7])\b/g)].map(named => Number(named[1]))) + 1;
+  return { gives: found[1] === undefined ? null : Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim(), takes };
+}
+
+/** The last function of the run a twin is the twin of, among the code map's `functions`, or null for a twin of one
+ *  function: as its comment names it, `0x08001AA4 to 0x0800258E`, or for a twin that gives its routine's length,
+ *  `dp:run 16`, the function that ends where the routine does. */
+export function throughOf(twin, functions) {
+  if (twin.through !== undefined && twin.through !== null) return twin.through;
+  if (!twin.runBytes || twin.address === null || twin.address === undefined) return null;
+  const end = twin.address + twin.runBytes;
+  return functions.find(f => !f.bytes && f.address > twin.address && f.address + f.size === end)?.address ?? null;
+}
+
+// A twin of a function at an address code uses as the base of others, as a Game Boy Advance cartridge's first
+// instruction at 0x08000000, which a comment names with the twin's own name right after it, as in
+// `/** 0x08000000, CartridgeStart: ... */`: elsewhere such an address is a base, and names no function (#1721).
+function namedBase(text, name, console) {
+  const { bases, address: of } = namesOf(console);
+  const found = new RegExp(`\\b0x([0-9A-Fa-f]{8})\\s*,\\s*${name}\\b`).exec(text);
+  return found && bases.has(of(found[1])) ? of(found[1]) : null;
+}
+
 /** The functions of a code map from `from` through the one at `through`, each { address, size, key }, when each starts
  *  where the one before ends, as one routine's do; or null when they don't, or no function starts at either end. */
 export function runIn(functions, from, through) {
@@ -226,11 +258,18 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
       const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts, console);
       // on the PlayStation 2 a comment can name a function of another program of the disc, or a vector unit's, by its key
       const keyed = !given && console === 'ps2' ? keyIn(above.join('\n')) : null;
-      const address = given ? given.get(name) ?? null : keyed ? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console);
+      const address = given ? given.get(name) ?? null : keyed ? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console) ?? namedBase(above.join('\n'), name, console);
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
-      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      // dp:registers and C in the comment: how a hand-written routine takes and gives in registers no C function
+      // uses, as `r3 = chk_adr_r2((const void *)r2) ? r3 : 0`, which the function check works out and compares (#1710)
+      const registers = registersIn(above.join('\n'));
+      // dp:run and a number of bytes in the comment: a twin of the original's routine of that length from its start,
+      // which the code map may hold as several functions, as a shared library's twin, which names no address, says it
+      // (throughOf)
+      const runBytes = Number(/\bdp:run\s+(\d+)\b/.exec(above.join('\n'))?.[1] ?? 0);
+      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(runBytes ? { runBytes } : {}), ...(unaligned ? { unaligned } : {}), ...(registers ? { registers } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;
@@ -320,6 +359,8 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  *   sizeOf(address): how long the code map says the function there is, or null when none starts there
  *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
  *     gives them, or null
+ *   runEnd(address, bytes): for a twin that names its run by its length, `dp:run`, as a shared library's does, the
+ *     address of the run's last function, as throughOf gives it, or null
  *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
  *     reader says of each halfword
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
@@ -329,16 +370,18 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  * function's bytes as built, with every address filled in, and `calls` the addresses its calls go to; or { error } when
  * the file didn't build, with what the compiler said.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, runEnd = () => null, original, shifts = [], given = null }) {
   const built = await compileFile({ file, root, includes, compiler, work });
   if (built.error) return built;
   const { made, assembly } = built;
   const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split(/\r?\n/);
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
+  // the last function of a twin's run: as its comment names it, or as long as its dp:run says
+  const throughOfTwin = twin => twin?.through ?? (twin?.runBytes && twin.address !== null ? runEnd(twin.address, twin.runBytes) : null) ?? null;
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
-    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: throughOfTwin(twins.get(name)), line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
     .sort((a, b) => a.at - b.at);
   functions.forEach((f, i) => {
     f.until = functions[i + 1]?.at ?? code.length;
@@ -366,7 +409,13 @@ export async function matchFile({ file, root = dirname(file), includes = [dirnam
       unknown.add(name);
       inside.missing.add(name);
     } else if (kind === 'word') code.writeUInt32LE(target >>> 0, at);
-    else {
+    else if (kind === 'arm-branch') {
+      // an ARM branch: how far it is from the instruction two on, in words, in the instruction's low 24 bits (#1721)
+      const offset = (target & ~1) - (inside.address + (at - inside.at) + 8);
+      if (offset < -0x2000000 || offset >= 0x2000000) inside.missing.add(name);
+      else inside.calls.push(target & ~1);
+      code.writeUInt32LE((code.readUInt32LE(at) & 0xFF000000 | (offset >> 2 & 0xFFFFFF)) >>> 0, at);
+    } else {
       // a call: how far it is from the instruction after next, in the two halves of the instruction
       const offset = (target & ~1) - (inside.address + (at - inside.at) + 4);
       if (offset < -0x400000 || offset >= 0x400000) inside.missing.add(name);

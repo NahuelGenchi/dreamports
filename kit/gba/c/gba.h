@@ -193,6 +193,10 @@ void gba_sound_played_for(int frames);
 void gba_sound_console(void);
 void gba_sound_console_write(int reg, int value);
 void gba_sound_console_samples(const int8_t *a, const int8_t *b, int count);
+/** With the kit's clock (clock.h): the two FIFOs' samples from the clock, as the console plays them, each at its
+ *  timer's overflow, in place of gba_sound_console_samples, with the first frame of sound starting at `from`, in
+ *  cycles from power-on. */
+void gba_sound_console_fifo(uint64_t from);
 /** m4aSoundInit after a soft reset: the engine starts again from nothing, with the sound chip as it was. */
 void gba_sound_reset(void);
 /** m4aSongNumStart */

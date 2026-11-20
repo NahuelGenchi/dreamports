@@ -7,6 +7,19 @@
 //
 // It links nothing. A name it can't place, such as a call or an address kept beside a function, comes back as a
 // relocation, and match fills each in with the name's address in the original.
+//
+// It also reads Thumb as a decompilation writes a routine its game has in assembly, which the kit keeps for the
+// console's stack (stack-map.mjs): the newer way after `.syntax unified`, where an instruction that sets the flags ends
+// in s (adds, movs, lsls) and moving one low register to another is `movs`, a shift of nothing; numbers with no #,
+// and names given a number with .equ, .set or .equiv, with sums of them; `ldr rd, =value`, which keeps the value at the
+// next .pool, each once, in the order they're first named; `adr rd, label`; and stm and ldm with ! after the register.
+// ARM code, after .arm, is assembled as the older way writes it, as a twin's assembly passed through the console's
+// compiler has it, a cartridge's start and its interrupt code: branches, bx, the data-processing instructions with a
+// number or a register shifted by a number or a register, msr and mrs, and loads and stores of a word, a byte or a
+// halfword with a number added (#1721); and as the m4a engine's mixer has it, its multiplies, loads and stores of every
+// kind with a number or a register added, before or after, ldm and stm, and loads from a label (#1725). ARM the
+// assembler doesn't know, and a decompilation's ARM after `.syntax unified`, takes its
+// four bytes left as zeros, so what follows is in its place, and `unassembled` says where they are.
 
 const REGISTERS = { r0: 0, r1: 1, r2: 2, r3: 3, r4: 4, r5: 5, r6: 6, r7: 7, r8: 8, r9: 9, r10: 10, r11: 11, r12: 12, r13: 13, r14: 14, r15: 15, sl: 10, fp: 11, ip: 12, sp: 13, lr: 14, pc: 15 };
 const SP = 13, LR = 14, PC = 15;
@@ -21,14 +34,56 @@ const SHIFTS = { lsl: 0, lsr: 1, asr: 2 };
 const BY_NUMBER = { str: [0x6000, 4], ldr: [0x6800, 4], strb: [0x7000, 1], ldrb: [0x7800, 1], strh: [0x8000, 2], ldrh: [0x8800, 2] };
 const BY_REGISTER = { str: 0x5000, strh: 0x5200, strb: 0x5400, ldrsb: 0x5600, ldsb: 0x5600, ldr: 0x5800, ldrh: 0x5A00, ldrb: 0x5C00, ldrsh: 0x5E00, ldsh: 0x5E00 };
 
+// the instructions the newer way writes with an s, as the older way writes them
+const FLAGGED = new Set(['add', 'sub', 'mov', 'lsl', 'lsr', 'asr', 'ror', 'and', 'orr', 'eor', 'bic', 'mvn', 'neg', 'mul', 'adc', 'sbc']);
+
+/** The number `text` comes to, a sum of numbers and names `constants` gives one, with + - * / << >> & | ^ ~ and
+ *  brackets, or null for anything else. */
+export function valueOf(text, constants = new Map()) {
+  const tokens = text.match(/0x[0-9a-f]+|\d+|[A-Za-z_.$][\w.$]*|<<|>>|[-+*/&|^~()]|\S/gi) ?? [];
+  let k = 0;
+  const atom = () => {
+    const t = tokens[k++];
+    if (t === undefined) return null;
+    if (t === '(') {
+      const v = or();
+      return tokens[k++] === ')' ? v : null;
+    }
+    if (t === '-' || t === '+' || t === '~') {
+      const v = atom();
+      return v === null ? null : t === '-' ? -v : t === '~' ? ~v : v;
+    }
+    if (/^(0x[0-9a-f]+|\d+)$/i.test(t)) return Number(t);
+    return constants.has(t) ? constants.get(t) : null;
+  };
+  const level = (next, ops) => () => {
+    let v = next();
+    while (v !== null && ops[tokens[k]]) {
+      const op = ops[tokens[k++]], w = next();
+      v = w === null ? null : op(v, w);
+    }
+    return v;
+  };
+  const product = level(atom, { '*': (a, b) => a * b, '/': (a, b) => Math.trunc(a / b) });
+  const sum = level(product, { '+': (a, b) => a + b, '-': (a, b) => a - b });
+  const shifted = level(sum, { '<<': (a, b) => a << b, '>>': (a, b) => a >> b });
+  const or = level(level(level(shifted, { '&': (a, b) => a & b }), { '^': (a, b) => a ^ b }), { '|': (a, b) => a | b });
+  const value = or();
+  return value !== null && k === tokens.length ? value : null;
+}
+
 /** What `text`, assembly as the compiler writes it, comes to:
  *  { sections: { name: { bytes, lines } }, symbols: Map of name to { section, at, function }, relocations: [{ section,
- *  at, kind: 'word' or 'call', name, addend }], sizes: Map of a function's name to its length }. `lines` says which
- *  line of the text each byte came from. An error names the line it couldn't read. */
+ *  at, kind: 'word', 'call' or 'arm-branch', name, addend }], sizes: Map of a function's name to its length, unassembled: [{ section,
+ *  at, bytes }], the ARM code it left as zeros }. `lines` says which line of the text each byte came from. An error
+ *  names the line it couldn't read. */
 export function assemble(text) {
-  const sections = {}, symbols = new Map(), relocations = [], sizes = new Map(), functions = new Set();
+  const sections = {}, symbols = new Map(), relocations = [], sizes = new Map(), functions = new Set(), unassembled = [];
   // what waits for every label to be known: a branch, a load from beside the function, a length
   const later = [];
+  // the names given a number, the way of writing Thumb, whether the code is ARM, and the values waiting for a .pool
+  const constants = new Map();
+  let unified = false, arm = false, pool = [], pools = 0;
   let section, at = 0;
   const into = name => {
     sections[name] ??= { bytes: [], lines: [] };
@@ -63,12 +118,15 @@ export function assemble(text) {
   };
   const register = text => REGISTERS[text.trim().toLowerCase()];
   const low = r => r !== undefined && r < 8;
+  const evaluate = text => valueOf(text, constants);
   const immediate = text => {
-    const value = text.trim().startsWith('#') ? number(text.trim().slice(1)) : null;
-    if (value === null) fail(`"${text.trim()}" isn't a number written as #n.`);
+    const written = text.trim(), hashed = written.startsWith('#');
+    // the older way always writes the #, and the newer way may leave it out
+    const value = hashed ? number(written.slice(1)) ?? (unified ? evaluate(written.slice(1)) : null) : unified ? evaluate(written) : null;
+    if (value === null) fail(`"${written}" isn't a number written as #n.`);
     return value;
   };
-  const isImmediate = text => text.trim().startsWith('#');
+  const isImmediate = text => text.trim().startsWith('#') || (unified && register(text) === undefined && !/^[[{=]/.test(text.trim()));
   const within = (value, most, what, step = 1) => {
     if (value < 0 || value > most || value % step) fail(`${what} takes a number from 0 to ${most}${step > 1 ? `, in steps of ${step}` : ''}, not ${value}.`);
     return value / step;
@@ -124,6 +182,15 @@ export function assemble(text) {
     const rd = register(a[0]);
     if (!low(rd)) fail(`${op} needs r0 to r7 first.`);
     const m = /^\[(.*)\]$/.exec(a[1] ?? '');
+    if (op === 'ldr' && a.length === 2 && a[1].trim().startsWith('=')) {
+      // a value kept at the next .pool, once however many loads name it
+      const written = a[1].trim().slice(1).trim(), value = evaluate(written), named = value === null ? expression(written) : { name: null, addend: value };
+      const key = named.name === null ? `#${named.addend >>> 0}` : `${named.name}+${named.addend}`;
+      let entry = pool.find(each => each.key === key);
+      if (!entry) pool.push(entry = { key, ...named, label: `.Lpool${pools}_${pool.length}` });
+      later.push({ kind: 'load', section, at: here(), line: lineNumber, rd, name: entry.label, addend: 0 });
+      return half(0);
+    }
     if (!m) {
       // a value kept beside the function, named by its label
       if (op !== 'ldr' || a.length !== 2) fail(`${op} needs a place in [ ].`);
@@ -150,6 +217,24 @@ export function assemble(text) {
   };
 
   const instruction = (op, a) => {
+    if (op === 'stm' || op === 'ldm') op = `${op}ia`;
+    if (unified) {
+      // the newer way: an s where the instruction sets the flags, as every Thumb instruction of two low registers does
+      const plain = op.endsWith('s') ? op.slice(0, -1) : null;
+      if (op === 'adr') {
+        const rd = register(a[0] ?? '');
+        if (!low(rd) || a.length !== 2) fail('adr needs r0 to r7 and a label.');
+        later.push({ kind: 'adr', section, at: here(), line: lineNumber, rd, ...expression(a[1]) });
+        return half(0);
+      }
+      if (plain && FLAGGED.has(plain)) {
+        // moving one low register to another is a shift by nothing
+        if (plain === 'mov' && a.length === 2 && low(register(a[1]))) return instruction('lsl', [a[0], a[1], '#0']);
+        op = plain;
+      } else if (op === 'mov' && a.length === 2 && low(register(a[0])) && low(register(a[1]))) {
+        fail('a low register moved to another is written movs, or adds of 0, in the newer way.');
+      }
+    }
     const rd = register(a[0] ?? ''), rs = register(a[1] ?? '');
     if (op === 'push' || op === 'pop') {
       const bits = list(a.join(',')), extra = op === 'push' ? 1 << LR : 1 << PC;
@@ -216,7 +301,8 @@ export function assemble(text) {
   };
   const data = (size, a) => {
     for (const part of a) {
-      const value = expression(part);
+      // a name given a number is that number
+      const known = constants.size || unified ? evaluate(part) : null, value = known === null ? expression(part) : { name: null, addend: known };
       if (value.name) {
         if (size !== 4) fail('a name kept in the code takes a whole word.');
         relocations.push({ section, at: here(), kind: 'word', ...value });
@@ -226,12 +312,213 @@ export function assemble(text) {
       else byte(value.addend);
     }
   };
+  // One ARM instruction, written the older way, into its word, or false for one this doesn't know. A branch or a load
+  // from a place in the file waits for every label (later), and a branch to a name comes back as a relocation.
+  const ARM_CONDITION = '(eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?';
+  const conditionOf = text => (text ? (text === 'al' ? 14 : CONDITIONS[text]) : 14);
+  const ARM_DATA = { and: 0, eor: 1, sub: 2, rsb: 3, add: 4, adc: 5, sbc: 6, rsc: 7, tst: 8, teq: 9, cmp: 10, cmn: 11, orr: 12, mov: 13, bic: 14, mvn: 15 };
+  // a number as ARM keeps one, 8 bits turned right by twice a 4-bit number, the least turn first, as GNU's assembler
+  // chooses
+  const rotated = value => {
+    value >>>= 0;
+    for (let turn = 0; turn < 16; turn++) {
+      const bits = turn ? ((value << (2 * turn)) | (value >>> (32 - 2 * turn))) >>> 0 : value;
+      if (bits < 256) return turn << 8 | bits;
+    }
+    return null;
+  };
+  // a register, or a register shifted by a number, or, where `byRegister`, by a register: its 12 bits
+  const shiftedRegister = (parts, byRegister = true) => {
+    const rm = register(parts[0]);
+    if (rm === undefined || parts.length > 2) return null;
+    if (parts.length === 1) return rm;
+    if (/^rrx$/i.test(parts[1].trim())) return 3 << 5 | rm;
+    const m = /^(lsl|lsr|asr|ror)\s+(#?)(\S+)$/i.exec(parts[1].trim());
+    if (!m) return null;
+    const type = ['lsl', 'lsr', 'asr', 'ror'].indexOf(m[1].toLowerCase());
+    const rs = m[2] ? undefined : register(m[3]);
+    if (rs !== undefined) return byRegister ? rs << 8 | type << 5 | 1 << 4 | rm : null;
+    const by = number(m[3]);
+    if (by === null || by < 0 || by > 32) return null;
+    return (by & 31) << 7 | type << 5 | rm;
+  };
+  // where a load or a store reaches, from its operands after the register: [rn] with a number or a register, shifted
+  // or not, added or taken away, before, with ! writing the address back, or [rn] and then what's added after, which
+  // moves rn on: { rn, pre, up, writeBack, offset, register } with `offset` a number, or with `register` the bits of a
+  // register and its shift, or null for an address it doesn't know
+  const reached = (parts, shifts) => {
+    const m = /^\[(.*)\](!?)$/.exec(parts[0]?.trim() ?? '');
+    if (!m) return null;
+    const inside = split(m[1]), rn = register(inside[0] ?? '');
+    if (rn === undefined) return null;
+    const post = parts.length > 1;
+    if (post && (inside.length > 1 || m[2])) return null;
+    const after = post ? parts.slice(1) : inside.slice(1);
+    const at = { rn, pre: !post, up: true, writeBack: !!m[2], offset: 0, register: null };
+    if (!after.length) return at;
+    const first = after[0].trim();
+    if (first.startsWith('#')) {
+      const value = after.length === 1 ? number(first.slice(1)) : null;
+      if (value === null) return null;
+      return { ...at, up: value >= 0 && !/^#\s*-/.test(first), offset: Math.abs(value) };
+    }
+    const sign = /^[-+]/.exec(first)?.[0];
+    const bits = shifts ? shiftedRegister([first.slice(sign ? 1 : 0), ...after.slice(1)], false) : after.length === 1 ? register(first.slice(sign ? 1 : 0)) ?? null : null;
+    return bits === null || bits === undefined ? null : { ...at, up: sign !== '-', register: bits };
+  };
+  // ldm and stm: the order of the four they're written with, and the names of each for a stack, by load or store
+  const BLOCK = { ia: [0, 1], ib: [1, 1], da: [0, 0], db: [1, 0] };
+  const STACK = { ldm: { fd: 'ia', ed: 'ib', fa: 'da', ea: 'db' }, stm: { ea: 'ia', fa: 'ib', ed: 'da', fd: 'db' } };
+  const armInstruction = (op, a) => {
+    let m;
+    if ((m = new RegExp(`^bx${ARM_CONDITION}$`).exec(op))) {
+      const rm = register(a[0] ?? '');
+      if (rm === undefined) return false;
+      word((conditionOf(m[1]) << 28 | 0x012FFF10 | rm) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(b|bl)${ARM_CONDITION}$`).exec(op)) && a.length === 1) {
+      const code = (conditionOf(m[2]) << 28 | 0x0A000000 | (m[1] === 'bl' ? 0x01000000 : 0)) >>> 0;
+      const target = expression(a[0]);
+      if (!target.name) return false;
+      // to a place in the function, once every label is known, or to a function or a name, which match fills in
+      later.push({ kind: 'arm-branch', section, at: here(), code, name: target.name, addend: target.addend, line: lineNumber });
+      word(code);
+      return true;
+    }
+    if ((m = new RegExp(`^(${Object.keys(ARM_DATA).join('|')})${ARM_CONDITION}(s?)$`).exec(op))) {
+      const opcode = ARM_DATA[m[1]], compares = opcode >= 8 && opcode <= 11, moves = opcode === 13 || opcode === 15;
+      const set = compares || m[3] === 's';
+      const rd = compares ? 0 : register(a[0] ?? ''), rn = moves ? 0 : register(a[compares ? 0 : 1] ?? '');
+      const rest = a.slice(compares || moves ? 1 : 2);
+      if (rd === undefined || rn === undefined || !rest.length) return false;
+      let operand;
+      if (rest.length === 1 && rest[0].trim().startsWith('#')) {
+        const value = number(rest[0].trim().slice(1));
+        operand = value === null ? null : rotated(value);
+        if (operand !== null) operand |= 0x02000000;
+      } else operand = shiftedRegister(rest);
+      if (operand === null) return false;
+      word((conditionOf(m[2]) << 28 | opcode << 21 | (set ? 1 << 20 : 0) | rn << 16 | rd << 12 | operand) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^msr${ARM_CONDITION}$`).exec(op)) && a.length === 2) {
+      const f = /^(cpsr|spsr)(?:_([cxsf]+))?$/i.exec(a[0].trim()), rm = register(a[1]);
+      if (!f || rm === undefined) return false;
+      const mask = f[2] ? [...f[2].toLowerCase()].reduce((bits, c) => bits | { c: 1, x: 2, s: 4, f: 8 }[c], 0) : 9;
+      word((conditionOf(m[1]) << 28 | 0x0120F000 | (f[1].toLowerCase() === 'spsr' ? 1 << 22 : 0) | mask << 16 | rm) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^mrs${ARM_CONDITION}$`).exec(op)) && a.length === 2) {
+      const rd = register(a[0]), from = a[1].trim().toLowerCase();
+      if (rd === undefined || (from !== 'cpsr' && from !== 'spsr')) return false;
+      word((conditionOf(m[1]) << 28 | 0x010F0000 | (from === 'spsr' ? 1 << 22 : 0) | rd << 12) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(ldr|str)${ARM_CONDITION}(b|h|sb|sh)?$`).exec(op)) && a.length >= 2) {
+      const load = m[1] === 'ldr', rd = register(a[0]), cond = conditionOf(m[2]) << 28, kind = m[3] ?? '';
+      if (rd === undefined || (!load && kind.startsWith('s'))) return false;
+      if (load && !kind && a.length === 2 && a[1].trim().startsWith('=')) {
+        const written = a[1].trim().slice(1).trim(), value = evaluate(written), named = value === null ? expression(written) : { name: null, addend: value };
+        const key = named.name === null ? `#${named.addend >>> 0}` : `${named.name}+${named.addend}`;
+        let entry = pool.find(each => each.key === key);
+        if (!entry) pool.push(entry = { key, ...named, label: `.Lpool${pools}_${pool.length}` });
+        later.push({ kind: 'arm-load', section, at: here(), code: (cond | 0x059F0000 | rd << 12) >>> 0, name: entry.label, addend: 0, line: lineNumber });
+        word(0);
+        return true;
+      }
+      if (load && !kind && a.length === 2 && !/^[[=]/.test(a[1].trim())) {
+        // a word kept at a label, before or after, from the instruction two on
+        const target = expression(a[1]);
+        if (!target.name) return false;
+        later.push({ kind: 'arm-load', section, at: here(), code: (cond | 0x059F0000 | rd << 12) >>> 0, ...target, line: lineNumber });
+        word(0);
+        return true;
+      }
+      const halves = kind === 'h' || kind.startsWith('s'), at = reached(a.slice(1), !halves);
+      if (!at) return false;
+      const common = cond | (at.pre ? 1 << 24 : 0) | (at.up ? 1 << 23 : 0) | (at.writeBack ? 1 << 21 : 0) | (load ? 1 << 20 : 0) | at.rn << 16 | rd << 12;
+      if (halves) {
+        // a halfword, or a byte or a halfword with its sign: a number of up to 255, in two halves, or a register
+        const sh = { h: 0xB0, sb: 0xD0, sh: 0xF0 }[kind];
+        if (at.register !== null) word((common | sh | at.register) >>> 0);
+        else if (at.offset > 255) return false;
+        else word((common | 1 << 22 | sh | (at.offset & 0xF0) << 4 | (at.offset & 0xF)) >>> 0);
+        return true;
+      }
+      if (at.register === null && at.offset > 4095) return false;
+      word((common | 0x04000000 | (at.register !== null ? 1 << 25 | at.register : at.offset) | (kind === 'b' ? 1 << 22 : 0)) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(ldm|stm)${ARM_CONDITION}(ia|ib|da|db|fd|ed|fa|ea)?$`).exec(op)) && a.length >= 2) {
+      // a block of registers, in one of four orders, with ! writing the address back and ^ the user's registers
+      const order = BLOCK[STACK[m[1]][m[3]] ?? m[3] ?? 'ia'], base = /^(\S+?)\s*(!?)$/.exec(a[0].trim());
+      const rn = base && register(base[1]), listed = a.slice(1).join(','), user = /\^\s*$/.test(listed);
+      if (rn === undefined || !base) return false;
+      const bits = list(listed.replace(/\^\s*$/, ''));
+      word((conditionOf(m[2]) << 28 | 0x08000000 | order[0] << 24 | order[1] << 23 | (user ? 1 << 22 : 0) | (base[2] ? 1 << 21 : 0) | (m[1] === 'ldm' ? 1 << 20 : 0) | rn << 16 | bits) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(mul|mla)${ARM_CONDITION}(s?)$`).exec(op)) && a.length === (op.startsWith('mla') ? 4 : 3)) {
+      // rd = rm * rs, and + rn
+      const [rd, rm, rs, rn] = a.map(register);
+      if ([rd, rm, rs].some(r => r === undefined) || (m[1] === 'mla' && rn === undefined)) return false;
+      word((conditionOf(m[2]) << 28 | (m[1] === 'mla' ? 1 << 21 | rn << 12 : 0) | (m[3] ? 1 << 20 : 0) | rd << 16 | rs << 8 | 0x90 | rm) >>> 0);
+      return true;
+    }
+    if ((m = new RegExp(`^(umull|umlal|smull|smlal)${ARM_CONDITION}(s?)$`).exec(op)) && a.length === 4) {
+      // the 64-bit product of rm and rs in rdhi and rdlo, and added to what they hold
+      const [lo, hi, rm, rs] = a.map(register);
+      if ([lo, hi, rm, rs].some(r => r === undefined)) return false;
+      word((conditionOf(m[2]) << 28 | 0x00800090 | (m[1][0] === 's' ? 1 << 22 : 0) | (m[1].endsWith('lal') ? 1 << 21 : 0) | (m[3] ? 1 << 20 : 0) | hi << 16 | lo << 12 | rs << 8 | rm) >>> 0);
+      return true;
+    }
+    return false;
+  };
+
+  // ARM code from here, which GNU's assembler lines up on a word, with two bytes this leaves out too
+  const toArm = () => {
+    arm = true;
+    if (here() % 4) {
+      unassembled.push({ section, at: here(), bytes: 2 });
+      half(0);
+    }
+    return null;
+  };
+  // the values `ldr rd, =value` named since the last pool, on a word each, where the loads find them
+  const putPool = () => {
+    if (!pool.length) return null;
+    while (here() % 4) byte(0);
+    for (const entry of pool) {
+      symbols.set(entry.label, { section, at: here() });
+      data(4, [entry.name === null ? String(entry.addend >>> 0) : `${entry.name}+${entry.addend}`]);
+    }
+    pool = [];
+    pools++;
+    return null;
+  };
   const directive = (name, rest) => {
     const a = split(rest);
     switch (name) {
       case '.text': case '.data': case '.bss': return into(name);
       case '.section': return into(a[0]);
-      case '.code': return a[0] === '16' ? null : fail('only Thumb code, .code 16, is read.');
+      case '.code':
+        if (a[0] !== '16' && a[0] !== '32') fail('code is .code 16, Thumb, or .code 32, ARM.');
+        return a[0] === '32' ? toArm() : (arm = false, null);
+      case '.thumb': arm = false; return null;
+      case '.arm': return toArm();
+      case '.syntax':
+        if (a[0] !== 'unified' && a[0] !== 'divided') fail('.syntax is unified or divided.');
+        unified = a[0] === 'unified';
+        return null;
+      case '.equ': case '.set': case '.equiv': {
+        const value = evaluate(a.slice(1).join(','));
+        if (a.length < 2 || !/^[A-Za-z_.$][\w.$]*$/.test(a[0]) || value === null) fail(`${name} needs a name and a number, and "${rest}" isn't.`);
+        if (name === '.equiv' && constants.has(a[0])) fail(`${a[0]} is given a number twice.`);
+        constants.set(a[0], value);
+        return null;
+      }
+      case '.pool': case '.ltorg': return putPool();
       case '.align': {
         const to = 1 << Number(a[0] ?? 0);
         while (here() % to) byte(Number(a[1] ?? 0));
@@ -246,7 +533,11 @@ export function assemble(text) {
       case '.type': return /function/.test(a[1] ?? '') ? functions.add(a[0]) : null;
       case '.size': {
         const m = /^([\w.$]+)\s*-\s*([\w.$]+)$/.exec(a[1] ?? '');
-        if (m) later.push({ kind: 'size', of: a[0], end: m[1], start: m[2], line: lineNumber });
+        // `.` is here, as a decompilation writes a function's length
+        if (m?.[1] === '.') {
+          const start = symbols.get(m[2]);
+          if (start?.section === section) sizes.set(a[0], here() - start.at);
+        } else if (m) later.push({ kind: 'size', of: a[0], end: m[1], start: m[2], line: lineNumber });
         return null;
       }
       // a value of the file's own with no place in it: match finds its address by its name
@@ -268,11 +559,25 @@ export function assemble(text) {
     if (!line) continue;
     const m = /^(\S+)\s*(.*)$/.exec(line);
     if (m[1].startsWith('.')) directive(m[1].toLowerCase(), m[2]);
-    else {
+    else if (arm) {
+      // ARM code takes its place, and only the values it keeps at a .pool are read
+      if (here() % 4) fail('an ARM instruction at an address that isn\'t a multiple of 4.');
+      const a = split(m[2]);
+      if (!unified && armInstruction(m[1].toLowerCase(), a)) continue;
+      if (/^ldr/i.test(m[1]) && a[1]?.trim().startsWith('=')) {
+        const written = a[1].trim().slice(1).trim(), value = evaluate(written), named = value === null ? expression(written) : { name: null, addend: value };
+        const key = named.name === null ? `#${named.addend >>> 0}` : `${named.name}+${named.addend}`;
+        if (!pool.some(each => each.key === key)) pool.push({ key, ...named, label: `.Lpool${pools}_${pool.length}` });
+      }
+      unassembled.push({ section, at: here(), bytes: 4 });
+      word(0);
+    } else {
       if (here() % 2) fail('an instruction at an odd address.');
       instruction(m[1].toLowerCase(), split(m[2]));
     }
   }
+  // what no .pool took, at the end, as GNU's assembler keeps it
+  putPool();
 
   for (const wait of later) {
     lineNumber = wait.line;
@@ -282,13 +587,36 @@ export function assemble(text) {
       continue;
     }
     const target = symbols.get(wait.name);
-    if (!target || target.section !== wait.section) fail(`${wait.name} isn't a place in this part of the file, and a ${wait.kind === 'load' ? 'load' : 'branch'} only reaches one.`);
+    // a branch to a function, which match places where the original has it, or to a name the file doesn't have
+    if ((!target || functions.has(wait.name)) && wait.kind === 'arm-branch') {
+      relocations.push({ section: wait.section, at: wait.at, kind: 'arm-branch', name: wait.name, addend: wait.addend });
+      continue;
+    }
+    if (!target || target.section !== wait.section) fail(`${wait.name} isn't a place in this part of the file, and a ${wait.kind === 'branch' ? 'branch' : wait.kind} only reaches one.`);
     const bytes = sections[wait.section].bytes, to = target.at + wait.addend;
+    if (wait.kind === 'arm-branch' || wait.kind === 'arm-load') {
+      // from the instruction two on, as ARM reads the program counter
+      const offset = to - (wait.at + 8);
+      let code;
+      if (wait.kind === 'arm-branch') {
+        if (offset % 4 || offset < -0x2000000 || offset >= 0x2000000) fail(`a branch to ${wait.name} is ${offset} bytes away, too far for it.`);
+        code = (wait.code | (offset >> 2 & 0xFFFFFF)) >>> 0;
+      } else {
+        if (offset < -4095 || offset > 4095) fail(`a load from ${wait.name} is ${offset} bytes away, too far for it.`);
+        code = (wait.code & ~(1 << 23) | (offset >= 0 ? 1 << 23 : 0) | Math.abs(offset)) >>> 0;
+      }
+      for (let i = 0; i < 4; i++) bytes[wait.at + i] = code >>> 8 * i & 255;
+      continue;
+    }
     let code;
     if (wait.kind === 'load') {
       // from the word the instruction after next is in
       const offset = to - ((wait.at + 4) & ~3);
       code = 0x4800 | wait.rd << 8 | within(offset, 1020, `a load from ${wait.name}`, 4);
+    } else if (wait.kind === 'adr') {
+      // an address on from the word the instruction after next is in, as an add to pc
+      const offset = to - ((wait.at + 4) & ~3);
+      code = 0xA000 | wait.rd << 8 | within(offset, 1020, `adr to ${wait.name}`, 4);
     } else {
       const offset = to - (wait.at + 4);
       const [most, bits] = wait.condition === null ? [2048, 0x7FF] : [256, 0xFF];
@@ -300,5 +628,5 @@ export function assemble(text) {
   }
   for (const [name, symbol] of symbols) symbol.function = functions.has(name);
   for (const name of Object.keys(sections)) sections[name].bytes = Buffer.from(sections[name].bytes);
-  return { sections, symbols, relocations, sizes };
+  return { sections, symbols, relocations, sizes, unassembled, constants };
 }

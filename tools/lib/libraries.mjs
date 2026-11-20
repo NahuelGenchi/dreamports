@@ -19,6 +19,9 @@
 //     for a function no compiler rebuilds, its short hash: the first 16 digits of a SHA-1 of the original's bytes with
 //     every address masked, as each console's tools mask them, which they find it by in a new game
 //     (`npm run dp -- libraries <version> --hash` writes it)
+//   "frames": "m4a_frames.s": for a library whose original has routines in hand-written assembly, its table of them,
+//     their assembly as tools/gba/thumb.mjs reads it, which the console's stack takes each routine's frame from
+//     (tools/README.md, The console's stack)
 // }
 //
 // A twin in a library names no address and nothing of any game: it's named as the library's own function, and a
@@ -69,9 +72,10 @@ export function libraryIds(kit = KIT) {
 
 /**
  * A library, read from its library.json and checked: { id, folder, about, consoles, compilers, files,
- * variants, functions }, `files` every .c file of its folder, `variants` a Map of each variant to its files or null,
- * and `functions` each { name, size, file, hash }, files as full paths, and null for one nobody has written yet, and
- * `hash` only for a function that has one. Throws, saying what's wrong, when it isn't one.
+ * variants, functions, frames }, `files` every .c file of its folder, `variants` a Map of each variant to its files or
+ * null, `functions` each { name, size, file, hash }, files as full paths, and null for one nobody has written yet, and
+ * `hash` only for a function that has one, and `frames` its table of routines in assembly, or null. Throws, saying
+ * what's wrong, when it isn't one.
  */
 export function readLibrary(id) {
   const folder = libraryFolder(id), file = join(folder, LIBRARY), where = inRepo(file);
@@ -119,7 +123,12 @@ export function readLibrary(id) {
     seen.add(`${own}:${name}`);
     functions.push({ name, size, file: own === null ? null : join(folder, own), ...(hash ? { hash } : {}) });
   }
-  return { id, folder, about: found.about, consoles, compilers, files: files.map(name => join(folder, name)), variants, functions };
+  let frames = null;
+  if (found.frames !== undefined) {
+    if (typeof found.frames !== 'string' || !/^[\w.-]+\.s$/.test(found.frames) || !existsSync(join(folder, found.frames))) throw wrong('"frames" as the name of a .s file of its folder, its table of routines in assembly');
+    frames = join(folder, found.frames);
+  }
+  return { id, folder, about: found.about, consoles, compilers, files: files.map(name => join(folder, name)), variants, functions, frames };
 }
 
 /** Whether a library is its functions' names alone, with none written yet and no C to build, as a library can be

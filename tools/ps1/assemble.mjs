@@ -350,6 +350,8 @@ export function assemble(text) {
       const place = placeOf(ops[1]), rt = Number(ops[0].replace('$', ''));
       return instruction(iType(OP[name], place.base ?? 0, rt, place.number ?? 0));
     }
+    // a shift by a register written as one by a number is the variable shift, as GNU's assembler takes it
+    if (['sll', 'srl', 'sra'].includes(name) && registerOf(ops[2]) !== null) return instruction(rType(reg(2), reg(1), reg(0), 0, FUNCT[`${name}v`]));
     if (['sll', 'srl', 'sra'].includes(name)) return instruction(rType(0, reg(1), reg(0), valueOf(ops[2]).number & 31, FUNCT[name]));
     if (['sllv', 'srlv', 'srav'].includes(name)) return instruction(rType(reg(2), reg(1), reg(0), 0, FUNCT[name]));
     if (['mfhi', 'mflo'].includes(name)) return instruction(rType(0, 0, reg(0), 0, FUNCT[name]));

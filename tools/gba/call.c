@@ -15,6 +15,11 @@
 //   'm'                 answers the image.
 //   's' image           puts the image in the console's memory. Answers 0.
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
+//   'g' register        which register the calls after it give back, as a hand-written routine's twin says it
+//                       gives what it gives (twin.mjs, #1710): r0 at first. Answers 0.
+//   'h' count [value]   what r4 and up hold as the calls after it start, as a hand-written routine's twin says it takes
+//                       them (twin.mjs, #1728), each an argument the check can change like the first four; with a count
+//                       of 0, as at first, they hold what the console's state does. Answers 0.
 //   'a' follow          whether the calls after it follow a read or write where no halfword or word starts, as the
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
@@ -25,7 +30,7 @@
 //                       lets it run up to `limit` instructions. Answers:
 //                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow,
 //                           3 it came back, but a DMA the console's clock started wrote to the image on the way
-//                         what it gave back, in r0, and how many instructions it ran
+//                         what it gave back, in r0 or the register 'g' named, and how many instructions it ran
 //                         the first address of the hardware's registers it used, or 0
 //                         the address it left for, when it ended with 2
 //                         how many values it read, how many numbers it loaded from the cartridge, how many times it
@@ -47,7 +52,7 @@
 //                       and values written to the work memory as a frame starts, in the order of their frames. Each
 //                       time the processor reaches a function of 'w', it counts, and at its 1st, 3rd, 9th time and so
 //                       on, by threes, it answers a memory of play: which function, the frame, how many times it
-//                       had started, what r0 to r3 and the stack held, and the image as it was just then. After the
+//                       had started, what r0 to r7 and the stack held, and the image as it was just then. After the
 //                       last frame it answers 0xFFFFFFFF and how many frames it played. The save memory is as the
 //                       plays before left it, so the check plays each recording in a program of its own.
 //
@@ -254,6 +259,11 @@ static void compared(uint32_t pc, uint32_t op, const uint32_t* r) {
 	else if ((op & 0xFFC0) == 0x4280) { kind = 0; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
 	else if ((op & 0xFF00) == 0x4500) { kind = 0; a = (op & 7) | (op >> 4 & 8); b = op >> 3 & 15; bValue = r[b]; }
 	else if ((op & 0xFFC0) == 0x4200) { kind = 1; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	// an AND leaves the flags a TST of the same two registers does, and a shift by a number what a TST of the bits it
+	// keeps does, for a branch on zero after it (#1709)
+	else if ((op & 0xFFC0) == 0x4000) { kind = 1; a = op & 7; b = op >> 3 & 7; bValue = r[b]; }
+	else if ((op & 0xF800) == 0x0800 && (op >> 6 & 31)) { kind = 1; a = op >> 3 & 7; b = -1; bValue = 0xFFFFFFFFu << (op >> 6 & 31); }
+	else if ((op & 0xF800) == 0x0000 && (op >> 6 & 31)) { kind = 1; a = op >> 3 & 7; b = -1; bValue = 0xFFFFFFFFu >> (op >> 6 & 31); }
 	else return;
 	struct origin none = { 0 }, oa = from[a], ob = b >= 0 ? from[b] : none;
 	const struct origin* both[2] = { &oa, &ob };
@@ -389,6 +399,10 @@ static void touched(uint32_t address, int bytes, int write) {
 // The console reads and writes a halfword or a word only where one starts, whatever the address says, and turns what
 // it read round to make up for it. C has no such thing, so a call that does it is one a twin can't follow.
 static int followUnaligned;
+// the register a call gives back in, as a hand-written routine's twin says (#1710)
+static int givesIn;
+// what r4 and up hold as a call starts, when a hand-written routine's twin says it takes them (#1728)
+static uint32_t high[4], highCount;
 static void aligned(uint32_t address, uint32_t bytes) {
 	if (watching && !followUnaligned && (address & (bytes - 1)) && !left) {
 		left = 1;
@@ -545,6 +559,7 @@ static void call(void* state) {
 	cpu->cpsr.t = thumb;
 	cpu->executionMode = thumb ? MODE_THUMB : MODE_ARM;
 	for (int i = 0; i < 4; i++) cpu->gprs[i] = r[i];
+	for (uint32_t i = 0; i < highCount; i++) cpu->gprs[4 + i] = high[i];
 	biosTop = biosLow = (uint32_t) cpu->bankedRegisters[BANK_SUPERVISOR][0] & ~3u;
 	inBios = 0;
 	cpu->gprs[ARM_SP] = top;
@@ -555,9 +570,10 @@ static void call(void* state) {
 
 	hardware = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
 	stackLow = top; stackHigh = top + 4 * onStack;
-	// the first four arguments come from the call, the rest from nowhere the check can change
+	// the first four arguments come from the call, and r4 and up when the twin says it takes them; the rest from nowhere
+	// the check can change
 	memset(from, 0, sizeof from);
-	for (uint32_t i = 0; i < 4; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
+	for (uint32_t i = 0; i < 4 + highCount; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
 	aimCount = 0;
 	lastReadKept = 0;
 	watching = 1;
@@ -608,7 +624,7 @@ static void call(void* state) {
 	if (left) ended = LEFT;
 	else if (ended == CAME_BACK && clocked) ended = CLOCKED;
 	watching = 0;
-	uint32_t gave = cpu->gprs[0];
+	uint32_t gave = cpu->gprs[givesIn];
 	for (size_t i = 0; i < readCount; i++) wasRead[inImage(reads[i][0])] = 0;
 	// what it read of code it ran from the work memory, as through a pointer it was given, isn't a value to change
 	size_t kept = 0;
@@ -751,7 +767,7 @@ static void play(void) {
 				if (which && ++started[which - 1] == nextTime[which - 1]) {
 					nextTime[which - 1] *= 3;
 					out32(which - 1); out32(frame); out32(started[which - 1]);
-					for (int r = 0; r < 4; r++) out32((uint32_t) cpu->gprs[r]);
+					for (int r = 0; r < 8; r++) out32((uint32_t) cpu->gprs[r]);
 					out32((uint32_t) cpu->gprs[ARM_SP]);
 					takeImage(after);
 					out(after, IMAGE);
@@ -825,6 +841,19 @@ int main(int argc, char** argv) {
 			answer();
 		} else if (command == 'a') {
 			followUnaligned = in32() != 0;
+			out32(0);
+			answer();
+		} else if (command == 'g') {
+			givesIn = (int) (in32() & 15);
+			out32(0);
+			answer();
+		} else if (command == 'h') {
+			uint32_t count = in32(), value;
+			highCount = 0;
+			for (uint32_t i = 0; i < count; i++) {
+				value = in32();
+				if (i < 4) high[highCount++] = value;
+			}
 			out32(0);
 			answer();
 		} else if (command == 'c') {

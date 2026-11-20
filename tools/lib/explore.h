@@ -77,7 +77,10 @@ static double exNow(void) {
 
 /** What the search needs of an emulator, each with the `console` it's of: a frame with these buttons held, its state's
  *  size, a copy of it out and in, a value of the work memory (0 when the address isn't in it), and a value written there,
- *  on the way to where the search starts. */
+ *  on the way to where the search starts. And `thread`, for an emulator that keeps something of the thread it plays
+ *  on, such as the graphics context it draws with: the search plays the way there on the thread it's called from and
+ *  each console of the search on a thread of its own, so it says when a thread stops playing a console, with 0, and
+ *  when one starts, with 1, before anything else is asked of it there. NULL when the emulator keeps nothing like that. */
 struct ex_machine {
 	void* console;
 	void (*frame)(void* console, uint32_t buttons);
@@ -86,6 +89,7 @@ struct ex_machine {
 	void (*load)(void* console, const void* from);
 	int (*read)(void* console, uint32_t address, uint32_t bytes, uint32_t* value);
 	void (*set)(void* console, uint32_t address, uint32_t bytes, uint32_t value);
+	void (*thread)(void* console, int plays);
 };
 
 #define EX_VALUES 24
@@ -530,7 +534,10 @@ static DWORD WINAPI exWork(LPVOID worker) {
 #else
 static void* exWork(void* worker) {
 #endif
+	struct ex_machine* machine = &((struct ex_worker*) worker)->machine;
+	if (machine->thread) machine->thread(machine->console, 1);
 	while (!exOver) exTry(worker);
+	if (machine->thread) machine->thread(machine->console, 0);
 	return 0;
 }
 
@@ -788,6 +795,8 @@ static int exploreRoute(struct ex_machine first, struct ex_machine (*another)(vo
 	}
 	const char* why = NULL;
 	if (exGoalNode < 0) {
+		// each console goes to the thread that plays it from here on, and comes back once the search is over
+		for (int i = 0; i < exThreads; i++) if (workers[i].machine.thread) workers[i].machine.thread(workers[i].machine.console, 0);
 #ifdef _WIN32
 		for (int i = 0; i < exThreads; i++) workers[i].thread = CreateThread(NULL, 0, exWork, &workers[i], 0, NULL);
 #else
@@ -817,6 +826,7 @@ static int exploreRoute(struct ex_machine first, struct ex_machine (*another)(vo
 #else
 		for (int i = 0; i < exThreads; i++) pthread_join(workers[i].thread, NULL);
 #endif
+		for (int i = 0; i < exThreads; i++) if (workers[i].machine.thread) workers[i].machine.thread(workers[i].machine.console, 1);
 	}
 	exSay(started, exGoalNode >= 0 ? exGoalNode : exCells[exPlaces[exPlaceCount - 1].cells[0]].node);
 	exSaveArchive();

@@ -1,0 +1,118 @@
+PCSX ReARMed (https://github.com/libretro/pcsx_rearmed, GNU General Public License version 2) runs the PlayStation, and
+like every libretro core it says nothing of the instructions it runs. The tools apply this change of Dreamports' own to
+its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so the
+program that plays the original (tools/libretro/host.c) can ask to be told of each instruction its interpreter is about
+to run, and read the processor's registers and the console's memory then: that's how the function check takes its
+memories of play, the memory each function starts from in play (tools/libretro/starts.h, tools/ps1/twin.mjs). Nothing
+it runs changes: with nothing asked, each instruction costs one more test of a pointer.
+
+diff --git a/frontend/libretro-version-script b/frontend/libretro-version-script
+index b0c262d..5684a42 100644
+--- a/frontend/libretro-version-script
++++ b/frontend/libretro-version-script
+@@ -1,5 +1,5 @@
+ {
+-   global: retro_*;
++   global: retro_*; dreamports_*;
+    local: *;
+ };
+ 
+diff --git a/frontend/libretro.c b/frontend/libretro.c
+index 734fc30..9465d9e 100644
+--- a/frontend/libretro.c
++++ b/frontend/libretro.c
+@@ -3502,6 +3502,61 @@ static void print_internal_fps(void)
+ static bool get_bios_config_hle(void);
+ static void prepare_bios(bool use_hle);
+ 
++// Dreamports: what the tools' function check takes from play (tools/libretro/starts.h): each instruction as the
++// interpreter is about to run it, the processor's registers then, and the console's memory, the 2 MB of RAM and the
++// scratchpad and hardware's registers PCSX keeps together.
++extern void (*dreamports_reached)(u32 pc);
++
++void dreamports_watch_pc(void (*reached)(uint32_t pc))
++{
++   dreamports_reached = reached;
++}
++
++// the 32 registers, then hi and lo, as the function will find them: a load still waiting, as one in a call's delay
++// slot is, is given as it will land
++const uint32_t *dreamports_registers(uint32_t *next)
++{
++   static uint32_t words[34];
++   int i;
++   for (i = 0; i < 32; i++)
++      words[i] = psxRegs.GPR.r[i];
++   words[32] = psxRegs.GPR.n.hi;
++   words[33] = psxRegs.GPR.n.lo;
++#ifdef HANDLE_LOAD_DELAY
++   for (i = 0; i < 2; i++)
++      if (psxRegs.dloadReg[psxRegs.dloadSel ^ i])
++         words[psxRegs.dloadReg[psxRegs.dloadSel ^ i]] = psxRegs.dloadVal[psxRegs.dloadSel ^ i];
++#endif
++   words[0] = 0;
++   (void)next;
++   return words;
++}
++
++// memory 0 is the console's RAM from its first byte, and memory 1 the scratchpad and the hardware's registers, from
++// 0x1F800000
++const uint8_t *dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++{
++   if (memory == 0 && psxRegs.ptrs.psxM && address + bytes <= 0x200000)
++      return psxRegs.ptrs.psxM + address;
++   if (memory == 1 && psxRegs.ptrs.psxH && address + bytes <= 0x10000)
++      return psxRegs.ptrs.psxH + address;
++   return NULL;
++}
++
++// how the function check lays out what it's given: 34 registers, and 515 pages of 4 KB, the RAM's 512, then the
++// scratchpad's 4 KB and the hardware's 8 KB
++struct dreamportsStartsMemory { uint32_t memory, address, pages, first; };
++static const struct dreamportsStartsMemory dreamportsStartsMemories[] = {
++   { 0, 0x00000000, 0x200, 0x000 }, { 1, 0x00000000, 0x001, 0x200 }, { 1, 0x00001000, 0x002, 0x201 },
++};
++
++const void *dreamports_starts_layout(uint32_t *words, uint32_t *memories)
++{
++   *words = 34;
++   *memories = sizeof dreamportsStartsMemories / sizeof dreamportsStartsMemories[0];
++   return dreamportsStartsMemories;
++}
++
+ void retro_run(void)
+ {
+    //SysReset must be run while core is running,Not in menu (Locks up Retroarch)
+diff --git a/libpcsxcore/psxinterpreter.c b/libpcsxcore/psxinterpreter.c
+index 900c0cd..21e2b84 100644
+--- a/libpcsxcore/psxinterpreter.c
++++ b/libpcsxcore/psxinterpreter.c
+@@ -663,6 +663,10 @@ static inline void execI_(
+ 	u32 (INT_ATTR *fetch)(struct psxRegisters *r, const uintptr_t *luts, u32 pc),
+ 	const uintptr_t *memRLUT, psxRegisters *regs);
+ 
++// Dreamports: told of each instruction as it's about to run, when the tools ask (frontend/libretro.c,
++// dreamports_watch_pc), for the function check's memories of play.
++void (*dreamports_reached)(u32 pc);
++
+ static inline void psxTestSWInts(psxRegisters *regs, int step) {
+ 	if ((regs->CP0.n.Cause & regs->CP0.n.SR & 0x0300) &&
+ 	    (regs->CP0.n.SR & 0x1)) {
+@@ -1170,6 +1174,8 @@ static inline void execI_(
+ 
+ 	addCycle(regs);
+ 	dloadStep(regs);
++	if (unlikely(dreamports_reached != NULL))
++		dreamports_reached(pc);
+ 
+ 	regs->pc += 4;
+ 	regs->code = fetch(regs, memRLUT, pc);
+@@ -1184,6 +1190,8 @@ static inline void execIbp(
+ 
+ 	addCycle(regs);
+ 	dloadStep(regs);
++	if (unlikely(dreamports_reached != NULL))
++		dreamports_reached(pc);
+ 
+ 	if (execBreakCheck(regs, pc))
+ 		return;

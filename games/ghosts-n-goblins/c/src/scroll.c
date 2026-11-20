@@ -55,13 +55,15 @@ static void screen_blocks(uint8_t screen) {
 // switched in. Enemies and weapons ask for it in the middle of their turns, so a frame can end inside it, and it's
 // counted a write at a time: the screen's place among its 240-block lists is worked out in steps, in $54 and $55 and
 // in $47 and $48.
-// dp:twin sub_EA55 block_at_stage_place() -> A
-uint8_t block_at_stage_place(void) {
+// dp:twin sub_EA55 block_at_stage_place(S) -> A
+uint8_t block_at_stage_place(int s) {
+  call_pushes(s, 0xEA55);   // JSR $EA66
   took(BLOCK_BANK_READ);
   RAM[0xD4] = BANK_NOW;
   took(BLOCK_BANK_KEPT);
   switch_bank(BANK_HOME);
   took(BLOCK_BANK_SET);
+  call_pushes(s, 0xEA58);   // JSR $E945
   RAM[0x22] = AT_Y_SCREEN;
   uint8_t before = 0;
   if (!RAM[0x22]) took(BLOCK_TOP_ROW);
@@ -117,10 +119,11 @@ uint8_t block_at_stage_place(void) {
 }
 
 // sub_E9AB: where the four tiles of the block at BLOCK_AT are.
-// dp:twin sub_E9AB find_block_tiles()
-static void find_block_tiles(void) {
+// dp:twin sub_E9AB find_block_tiles(S)
+static void find_block_tiles(int s) {
   took(COLUMN_BLOCK_TILES);
   RAM[0x27] = 0;   // before the block is read, which matters when the list's pointer leads here
+  call_pushes(s, 0xE9AF);   // JSR $E9A4
   if ((RAM[0x54] + BLOCK_AT) > 0xFF) took(STAGE_BLOCK_PAST_PAGE);
   BLOCK = peek_counted(ram16(0x54), BLOCK_AT);
   set_ram16(0x26, (uint16_t)(peek16(0x8010) + BLOCK * 4));
@@ -191,9 +194,10 @@ static void draw_column(void) {
   uint8_t at = 3, side = AT_X & 8 ? 1 : 0, lower = AT_Y & 8;
   RAM[0x22] = 0;
   took(COLUMN_LIST_BEGINS);
-  find_block_tiles();
+  find_block_tiles(call_from(stack_of(TASK_VIEW, 1), 0xE7B5));
   took(lower ? COLUMN_STARTS_LOWER : COLUMN_STARTS_UPPER);
   for (;;) {
+    int next_screen = 0;
     if (!lower) {
       column_tile(&at, side);
       if (++RAM[0x22] == 30) break;
@@ -215,12 +219,13 @@ static void draw_column(void) {
       RAM[COLUMN + at++] = RAM[COLUMN + 1] & 0x1F;
       RAM[0x23] = at++;
       AT_Y = 0;
+      next_screen = 1;
       took(COLUMN_NEXT_SCREEN);
       screen_blocks((uint8_t)(SCREEN_AT + cart(7, (uint16_t)(0xEB30 + RAM[0xCF] * 2))));
       took(SCREEN_BLOCKS);
       took(CALLS);
     }
-    find_block_tiles();
+    find_block_tiles(call_from(stack_of(TASK_VIEW, 1), next_screen ? 0xE82B : 0xE7FA));
     took(COLUMN_ROUND);
   }
   took(COLUMN_TILES_DONE);
@@ -272,9 +277,10 @@ static void draw_row(void) {
   uint8_t at = 3, lower = AT_Y & 8 ? 2 : 0, right = AT_X & 8;
   RAM[0x22] = RAM[0x24] = 0;
   took(ROW_LIST_BEGINS);
-  find_block_tiles();
+  find_block_tiles(call_from(stack_of(TASK_VIEW, 1), 0xE8A6));
   took(right ? ROW_STARTS_RIGHT : ROW_STARTS_LEFT);
   for (;;) {
+    int next_screen = 0;
     if (!right) {
       row_tile(&at, lower);
       if (RAM[0x22] == 35) break;
@@ -300,12 +306,13 @@ static void draw_row(void) {
       at++;
       RAM[0x23] = at++;
       AT_X = 0;
+      next_screen = 1;
       took(ROW_NEXT_SCREEN);
       screen_blocks((uint8_t)(SCREEN_AT + 1));
       took(SCREEN_BLOCKS);
       took(CALLS);
     }
-    find_block_tiles();
+    find_block_tiles(call_from(stack_of(TASK_VIEW, 1), next_screen ? 0xE92B : 0xE8F9));
     took(JUMPS);
   }
   took(ROW_TILES_DONE);
