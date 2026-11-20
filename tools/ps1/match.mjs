@@ -15,6 +15,7 @@
 // Nothing here knows where a game's files are or how the original is read: match gives it the file, the names'
 // addresses and the program, and a test gives it its own (test/ps1-match.mjs).
 
+import { fork } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -24,8 +25,8 @@ import { readAnyCopy } from '../lib/read-copy.mjs';
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
-import { addressIn, preprocess, runIn, twinsIn } from '../gba/match.mjs';
-import { compileC, GCC } from './gcc.mjs';
+import { addressIn, runIn, twinsIn } from '../gba/match.mjs';
+import { GCC } from './gcc.mjs';
 import { maspsx } from './maspsx.mjs';
 import { assemble } from './assemble.mjs';
 import { decode } from './mips.mjs';
@@ -93,21 +94,80 @@ export const wayText = way => `GCC ${way.version} ${way.flags.join(' ')}${way.ma
 /** The -G a compiler's flags give GCC, which maspsx is given too: how big a value it reaches through $gp. */
 const smallDataOf = flags => Number(flags.filter(flag => /^-G\d+$/.test(flag)).at(-1)?.slice(2) ?? 0);
 
+// The process clang's preprocessor and GCC run in (compile-child.mjs), kept running from the first file to the last,
+// and what each of its answers is waited for by
+const CHILD = new URL('./compile-child.mjs', import.meta.url);
+let child = null, asked = 0;
+const waiting = new Map();
+
+function compilerProcess() {
+  if (child) return child;
+  const started = fork(CHILD, [], { stdio: ['ignore', 'inherit', 'inherit', 'ipc'] });
+  started.on('message', message => {
+    const wait = waiting.get(message.id);
+    if (!wait) return;
+    if (message.log !== undefined) wait.log(message.log);
+    else {
+      waiting.delete(message.id);
+      wait.resolve(message);
+    }
+  });
+  // one that stops, as one that crashed does, leaves what it was asked unanswered: it's asked again of the next
+  started.on('exit', (code, signal) => {
+    if (child === started) child = null;
+    for (const [id, wait] of waiting) {
+      waiting.delete(id);
+      wait.resolve({ stopped: signal ?? `exit code ${code}` });
+    }
+  });
+  // match ends while it's still there, as it isn't waited for
+  started.unref();
+  started.channel?.unref();
+  child = started;
+  return child;
+}
+
+/** Preprocesses `file` and compiles it with GCC in the compiler's own process, asked once more in a new one when the
+ *  first stopped before it answered: { preprocessed, assembly }, or { error, stage }. */
+async function compileApart(request, log) {
+  let stopped;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const id = ++asked, running = compilerProcess();
+    // held while it's asked, so match waits for its answer, or for its end when it stops first
+    const answer = await new Promise(resolve => {
+      waiting.set(id, { resolve, log });
+      running.ref();
+      running.channel?.ref();
+      running.send({ id, ...request });
+    });
+    if (!waiting.size) {
+      running.unref();
+      running.channel?.unref();
+    }
+    if (!answer.stopped) return answer.error ? answer : { preprocessed: Buffer.from(answer.preprocessed, 'base64'), assembly: answer.assembly };
+    stopped = answer.stopped;
+  }
+  return { error: `The compiler's process stopped twice (${stopped}) before it built the file.`, stage: 'process' };
+}
+
+/** Stops the compiler's process, if one is running. */
+export function stopCompiler() {
+  child?.kill();
+  child = null;
+}
+
+/** The compiler's process's number, or null when none is running. */
+export const compilerPid = () => child?.pid ?? null;
+
 /**
  * Builds `file` as match does, in `work` (<work>.i, GCC's <work>.s and maspsx's <work>.aspsx.s), and assembles it:
  * { made, assembly }, `made` as the tools' assembler gives it, or { error }, what went wrong.
  */
 export async function compileFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, log = () => {} }) {
   mkdirSync(dirname(work), { recursive: true });
-  let preprocessed;
-  try {
-    preprocessed = await preprocess(file, root, includes);
-  } catch (error) {
-    return { error: error.message };
-  }
-  writeFileSync(`${work}.i`, preprocessed);
-  const built = await compileC(preprocessed, { version: compiler.version, flags: compiler.flags, log });
-  if (built.error) return { error: built.error.replaceAll('the C:', `${basename(file)}:`) };
+  const built = await compileApart({ file, root, includes, version: compiler.version, flags: compiler.flags }, log);
+  if (built.error) return { error: built.stage === 'gcc' ? built.error.replaceAll('the C:', `${basename(file)}:`) : built.error };
+  writeFileSync(`${work}.i`, built.preprocessed);
   writeFileSync(`${work}.s`, built.assembly);
   try {
     const { assembly } = maspsx(built.assembly, { ...compiler.maspsx, sdataLimit: smallDataOf(compiler.flags) });

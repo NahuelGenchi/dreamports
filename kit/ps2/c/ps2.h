@@ -181,6 +181,48 @@ void vu_msubf(vu_vector *fd, const vu_vector *acc, const vu_vector *fs, float wi
 void vu_ftoi(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest);
 
+// A unit's program written again in C, on the unit's own registers and memory, which is what a Dreamport has in place
+// of the original's microcode: the game gives the kit the C for a place in the unit's code memory, and the kit runs
+// it whenever the VIF's MSCAL or VCALLMS starts a program there. It gives back where the program stops, the address
+// in the code memory after its last pair, which MSCNT goes on from. A program in C has no pipeline: each line's
+// result and flags are there for the next, as all a program did is there once it has ended.
+typedef uint32_t (*vu_c_program)(void);
+void vu_program(int unit, uint32_t address, vu_c_program program);
+/** A unit's registers: VF0 to VF31, VF0 always (0, 0, 0, 1), the accumulator, VI0 to VI15, 16 bits each and VI0 always
+ *  0, Q, P, I and R as their bits, and its status, MAC and clip flags as its program reads them. */
+vu_vector *vu_vf(int unit, int reg);
+vu_vector *vu_acc(int unit);
+uint32_t vu_vi(int unit, int reg);
+void vu_set_vi(int unit, int reg, uint32_t value);
+uint32_t *vu_q(int unit);
+uint32_t *vu_p(int unit);
+uint32_t *vu_i(int unit);
+uint32_t *vu_r(int unit);
+uint32_t vu_status(int unit);
+uint32_t vu_mac(int unit);
+uint32_t vu_clip_flags(int unit);
+/** A unit's data memory, 4 KB on unit 0 and 16 KB on unit 1, which its loads and stores reach by VI * 16. */
+uint8_t *vu_data(int unit);
+/** The sums as the unit does them, with its flags: `op` on the fields `dest` names, to `fd`, a register of the unit's
+ *  or its accumulator (ADDA, MULA, MADDA and the like). MADD and MSUB take the unit's accumulator. vu_sum_with takes
+ *  one float's bits for every field: a field of a register (ADDx, MULw), Q (ADDq) or I (MULi). */
+enum { VU_ADD, VU_SUB, VU_MUL, VU_MADD, VU_MSUB };
+void vu_sum(int unit, int op, vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
+void vu_sum_with(int unit, int op, vu_vector *fd, const vu_vector *fs, uint32_t with, int dest);
+/** OPMULA, when `fd` is the unit's accumulator, and OPMSUB to a register: the two halves of a cross product. */
+void vu_outer(int unit, vu_vector *fd, const vu_vector *fs, const vu_vector *ft);
+/** CLIP: x, y and z of `fs` against the size of `ft`'s w, six judgements put after the last in the clip flag. */
+void vu_clip(int unit, const vu_vector *fs, const vu_vector *ft);
+/** DIV, SQRT and RSQRT on floats' bits: Q, and the status flag's division and invalid bits. */
+void vu_div(int unit, uint32_t a, uint32_t b);
+void vu_sqrt(int unit, uint32_t b);
+void vu_rsqrt(int unit, uint32_t a, uint32_t b);
+/** XGKICK: the packet at `at` in vector unit 1's data memory, in bytes, goes to the GS as PATH1. XTOP and XITOP: what
+ *  the VIF gave the program as it started. */
+void vu1_kick(uint32_t at);
+uint32_t vu1_xtop(void);
+uint32_t vu_xitop(int unit);
+
 // The IOP, the console's second processor, for twins of a game's own IOP modules (iop.c): its memory, 4 MB as the
 // emulator has it, and its hardware as a module's loads and stores reach it, at the addresses the module uses. The
 // sound chip, the SPU2, is there from 0x1F900000, both its cores as the emulator mixes them (spu2.c), and the DMA
