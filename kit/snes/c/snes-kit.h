@@ -54,6 +54,24 @@ uint8_t dsp_read(uint8_t address);
 /** A write to the sound chip's register at `address`, as the sound processor writes $F3. */
 void dsp_write(uint8_t address, uint8_t value);
 
+/** Sets where the console is: a line, 0 to 261, and a cycle of the main clock from its start. */
+void timing_at(int line, int cycle);
+/** The line the console is on. */
+int timing_line(void);
+/** Runs the game's IRQ handler for each time the timers' interrupt comes on `line` from cycle `from` up to `to`. */
+void timing_run(int line, int from, int to);
+/** The moment of V-blank's interrupt, NMI, where a game's step runs: line 225, as Snes9x times it. */
+void timing_nmi(void);
+/** V-blank's lines after the frame's, from 225, with the IRQs that come on them. */
+void timing_vblank(void);
+/** One line of the frame, its events at their times: HDMA's start on line 0, `draw` of the row before at cycle 512,
+ *  HDMA's writes in H-blank, and the IRQs between. */
+void timing_line_run(int line, void (*draw)(int row), void (*hdma_init)(void), void (*hdma)(void));
+/** $4212 as read now: V-blank, H-blank and auto-joypad's reading. */
+uint8_t timing_4212(void);
+/** A write to $420C partway down the frame: the channels that haven't ended run from the next line. */
+void hdma_enable_written(uint8_t value);
+
 /** Reads the cartridge's header from the player's copy, as the console's wiring sees it. */
 void cartridge_load(void);
 /** A write to a 24-bit address of the console's own memories, as DMA from the hardware writes it: the work memory and the

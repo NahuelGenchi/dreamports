@@ -13,7 +13,8 @@
 // turns its field a step each frame, through every way outside the field, both flips, mosaic, the second background,
 // direct colours, windows and colour maths, and reads the matrix's product back each frame. The HDMA program runs
 // seven channels at once, through every way a channel reads its table, onto scrolls, brightness, windows, colours,
-// mosaic and the mode. The colour program goes through 16 settings of windows
+// mosaic and the mode. The raster program changes registers partway down the frame from its IRQ handler, by the V
+// timer, the H and V timers and the H timer alone, and reads $4212. The colour program goes through 16 settings of windows
 // and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and below. The
 // music program sends the sound processor a program
 // with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
@@ -26,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { COLOUR, HDMA, madeUpColourCartridge, madeUpHdmaCartridge, madeUpMode7Cartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, HDMA, madeUpColourCartridge, madeUpHdmaCartridge, madeUpMode7Cartridge, madeUpRasterCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, RASTER, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -84,6 +85,15 @@ const PROGRAMS = [
       [[['channel(1, 0x40,', 'channel(1, 0x00,']], 'the brightness\'s table read as it stands, not through its addresses'],
       [[['SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0x80);', 'SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0xC0);']], 'the window table\'s first count off'],
       [[['(((low & 0x20) >> 2) ^ 0x7F)', '(0x7F)']], 'channel 3 never turned off', 32],
+    ],
+  },
+  {
+    name: 'raster', game: 'test-snes-kit-raster', title: 'DREAMPORTS RASTER', cartridge: madeUpRasterCartridge, data: RASTER, file: 'raster.c',
+    wrongs: [
+      [[['  snes_write(0x4209, 0x28);\n  snes_write(0x420A, 0x00);\n  snes_write(0x4200, 0xA1);\n  uint16_t', '  snes_write(0x4209, 0x29);\n  snes_write(0x420A, 0x00);\n  snes_write(0x4200, 0xA1);\n  uint16_t']], 'the first split a line late'],
+      [[['    snes_write(0x2122, (uint8_t)(LINES << 2));\n    snes_write(0x2122, (uint8_t)((LINES >> 1) | SNES_RAM[0x12]));\n', '']], 'the H timer\'s backdrop colours left out'],
+      [[['snes_write(0x210F, (uint8_t)(snes_read(0x4212) & 0xC1));', 'snes_write(0x210F, (uint8_t)(snes_read(0x4212) & 0x80));']], '$4212 read as V-blank alone'],
+      [[['  snes_interrupts(1);\n', '']], 'IRQs never let in'],
     ],
   },
   {

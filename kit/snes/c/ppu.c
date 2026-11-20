@@ -50,10 +50,10 @@ struct ppu_state {
 static struct ppu_state ppu;
 // the fixed colour at the screen's brightness, as Snes9x last made it
 static uint16_t fixed_pixel;
-// the line the console is on, 0 to 261, which HDMA's writes come at, and V-blank's 225 outside a frame's lines;
-// whether the sprites or the windows have changed since a line was last drawn; and where mosaic's blocks start down
-// the screen, the line it was last written on, as Snes9x has it
-static int ppu_line = 225, sprites_changed, windows_changed, mosaic_start;
+// whether the sprites or the windows have changed since a line was last drawn; where mosaic's blocks start down the
+// screen, the line it was last written on, as Snes9x has it; and how many of the frame's rows are drawn, and whether
+// the frame's rows are being drawn, from line 1 to V-blank
+static int sprites_changed, windows_changed, mosaic_start, rows_drawn, drawing;
 // Snes9x draws a frame's lines in stretches, each up to a write that changes how they're drawn, and mosaic depends on
 // where the stretch began: the line it starts at, and the registers as last written, $2100 to $2133, to know which
 // writes change something. Each line's scrolls and mode 7's values, as Snes9x keeps them for each line it draws.
@@ -65,14 +65,13 @@ static struct line_state {
 } lines[SNES_HEIGHT];
 // a write that ends Snes9x's stretch of lines before it, during the frame's lines
 static void ends_stretch(void) {
-  if (ppu_line <= SNES_HEIGHT) stretch_start = ppu_line;
+  if (drawing) stretch_start = rows_drawn;
 }
 
 void ppu_power(void) {
   ppu = (struct ppu_state){ 0 };
   fixed_pixel = 0;
-  ppu_line = SNES_HEIGHT + SNES_FIRST_LINE;
-  mosaic_start = stretch_start = 0;
+  mosaic_start = stretch_start = rows_drawn = drawing = 0;
   for (int i = 0; i < 0x34; i++) written[i] = 0;
   ppu.screen = 0x80;
   for (int i = 0; i < 0x10000; i++) snes_vram[i] = 0;
@@ -143,7 +142,7 @@ void ppu_write(uint16_t address, uint8_t value) {
   case 0x2106:
     ppu.mosaic = value;
     // a new mosaic's blocks start down from the line it's written on, as Snes9x has it
-    if (value != before) mosaic_start = ppu_line <= SNES_HEIGHT ? ppu_line : 0;
+    if (value != before) mosaic_start = timing_line() <= SNES_HEIGHT ? timing_line() : 0;
     break;
   case 0x2107: case 0x2108: case 0x2109: case 0x210A:
     ppu.map[address - 0x2107] = (uint16_t)((value & 0xFC) << 8);
@@ -683,8 +682,9 @@ static void mode7_span(int n, int y, int left, int right, int brightness, struct
   int sized = (ppu.mosaic >> 4) + 1 > 1 && (ppu.mosaic >> n & 1);
   int across = sized ? (ppu.mosaic >> 4) + 1 : 1, down = sized && (ppu.mosaic & 1) ? (ppu.mosaic >> 4) + 1 : 1;
   // the block's first line, and mode 7's values as they were on it
-  int from_y = y - (y - mosaic_start) % down;
-  const struct line_state *at = &lines[from_y];
+  int first = stretch_start - (int)((uint32_t)(stretch_start - mosaic_start) % (uint32_t)down);
+  int from_y = first + (y - first) / down * down;
+  const struct line_state *at = &lines[from_y < 0 ? 0 : from_y];
   int m_left = left - left % across, m_right = (right + across - 1) / across * across;
   int32_t hofs = signed13(at->m7_hofs), vofs = signed13(at->m7_vofs), cx = signed13(at->m7_x), cy = signed13(at->m7_y);
   int32_t a = at->m7[0], b = at->m7[1], c = at->m7[2], d = at->m7[3];
@@ -765,7 +765,9 @@ static void draw_layers(int screen, int line, const uint8_t *obj_colours, const 
     for (int k = 0; k < c->count; k++) {
       int from_y = y, scrolled_y = y;
       if (blocky) {
-        from_y = k ? stretch_start + (y - stretch_start) / mosaic * mosaic : y - (y - mosaic_start) % mosaic;
+        // the blocks of the stretch's first span start where Snes9x works it out, unsigned, from the stretch's first line
+        int first = k ? stretch_start : stretch_start - (int)((uint32_t)(stretch_start - mosaic_start) % (uint32_t)mosaic);
+        from_y = first + (y - first) / mosaic * mosaic;
         scrolled_y = from_y > stretch_start || k ? from_y : stretch_start;
       }
       const struct line_state *at = &lines[scrolled_y];
@@ -839,40 +841,44 @@ static void fixed_colour(void) {
   }
 }
 
-// The frame's lines, one at a time, with the registers as each finds them: HDMA starts at line 0 and writes in each
-// line's H-blank, from line 0 to 224, and what it writes shows from the next line down; the sprites' lines are found
-// again, and the windows' spans cut again, when their registers have changed.
-void ppu_frame(uint32_t *out) {
-  ppu_line = 0;
-  hdma_start();
-  hdma_line();
-  mosaic_start = 0;
-  stretch_start = 0;
-  obj_setup();
-  compute_spans();
+// The frame's lines, one at a time, with the registers as each finds them, each at its time on the line (timing.c):
+// HDMA starts at line 0 and writes in each line's H-blank, from line 0 to 224, and what it writes shows from the next
+// line down, as does what the game's IRQ handler writes after the point where Snes9x draws the line before; the
+// sprites' lines are found again, and the windows' spans cut again, when their registers have changed.
+static uint32_t *frame_out;
+static void draw_row(int y) {
+  if (!y || sprites_changed) obj_setup();
+  if (!y || windows_changed) compute_spans();
   sprites_changed = windows_changed = 0;
-  for (int y = 0; y < SNES_HEIGHT; y++) {
-    struct line_state *now = &lines[y];
-    for (int n = 0; n < 4; n++) {
-      now->hofs[n] = ppu.hofs[n];
-      now->vofs[n] = ppu.vofs[n];
-    }
-    for (int i = 0; i < 4; i++) now->m7[i] = ppu.m7[i];
-    now->m7_x = ppu.m7_x;
-    now->m7_y = ppu.m7_y;
-    now->m7_hofs = ppu.m7_hofs;
-    now->m7_vofs = ppu.m7_vofs;
-    if (sprites_changed) obj_setup();
-    if (windows_changed) compute_spans();
-    sprites_changed = windows_changed = 0;
-    fixed_colour();
-    if (ppu.screen & 0x80) {
-      for (int x = 0; x < SNES_WIDTH; x++) out[y * SNES_WIDTH + x] = 0xFF000000u;
-    } else {
-      draw_line(out + y * SNES_WIDTH, y + SNES_FIRST_LINE);
-    }
-    ppu_line = y + SNES_FIRST_LINE;
-    hdma_line();
+  struct line_state *now = &lines[y];
+  for (int n = 0; n < 4; n++) {
+    now->hofs[n] = ppu.hofs[n];
+    now->vofs[n] = ppu.vofs[n];
   }
-  ppu_line = SNES_HEIGHT + SNES_FIRST_LINE;
+  for (int i = 0; i < 4; i++) now->m7[i] = ppu.m7[i];
+  now->m7_x = ppu.m7_x;
+  now->m7_y = ppu.m7_y;
+  now->m7_hofs = ppu.m7_hofs;
+  now->m7_vofs = ppu.m7_vofs;
+  fixed_colour();
+  if (ppu.screen & 0x80) {
+    for (int x = 0; x < SNES_WIDTH; x++) frame_out[y * SNES_WIDTH + x] = 0xFF000000u;
+  } else {
+    draw_line(frame_out + y * SNES_WIDTH, y + SNES_FIRST_LINE);
+  }
+  rows_drawn = y + 1;
+}
+
+void ppu_frame(uint32_t *out) {
+  frame_out = out;
+  for (int line = 0; line <= SNES_HEIGHT; line++) {
+    // the frame's rows start at line 1, with mosaic's blocks from the top, as Snes9x starts them
+    if (line == SNES_FIRST_LINE) {
+      mosaic_start = stretch_start = rows_drawn = 0;
+      drawing = 1;
+    }
+    timing_line_run(line, draw_row, hdma_start, hdma_line);
+  }
+  drawing = 0;
+  timing_at(SNES_HEIGHT + SNES_FIRST_LINE, 0);
 }
