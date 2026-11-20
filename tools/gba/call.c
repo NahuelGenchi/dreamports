@@ -24,7 +24,7 @@
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
 //   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
-//                       changes those values, the display's status at 0x04000004 among them, then calls the
+//                       changes those values, the display's status at 0x04000004 and its line at 0x04000006 among them, then calls the
 //                       function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
 //                       lets it run up to `limit` instructions. Answers:
@@ -541,6 +541,11 @@ static void call(void* state) {
 		// the display's status, as the call starts: only its bits that say where the display is
 		if (where == DISPSTAT_AT && bytes == 2) {
 			heldStatus = (uint16_t) ((heldStatus & ~7u) | (value & 7u));
+			continue;
+		}
+		// and the line it's on, a line of the picture for a call the check starts outside the V-blank (#1729)
+		if (where == VCOUNT_AT && bytes == 2) {
+			heldLine = (uint16_t) (value & 0xFFu);
 			continue;
 		}
 		long at = inImage(where);
