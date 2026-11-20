@@ -106,6 +106,16 @@ export function registersIn(text) {
   return { gives: Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim() };
 }
 
+/** The last function of the run a twin is the twin of, among the code map's `functions`, or null for a twin of one
+ *  function: as its comment names it, `0x08001AA4 to 0x0800258E`, or for a twin that gives its routine's length,
+ *  `dp:run 16`, the function that ends where the routine does. */
+export function throughOf(twin, functions) {
+  if (twin.through !== undefined && twin.through !== null) return twin.through;
+  if (!twin.runBytes || twin.address === null || twin.address === undefined) return null;
+  const end = twin.address + twin.runBytes;
+  return functions.find(f => !f.bytes && f.address > twin.address && f.address + f.size === end)?.address ?? null;
+}
+
 /** The functions of a code map from `from` through the one at `through`, each { address, size, key }, when each starts
  *  where the one before ends, as one routine's do; or null when they don't, or no function starts at either end. */
 export function runIn(functions, from, through) {
@@ -243,7 +253,11 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
       // dp:registers and C in the comment: how a hand-written routine takes and gives in registers no C function
       // uses, as `r3 = chk_adr_r2((const void *)r2) ? r3 : 0`, which the function check works out and compares (#1710)
       const registers = registersIn(above.join('\n'));
-      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), ...(registers ? { registers } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      // dp:run and a number of bytes in the comment: a twin of the original's routine of that length from its start,
+      // which the code map may hold as several functions, as a shared library's twin, which names no address, says it
+      // (throughOf)
+      const runBytes = Number(/\bdp:run\s+(\d+)\b/.exec(above.join('\n'))?.[1] ?? 0);
+      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(runBytes ? { runBytes } : {}), ...(unaligned ? { unaligned } : {}), ...(registers ? { registers } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;

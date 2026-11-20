@@ -1,0 +1,53 @@
+// @TITLE_C@: the game's own code, in C, on the Nintendo 64's kit in C (kit/n64/c/n64.h), with the console's screen,
+// frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page,
+// built to WebAssembly as src/game.wasm (kit/n64/c/README.md).
+
+#include "n64.h"
+
+// where the picture is kept in RDRAM, 320 by 240 pixels of 16 bits, and the RDP's commands that draw it
+#define PICTURE 0x00100000
+#define COMMANDS 0x00200000
+
+// a command of the RDP's, two words, the `n`th of the list
+static void command(int n, uint32_t high, uint32_t low) {
+  n64_write32(0x80000000 | (COMMANDS + n * 8), high);
+  n64_write32(0x80000000 | (COMMANDS + n * 8 + 4), low);
+}
+
+// once, with the player's copy in kit_copy: the video interface showing the picture, 320 by 240 in 16-bit colour
+void game_start(void) {
+  n64_write32(VI_ORIGIN, PICTURE);
+  n64_write32(VI_WIDTH, 320);
+  n64_write32(VI_V_INTR, 2);
+  n64_write32(VI_BURST, 0x03E52239);
+  n64_write32(VI_V_SYNC, 0x20D);
+  n64_write32(VI_H_SYNC, 0xC15);
+  n64_write32(VI_LEAP, 0x0C150C15);
+  n64_write32(VI_H_START, 0x006C02EC);
+  n64_write32(VI_V_START, 0x002501FF);
+  n64_write32(VI_V_BURST, 0x000E0204);
+  n64_write32(VI_X_SCALE, 0x200);
+  n64_write32(VI_Y_SCALE, 0x400);
+  n64_write32(VI_STATUS, 0x3302);
+}
+
+// what the original does each frame, writing the console as it does. To begin with, the whole picture filled by the
+// RDP: blue, and green while a button is held
+void game_step(uint32_t buttons) {
+  uint32_t colour = buttons ? 0x07C1 : 0x003F;
+  command(0, 0xFF10013F, PICTURE);
+  command(1, 0xED000000, 0x005003C0);
+  command(2, 0xEF300000, 0);
+  command(3, 0xF7000000, colour << 16 | colour);
+  command(4, 0xF64FC3BC, 0);
+  command(5, 0xE9000000, 0);
+  n64_write32(DPC_STATUS, 0x1);
+  n64_write32(DPC_START, COMMANDS);
+  n64_write32(DPC_END, COMMANDS + 6 * 8);
+}
+
+// its picture: what the video interface shows of RDRAM
+void game_draw(void) { n64_show(); }
+
+// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
+void game_sound(float *left, float *right, int count) {}
