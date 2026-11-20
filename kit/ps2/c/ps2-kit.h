@@ -112,5 +112,12 @@ uint32_t spu2_list_hash(void);
 uint32_t spu2_list_count(void);
 const uint8_t *spu2_list_bytes(uint32_t *size);
 const int16_t *spu2_heard(uint32_t *pairs);
+/** For the tools' emulator, which mixes with this chip too: the chip as the console starts, on the emulator's memory for
+ *  it, its state for a save state, and a core's transfer mode and DMA bits for the sound list. */
+void spu2_power(uint8_t *ram);
+uint32_t spu2_state_size(void);
+void spu2_state_save(uint8_t *to);
+void spu2_state_load(const uint8_t *from);
+void spu2_transfer(int core, uint32_t *mode, uint32_t *control);
 
 #endif

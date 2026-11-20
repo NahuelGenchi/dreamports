@@ -221,6 +221,11 @@ static void list_keep(const void *data, uint32_t size) {
 }
 // a thing in the list: its kind and its bytes, which are hashed, and kept whole, or as their length and their own hash
 static void listed(char kind, const void *data, uint32_t length, int keep) {
+#ifdef SPU2_IN_REFERENCE
+  // the tools' emulator keeps the original's list itself, with everything else it's asked for (tools/libretro/play.patch)
+  (void)kind, (void)data, (void)length, (void)keep;
+  return;
+#endif
   const uint8_t *bytes = data;
   uint32_t own = 0x811C9DC5;
   list_hash = (list_hash ^ (uint8_t)kind) * 0x01000193;
@@ -276,13 +281,17 @@ static void core_reset(core *c, unsigned number) {
   c->input_addr = number == 0 ? INPUT_CORE0 : INPUT_CORE1;
 }
 
-// the chip's memory and state, made the first time a game touches it, as one that never does needs none of it
-static void woken(void) {
-  if (spu.ram) return;
-  spu.ram = kit_alloc(RAM_SIZE);
-  spu.cache_first = kit_alloc(sizeof(int32_t) * (RAM_SIZE / 2));
+// no decoded block kept
+static void cache_empty(void) {
+  if (!spu.cache_first) spu.cache_first = kit_alloc(sizeof(int32_t) * (RAM_SIZE / 2));
   for (uint32_t i = 0; i < RAM_SIZE / 2; i++) spu.cache_first[i] = -1;
+  spu.cache_used = 0;
   spu.cache_free = -1;
+}
+// the chip's state as the console starts, with `ram` its memory
+static void wake(uint8_t *ram) {
+  spu.ram = ram;
+  cache_empty();
   core_reset(&spu.cores[0], 0);
   core_reset(&spu.cores[1], 1);
   spu.cores[0].output_offset = (ticks_asleep * 2) & (CORE0_OUTPUT_SIZE - 1);
@@ -301,6 +310,45 @@ static void woken(void) {
     } else value = 0x3FFFFFFF;
     spu.adsr_table[i] = value;
   }
+}
+// the chip's memory and state, made the first time a game touches it, as one that never does needs none of it
+static void woken(void) {
+  if (!spu.ram) wake(kit_alloc(RAM_SIZE));
+}
+
+// For the tools' emulator, which has this chip in place of its own (tools/libretro/play.patch): the chip as the console
+// starts, on the emulator's own memory for it, and its state for a save state, which is everything but the decoded
+// blocks, as the emulator forgets those when it loads one.
+void spu2_power(uint8_t *ram) {
+  struct spu2 kept = spu;
+  __builtin_memset(&spu, 0, sizeof spu);
+  spu.cache_first = kept.cache_first;
+  spu.cache = kept.cache;
+  spu.cache_size = kept.cache_size;
+  spu.heard = kept.heard;
+  spu.heard_room = kept.heard_room;
+  ticks_asleep = 0;
+  wake(ram);
+}
+uint32_t spu2_state_size(void) { return sizeof spu; }
+void spu2_state_save(uint8_t *to) { __builtin_memcpy(to, &spu, sizeof spu); }
+void spu2_state_load(const uint8_t *from) {
+  struct spu2 kept = spu;
+  __builtin_memcpy(&spu, from, sizeof spu);
+  spu.ram = kept.ram;
+  spu.cache_first = kept.cache_first;
+  spu.cache = kept.cache;
+  spu.cache_size = kept.cache_size;
+  spu.heard = kept.heard;
+  spu.heard_room = kept.heard_room;
+  spu.heard_count = 0;
+  cache_empty();
+}
+// what a DMA transfer's entry in the sound list says of a core after it: its transfer mode and the control's DMA bits
+void spu2_transfer(int number, uint32_t *mode, uint32_t *control) {
+  woken();
+  *mode = spu.cores[number].transfer_mode;
+  *control = (uint32_t)(spu.cores[number].control & CONTROL_DMA);
 }
 
 // ----------------------------------------------------------------------------------------------------------------
