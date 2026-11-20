@@ -13,7 +13,11 @@
 #define FLASH_WRITE(addr, data) ((*(vu8 *)(FLASH_BASE + (addr))) = (data))
 #define FLASH_POKE(at, data) (*(at) = (data))
 #define FLASH_PEEK(at) (*(at))
+#define TIMER_WROTE(at)
 #else
+// the library writes its timer's registers through a pointer: each write is told to the console's time as it's made
+void console_timer_wrote(const volatile u16 *at);
+#define TIMER_WROTE(at) console_timer_wrote(at)
 // a Dreamport's flash chip is hardware.c's, on the kit's save memory: reads see its bytes, writes are its commands
 u8 *console_flash(void);
 void console_flash_write(u32 addr, u8 data);

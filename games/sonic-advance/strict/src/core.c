@@ -194,17 +194,33 @@ void EngineMainLoop(void) {
 
     gFlagsPreVBlank = gFlags;
     VBlankIntrWait();
+    // (from the wait's way back, the blank lines' work is timed where the screen goes up by DMA)
+    TIME(0x08099820, 0x08099820, 0x080008ED);
 
     if (gFlags & FLAGS_UPDATE_WITH_CPU_SET) {
       UpdateScreenCpuSet();
       if (!(gFlags & FLAGS_PAUSE_GAME)) ClearOamBufferCpuSet();
     } else {
+      TIME(0x080008EC, 0x080008F6, 0x0800092D, IW);
+      TIME(0x0800092C, 0x0800092E, 0x08000981);
       UpdateScreenDma();
-      if (!(gFlags & FLAGS_PAUSE_GAME)) ClearOamBufferDma();
+      if (!(gFlags & FLAGS_PAUSE_GAME)) {
+        TIME(0x08000930, 0x0800093A, 0x08000C55, IW);
+        ClearOamBufferDma();
+        TIME(0x0800093C, 0x08000946, 0x08000959, IW);
+      }
+#ifndef MATCHING
+      else TIME(0x08000930, 0x08000936, 0x08000949, IW);
+#endif
     }
 
-    if (gFlags & FLAGS_PAUSE_GAME) gFlags |= FLAGS_PAUSED;
-    else gFlags &= ~FLAGS_PAUSED;
+    if (gFlags & FLAGS_PAUSE_GAME) {
+      gFlags |= FLAGS_PAUSED;
+      TIME(0x08000948, 0x08000952, 0x0800095F, IW, IW);
+    } else {
+      gFlags &= ~FLAGS_PAUSED;
+      TIME(0x08000958, 0x0800095C, 0x0800095F, IW);
+    }
 
     // until the blank lines are over: each look at the display's status at its load's time
 #ifdef MATCHING
@@ -275,11 +291,17 @@ void ClearOamBufferDma(void) {
     if (gBgOffsetsHBlankPrimary == gBgOffsetsBuffer[0]) {
       gBgOffsetsHBlankPrimary = gBgOffsetsBuffer[1];
       gBgOffsetsHBlankSecondary = gBgOffsetsBuffer[0];
+      TIME(0x08000C54, 0x08000C8A, 0x08000CAD, IW, IW, IW, IW, IW, IW);
     } else {
       gBgOffsetsHBlankPrimary = gBgOffsetsBuffer[0];
       gBgOffsetsHBlankSecondary = gBgOffsetsBuffer[1];
+      TIME(0x08000C54, 0x08000C7C, 0x08000CA1, IW, IW, IW, IW);
+      TIME(0x08000CA0, 0x08000CAA, 0x08000CAD, IW, IW);
     }
   }
+#ifndef MATCHING
+  else TIME(0x08000C54, 0x08000C72, 0x08000CAD, IW, IW, IW);
+#endif
   gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
   DMA3_FILL16(0x200, gOamBuffer + 32 * 0, OAM_SIZE / 4);
   DMA3_FILL16(0x200, gOamBuffer + 32 * 1, OAM_SIZE / 4);
@@ -287,6 +309,7 @@ void ClearOamBufferDma(void) {
   DMA3_FILL16(0x200, gOamBuffer + 32 * 3, OAM_SIZE / 4);
   gNumVBlankCallbacks = 0;
   gFlags &= ~FLAGS_EXECUTE_VBLANK_CALLBACKS;
+  TIME(0x08000CAC, 0x08000D1E, BACK, IW, IW, IW, DMA3, IW, DMA3, IW, DMA3, IW, DMA3, IW, IW, IW);
 }
 
 /** HBlankIntr, 0x08001314: at the end of each line of the picture, what the game asked to run there. */

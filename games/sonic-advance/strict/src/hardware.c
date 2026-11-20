@@ -168,6 +168,9 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 con
   if (!(d->control >> 12 & 3)) dma_run(d);
 }
 
+/** A timer's register written through a pointer to where the console has it: the console's time takes it at its store. */
+void console_timer_wrote(const volatile u16 *at) { gba_clock_written((u32)(uintptr_t)at, *at); }
+
 void console_dma(u32 n, u32 src, u32 dest, u32 control) { dma_start(n, src, NULL, dest, NULL, control); }
 void console_dma_own(u32 n, const void *src, u32 dest, u32 control) { dma_start(n, 0, (const u8 *)src, dest, NULL, control); }
 void console_dma3(u32 src, u32 dest, u32 control) { dma_start(3, src, NULL, dest, NULL, control); }
@@ -182,7 +185,16 @@ void console_store16(u32 at, u16 value) {
   u8 *to = console_at(at & ~1u, 1);
   if (to != NULL) { to[0] = (u8)value; to[1] = (u8)(value >> 8); }
 }
-void console_dma_stop(u32 n) { dma[n & 3].control &= ~(0x3000 | 0x0800 | 0x0200 | 0x8000); }
+/** A channel stopped as the console's library stops one: its timing, its request and its repeat off, then its switch,
+ *  each store as the console's time takes it. */
+void console_dma_stop(u32 n) {
+  struct console_dma *d = &dma[n & 3];
+  u32 at = 0x040000BAu + 12 * (n & 3);
+  d->control &= ~(0x3000 | 0x0800 | 0x0200);
+  gba_clock_written(at, d->control);
+  d->control &= ~0x8000;
+  gba_clock_written(at, d->control);
+}
 
 // the channels waiting for this moment: 1 the V-blank, 2 a line's H-blank
 static void dma_at(u32 timing) {
