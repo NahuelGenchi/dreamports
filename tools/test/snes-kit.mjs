@@ -8,7 +8,8 @@
 // in front, scrolls them both ways, and steps the screen's brightness through every value. The sprite program shows
 // 128 sprites over a background, every size $2101 chooses in turn, flips, priorities, more than 32 sprites on a line
 // and more than 34 of their tiles, moves 8 of them through their table's port each frame, and turns $2103's priority
-// rotation on and off, from an even address and an odd one. The colour program goes through 16 settings of windows
+// rotation on and off, from an even address and an odd one. The modes program goes through modes 0 to 4, with offsets
+// for each column of tiles, 256-colour tiles, direct colours and mosaic, and windows over them. The colour program goes through 16 settings of windows
 // and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and below. The
 // music program sends the sound processor a program
 // with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
@@ -21,7 +22,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { COLOUR, madeUpColourCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, madeUpColourCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODES, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -51,6 +52,16 @@ const PROGRAMS = [
       [[['snes_write(0x2132, (uint8_t)((low >> 1 & 0x1F) | 0x40));', 'snes_write(0x2132, (uint8_t)(((low >> 1) + 1 & 0x1F) | 0x40));']], 'the fixed colour\'s green a step off', 16],
       [[['+ 6 + x));', '+ 6 + x) & 0x00);']], 'no sub screen', 32],
       [[['snes_write(0x2127, (uint8_t)(one + 70));', 'snes_write(0x2127, (uint8_t)(one + 71));']], 'window 1 a pixel wider', 144],
+    ],
+  },
+  {
+    name: 'modes', game: 'test-snes-kit-modes', title: 'DREAMPORTS MODES', cartridge: madeUpModesCartridge, data: MODES, file: 'modes.c',
+    wrongs: [
+      [[['snes_write(0x2111, (uint8_t)(low * 3));', 'snes_write(0x2111, (uint8_t)(low * 3 + 1));']], 'BG3, whose map holds the offsets, a pixel across'],
+      // first seen as mode 0's BG3, whose tiles of its far map's numbers reach them
+      [[['store16(0x2116, 0x2000);', 'store16(0x2116, 0x2020);']], 'the 256-colour tiles a tile off', 16],
+      [[['+ 8 + x));', '+ 8 + x) & 0xFE);']], 'no direct colours', 80],
+      [[['+ 1 + x));', '+ 1 + x) + 0x10);']], 'the mosaic a pixel bigger', 128],
     ],
   },
   {
