@@ -18,7 +18,7 @@ Like the rest of the kits it's under [GPL-3.0-or-later](../LICENSE), and nothing
 | `floats.c`, `floats.h` | The console's float rules, on a float's bits, which the EE's FPU and the vector units share. The console's emulator in the proof tools is given this same file |
 | `ee.c` | The EE's FPU: its instructions on those rules, its accumulator and its flags |
 | `mmi.h`, `mmi.c` | The EE's 128-bit integer instructions, a function each, with HI, LO and SA |
-| `vu.c` | The vector units: their memories and registers, their programs run an instruction pair at a time, vector unit 0 an instruction at a time from the EE, and the sums for a program written again in C |
+| `vu.c` | The vector units: their memories and registers, their programs run an instruction pair at a time, vector unit 0 an instruction at a time from the EE, and the sums for a program written again in C. `vu_registers` gives and reads a unit's registers whole, for the function check. |
 | `vif.c` | The VIFs, which feed the vector units: every code, UNPACK in every format, and the programs they start |
 | `dmac.c` | The DMA controller: its channels to the VIFs, the GIF and the scratchpad, in normal, chain and interleaved mode |
 | `bus.c` | What the EE's code reaches at an address: main memory, the scratchpad, the vector units' memories and the registers of all of these |

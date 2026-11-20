@@ -57,10 +57,10 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
  * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
- * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a function of
- * another program than the one a game boots, as a PlayStation 2 disc's modules for its second processor, and for a
- * vector unit's program (ps2/functions.mjs): `twin` and `match` check the boot program's functions, and no other's
- * yet. Such a function is in no task, and still counts as not proven.
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a PlayStation 2
+ * vector unit's program (ps2/functions.mjs), which `twin` doesn't call yet: it's in no task, and still counts as not
+ * proven. A function of another program of the disc, a module for its second processor or another for the EE, has
+ * its proof by `twin` (ps2/twin.mjs).
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
@@ -245,7 +245,7 @@ export function stateText(state) {
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
       : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
-        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s in another program of the disc or a vector unit\'s, which no proof reaches yet' : 'no twin yet',
+        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s a vector unit\'s program, which no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',

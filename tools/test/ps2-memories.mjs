@@ -109,7 +109,7 @@ console.log('The same starts, in the check\'s own processor:');
     check(run.status === 0, `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--memories', '--calls', '200');
     check(run.status === 0 && /9 memories of 9 of the 19 functions kept in \.dreamports\/twin\/test-ps2-memories\/c\/ps2\//.test(run.out), `the recording is played and a memory kept of each function it reaches: ${run.out.split('\n').find(line => /memories of/.test(line))}`);
-    check(/16 of 19 functions left the same memory.*from 9 memories of play, which 9 of the version's functions have their own of/.test(run.out), `and every twin is the same from them: ${run.out.trim().split('\n').slice(-2)[0]}`);
+    check(/17 of 19 functions left the same memory.*from 9 memories of play, which 9 of the version's functions have their own of/.test(run.out), `and every twin is the same from them: ${run.out.trim().split('\n').slice(-2)[0]}`);
     run = dp('twin', VERSION, 'sum', '--memories', '--calls', '200');
     check(run.status === 0 && /are from these recordings and this copy already/.test(run.out), 'kept memories are used again, with nothing played');
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), readFileSync(GAME, 'utf8').replace('return a + b;', 'return a - b;'));

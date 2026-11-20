@@ -12,7 +12,8 @@ name: Check
 # interpreter and check its twins against them, and npm run test:ps1-gcc, which builds the PlayStation's compiler from
 # GNU's source as WebAssembly and compiles a C file of the project's own with it, and npm run test:ps1-match, which
 # tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
-# test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them. A pull
+# test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
+# test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #

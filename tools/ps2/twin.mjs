@@ -25,6 +25,11 @@
 // (twin-memories.mjs, --memories): the console's memory as it was each time a function started in play, with the
 // registers it started with, so a function is called with what the game really gave it.
 //
+// A twin can name a function outside the program the disc boots by its code map's key, as 0x00000120@SOUND.IRX: a
+// module for the IOP (twin-iop.mjs) or another program for the EE, each checked in a build of its own, as its
+// addresses are its own. And the EE's code works on vector unit 0 in macro mode, so every call gives the twin the
+// unit's registers through the kit and compares what each side left in them.
+//
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
 // call read, and later calls change a few of those values, mostly to numbers at the edges of what a value holds, and give
 // pointers it read as arguments, but never a word that points back into the function's own code, which is a switch's
@@ -56,7 +61,7 @@ import { findFunctions, findModuleFunctions, programOf as discProgram, ps2Progra
 import { keepPiece, keepProgram, programReader } from './original-program.mjs';
 import { iopMachine, LOAD, loadModule } from './twin-iop.mjs';
 import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
-import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
+import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU, VU_REGISTERS } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // what openBuild names the function a call through a pointer meets when nothing built is the twin of its address
@@ -333,10 +338,10 @@ class Runner {
   }
 
   /** A twin's call: { gave, differs }, { stopped }, or { never: true } when it was still going after its seconds. */
-  async call(name, args, changes, chunks, skip) {
+  async call(name, args, changes, chunks, skip, unit = null) {
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => resolve({ never: true }), this.seconds * 1000); });
-    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip }), late]);
+    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip, unit }), late]);
     clearTimeout(timer);
     if (answer.never) {
       await this.worker.terminate();
@@ -414,7 +419,32 @@ export const EE = {
   inMemory,
   typeOf,
   table: foldTable,
+  // vector unit 0's registers of the EE's, as the kit's vu_registers has a unit's (original.mjs, VU_REGISTERS): VF0
+  // and VI0 as they always read, the whole numbers' 16 bits, and the status flag as the EE reads it, which Play! keeps
+  // as the MAC flags, their sticky bits and the division's
+  unit(registers) {
+    const words = new Array(VU_REGISTERS.words).fill(0), E = EE_REGISTERS, V = VU_REGISTERS;
+    for (let n = 4; n < 128; n++) words[V.vf + n] = registers[E.vf + n] >>> 0;
+    words[V.vf + 3] = 0x3F800000;
+    for (let n = 0; n < 4; n++) words[V.acc + n] = registers[E.acc + n] >>> 0;
+    for (let n = 1; n < 16; n++) words[V.vi + n] = registers[E.vi + n] & 0xFFFF;
+    for (const name of ['q', 'i', 'p', 'r']) words[V[name]] = registers[E[name]] >>> 0;
+    const mac = registers[E.mac] >>> 0, sticky = registers[E.status] >>> 0;
+    words[V.status] = [0x000F, 0x00F0, 0x0F00, 0xF000].reduce((status, lanes, bit) => status | (mac & lanes ? 1 << bit : 0) | (sticky & lanes ? 0x40 << bit : 0), registers[E.divide] >>> 0);
+    words[V.mac] = mac;
+    words[V.clip] = registers[E.clip] >>> 0;
+    return words;
+  },
 };
+
+// a word of a unit's registers by its name, as a line says it
+function unitRegister(k) {
+  const V = VU_REGISTERS, field = 'xyzw'[k & 3];
+  if (k < V.acc) return `VF${k >> 2}.${field}`;
+  if (k < V.vi) return `ACC.${field}`;
+  if (k < V.q) return `VI${k - V.vi}`;
+  return { [V.q]: 'Q', [V.i]: 'I', [V.p]: 'P', [V.r]: 'R', [V.status]: 'status flag', [V.mac]: 'MAC flag', [V.clip]: 'clip flag' }[k] ?? `word ${k}`;
+}
 
 /**
  * Calls one function of the original and its twin until `options.calls` calls were compared, each from the image with
@@ -479,10 +509,6 @@ export async function checkFunction({ f, original, runner, gp, options, choose, 
       aside[`${reason}Text`] ??= machine.endText?.(answer) ?? endText(answer);
       continue;
     }
-    if (answer.vu0) {
-      aside.vu0 = (aside.vu0 ?? 0) + 1;
-      continue;
-    }
     const left = answer.registers;
     const unkept = machine.kept(left, registers);
     if (unkept !== undefined) {
@@ -490,7 +516,8 @@ export async function checkFunction({ f, original, runner, gp, options, choose, 
       aside.keptText ??= unkept;
       continue;
     }
-    const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
+    // vector unit 0's registers, which the EE's code reaches in macro mode, as the call starts
+    const twin = await runner.call(f.call, args, changes, answer.chunks, skip, machine.unit ? { number: 0, words: machine.unit(registers) } : null);
     const call = { number, args, changes, hardware: answer.hardware, ...(from ? { from: { play: from.play, number: from.number, asPlayed } } : {}) };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
@@ -507,6 +534,11 @@ export async function checkFunction({ f, original, runner, gp, options, choose, 
     if (f.returns) {
       const theirs = machine.theirs(left, f.returns), ours = machine.ours(BigInt.asUintN(64, BigInt(twin.gave)), f.returns);
       if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(f.returns.float), digits: f.returns.float || (machine.kind !== 'ee' && f.returns.bits !== 64) ? 8 : 16 }, ...call } };
+    }
+    // and what each left in vector unit 0's registers
+    if (machine.unit && twin.unit) {
+      const theirs = machine.unit(left), k = theirs.findIndex((word, n) => word >>> 0 !== twin.unit[n] >>> 0);
+      if (k >= 0) return { compared, aside, ran, result: { kind: 'differs', register: { name: unitRegister(k), ours: twin.unit[k] >>> 0, theirs: theirs[k] >>> 0 }, ...call } };
     }
     if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(twin.differs.at, machine.kind), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
     compared++;
@@ -534,7 +566,8 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     const word = value => `0x${value.toString(16).toUpperCase().padStart(result.gave.digits, '0')}`;
     const gave = result.gave ? `the twin gave back ${word(result.gave.ours)} and the original ${word(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
     const memory = result.memory ? `at ${at(result.memory.address)}, in ${result.memory.name}, the twin left ${byte(result.memory.ours)} and the original ${byte(result.memory.theirs)}` : null;
-    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
+    const register = result.register ? `in vector unit 0's ${result.register.name} the twin left ${at(result.register.ours)} and the original ${at(result.register.theirs)}` : null;
+    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, register, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
   if (result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, result)}: the original came back and the twin stopped (${result.why}).` };
@@ -547,7 +580,6 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     steps: `the original didn't come back within ${count(DEFAULTS.limit)} instructions`,
     misaligned: `the original ${aside.misalignedText}`,
     vu: `the original ${aside.vuText}`,
-    vu0: 'the original left vector unit 0\'s registers changed, which no twin is given yet',
     kept: `the original changed ${aside.keptText}, which a function keeps for its caller`,
     unbuilt: `the twin calls ${aside.unbuiltText}, which nothing built is the twin of`,
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
@@ -561,7 +593,7 @@ const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came
 
 /** The twins of a version, ready to be built for the check a file at a time (../gba/twin.mjs). */
 export function openPs2Build({ root, files, shifts, givenOf, includes, placed, own = LAYOUT.own }) {
-  return openBuild({ root, files, shifts, givenOf, console: 'ps2', layout: { ...LAYOUT, own }, includes, signature: signatureOf, wrap: wrapOf, ...(placed ? { placed } : {}) });
+  return openBuild({ root, files, shifts, givenOf, console: 'ps2', layout: { ...LAYOUT, own }, includes, signature: signatureOf, wrap: wrapOf, kitNames: ['vu_registers'], ...(placed ? { placed } : {}) });
 }
 
 /**

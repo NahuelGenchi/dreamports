@@ -96,7 +96,7 @@ try {
   check(run.status === 0 && sames.length === 9, `the module's twins leave the same memory as their originals (${sames.join(', ')}): ${last(run)}`);
   check(/Not checked  0x000000B4@MADE_UP\.IRX ask: no call could be compared: the original called function 12 of sysclib, another module/.test(run.out), `a function that calls another module says so: ${line(run, ' ask')}`);
   check(/The same memory  0x00300000@OTHER\.ELF other_sum,/.test(run.out), `the second EE program's twin is checked against its own program: ${line(run, 'other_sum')}`);
-  check(/26 of 30 functions left the same memory/.test(run.out) && (run.out.match(/The same memory/g) ?? []).length === 26, `beside the boot program's, in one run: ${line(run, 'functions left the same memory')}`);
+  check(/27 of 30 functions left the same memory/.test(run.out) && (run.out.match(/The same memory/g) ?? []).length === 27, `beside the boot program's, in one run: ${line(run, 'functions left the same memory')}`);
   check(!run.out.split('\n').some(each => /No address/.test(each) && [...module.functions.map(f => f.name), 'other_sum'].some(name => each.includes(` ${name},`))), 'and no twin named by a key is said to have no address');
 
   run = dp('twin', VERSION, '78@MADE_UP.IRX', '--calls', '200');

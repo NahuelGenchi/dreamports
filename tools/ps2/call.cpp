@@ -87,6 +87,7 @@
 #include "ee/MA_VU.h"
 #include "ee/EeBasicBlock.h"
 #include "ee/VuExecutor.h"
+#include "ee/dreamports/Glue.h"
 #include "ee/VUShared.h"
 
 enum Kind { EE, IOP, VU1 };
@@ -679,6 +680,9 @@ int main(int argc, char **argv) {
       }
     }
 
+    // what a vector unit's instructions did that is still on its way, its flags, Q and P, lands first, as it has by
+    // the time the EE reads any of it, or the unit's next program starts (the tools' patch of Play!, Glue.cpp)
+    if(kind != IOP) DpVuLandAll(cpu.get());
     held(left);
     if(kind == EE) {
       auto *r = reinterpret_cast<const EeRegisters *>(left.data());
