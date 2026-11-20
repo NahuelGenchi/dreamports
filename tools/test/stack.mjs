@@ -93,10 +93,18 @@ const dreamport = async (program, name) => {
   return { out: words(memory, NAMED.get('gOut'), 4), stack: memory.subarray(STACK.address, STACK.address + STACK.bytes) };
 };
 const mine = await dreamport(stacked, 'stacked'), without = await dreamport(plain, 'plain');
+// with Push not proven by the same bytes: its frame still takes its room, so Keep's saved register is where Copy
+// finds it, and Push's own two pushes are left out, and listed
+const unproven = withStack({ file: inRepo(PROGRAM), text, tree: await syntaxOf(PROGRAM, REPO, args, files), map, matched: new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Push')), addressOf });
+const partly = join(WORK, 'partly.c');
+writeFileSync(partly, `${unproven.header}\n${unproven.text}`);
+const part = await dreamport(partly, 'partly');
 check(mine.out.every((w, i) => w === theirOut[i]), `with the stack, Copy copies the same words: ${mine.out.map(hex).join(', ')}`);
 const differing = [...mine.stack].filter((b, i) => b !== theirStack[i]).length;
 check(differing === 0, `and the stack under Main's frame is the same, byte for byte: ${STACK.bytes - differing} of ${STACK.bytes}`);
 check(!without.out.every((w, i) => w === theirOut[i]), `without it, Copy copies other words: ${without.out.map(hex).join(', ')}`);
+check(part.out[0] === theirOut[0] && part.out[1] === 0 && part.out[2] === 0 && part.out[3] === theirOut[3], `with Push not proven by its bytes, its frame keeps its room, so Copy still finds what Keep saved, and Push's own pushes are left out: ${part.out.map(hex).join(', ')}`);
+check(unproven.gaps.some(gap => gap.startsWith('Push: not proven by the same bytes')), `and that's listed: ${unproven.gaps.join('; ')}`);
 
 if (failed) {
   console.log(`${failed} failed.`);
