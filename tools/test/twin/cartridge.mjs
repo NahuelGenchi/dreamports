@@ -64,6 +64,17 @@ export function withTurn(rom) {
   return turned;
 }
 
+// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does (withPeek, peek.c)
+export const PEEK = { Peek: 0x08000A40 };
+export const PEEK_LENGTH = 6;
+
+export function withPeek(rom) {
+  const peeked = Buffer.from(rom);
+  // ldrb r3, [r2, #0], add r3, #1, bx lr
+  [0x7813, 0x3301, 0x4770].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Peek - CARTRIDGE + 2 * i));
+  return peeked;
+}
+
 export function withTwice(rom) {
   const twice = Buffer.from(rom);
   // add r2, pc, #0 and bx r2: on into the ARM code after it

@@ -15,6 +15,8 @@
 //   'm'                 answers the image.
 //   's' image           puts the image in the console's memory. Answers 0.
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
+//   'g' register        which register the calls after it give back, as a hand-written routine's twin says it
+//                       gives what it gives (twin.mjs, #1710): r0 at first. Answers 0.
 //   'a' follow          whether the calls after it follow a read or write where no halfword or word starts, as the
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
@@ -25,7 +27,7 @@
 //                       lets it run up to `limit` instructions. Answers:
 //                         how it ended: 0 it came back, 1 it didn't within the limit, 2 it left what a twin can follow,
 //                           3 it came back, but a DMA the console's clock started wrote to the image on the way
-//                         what it gave back, in r0, and how many instructions it ran
+//                         what it gave back, in r0 or the register 'g' named, and how many instructions it ran
 //                         the first address of the hardware's registers it used, or 0
 //                         the address it left for, when it ended with 2
 //                         how many values it read, how many numbers it loaded from the cartridge, how many times it
@@ -394,6 +396,8 @@ static void touched(uint32_t address, int bytes, int write) {
 // The console reads and writes a halfword or a word only where one starts, whatever the address says, and turns what
 // it read round to make up for it. C has no such thing, so a call that does it is one a twin can't follow.
 static int followUnaligned;
+// the register a call gives back in, as a hand-written routine's twin says (#1710)
+static int givesIn;
 static void aligned(uint32_t address, uint32_t bytes) {
 	if (watching && !followUnaligned && (address & (bytes - 1)) && !left) {
 		left = 1;
@@ -613,7 +617,7 @@ static void call(void* state) {
 	if (left) ended = LEFT;
 	else if (ended == CAME_BACK && clocked) ended = CLOCKED;
 	watching = 0;
-	uint32_t gave = cpu->gprs[0];
+	uint32_t gave = cpu->gprs[givesIn];
 	for (size_t i = 0; i < readCount; i++) wasRead[inImage(reads[i][0])] = 0;
 	// what it read of code it ran from the work memory, as through a pointer it was given, isn't a value to change
 	size_t kept = 0;
@@ -830,6 +834,10 @@ int main(int argc, char** argv) {
 			answer();
 		} else if (command == 'a') {
 			followUnaligned = in32() != 0;
+			out32(0);
+			answer();
+		} else if (command == 'g') {
+			givesIn = (int) (in32() & 15);
 			out32(0);
 			answer();
 		} else if (command == 'c') {
