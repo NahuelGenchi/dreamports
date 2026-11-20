@@ -224,7 +224,7 @@ enum { FIRST_WEAPON = 0x11, WEAPONS = 3, LANCE = 0x23, DAGGER = 0x24, TORCH = 0x
 /** sub_F5F9: the first of Arthur's weapons that's flying, hasn't hit anything and touches an enemy, or 0 (enemies.c). */
 uint8_t weapon_that_touches(uint8_t enemy);
 /** $EB75 and $EB84, kinds $23 and $24: a lance's or a dagger's turn (weapons.c). */
-void weapon(uint8_t object);
+void weapon(uint8_t object, uint8_t y);
 /** $ECAF, kind $26: the axe, which rises and falls as it flies (weapons.c). */
 void axe(uint8_t object);
 /** sub_D8FC: adds what's in $26 and $27 to the score, tens and hundreds. `x` and `y` are the processor's registers, which it keeps. */
@@ -271,7 +271,7 @@ void sixth_carries_a_pot(uint8_t object, uint8_t *x);
 int arthur_near(uint8_t object, uint8_t y);
 /** sub_02_8610 and sub_04_A66A, kind 4: the enemy of the first stage's forest (forest.c). */
 void forest_enemies_come(uint8_t *x);
-void forest_enemy(uint8_t object);
+void forest_enemy(uint8_t object, uint8_t y);
 /** $F41C, kind $29: its shot (enemies.c). */
 void forest_shot(uint8_t object, uint8_t y);
 /** sub_04_BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */

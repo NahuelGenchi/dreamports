@@ -62,9 +62,9 @@ static uint8_t block_above(uint8_t object, uint16_t at) {
 
 // $EB90: a weapon flies at `speed` the way it heads, and is gone out of the view, spent once it's hit something, or
 // stopped by a gravestone.
-static void fly(uint8_t object, uint8_t speed) {
+static void fly(uint8_t object, uint8_t speed, uint8_t y) {
   took(CALLS);
-  move_object(object, speed, Y_NOT_FOLLOWED);
+  move_object(object, speed, y);
   if (!object_in_view(object)) {
     RAM[OBJECT_STATE + object] = 0;
     RAM[OBJECT_FLAGS + object] = 0;
@@ -92,7 +92,7 @@ static void fly(uint8_t object, uint8_t speed) {
   if (object >= 0x10) took_times(READ_PAST_PAGE, 2);
 }
 
-void weapon(uint8_t object) {
+void weapon(uint8_t object, uint8_t y) {
   uint8_t dagger = RAM[OBJECT_KIND + object] == DAGGER;
   RAM[OBJECT_COLOURS + object] = 0;
   took(WEAPON_TURN_BEGINS);
@@ -104,7 +104,7 @@ void weapon(uint8_t object) {
     return;
   }
   took(dagger ? DAGGER_SPEED : LANCE_SPEED);
-  fly(object, dagger ? 0x38 : 0x2C);
+  fly(object, dagger ? 0x38 : 0x2C, y);
 }
 
 // $ECAF, kind $26: the axe. It rises and falls by the copy's list at $ED07, one pair for each of its first 16 rounds
@@ -133,8 +133,9 @@ void axe(uint8_t object) {
   RAM[OBJECT_COLOURS + object] = 1;
   took(AXE_COLOURS_STORED);
   uint8_t block = block_above(object, 0xECE5);
-  if (block < 0xC6) { took(AXE_NOT_SOLID); fly(object, 0x22); return; }
-  if (block != 0xD0 && block != 0xDF) { took(AXE_SOLID); fly(object, 0x22); return; }
+  // Y as the block's look-up leaves it
+  if (block < 0xC6) { took(AXE_NOT_SOLID); fly(object, 0x22, RAM[0xD4]); return; }
+  if (block != 0xD0 && block != 0xDF) { took(AXE_SOLID); fly(object, 0x22, RAM[0xD4]); return; }
   // $ECF4: a gravestone's block, and it's spent at once
   took(block == 0xD0 ? AXE_STOPPED_BY_D0 : AXE_STOPPED_BY_DF);
   RAM[OBJECT_COUNT + object] = 0;

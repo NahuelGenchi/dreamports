@@ -882,7 +882,7 @@ wait objects_task(void) {
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
         case 0x03: knight(object, y); break;
-        case 0x04: forest_enemy(object); break;
+        case 0x04: forest_enemy(object, y); break;
         case 0x05: boss(object); break;
         case 0x06: devil(object); break;
         case 0x07: window_thing(object); break;
@@ -912,7 +912,7 @@ wait objects_task(void) {
         case 0x22: map_marker(object); break;
         case 0x36: rising_thing(object); break;
         case 0x37: falling_thing(object); break;
-        case LANCE: case DAGGER: weapon(object); break;
+        case LANCE: case DAGGER: weapon(object, y); break;
         case AXE: axe(object); break;
         case 0x33: princess(object); break;
         case 0x34: satan(object, y); break;
