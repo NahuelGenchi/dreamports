@@ -1,20 +1,21 @@
 name: Mac and Windows (Game Boy Advance)
 
 # The Game Boy Advance's proof tools on a Mac and on Windows, as a person making a Dreamport on one has them (#1453), on
-# GitHub's own computers: Getting ready as tools/README.md has it, on a Mac with Apple's chip and one with Intel's, with
-# Homebrew's Node.js, GitHub CLI and CMake, and on Windows with only git and Node.js, where setup gets its own compiler
-# and CMake. Each runs npm run test:match and test:twin, the function check, test:rebuild and test:libraries, which run
+# GitHub's own computers: Getting ready as tools/README.md has it, on a Mac with Apple's chip, with Homebrew's Node.js,
+# GitHub CLI and CMake, and on Windows with only git and Node.js, where setup gets its own compiler and CMake. Each runs npm run test:match and test:twin, the function check, test:rebuild and test:libraries, which run
 # match and twin from npm run dp on games of the project's own, and test:same-memory, which builds a program of the
 # project's own as a cartridge and as a Dreamport from the same C and proves every frame and the whole work memory the
-# same in mGBA and in the computer's own browser. The Macs also run test:function-tasks, whose stand-in for the GitHub
-# CLI is a script Windows can't start by that name.
+# same in mGBA and in the computer's own browser. The Mac also runs test:function-tasks, whose stand-in for the GitHub
+# CLI is a script Windows can't start by that name. A Mac with Intel's chip is left out, as Apple no longer makes one,
+# and GitHub's Macs, five at a time, are shared with the PlayStation 2's workflow: Linux on Intel builds agbcc on the
+# same kind of chip.
 #
 # And every computer builds agbcc, the console's compiler, from the same source with its own C compiler, Linux on an
 # Intel and on an ARM chip among them, and writes what it made of every C file it builds (npm run test:gba-same). A
 # last job finds every file the same on all of them: a proof made on one computer has to be one on every other.
 # Nothing from any game's copy is needed, and nothing is sent anywhere.
 #
-# It isn't part of Check, as the Macs and Windows take longer to start and build. It runs on pull requests that touch
+# It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
 # what those tools are made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and
 # by hand.
 on:
@@ -108,15 +109,9 @@ jobs:
           retention-days: 7
 
   mac:
-    name: Mac with ${{ matrix.chip }}'s chip (Game Boy Advance)
-    runs-on: ${{ matrix.runner }}
+    name: Mac (Game Boy Advance)
+    runs-on: macos-latest
     timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { chip: Apple, runner: macos-latest, machine: arm64, arch: arm64 }
-          - { chip: Intel, runner: macos-15-intel, machine: x86_64, arch: x64 }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -127,10 +122,9 @@ jobs:
       - name: Getting ready on a Mac
         env:
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
-          MACHINE: ${{ matrix.machine }}
         run: |
           sw_vers
-          test "$(uname -m)" = "$MACHINE"
+          test "$(uname -m)" = arm64
           xcode-select -p
           cc --version | head -1
           git --version
@@ -147,11 +141,11 @@ jobs:
       - run: npm run dp -- setup
 
       # first, so the comparison has it even when a test after it fails
-      - run: npm run test:gba-same -- --write gba-same-mac-${{ matrix.arch }}.json
+      - run: npm run test:gba-same -- --write gba-same-mac-arm64.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: gba-same-mac-${{ matrix.arch }}
-          path: gba-same-mac-${{ matrix.arch }}.json
+          name: gba-same-mac-arm64
+          path: gba-same-mac-arm64.json
           retention-days: 7
 
       - run: npm run test:match
@@ -195,7 +189,7 @@ jobs:
   same:
     name: The same compiler on every computer (Game Boy Advance)
     needs: [linux, mac, windows]
-    # even when a later test on a Mac or Windows failed, as each computer's builds are written before them
+    # even when a later test on the Mac or Windows failed, as each computer's builds are written before them
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -207,4 +201,4 @@ jobs:
         with:
           pattern: gba-same-*
           merge-multiple: true
-      - run: node tools/test/gba-same.mjs --compare gba-same-linux-x64.json gba-same-linux-arm64.json gba-same-mac-arm64.json gba-same-mac-x64.json gba-same-windows-x64.json
+      - run: node tools/test/gba-same.mjs --compare gba-same-linux-x64.json gba-same-linux-arm64.json gba-same-mac-arm64.json gba-same-windows-x64.json

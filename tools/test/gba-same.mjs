@@ -8,8 +8,9 @@
 // --write builds, with agbcc and old_agbcc, every C file of the project's own Game Boy Advance programs that the tests
 // build as cartridges; every file of the shared libraries in the kit, with the compiler their library.json names; and
 // every file of each game's version in C whose original.json names a compiler, with the one match builds it with. It
-// writes a hash of each: of the assembly agbcc wrote, and of the stack map read from it with its debugging lines, for
-// the project's programs and for a version that compares the work memory, as the build reads one (../gba/stack.mjs).
+// writes a hash of each: of the assembly agbcc wrote, and of the stack map read from it with its debugging lines, as
+// the build reads one (../gba/stack.mjs), for all but the files of a version that compares no work memory, whose build
+// reads none.
 // --compare reads such files, one from each computer of the Game Boy Advance's workflow
 // (.github/workflows/gba.yml), and fails on any file that came out differently on one, or built on one and not
 // another. Nothing from any game's copy is needed: a game's C is in the repository.
