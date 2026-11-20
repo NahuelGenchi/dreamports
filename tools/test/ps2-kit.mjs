@@ -135,7 +135,7 @@ function main() {
   writeGame(GAMES.vu1, { plainSums: true });
   run = dp('prove', inC(GAMES.vu1), 'still');
   found = report(GAMES.vu1);
-  check(run.status !== 0 && found.firstDifference?.frame >= 0, `a division done with a computer's rounding, not the unit's, is found: at frame ${found.firstDifference?.frame}`);
+  check(run.status !== 0 && found.firstDifference?.frame >= 0, `the turn done with a computer's rounding, not the unit's, is found: at frame ${found.firstDifference?.frame}`);
 
   console.log('Textured sprites in a 16-bit framebuffer, and their Dreamport in C, proven by their pictures');
   setUp(GAMES.textured, madeUpPs2Textured(), { provenBy: 'pictures' });
