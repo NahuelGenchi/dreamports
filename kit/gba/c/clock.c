@@ -109,6 +109,12 @@ static int multiply_time(uint32_t pc_register, uint32_t r) {
 static int64_t master, cycles;
 #define NOW (master + cycles)
 
+// The first frame ends where the emulator's display reaches the V-blank: it starts on line 126 with 117 cycles to the
+// line's H-blank, which takes 224, and 33 lines of 1,232 more reach line 160. Each one after ends a frame later: 228
+// lines of 1,232.
+enum { LINE = 1232, HBLANK = 224, LINES = 228, FRAME = LINES * LINE, FIRST_HBLANK = 117, FIRST_LINE = 126,
+       FIRST_FRAME_END = FIRST_HBLANK + HBLANK + (160 - 127) * LINE };
+
 static struct dma {
   uint32_t source, dest, count, next_source, next_dest, next_count;
   uint16_t control;
@@ -119,13 +125,49 @@ static int64_t dma_event = -1;
 static const int STEP[4] = { 1, -1, 0, 1 };   // a DMA address's step for each of its settings, in units
 
 static struct timer {
-  int enabled, counts_up, prescale;
+  int enabled, counts_up, prescale, interrupts;
   uint16_t reload, counter;
   int64_t last, when;
 } timers[4];
 
 static struct fifo { int written, read, left, dma; } fifos[2];
 static uint16_t soundcnt_high, soundcnt_x;
+
+// The interrupts, on the emulator's rules (its GBARaiseIRQ, GBATestIRQ and _triggerIRQ, and ARMRaiseIRQ; mgba-emu/mgba
+// 26b7884b, 0.10.5): one that's raised sets its bit of IF, and with a bit of IF that IE has too, the processor is asked
+// 7 cycles later, unless it's been asked already and not yet answered. Asked, it wakes if it was halted, and takes the
+// interrupt if IME is on and it isn't keeping interrupts off, which it does from taking one until the BIOS gives the
+// interrupted code back, and during the first and last steps of a call to the BIOS.
+enum { IRQ_DELAY = 7, IRQ_VBLANK = 0, IRQ_HBLANK = 1, IRQ_VCOUNT = 2 };
+static struct {
+  uint16_t enabled, flags, on, display;   // IE, IF, IME and DISPSTAT, as the game wrote them
+  int off;                                // the processor keeping interrupts off
+  int halted, taken;                      // waiting for one, and one taken that the next instruction comes after
+  int quiet;                              // while the time catches up with a stretch the game didn't time
+  int64_t when;                           // when the processor is asked
+} irq;
+// The display's two events a line, as the emulator has them: a line's H-blank starts, and 224 cycles on the next
+// line starts, 1,008 before its own H-blank. Each is set from the time the one before it ran at, so the 2 cycles the
+// processor's jump to the interrupt vector takes, when it comes just before one in the same turn of the events, move
+// every line and every frame's end after it by 2, as they do in the emulator.
+static struct {
+  int64_t when;            // the next event
+  int hblank;              // whether it's a line's H-blank starting, and not the next line
+  int line;                // the line the display is on, which VCOUNT holds
+  uint32_t vblanks;        // how many times it reached the V-blank, each a frame's end
+  int64_t vblank_at[16];   // when the latest ones were
+} video;
+static void (*interrupt_handler)(void);
+static uint32_t interrupt_address;
+
+static void irq_test(int64_t late) {
+  if ((irq.enabled & irq.flags) && irq.when == INT64_MAX) irq.when = NOW - late + IRQ_DELAY;
+}
+static void irq_raise(int which, int64_t late) {
+  if (irq.quiet) return;
+  irq.flags |= (uint16_t)(1u << which);
+  irq_test(late);
+}
 
 static void dma_update(void) {
   int64_t least = 0;
@@ -228,6 +270,7 @@ static void timer_overflows(int n, int64_t late) {
   struct timer *t = &timers[n];
   if (t->counts_up) t->counter = t->reload;
   else timer_count(n, late);
+  if (t->interrupts) irq_raise(3 + n, late);
   if ((soundcnt_x & 0x80) && n < 2) {
     if ((soundcnt_high & 0x0300) && ((soundcnt_high >> 10) & 1) == n) fifo_sample(0, late);
     if ((soundcnt_high & 0x3000) && ((soundcnt_high >> 14) & 1) == n) fifo_sample(1, late);
@@ -239,10 +282,16 @@ static int64_t next_event(void) {
   for (int i = 0; i < 4; i++)
     if (timers[i].enabled && !timers[i].counts_up && timers[i].when < best) best = timers[i].when;
   if (dma_event >= 0 && dma_event < best) best = dma_event;
+  if (video.when < best) best = video.when;
+  if (irq.when < best) best = irq.when;
   return best;
 }
 
-// time to `master + by`, each event due on the way run in turn, the timers before a DMA at the same time
+static int jump_time(uint32_t to, int thumb);
+
+// time to `master + by`, each event due on the way run in turn: at the same time, the processor asked about an
+// interrupt first, then the display, the timers and a DMA, as the emulator orders them. `cycles` is 0 through it,
+// but for the 2 an interrupt taken adds, which the events after it in the same turn see, as the emulator's do.
 static void tick(int64_t by) {
   master += by;
   for (;;) {
@@ -257,17 +306,47 @@ static void tick(int64_t by) {
       when = dma_event;
       which = 4;
     }
+    if (video.when <= master && video.when <= when) {
+      when = video.when;
+      which = 5;
+    }
+    if (irq.when <= master && irq.when <= when) {
+      when = irq.when;
+      which = 6;
+    }
     if (which < 0) return;
-    int64_t kept = cycles;
-    cycles = 0;
+    int64_t late = master - when;
     if (which == 4) {
       dma_event = -1;
       dma_due();
+    } else if (which == 5 && video.hblank) {
+      // a line's H-blank starts, with its interrupt if DISPSTAT asks for it, 6 cycles on
+      video.hblank = 0;
+      video.when = NOW - late + HBLANK;
+      if (irq.display & 0x0010) irq_raise(IRQ_HBLANK, late - 6);
+    } else if (which == 5) {
+      // the next line starts: the line count's interrupt on the line DISPSTAT names, and at line 160 the V-blank,
+      // which is a frame's end, and its interrupt
+      video.hblank = 1;
+      video.when = NOW - late + (LINE - HBLANK);
+      video.line = (video.line + 1) % LINES;
+      if ((irq.display & 0x0020) && video.line == irq.display >> 8) irq_raise(IRQ_VCOUNT, late);
+      if (video.line == 160) {
+        video.vblank_at[video.vblanks++ & 15] = when;
+        if (irq.display & 0x0008) irq_raise(IRQ_VBLANK, late);
+      }
+    } else if (which == 6) {
+      irq.when = INT64_MAX;
+      irq.halted = 0;
+      if ((irq.enabled & irq.flags) && irq.on && !irq.off && interrupt_handler) {
+        // taken: the processor goes to the BIOS's vector, its pipeline filled again from there
+        irq.off = irq.taken = 1;
+        cycles += jump_time(0, 0);
+      }
     } else {
       timers[which].when = INT64_MAX;
-      timer_overflows(which, master - when);
+      timer_overflows(which, late);
     }
-    cycles = kept;
   }
 }
 
@@ -294,6 +373,14 @@ void gba_clock_write16(uint32_t address, uint16_t value) {
   cycles = (int64_t)started - master;
   uint32_t at = address & 0x3FE;
   if (at == 0x204) set_waitcnt(value);
+  // the display's and the interrupts' own: a write of any of the three asks the processor again, a cycle sooner
+  if (at == 0x004) irq.display = value;
+  if (at == 0x200 || at == 0x202 || at == 0x208) {
+    if (at == 0x200) irq.enabled = value;
+    if (at == 0x202) irq.flags &= (uint16_t)~value;
+    if (at == 0x208) irq.on = value & 1;
+    irq_test(1);
+  }
   if (at >= 0xB0 && at < 0xE0) {
     int n = (int)(at - 0xB0) / 12, part = (int)(at - 0xB0) % 12;
     struct dma *d = &dma[n];
@@ -329,6 +416,7 @@ void gba_clock_write16(uint32_t address, uint16_t value) {
       int was = t->enabled, was_up = t->counts_up, was_prescale = t->prescale;
       t->prescale = PRESCALE[value & 3];
       t->counts_up = n > 0 && (value & 4);
+      t->interrupts = (value & 0x40) != 0;
       t->enabled = (value & 0x80) != 0;
       int again = was != t->enabled || was_up != t->counts_up || was_prescale != t->prescale;
       if (was != t->enabled && t->enabled) t->counter = t->reload;
@@ -357,35 +445,46 @@ void gba_clock_write16(uint32_t address, uint16_t value) {
 // it does: a load or store its access and the code's first-access wait over its sequential one, a jump the pipeline
 // filled again, a shift by a register one cycle more, a multiply its own.
 
-// The first frame ends where the emulator's display reaches the V-blank: it starts on line 126 with 117 cycles to the
-// line's H-blank, which takes 224, and 33 lines of 1,232 more reach line 160. Each one after ends a frame later: 228
-// lines of 1,232.
-enum { LINE = 1232, HBLANK = 224, FRAME = 228 * LINE, FIRST_FRAME_END = 117 + HBLANK + (160 - 127) * LINE };
 static uint32_t frame;
 static int frame_ended;
 
-uint64_t gba_clock_frame_end(uint32_t f) { return (uint64_t)FIRST_FRAME_END + (uint64_t)f * FRAME; }
+// a frame's end: when the display reached its V-blank, for the latest ones gone by, and for one to come, when it
+// will with the lines as long as they are
+uint64_t gba_clock_frame_end(uint32_t f) {
+  if (f < video.vblanks) return f + 16 >= video.vblanks ? (uint64_t)video.vblank_at[f & 15] : (uint64_t)FIRST_FRAME_END + (uint64_t)f * FRAME;
+  int64_t next = video.when + (video.hblank ? HBLANK : 0) + (int64_t)((160 + LINES - (video.line + 1)) % LINES) * LINE;
+  return (uint64_t)next + (uint64_t)(f - video.vblanks) * FRAME;
+}
 uint64_t gba_clock_now(void) { return (uint64_t)NOW; }
 uint64_t gba_clock_started(void) { return started; }
 uint32_t gba_clock_frame(void) { return frame; }
 int gba_clock_frame_ended(void) { return frame_ended; }
 
-// before an instruction: the events due, and whether it's the first of a new frame's to start after its end
-static void begin(void) {
-  frame_ended = 0;
+static void interrupt(uint32_t pc, int thumb);
+
+// before the instruction at `pc`: the events due, an interrupt if the processor took one, with the game's handler,
+// and whether the instruction is the first of a new frame's to start after its end
+static void begin(uint32_t pc, int thumb) {
   run_events();
+  while (irq.taken) {
+    irq.taken = 0;
+    interrupt(pc, thumb);
+    run_events();
+  }
+  frame_ended = 0;
   started = (uint64_t)NOW;
 }
 static void end(int time) {
   cycles += time;
-  if (started >= gba_clock_frame_end(frame)) {
+  // the first instruction to start with the display's V-blank reached and not yet counted is its frame's last
+  if (frame < video.vblanks) {
     frame_ended = 1;
     frame++;
   }
 }
 
 void gba_clock_thumb(uint32_t pc, uint16_t op, uint32_t next, uint32_t value, const gba_access *access, int count) {
-  begin();
+  begin(pc, 1);
   wait.region = (pc >> 24) & 15;
   int time = 1 + wait.s16[wait.region];
   uint32_t pc_register = pc + 4;
@@ -465,7 +564,7 @@ static int arm_time(uint32_t pc, uint32_t op, uint32_t next, int next_thumb, uin
 }
 
 void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint32_t value, const gba_access *access, int count) {
-  begin();
+  begin(pc, 0);
   end(arm_time(pc, op, next & ~1u, (int)(next & 1), cpsr, value, access, count));
 }
 
@@ -489,13 +588,22 @@ static void wait_if_ended(void) {
   if (frame_ended && frame_wait) frame_wait();
 }
 // a step of the BIOS's code taking `extra` cycles beyond its own, from the BIOS
+#define BIOS_CODE 0x00000000u    // the BIOS's code, all of which jumps keep in the BIOS
 static void bios(int extra) {
-  begin();
+  begin(BIOS_CODE, 0);
   wait.region = BIOS;
   end(1 + extra);
   wait_if_ended();
 }
-#define BIOS_CODE 0x00000000u    // the BIOS's code, all of which jumps keep in the BIOS
+// a step that writes the processor's status: interrupts kept off or let in again, and the processor asked again
+static void bios_status(int extra, int off) {
+  begin(BIOS_CODE, 0);
+  wait.region = BIOS;
+  irq.off = off;
+  irq_test(0);
+  end(1 + extra);
+  wait_if_ended();
+}
 #define BIOS_STACK 0x03007F00u   // where the BIOS's stacks are: the fast work memory, no wait states
 static int bios_block(int words, int writes) { return block_time(0, BIOS_STACK, words, writes); }
 static int bios_load(uint32_t address, int bytes) { return access_time(0, address, bytes, 0); }
@@ -509,6 +617,61 @@ static int running;
 enum { CALLS = 32 };
 static uint32_t calls[CALLS];
 static int depth;
+
+// An interrupt the processor took before the instruction at `pc`: the BIOS's vector and its code, which saves r0 to
+// r3, r12 and lr and jumps to the handler whose address the game keeps at 0x03007FFC, the game's handler, and the
+// BIOS's way back, which gives the registers back and goes on with the instruction, interrupts let in again.
+static void interrupt(uint32_t pc, int thumb) {
+  int kept = depth;
+  bios(jump_time(BIOS_CODE, 0));
+  bios(bios_block(6, 1));
+  bios(0);
+  bios(0);
+  bios(bios_load(0x03FFFFFC, 4) + jump_time(interrupt_address, 0));
+  calls[depth++ % CALLS] = GBA_CLOCK_BIOS_BACK;
+  interrupt_handler();
+  depth = kept;
+  bios(bios_block(6, 0));
+  begin(BIOS_CODE, 0);
+  wait.region = BIOS;
+  irq.off = 0;
+  irq_test(0);
+  end(1 + jump_time(pc, thumb));
+  wait_if_ended();
+}
+
+void gba_clock_on_interrupt(uint32_t address, void (*handler)(void)) {
+  interrupt_address = address;
+  interrupt_handler = handler;
+}
+uint16_t gba_clock_interrupts(void) { return irq.flags; }
+void gba_clock_raise(int interrupt) { irq_raise(interrupt, 0); }
+void gba_clock_before(uint32_t pc) { if (running) begin(pc & ~1u, (int)(pc & 1)); }
+
+static uint16_t (*check_read)(void);
+static void (*check_write)(uint16_t value);
+void gba_clock_on_wait(uint16_t (*read)(void), void (*write)(uint16_t value)) {
+  check_read = read;
+  check_write = write;
+}
+
+// The processor halted, as a write of HALTCNT from the BIOS leaves it: the time goes from event to event until the
+// processor is asked about an interrupt, which wakes it whether or not it takes it. A frame whose end goes by with
+// another after it before the processor wakes is over with no instruction to end it after.
+static void halt(void) {
+  irq.halted = 1;
+  run_events();
+  while (irq.halted) {
+    int64_t next = next_event();
+    if (next == INT64_MAX) break;
+    if (cycles < next - master) cycles = next - master;
+    run_events();
+    while (irq.halted && frame + 1 < video.vblanks) {
+      frame++;
+      if (frame_wait) frame_wait();
+    }
+  }
+}
 
 void gba_clock_stop(void) { running = 0; }
 int gba_clock_running(void) { return running; }
@@ -527,6 +690,12 @@ void gba_clock_start(void) {
   fifos[0] = (struct fifo){ 0, 0, 0, 1 };
   fifos[1] = (struct fifo){ 0, 0, 0, 2 };
   master = cycles = 0;
+  memset(&irq, 0, sizeof irq);
+  irq.when = INT64_MAX;
+  memset(&video, 0, sizeof video);
+  video.when = FIRST_HBLANK;
+  video.hblank = 1;
+  video.line = FIRST_LINE;
   active_dma = -1;
   blocked = 0;
   dma_event = -1;
@@ -544,17 +713,15 @@ void gba_clock_start(void) {
   bios(jump_time(0x08000000, 0));
 }
 
-// A swi from the Thumb instruction at `pc`: into the BIOS, its dispatcher to the call's code, and back. CpuSet copies or
-// fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs, `index` from 0.
-int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
-  if (number != 0x0B || !running) return -1;
-  // the swi itself: its fetch, and the jump to the BIOS's vector
-  begin();
+// A call to the BIOS from the Thumb instruction at `pc`: the swi, which keeps interrupts off, the vector's branch to
+// the dispatcher, which saves r11, r12 and lr, reads the call's number from the swi, looks its code up, keeps the mode,
+// goes to the system mode with interrupts as the caller had them, saves r2 and lr there and goes to the call's code.
+static void swi_enter(uint32_t pc, int off) {
+  begin(pc, 1);
   wait.region = (pc >> 24) & 15;
+  irq.off = 1;
   end(1 + wait.s16[wait.region] + jump_time(BIOS_CODE, 0));
   wait_if_ended();
-  // the vector's branch to the dispatcher; which saves r11, r12 and lr, reads the call's number from the swi, looks
-  // its code up, keeps the mode, goes to the system mode, saves r2 and lr there and goes to the call's code
   bios(jump_time(BIOS_CODE, 0));
   bios(0);
   bios(0);
@@ -569,13 +736,121 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
   bios(bios_block(1, 1));
   bios(0);
   bios(0);
-  bios(0);
+  bios_status(0, off);
   bios(0);
   bios(bios_block(2, 1));
   bios(0);
   for (int i = 0; i < 6; i++) bios(0);
   bios(0);
   bios(jump_time(BIOS_CODE, 0));
+}
+
+// Back from the call's code: the dispatcher gives r2 and lr back, goes to the supervisor's mode with interrupts off,
+// puts the mode and the registers back and returns to the Thumb code after the swi, interrupts as the caller had them.
+static void swi_leave(uint32_t pc, int off) {
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(bios_block(2, 0));
+  bios_status(0, 1);
+  bios(bios_block(1, 0));
+  bios(0);
+  bios(bios_block(3, 0));
+  bios_status(jump_time(pc + 2, 1), off);
+}
+
+// The BIOS's wait for an interrupt (IntrWait, and VBlankIntrWait, which is one for the V-blank's with the flag
+// cleared first): with `discard`, the interrupts of `flags` already acknowledged in the game's halfword at
+// 0x03007FF8 are forgotten and the processor halts. Each time it wakes, with IME off, the halfword is looked at: with
+// none of `flags` in it the processor halts again, and otherwise those are taken out of it and the wait is over.
+// IME is on from there, whatever it was.
+static void intr_wait(uint32_t discard, uint32_t flags) {
+  bios(bios_block(3, 1));
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(0);
+  bios(discard ? 0 : jump_time(BIOS_CODE, 0));
+  int halts = discard != 0;
+  if (discard) {
+    uint16_t word = check_read ? check_read() : 0;
+    bios(bios_load(0x03FFFFF8, 2));
+    bios(0);
+    bios(bios_store(0x03FFFFF8, 2));
+    if (check_write) check_write(word & (uint16_t)~flags);
+  }
+  for (;;) {
+    if (halts) {
+      bios(bios_store(0x04000301, 1));
+      halt();
+    }
+    halts = 1;
+    begin(BIOS_CODE, 0);
+    wait.region = BIOS;
+    irq.on = 0;
+    irq_test(1);
+    end(1 + bios_store(0x04000208, 1));
+    wait_if_ended();
+    bios(bios_load(0x03FFFFF8, 2));
+    // with no halfword of the game's to look at, the first interrupt ends the wait
+    uint16_t word = check_read ? check_read() : (uint16_t)flags, hit = word & (uint16_t)flags;
+    bios(0);
+    bios(0);
+    bios(hit ? bios_store(0x03FFFFF8, 2) : 0);
+    if (hit && check_write) check_write(hit ^ (uint16_t)flags);
+    begin(BIOS_CODE, 0);
+    wait.region = BIOS;
+    irq.on = 1;
+    irq_test(1);
+    end(1 + bios_store(0x04000208, 1));
+    wait_if_ended();
+    if (hit) break;
+    bios(jump_time(BIOS_CODE, 0));
+  }
+  bios(0);
+  bios(bios_block(3, 0) + jump_time(BIOS_CODE, 0));
+}
+
+// What the game wrote to the registers in work it didn't time: no run of it will take those stores, and by its call
+// to the BIOS they're over, so each takes effect as the time stands, in order, as what the register holds. A DMA
+// channel started at once copied in that work, and isn't started again; one waiting for its moment waits for it.
+static void settle(void) {
+  for (int i = 0; i < waiting_count; i++) {
+    uint32_t at = waiting_at[i] & 0x3FE;
+    uint16_t value = waiting_value[i];
+    if (at >= 0xB0 && at < 0xE0 && (at - 0xB0) % 12 == 10 && !(value >> 12 & 3)) value &= (uint16_t)~0x8000;
+    gba_clock_write16(waiting_at[i], value);
+  }
+  waiting_count = 0;
+}
+
+// CpuSet copies or fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs,
+// `index` from 0. Halt, IntrWait and VBlankIntrWait wait for an interrupt, the game's handler run from inside them.
+int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
+  if ((number != 0x0B && number != 0x02 && number != 0x04 && number != 0x05) || !running) return -1;
+  settle();
+  int off = irq.off;
+  swi_enter(pc, off);
+  if (number == 0x02) {
+    // Halt: HALTCNT written, and back once the processor wakes
+    bios(0);
+    bios(0);
+    bios(bios_store(0x04000301, 1));
+    halt();
+    bios(jump_time(BIOS_CODE, 0));
+    swi_leave(pc, off);
+    return 0;
+  }
+  if (number != 0x0B) {
+    if (number == 0x05) {
+      bios(0);
+      bios(0);
+      r0 = r1 = 1;
+    }
+    intr_wait(r0, r1);
+    swi_leave(pc, off);
+    return 0;
+  }
   // CpuSet: saves r4, r5 and lr, takes its arguments, and fills or copies by words or halfwords
   int fill = (r2 & 0x01000000) != 0, words = (r2 & 0x04000000) != 0;
   uint32_t count = r2 & 0x1FFFFF, source = r0, dest = r1;
@@ -593,7 +868,7 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
       bios(block_time(0, source, 1, 0));
       for (uint32_t i = 0; i < count; i++) {
         bios(0);
-        begin();
+        begin(BIOS_CODE, 0);
         wait.region = BIOS;
         end(1 + block_time(0, dest + 4 * i, 1, 1));
         if (unit) unit(i);
@@ -611,7 +886,7 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
       bios(bios_load(source & ~1u, 2));
       for (uint32_t i = 0; i < count; i++) {
         bios(0);
-        begin();
+        begin(BIOS_CODE, 0);
         wait.region = BIOS;
         end(1 + bios_store((dest & ~1u) + 2 * i, 2));
         if (unit) unit(i);
@@ -631,7 +906,7 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
       for (uint32_t i = 0; i < count; i++) {
         bios(0);
         bios(block_time(0, source + 4 * i, 1, 0));
-        begin();
+        begin(BIOS_CODE, 0);
         wait.region = BIOS;
         end(1 + block_time(0, dest + 4 * i, 1, 1));
         if (unit) unit(i);
@@ -648,7 +923,7 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
       for (uint32_t i = 0; i < count; i++) {
         bios(0);
         bios(bios_load(source + 2 * i, 2));
-        begin();
+        begin(BIOS_CODE, 0);
         wait.region = BIOS;
         end(1 + bios_store(dest + 2 * i, 2));
         if (unit) unit(i);
@@ -661,19 +936,10 @@ int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_
       bios(0);
     }
   }
-  // the end: r3 as the console's BIOS leaves it, and back to the dispatcher, which puts the mode and the registers
-  // back and returns to the Thumb code after the swi
+  // the end: r3 as the console's BIOS leaves it, and back to the dispatcher
   bios(0);
   bios(bios_block(3, 0) + jump_time(BIOS_CODE, 0));
-  bios(0);
-  bios(0);
-  bios(0);
-  bios(bios_block(2, 0));
-  bios(0);
-  bios(bios_block(1, 0));
-  bios(0);
-  bios(bios_block(3, 0));
-  bios(jump_time(pc + 2, 1));
+  swi_leave(pc, off);
   return 0;
 }
 
@@ -855,8 +1121,27 @@ void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t
       uint32_t address = ((op >> 16) & 15) == 15 ? pc + 8 + ((op & 0x00800000) ? 1 : -1) * (op & 0xFFF) : (k < count ? at[k++] : 0);
       a[0] = (gba_access){ address, (uint32_t)bytes, (uint32_t)writes, 0 };
       n = 1;
+    } else if ((op & 0x0E000090) == 0x00000090 && (op & 0x60)) {
+      // a halfword's or a signed byte's load or store: strh, ldrh, ldrsb, ldrsh, its offset immediate or a register's
+      int writes = !(op & 0x00100000), bytes = (op & 0x60) == 0x40 ? 1 : 2;
+      uint32_t offset = (op >> 4 & 0xF0) | (op & 0xF);
+      uint32_t address = ((op >> 16) & 15) == 15 && (op & 0x00400000) ? pc + 8 + ((op & 0x00800000) ? 1 : -1) * offset
+                                                                         : (k < count ? at[k++] : 0);
+      a[0] = (gba_access){ address, (uint32_t)bytes, (uint32_t)writes, 0 };
+      n = 1;
     }
-    gba_clock_arm(pc, op, pc == to ? next : pc + 4, 0, 0, a, n);
+    // a branch whose condition fails goes on to the next instruction, and takes the time of any that doesn't run
+    uint32_t after = pc == to ? next : pc + 4;
+    if ((op & 0x0E000000) == 0x0A000000 && (op >> 28) != 14 && after == pc + 4) op = 0xE1A00000;
+    // a store to the registers takes what the game wrote there as it runs, WAITCNT's within the instruction, as in
+    // Thumb code
+    int registers = n && a[0].writes && (a[0].address >> 24) == 4;
+    if (registers) {
+      int waitcnt = take_written(a[0].address, a[0].bytes, 1);
+      if (waitcnt >= 0) a[0].value = (uint32_t)waitcnt;
+    }
+    gba_clock_arm(pc, op, after, 0, 0, a, n);
+    if (registers) take_written(a[0].address, a[0].bytes, 0);
     if (frame_ended) ended++;
   }
   while (ended-- > 0)
@@ -869,9 +1154,7 @@ void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t
 uint16_t gba_clock_vcount(void) {
   // the events due before the next instruction, which is the one that reads it
   run_events();
-  int64_t now = NOW, first = 117 + HBLANK;   // the second line's start, after power-on's first H-blank
-  if (now < first) return 126;
-  return (uint16_t)((127 + (now - first) / LINE) % 228);
+  return (uint16_t)video.line;
 }
 
 // libgcc's __divsi3, at `at`, as the console's compiler's library has it: the signs taken off, the divisor moved up
@@ -942,11 +1225,14 @@ void gba_clock_resume(uint64_t time) {
   running = 1;
   // the timers and the sound's DMA go on to `time` as they would have, an event at a time, each at its own time: a
   // DMA that holds the processor past `time` leaves it there
+  // (the interrupts of that stretch were the game's own to take: none is raised for it)
+  irq.quiet = 1;
   while (NOW < (int64_t)time) {
     int64_t next = next_event(), to = next > NOW && next < (int64_t)time ? next : (int64_t)time;
     cycles += to - NOW;
     run_events();
   }
+  irq.quiet = 0;
   // the frames whose ends went by meanwhile are over: the next instruction doesn't end them again
-  while (gba_clock_frame_end(frame) <= (uint64_t)NOW) frame++;
+  frame = video.vblanks;
 }
