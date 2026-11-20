@@ -277,7 +277,7 @@ void forest_shot(uint8_t object, uint8_t y);
 /** sub_04_BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
 void key(uint8_t object, uint8_t y);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
-void boss(uint8_t object);
+void boss(uint8_t object, uint8_t y);
 void boss_shot(uint8_t object, uint8_t y);
 /** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
 uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched, uint8_t *y);

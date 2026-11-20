@@ -883,7 +883,7 @@ wait objects_task(void) {
         case 0x02: flier(object); break;
         case 0x03: knight(object, y); break;
         case 0x04: forest_enemy(object, y); break;
-        case 0x05: boss(object); break;
+        case 0x05: boss(object, y); break;
         case 0x06: devil(object); break;
         case 0x07: window_thing(object); break;
         case 0x08: big_man(object); break;
