@@ -89,6 +89,12 @@ void sio2_write(uint32_t address, uint32_t value);
 uint32_t sio2_read(uint32_t address);
 uint32_t sio2_dma_in(uint8_t *buffer, uint32_t block_size, uint32_t blocks);
 uint32_t sio2_dma_out(uint8_t *buffer, uint32_t block_size, uint32_t blocks);
+/** The disc drive's servers (cdvd.c): set up as the console starts, the IOP's ticks passing, and the kind of disc as
+ *  the drive says it. The console's date by its own clock (iop.c). */
+void cdvd_power(void);
+void cdvd_ticks(uint32_t ticks);
+uint32_t cdvd_disc_type(void);
+void ps2_console_date(uint32_t parts[6]);
 /** The IOP's interrupt lines the kit keeps: the sound chip's, then the two sound DMA channels' ended transfers. */
 uint32_t iop_lines(void);
 /** The sound chip (spu2.c): a register written or read, at its IOP address, a DMA transfer to or from a core, giving
