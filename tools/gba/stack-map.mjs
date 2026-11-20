@@ -30,10 +30,16 @@ const AT = { location: 0x02, name: 0x03, byteSize: 0x0b, lowPc: 0x11, lowerBound
  * - params: [{ name, location, entry, bytes }], location as DWARF gives it ({ reg } or { fbreg }), entry where it
  *   arrives ('r0' to 'r3', or { stack: offset from the sp at entry }).
  * - locals: [{ name, fbreg, bytes }], the locals DWARF keeps in the frame, bytes null where the type's size is unknown.
+ * - registers: [{ name, reg, bytes }], the locals DWARF keeps in a register. agbcc gives none for a local of one or
+ *   two bytes, which it holds widened to a word, as its debugging records take it for one optimized out.
+ * - start: { bytes, loads }, how many bytes the prologue is, from the function's first, and whether it loads a word
+ *   kept beside the function, as one with a frame too big for an instruction's own number does.
  * - calls: [{ offset, returnOffset, line, file, callee, regs, args, sp }], each bl that calls, offset from the
  *   function's start. callee is null for a call through a register (bl _call_via_rN), with `through` and `target`
  *   saying which register and what it holds. regs are r4 to r11 at the call, only those the function changed on some
- *   path to it; args are r0 to r3; sp is the sp at the call from the frame base.
+ *   path to it, and writers, for each of those, the lines of the instructions that can have written it last ([{ line,
+ *   file }], with { entry: true } for a path on which nothing has); args are r0 to r3; sp is the sp at the call from
+ *   the frame base.
  * - stores: [{ offset, line, file, bytes, fbreg, slot, value }], every store to the stack after the prologue, fbreg
  *   from the frame base and slot from the sp at entry (both null where the address in the frame isn't known).
  * - lines: [{ section, at, line, file }], the rows of .debug_line, by their place in the code.
@@ -45,7 +51,8 @@ export function stackMap(assemblyText) {
   // read here as bytes, as they would be assembled.
   const code = [], codeLines = [], debugLines = new Map();
   let section = '.text';
-  assemblyText.split('\n').forEach((raw, k) => {
+  // with \r\n at each line's end from agbcc built for Windows, as the tools' assembler reads it
+  assemblyText.split(/\r?\n/).forEach((raw, k) => {
     const { labels, rest } = labelsOf(uncomment(raw));
     const directive = /^(\.\w+)\s*(.*)$/.exec(rest);
     const name = directive?.[1].toLowerCase();
@@ -452,7 +459,7 @@ function readInfo(debug) {
           signed: signedOf(typeOf(p)),
         }));
         const frameBase = locationOf(info, die.attrs.get(AT.frameBase));
-        const locals = [];
+        const locals = [], registers = [];
         const walk = scope => {
           for (const child of scope.children) {
             if (child.tag === TAG.block) walk(child);
@@ -460,6 +467,7 @@ function readInfo(debug) {
             const where = locationOf(info, child.attrs.get(AT.location));
             const fbreg = where?.fbreg ?? (where?.breg && where.breg === frameBase?.reg ? where.offset : undefined);
             if (fbreg !== undefined) locals.push({ name: child.attrs.get(AT.name) ?? null, fbreg, bytes: sizeOf(typeOf(child)) });
+            else if (where?.reg) registers.push({ name: child.attrs.get(AT.name) ?? null, reg: where.reg, bytes: sizeOf(typeOf(child)) });
           }
         };
         walk(die);
@@ -467,7 +475,7 @@ function readInfo(debug) {
         // caller passes in r0.
         const returned = bare(typeOf(die)), size = returned ? sizeOf(returned) : null;
         const returnsInMemory = !!returned && [TAG.structure, TAG.union, TAG.array].includes(returned.tag) && ![1, 2, 4].includes(size);
-        functions.set(die.attrs.get(AT.name), { params, locals, frameBase, returnsInMemory });
+        functions.set(die.attrs.get(AT.name), { params, locals, registers, frameBase, returnsInMemory });
       }
       for (const child of die.children) visit(child);
     };
@@ -657,15 +665,16 @@ const registerList = text => {
 
 // --- following the values through a function
 
-// What instruction `i` does to `state` ({ r: the sixteen registers, slots: the words of the arguments the caller left
-// on the stack, by their offset from the sp at entry }): { state, next }, the instructions that can come after it.
+// What instruction `i` does to `state` ({ r: the sixteen registers, d: for each, the instructions that can have written
+// it last, -1 for none since entry, slots: the words of the arguments the caller left on the stack, by their offset
+// from the sp at entry }): { state, next }, the instructions that can come after it.
 // `record`, when given, hears of each store to the stack and each call.
 function transfer(ctx, i, state, record) {
   const { op, args } = ctx.instrs[i];
   const r = state.r.slice();
   let slots = state.slots;
   const next = [];
-  const done = () => ({ state: { r, slots }, next });
+  const done = () => ({ state: { r, d: state.d.map((list, n) => (r[n] !== state.r[n] ? [i] : list)), slots }, next });
   const fall = () => { if (i + 1 < ctx.instrs.length) next.push(i + 1); };
   const reg = text => REGISTERS[text.trim().replace(/!$/, '').toLowerCase()];
   const read = text => (isImmediate(text) ? constant(immediate(text)) : r[reg(text)] ?? unknown(`"${text}", which isn't a register`));
@@ -783,7 +792,7 @@ function transfer(ctx, i, state, record) {
         return done();
       }
       const via = /^_call_via_(\w+)$/.exec(name), through = via && REGISTERS[via[1]] !== undefined ? via[1] : null;
-      if (record) record({ kind: 'call', i, callee: through ? null : name, through, target: through ? r[REGISTERS[through]] : undefined, r: r.slice() });
+      if (record) record({ kind: 'call', i, callee: through ? null : name, through, target: through ? r[REGISTERS[through]] : undefined, r: r.slice(), d: state.d });
       const what = through ? `the function in ${through}` : name;
       r[0] = unknown(`what ${what} returns`);
       for (const n of [1, 2, 3, 12, LR]) r[n] = unknown(`changed by the call to ${what}`);
@@ -813,7 +822,7 @@ function transfer(ctx, i, state, record) {
 function joinStates(a, b) {
   const slots = {};
   for (const [at, v] of Object.entries(a.slots)) if (b.slots[at] && same(v, b.slots[at])) slots[at] = v;
-  return { r: a.r.map((v, n) => join(v, b.r[n])), slots };
+  return { r: a.r.map((v, n) => join(v, b.r[n])), d: a.d.map((list, n) => [...new Set([...list, ...b.d[n]])].sort((x, y) => x - y)), slots };
 }
 
 function mapFunction(fn, made, words, info, rowAt) {
@@ -865,7 +874,7 @@ function mapFunction(fn, made, words, info, rowAt) {
 
   // Forward through the code until nothing changes, in the order of the code.
   const states = new Array(fn.instrs.length);
-  if (fn.instrs.length) states[0] = { r, slots };
+  if (fn.instrs.length) states[0] = { r, d: r.map(() => [-1]), slots };
   const waiting = new Set(fn.instrs.length ? [0] : []);
   while (waiting.size) {
     const i = Math.min(...waiting);
@@ -911,12 +920,16 @@ function mapFunction(fn, made, words, info, rowAt) {
       if (!('caller' in event.value)) push.value = exported(event.value, base, params);
       pushes.push(push);
     } else if (event.kind === 'call') {
-      const at = placeOf(event.i), regs = {}, args = {};
-      for (let n = 4; n <= 11; n++) if (!same(event.r[n], caller(nameOf(n)))) regs[nameOf(n)] = exported(event.r[n], base, params);
+      const at = placeOf(event.i), regs = {}, args = {}, writers = {};
+      for (let n = 4; n <= 11; n++) {
+        if (same(event.r[n], caller(nameOf(n)))) continue;
+        regs[nameOf(n)] = exported(event.r[n], base, params);
+        writers[nameOf(n)] = event.d[n].map(k => (k < 0 ? { entry: true } : (({ line, file }) => ({ line, file }))(placeOf(k))));
+      }
       for (let n = 0; n < 4; n++) args[nameOf(n)] = exported(event.r[n], base, params);
       const call = { offset: at.offset, returnOffset: at.offset + 4, line: at.line, file: at.file, callee: event.callee };
       if (event.through) Object.assign(call, { through: event.through, target: exported(event.target, base, params) });
-      calls.push(Object.assign(call, { regs, args, sp: 'sp' in event.r[SP] && base !== null ? event.r[SP].sp - base : null }));
+      calls.push(Object.assign(call, { regs, writers, args, sp: 'sp' in event.r[SP] && base !== null ? event.r[SP].sp - base : null }));
     } else if (event.kind === 'store' || event.kind === 'push') {
       const at = placeOf(event.i);
       stores.push({ offset: at.offset, line: at.line, file: at.file, bytes: event.bytes, fbreg: event.slot !== null && base !== null ? event.slot - base : null, slot: event.slot, value: exported(event.value, base, params, event.bytes) });
@@ -924,7 +937,8 @@ function mapFunction(fn, made, words, info, rowAt) {
   };
   states.forEach((state, i) => { if (state) transfer(ctx, i, state, record); });
 
-  const map = { pushes, frame: frameBytes, frameBase: base, params: paramList, locals: info?.locals ?? [], calls, stores };
+  const start = { bytes: last < 0 ? 0 : fn.instrs[last].at + 2 - fn.start, loads: fn.instrs.slice(0, last + 1).some(ins => ins.op === 'ldr') };
+  const map = { pushes, frame: frameBytes, frameBase: base, params: paramList, locals: info?.locals ?? [], registers: info?.registers ?? [], start, calls, stores };
   if (notes.length) map.notes = notes;
   return map;
 }
