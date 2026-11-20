@@ -20,8 +20,10 @@
 #define TIME(from, to, next, ...)
 #else
 #include "clock.h"
-// a run's `next` when it goes back from a call, to wherever the call came from
+// a run's `next` when it goes back from a call, to wherever the call came from, and an interrupt's function's when it
+// goes back to the BIOS, which called it
 #define BACK GBA_CLOCK_BACK
+#define BIOS_BACK GBA_CLOCK_BIOS_BACK
 #define TIME(from, to, next, ...)                                                                        \
   do {                                                                                                   \
     const uint32_t time_at_[] = { 0, ##__VA_ARGS__ };                                                    \

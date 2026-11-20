@@ -189,7 +189,7 @@ void VBlankIntr(void) {
   gFrameCount++;
   REG_WRITE16(REG_IF, INTR_FLAG_VBLANK);
   // back to the BIOS, which called the game's interrupt code
-  TIME(0x08001122, 0x08001134, 0x00000194, IW, IW, 0x04000202);
+  TIME(0x08001122, 0x08001134, BIOS_BACK, IW, IW, 0x04000202);
 }
 
 /** ProcessVramGraphicsCopyQueue, 0x0800116C: the tiles waiting go to video memory, 1 KB at a time, while the blank

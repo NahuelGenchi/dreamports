@@ -65,7 +65,19 @@ u16 ReadFlashId(void) {
 
 /** FlashTimerIntr, 0x08098D80: the timer's interrupt counts a wait down, and says when it has run out. */
 void FlashTimerIntr(void) {
+#ifdef MATCHING
   if (sTimerCount != 0 && --sTimerCount == 0) gFlashTimeoutFlag = 1;
+#else
+  if (sTimerCount == 0) {
+    TIME(0x08098D80, 0x08098D86, 0x08098D9B, IW);
+  } else if (--sTimerCount != 0) {
+    TIME(0x08098D80, 0x08098D92, 0x08098D9B, IW, IW, IW);
+  } else {
+    gFlashTimeoutFlag = 1;
+    TIME(0x08098D80, 0x08098D98, 0x08098D9B, IW, IW, IW, IW);
+  }
+  TIME(0x08098D9A, 0x08098D9A, BIOS_BACK);
+#endif
 }
 
 /** SetFlashTimerIntr, 0x08098DA4: the flash library counts its waits on timer `timerNum`, whose interrupt runs
