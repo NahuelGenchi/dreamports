@@ -53,12 +53,13 @@ uint32_t gba_stack_enter(const gba_frame *frame) {
   depth++;
   for (int i = 0; i < frame->count; i++) {
     const gba_push *push = &frame->pushes[i];
-    int has = push->reg == LR ? return_known : (known >> push->reg) & 1;
+    int has = !frame->unproven && (push->reg == LR ? return_known : (known >> push->reg) & 1);
     if (has) store(sp + (uint32_t)(int32_t)push->slot, push->reg == LR ? return_address : value[push->reg], 4);
     else gaps += 4;
     if (push->slot < lowest) lowest = push->slot;
   }
   return_known = 0;
+  if (frame->unproven) known = 0;
   sp = sp + (uint32_t)lowest - frame->frame;
   return (uint32_t)depth;
 }
@@ -69,7 +70,7 @@ void gba_stack_leave(uint32_t *entered) {
   if (depth < DEPTH) {
     sp = calls[depth].sp;
     for (int r = SAVED_FIRST; r <= SAVED_LAST; r++) value[r] = calls[depth].value[r];
-    known = (uint16_t)((known & ~0x0FF0u) | (calls[depth].known & 0x0FF0u));
+    known = calls[depth].known;
   }
   return_known = 0;
 }

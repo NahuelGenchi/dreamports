@@ -124,6 +124,8 @@ void StartFlashTimer(u8 phase) {
   *gTimerReg-- = *maxTime++;
   REG_WRITE16(REG_IF, INTR_FLAG_TIMER0 << sTimerNum);
   REG_WRITE16(REG_IME, 1);
+  TIME(0x08098DDC, 0x08098E5C, BACK, IW, 0x04000208, IW, 0x04000208, IW, 0x04000106, IW, 0x04000200, 0x04000200, IW, ROM, IW, ROM,
+       0x04000104, IW, ROM, 0x04000106, IW, IW, 0x04000202, 0x04000208);
 }
 
 /** StopFlashTimer, 0x08098E84: the library's timer stopped, and its interrupt off. */
@@ -133,10 +135,11 @@ void StopFlashTimer(void) {
   *gTimerReg-- = 0;
   REG_WRITE16(REG_IE, REG_READ16(REG_IE) & ~(INTR_FLAG_TIMER0 << sTimerNum));
   REG_WRITE16(REG_IME, gSavedIme);
+  TIME(0x08098E84, 0x08098EB0, BACK, 0x04000208, IW, 0x04000104, IW, 0x04000106, IW, IW, 0x04000200, 0x04000200, IW, 0x04000208);
 }
 
 /** 0x08098EC8, ReadFlash1: a byte of the flash, from code copied to RAM. */
-u8 ReadFlash1(u8 *addr) { return *addr; }
+u8 ReadFlash1(u8 *addr) { return FLASH_PEEK(addr); }
 
 /** SetReadFlash1, 0x08098ECC: ReadFlash1 copied to `dest`, from where PollFlashStatus runs it. */
 void SetReadFlash1(u16 *dest) {
@@ -162,22 +165,47 @@ void SetReadFlash1(u16 *dest) {
   }
 }
 
+// The chip's status, read by the reader's copy on the stack: in the console's time, the load of the copy's address
+// and the call through the compiler's bx, the copy's own two instructions, and back
+#ifdef MATCHING
+#define POLL_FLASH(addr) CALL(PollFlashStatus)(addr)
+#else
+static u8 poll_flash(u8 *addr) {
+  u8 status;
+  TIME(0x08098F54, 0x08098F5A, 0x08099849, IW);
+  TIME(0x08099848, 0x08099848, (u32)PollFlashStatus);
+  status = CALL(PollFlashStatus)(addr);
+  TIME((u32)PollFlashStatus & ~1u, ((u32)PollFlashStatus & ~1u) + 2, BACK, 0x0E000000u);
+  return status;
+}
+#define POLL_FLASH(addr) poll_flash(addr)
+#endif
+
 /** WaitForFlashWrite512K_Common, 0x08098F04: waits until the chip reads back `lastData` at `addr`, or `phase`'s time
  *  is out, which is an error (0xC000 and the phase). */
 u16 WaitForFlashWrite512K_Common(u8 phase, u8 *addr, u8 lastData) {
   u16 result = 0;
   u8 status;
 
+  TIME(0x08098F04, 0x08098F1E, 0x08098DDD);
   StartFlashTimer(phase);
-  while ((status = CALL(PollFlashStatus)(addr)) != lastData) {
+  TIME(0x08098F20, 0x08098F2A, 0x08098F55);
+  while ((status = POLL_FLASH(addr)) != lastData) {
     if (gFlashTimeoutFlag) {
       if (CALL(PollFlashStatus)(addr) == lastData) break;
       if (gFlash->ids.joined == 0x1cc2) FLASH_WRITE(0x5555, 0xF0);
       result = phase | 0xC000u;
       break;
     }
+    TIME(0x08098F5C, 0x08098F6A, 0x08098F55, IW);
   }
+  // (the way out through a time-out isn't timed)
+#ifndef MATCHING
+  if (status == lastData) TIME(0x08098F5C, 0x08098F62, 0x08098F7D);
+#endif
+  TIME(0x08098F7C, 0x08098F7E, 0x08098E85);
   StopFlashTimer();
+  TIME(0x08098F80, 0x08098F8A, BACK);
   return result;
 }
 
@@ -210,11 +238,29 @@ void ReadFlash(u16 sectorNum, u32 offset, void *dest, u32 size) {
   CALL(readFlash_Core)(src, dest, size);
 }
 
+#ifndef MATCHING
+// where the copy of it that's running is, for its time: the stack, as VerifyFlashSectorNBytes puts it there
+static u32 verify_core_at;
+#endif
+
 /** VerifyFlashSector_Core, 0x08099030: where two runs of bytes first differ, or 0, run from RAM. */
 u32 VerifyFlashSector_Core(u8 *src, u8 *tgt, u32 size) {
+#ifdef MATCHING
   while (size-- != 0) {
     if (*tgt++ != *src++) return (u32)(tgt - 1);
   }
+#else
+  u32 at = verify_core_at, first = 1;
+  // (timed where every byte is the same, from the first)
+  while (size-- != 0) {
+    if (*tgt++ != *src++) return (u32)(tgt - 1);
+    if (first) TIME(at, at + 0x1A, at + 0x21, FLASH, IW);
+    else TIME(at + 0x10, at + 0x1A, at + 0x21, FLASH, IW);
+    first = 0;
+    if (size != 0) TIME(at + 0x20, at + 0x24, at + 0x11);
+    else TIME(at + 0x20, at + 0x2C, BACK);
+  }
+#endif
   return 0;
 }
 
@@ -233,13 +279,30 @@ u32 VerifyFlashSectorNBytes(u16 sectorNum, u8 *src, u32 n) {
   funcSrc = (u16 *)((s32)funcSrc ^ 1);
   funcDest = verifyFlashSector_Core_Buffer;
   i = ((s32)CODE(VerifyFlashSector) - (s32)CODE(VerifyFlashSector_Core)) >> 1;
+  TIME(0x080990D4, 0x080990FE, 0x0809911D, 0x04000204, 0x04000204);
+  TIME(0x0809911C, 0x08099120, 0x08099111);
   while (i != 0) {
     *funcDest++ = *funcSrc++;
     i--;
+#ifndef MATCHING
+    if (i != 0) TIME(0x08099110, 0x08099120, 0x08099111, ROM, IW);
+#endif
   }
   verifyFlashSector_Core = (u32(*)(u8 *, u8 *, u32))((s32)verifyFlashSector_Core_Buffer + 1);
   tgt = FLASH_BASE + (sectorNum << DefaultFlash512K.type.sector.shift);
+#ifdef MATCHING
   return CALL(verifyFlashSector_Core)(src, tgt, n);
+#else
+  {
+    u32 differs;
+    TIME(0x08099110, 0x0809913A, 0x08099851, ROM, IW, ROM);
+    TIME(0x08099850, 0x08099850, (u32)verifyFlashSector_Core);
+    verify_core_at = (u32)verifyFlashSector_Core & ~1u;
+    differs = CALL(verifyFlashSector_Core)(src, tgt, n);
+    TIME(0x0809913C, 0x08099142, BACK);
+    return differs;
+  }
+#endif
 }
 
 /** ProgramFlashSectorAndVerifyNBytes, 0x0809918C: a sector written and its first `n` bytes checked, up to three
@@ -248,11 +311,17 @@ u32 ProgramFlashSectorAndVerifyNBytes(u16 sectorNum, void *dataSrc, u32 n) {
   u8 i;
   u32 result;
 
+  // (timed where the first try is the one that reads back, as every one does on a chip that works)
+  TIME(0x0809918C, 0x08099198, 0x080991A1);
   for (i = 0; i < 3; i++) {
+    TIME(0x080991A0, 0x080991AE, 0x0809984D, IW);
+    TIME(0x0809984C, 0x0809984C, (u32)ProgramFlashSector);
     result = CALL(ProgramFlashSector)(sectorNum, dataSrc);
     if (result != 0) continue;
+    TIME(0x080991B0, 0x080991C0, 0x080990D5);
     result = VerifyFlashSectorNBytes(sectorNum, dataSrc, n);
     if (result == 0) break;
   }
+  TIME(0x080991C2, 0x080991CE, BACK);
   return result;
 }

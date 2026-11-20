@@ -12,6 +12,7 @@
 #define EW 0x02000000u
 #define IW 0x03000000u
 #define ROM 0x08000000u
+#define FLASH 0x0E000000u
 // DMA channel 3 started as the console's library starts it: where from, where to, how, and how read back
 #define DMA3 0x040000D4u, 0x040000D8u, 0x040000DCu, 0x040000DCu
 

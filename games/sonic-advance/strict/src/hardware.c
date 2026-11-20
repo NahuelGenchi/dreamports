@@ -51,7 +51,6 @@ static int console_timed;
 // whether it's the V-blank's work's, from the frame's end the game waited for until the blank lines are over, and
 // which of the console's frames ends next
 static int console_blank_timed;
-static u32 console_frame;
 
 // where the line count is, a line on: time goes on while the game waits for a line by reading it from memory. On
 // power-on, it's the line the console's time has reached
@@ -74,7 +73,6 @@ u16 console_read16(u32 at) {
     if (!(status & STAT_VBLANK) && !console_handling) {
       console_blank_timed = 0;
       console_in_vblank = 0;
-      gba_clock_stop();
     }
     return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
   }
@@ -284,20 +282,27 @@ static void console_sound_frame(void) {
 
 /** VBlankIntrWait: until the V-blank's interrupt has said it ran, the frame's lines drawn and the V-blank begun. The
  *  frame ends here: the kit draws it once the game's step is over, and the game goes on from here in the next. */
+// A frame that ends in the middle of the game's work, as the console's time says: the Dreamport's ends there too, and
+// the next starts as any does, with its V-blank and its sound.
+static void console_frame_inside(void) {
+  kit_wait_frame();
+  console_blank_timed = 1;
+  console_vblank();
+  console_sound_frame();
+}
+
 void VBlankIntrWait(void) {
-  // from the game's first wait on, its waits end its frames, not the console's time
-  gba_clock_on_frame_end(NULL);
-  if (console_timed) console_frame = gba_clock_frame();
-  gba_clock_stop();
+  // from the game's first wait on, a frame ends at its wait, or inside its work where the console's time says
+  gba_clock_on_frame_end(console_frame_inside);
   console_timed = 0;
   console_blank_timed = 0;
   *(vu16 *)0x03007FF8 &= ~1;
   console_io[IO_IME >> 1] = 1;
   do {
     kit_wait_frame();
-    // the console's time from this frame's end, where its V-blank starts: what the game does in it is timed, as it
-    // asks the display whether the blank lines are over
-    gba_clock_resume(gba_clock_frame_end(console_frame++));
+    // the console's time goes on to this frame's end, where its V-blank starts. What the game does from here is
+    // timed as far as its runs say
+    gba_clock_resume(gba_clock_frame_end(gba_clock_frame()));
     console_blank_timed = 1;
     console_vblank();
     console_sound_frame();
@@ -413,8 +418,25 @@ s32 Mod(s32 num, s32 denom) {
 // library's wait for it ends on its first look.
 enum { FLASH_SIZE = 0x10000, FLASH_SECTOR = 0x1000 };
 static u8 flash_id_mode, flash_unlocked, flash_erasing, flash_writing, flash_hidden[2];
+// The chip settles after a byte is written, 650 cycles, and after a sector is erased, 30,000, as the reference
+// emulator keeps them: a read of that 4 KB stretch gives 0x5F until then, by the console's time, where it's going.
+enum { FLASH_PROGRAM_CYCLES = 650, FLASH_ERASE_CYCLES = 30000, FLASH_SETTLING = 0x5F };
+static uint64_t flash_settled_at;
+static u32 flash_settling;
+
+static void flash_settles(u32 addr, u32 cycles) {
+  flash_settling = addr >> 12;
+  flash_settled_at = gba_clock_now() + cycles;
+}
+
 
 u8 *console_flash(void) { return gba_save(FLASH_SIZE); }
+
+u8 console_flash_read(const u8 *at) {
+  u32 addr = (u32)(at - console_flash()) & (FLASH_SIZE - 1);
+  if (gba_clock_running() && addr >> 12 == flash_settling && gba_clock_now() < flash_settled_at) return FLASH_SETTLING;
+  return *at;
+}
 
 void console_flash_write(u32 addr, u8 data) {
   u8 *flash = console_flash();
@@ -423,6 +445,7 @@ void console_flash_write(u32 addr, u8 data) {
   if (flash_writing) {
     flash_writing = 0;
     flash[addr] = data;
+    flash_settles(addr, FLASH_PROGRAM_CYCLES);
     gba_save_write();
     return;
   }
@@ -440,6 +463,7 @@ void console_flash_write(u32 addr, u8 data) {
     flash_erasing = 0;
     addr &= ~(u32)(FLASH_SECTOR - 1);
     for (i = 0; i < FLASH_SECTOR; i++) flash[addr + i] = 0xFF;
+    flash_settles(addr, FLASH_ERASE_CYCLES);
     gba_save_write();
     return;
   }

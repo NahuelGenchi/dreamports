@@ -128,14 +128,21 @@ export function withStack({ file, text, tree, map, matched, addressOf }) {
   for (const fn of kids(tree).filter(node => node.kind === 'FunctionDecl' && node.place?.file === file)) {
     const body = kids(fn).find(node => node.kind === 'CompoundStmt');
     const info = map.functions[fn.name];
-    if (!body?.place || !info || !matched.has(fn.name)) continue;
+    if (!body?.place || !info) continue;
     const address = addressOf(fn.name);
     if (address === null) continue;
-    // its start: the pushes and the frame, and a variable whose end is the function's return
+    // its start: the pushes and the frame, and a variable whose end is the function's return. One not proven by the
+    // same bytes takes its frame's room, as the console's compiler lays out its C, so the frames below it are in
+    // their places, and nothing more: its pushes are gaps, and its calls say nothing
+    const proven = matched.has(fn.name);
     const pushes = info.pushes.map(p => `{ ${REGISTER[p.reg]}, ${p.slot} }`).join(', ');
     header.push(`static const gba_push gba_pushes_${fn.name}[] = { ${pushes || '{ 0, 0 }'} };`);
-    header.push(`static const gba_frame gba_frame_${fn.name} = { ${info.pushes.length}, gba_pushes_${fn.name}, ${info.frame} };`);
+    header.push(`static const gba_frame gba_frame_${fn.name} = { ${info.pushes.length}, gba_pushes_${fn.name}, ${info.frame}, ${proven ? 0 : 1} };`);
     edits.push({ at: body.place.begin + 1, cut: 0, put: ` uint32_t gba_stack_in_ __attribute__((cleanup(gba_stack_leave))) = gba_stack_enter(&gba_frame_${fn.name});` });
+    if (!proven) {
+      gaps.push(`${fn.name}: not proven by the same bytes, so its frame takes its room and its ${info.pushes.length} pushes and its locals are left out`);
+      continue;
+    }
     // its stack locals, kept where the console keeps them, with every use of each there
     const moved = new Map();
     for (const decl of everything(body)) {
@@ -244,7 +251,7 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   for (const file of own) {
     const defined = (twinsOf.get(file) ?? []).filter(t => t.address !== null);
     const matched = new Set(defined.filter(t => bytes.has(t.address.toString(16).toUpperCase().padStart(8, '0'))).map(t => t.name));
-    if (!matched.size) {
+    if (!defined.length) {
       sources.push(file);
       continue;
     }
