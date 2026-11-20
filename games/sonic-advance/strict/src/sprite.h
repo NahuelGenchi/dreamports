@@ -19,10 +19,21 @@ struct Hitbox {
   /* 0x04 */ s8 left, top, right, bottom;
 };
 
+/** A frame's size, where it's drawn from, and which of the sprites' list entries make it. */
+struct SpriteDimensions {
+  /* 0x00 */ u8 flip;
+  /* 0x01 */ u8 oamIndex;
+  /* 0x02 */ u16 numSubframes;
+  /* 0x04 */ u16 width;
+  /* 0x06 */ u16 height;
+  /* 0x08 */ s16 offsetX;
+  /* 0x0A */ s16 offsetY;
+};
+
 /** A sprite: its tiles, its animation and where it is on the screen. */
 struct Sprite {
   /* 0x00 */ struct GraphicsData graphics;
-  /* 0x0C */ u32 unkC;
+  /* 0x0C */ const struct SpriteDimensions *dimensions;   // its frame's, or -1 for none
   /* 0x10 */ u32 frameFlags;
   /* 0x14 */ u16 animCursor;   // where it is in its animation, in 32-bit words
   /* 0x16 */ s16 x;

@@ -15,17 +15,6 @@
 #define GET_SPRITE_OAM_ORDER(s) (((s)->oamFlags & 0x7C0) >> 6)
 #define DISPLAY_WIDTH 240
 
-/** A frame's size, where it's drawn from, and which of the sprites' list entries make it. */
-struct SpriteDimensions {
-  /* 0x00 */ u8 flip;
-  /* 0x01 */ u8 oamIndex;
-  /* 0x02 */ u16 numSubframes;
-  /* 0x04 */ u16 width;
-  /* 0x06 */ u16 height;
-  /* 0x08 */ s16 offsetX;
-  /* 0x0A */ s16 offsetY;
-};
-
 /** What OamMalloc gives when the list is full. */
 extern void *iwram_end;
 /** Each list entry's place in the list that goes to the console. */
@@ -44,8 +33,8 @@ void DisplaySprite(struct Sprite *sprite) {
   u32 sprX, sprY;
   const u16 *oamData;
 
-  if (sprite->unkC != (u32)-1) {
-    const struct SpriteDimensions *sprDims = (const struct SpriteDimensions *)sprite->unkC;
+  if (sprite->dimensions != (const struct SpriteDimensions *)-1) {
+    const struct SpriteDimensions *sprDims = sprite->dimensions;
 
     sprite->numSubFrames = sprDims->numSubframes;
     x = sprite->x;
