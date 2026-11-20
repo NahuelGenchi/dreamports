@@ -8,7 +8,8 @@
 // added to what's there, kept to a byte.
 #define MIX(at, volume, sample) (*(at) = (s8)(*(at) + (((s32)(volume) * (s32)(sample)) >> 8)))
 
-/** The high 32 bits of an unsigned 64-bit product. */
+/** The high 32 bits of an unsigned 64-bit product. dp:run 16: the engine's Thumb start and the ARM code it goes on
+ *  into. */
 u32 umul3232H32(u32 multiplier, u32 multiplicand)
 {
     return (u32)(((u64)multiplier * multiplicand) >> 32);
