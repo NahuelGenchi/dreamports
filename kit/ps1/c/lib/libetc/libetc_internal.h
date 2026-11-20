@@ -39,7 +39,6 @@ struct Callbacks {
 void* ResetCallback(void);
 void InterruptCallback(int irq, Callback f);
 VSyncSetter startIntrVSync(void);
-void* startIntrDMA(void);
 void v_wait(s32 count, s32 max);
 
 // libapi's
