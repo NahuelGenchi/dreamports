@@ -348,7 +348,8 @@ function decidedPs2(path, codeMap) {
 }
 
 /** Why a branch the code decides can't go its other way, for the game's unreachable.json. */
-export function decidedWhy({ address, way, from, by }) {
+export function decidedWhy({ address, way, from, by, through = null }) {
+  if (through !== null) return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code and what the branch at ${hex(through)} compared, in the run of instructions from ${hex(from)}, which only that branch comes into, gone its one way, and no word of the cartridge points into, so it's never ${way}.`;
   return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code alone, in the run of instructions from ${hex(from)}, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never ${way}.`;
 }
 
@@ -362,7 +363,7 @@ async function decided(game, { original, codeMap, copy, write }) {
   const played = found.filter(d => versions.some(version => ranIn(version, readCodeMap(version), d.address).some(each => (d.way === 'taken' ? each.taken : each.notTaken))));
   if (played.length) throw new Error(`The tools worked out that ${played.map(d => `${hex(d.address)} is never ${d.way}`).join(', ')}, and a recording has played it so: that's the tools' fault, so nothing was written. Say so in an issue, with this line.`);
   console.log(`${count(found.length)} conditional branches of ${base} are decided by the code itself, worked out from ${what} alone, and none has gone its other way in any recording of ${versions.join(', ')}:`);
-  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: ${ps2 ? 'what it compares is set' : `the flags come from ${hex(d.by)},`} in the run from ${hex(d.from)}.`);
+  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: ${ps2 ? 'what it compares is set' : `the flags come from ${hex(d.by)},`} in the run from ${hex(d.from)}${d.through ? `, entered only by the branch at ${hex(d.through)}` : ''}.`);
   if (!write) {
     console.log(`--write puts them in games/${base}/proof/unreachable.json, where a person reads each before it goes in.`);
     return 0;
