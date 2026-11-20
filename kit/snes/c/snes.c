@@ -1,8 +1,9 @@
-// The Super Nintendo's registers, as kit/snes/c/snes.h says. Built for the function check (tools/snes/twin.mjs), with
-// DP_TWIN_CHECK, it also notes each read and write in order, as the original's side notes those of the original
-// (tools/snes/call.cpp), for the check to compare.
+// The Super Nintendo's registers and the cartridge, as kit/snes/c/snes.h says. Built for the function check
+// (tools/snes/twin.mjs), with DP_TWIN_CHECK, it also notes each read and write in order, as the original's side notes
+// those of the original (tools/snes/call.cpp), for the check to compare, and keeps the picture's registers and DMA's as
+// memory, as that side does: what they draw and move is proven by `prove` instead.
 
-#include "snes.h"
+#include "snes-kit.h"
 
 #ifdef DP_TWIN_CHECK
 // how many it notes at most, and the list: a count, then each register, value and 0 for a read or 1 for a write
@@ -51,6 +52,10 @@ void snes_write(uint16_t address, uint8_t value) {
     return;
   }
   *at = value;
+#ifndef DP_TWIN_CHECK
+  if (address < 0x2134) ppu_write(address, value);
+  if (address == 0x420B && value) dma_start(value);
+#endif
   uint8_t *cpu = SNES_CPU_REGISTERS;
   if (address == 0x4203) {
     uint32_t product = (uint32_t)cpu[0x202] * value;
@@ -80,4 +85,89 @@ uint8_t snes_read(uint16_t address) {
   }
   note(address, value, 0);
   return value;
+}
+
+// The cartridge: its ROM from the player's copy, without a copier's header, made up to 8 KB with zeros as the reference
+// emulator makes it, and seen through LoROM's or HiROM's map; and its save memory.
+const uint8_t *snes_rom;
+uint32_t snes_rom_size;
+int snes_hirom;
+static uint32_t rom_room;
+static uint8_t sram[0x20000];
+static uint32_t sram_size, lorom_save_high;
+
+// how well the header at `at` looks like a cartridge's of the layout `hirom` says, as tools/snes/cartridge.mjs reads it
+static int score(uint32_t at, int hirom) {
+  if (at + 0x40 > snes_rom_size) return -1;
+  const uint8_t *h = snes_rom + at;
+  int points = 0;
+  if (((h[0x1C] | h[0x1D] << 8) + (h[0x1E] | h[0x1F] << 8)) == 0xFFFF) points += 4;
+  if ((h[0x15] & 0xEF) == (hirom ? 0x21 : 0x20)) points += 3;
+  if ((h[0x3C] | h[0x3D] << 8) >= 0x8000) points += 2;
+  if (h[0x17] >= 7 && h[0x17] <= 13) points += 1;
+  if (h[0x18] <= 7) points += 1;
+  int title = 1;
+  for (int i = 0; i < 21; i++) if (h[i] < 0x20 || h[i] >= 0x7F) title = 0;
+  return points + title;
+}
+
+void cartridge_load(void) {
+  snes_rom = kit_copy;
+  snes_rom_size = kit_copy_size;
+  if (snes_rom_size % 1024 == 512) {
+    snes_rom += 512;
+    snes_rom_size -= 512;
+  }
+  rom_room = (snes_rom_size + 0x1FFF) & ~0x1FFFu;
+  snes_hirom = score(0xFFC0, 1) > score(0x7FC0, 0);
+  uint8_t said = snes_rom_size > (snes_hirom ? 0xFFD8u : 0x7FD8u) ? snes_rom[snes_hirom ? 0xFFD8 : 0x7FD8] : 0;
+  sram_size = said > 0 && said <= 7 ? 1024u << said : 0;
+  // a LoROM's save memory takes the whole bank but for a large ROM or save memory, as the reference emulator maps it
+  uint8_t rom_said = snes_rom_size > 0x7FD7u ? snes_rom[0x7FD7] : 0;
+  lorom_save_high = rom_said > 11 || said > 5 ? 0x8000 : 0x10000;
+}
+
+// where a place of the ROM, as the map shows it, is in the ROM, seen again past its end (Snes9x's map_mirror)
+static uint32_t mirror(uint32_t size, uint32_t pos) {
+  if (!size) return 0;
+  if (pos < size) return pos;
+  uint32_t mask = 1u << 31;
+  while (!(pos & mask)) mask >>= 1;
+  return size <= (pos & mask) ? mirror(size, pos - mask) : mask + mirror(size - mask, pos - mask);
+}
+
+static uint8_t rom_byte(uint32_t bank_start, uint32_t offset) {
+  uint32_t at = mirror(rom_room, bank_start) + offset;
+  return at < snes_rom_size ? snes_rom[at] : 0;
+}
+
+// the save memory's place for an address, or -1
+static int64_t save_place(uint32_t bank, uint32_t low) {
+  if (!sram_size) return -1;
+  if (snes_hirom) {
+    if ((bank & 0x60) == 0x20 && (bank & 0x40) == 0 && low >= 0x6000 && low < 0x8000) return (int64_t)((low - 0x6000 + ((bank & 0x1F) << 13)) & (sram_size - 1));
+    return -1;
+  }
+  if (((bank >= 0x70 && bank < 0x7E) || bank >= 0xF0) && low < lorom_save_high) return (int64_t)(((bank << 15) | (low & 0x7FFF)) & (sram_size - 1));
+  return -1;
+}
+
+uint8_t snes_bus(uint32_t address) {
+  uint32_t bank = address >> 16 & 0xFF, low = address & 0xFFFF;
+  if (bank == 0x7E || bank == 0x7F) return SNES_RAM[(bank & 1) << 16 | low];
+  if (!(bank & 0x40) && low < 0x2000) return SNES_RAM[low];
+  int64_t save = save_place(bank, low);
+  if (save >= 0) return sram[save];
+  if (snes_hirom) return (bank & 0x40) || low >= 0x8000 ? rom_byte((bank & 0x3F) << 16, low) : 0;
+  return (bank & 0x40) || low >= 0x8000 ? rom_byte((bank & 0x7F) * 0x8000, low & 0x7FFF) : 0;
+}
+
+void snes_bus_write(uint32_t address, uint8_t value) {
+  uint32_t bank = address >> 16 & 0xFF, low = address & 0xFFFF;
+  if (bank == 0x7E || bank == 0x7F) SNES_RAM[(bank & 1) << 16 | low] = value;
+  else if (!(bank & 0x40) && low < 0x2000) SNES_RAM[low] = value;
+  else {
+    int64_t save = save_place(bank, low);
+    if (save >= 0) sram[save] = value;
+  }
 }
