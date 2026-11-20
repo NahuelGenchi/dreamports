@@ -32,9 +32,13 @@ export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
 // one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
 const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
   ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
-// a core with a patch of the project's own has the patch's hash in its name too, and one CMake builds the hash of what it's
-// built with, so a build without either is never used
-const builtWith = core => core.patch || core.cmake ? `-${createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '').digest('hex').slice(0, 8)}` : '';
+// a core with a patch of the project's own has the patch's hash in its name too, one CMake builds the hash of what it's
+// built with, and one `make` builds with settings of the tools' own beyond what it builds the hash of those, so a build
+// without any of them is never used. A core built by `make` alone with no such settings keeps the name it always had.
+const OWN_SETTING = /^(CPUOPTS|CFLAGS|CPUFLAGS)=/;
+const builtWith = core => core.patch || core.cmake || core.make?.some(arg => OWN_SETTING.test(arg))
+  ? `-${createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '').update(core.make?.some(arg => OWN_SETTING.test(arg)) ? JSON.stringify(core.make) : '').digest('hex').slice(0, 8)}`
+  : '';
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
@@ -93,6 +97,8 @@ function buildHere(machine, log, tools) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
+    // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
+    run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
   }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
