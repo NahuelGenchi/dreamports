@@ -17,7 +17,13 @@
 //   within memory in every order, which the emulator keeps on its graphics card, so again only its draw list is. One
 //   that reads the drawn picture back too is the strict reference's alone;
 // - the effects programs draw sprites in the fog, dithered and blended, and points at every sixteenth of a pixel, into
-//   32 bits and into 16, by draw list against the emulator and by pictures against the strict reference.
+//   32 bits and into 16, by draw list against the emulator and by pictures against the strict reference;
+// - the shapes programs draw lines and triangles every way, plain and antialiased, and the filters program a texture
+//   between its texels and its smaller copies. What varies across a shape no free GS draws exactly, PCSX2's software
+//   renderer a step of colour apart from itself with one set of the processor's instructions and another, so their proof
+//   is the same pixels covered and every channel within a step of it. What's placed by whole texels is still exact;
+// - the screens program sets the screen up eight ways, and what the kit shows is checked against the GS's rule for
+//   merging its two read circuits written a second time, as no emulator merges them exactly.
 //
 // Where the emulator can't draw exactly, PCSX2's software renderer is the strict reference (gs-reference.mjs): every
 // program's Dreamport is run on this computer too, PCSX2 replays what its GS got, and every frame's picture has to be
@@ -32,10 +38,10 @@ import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { LOAD_AT } from './made-up-ps2.mjs';
-import { madeUpPs2Buffers, madeUpPs2Effects, madeUpPs2Events, madeUpPs2Layout, madeUpPs2Masks, madeUpPs2Modes } from './made-up-ps2-gs.mjs';
+import { SCREENS, madeUpPs2Buffers, madeUpPs2Effects, madeUpPs2Events, madeUpPs2Filters, madeUpPs2Layout, madeUpPs2Masks, madeUpPs2Modes, madeUpPs2Screens, madeUpPs2Shapes } from './made-up-ps2-gs.mjs';
 import { strictCheck } from './gs-reference.mjs';
 
-const GAMES = { layout32: 'test-ps2-gs-layout32', layout16: 'test-ps2-gs-layout16', events: 'test-ps2-gs-events', modes: 'test-ps2-gs-modes', masks: 'test-ps2-gs-masks', buffers: 'test-ps2-gs-buffers', effects32: 'test-ps2-gs-effects32', effects16: 'test-ps2-gs-effects16' };
+const GAMES = { layout32: 'test-ps2-gs-layout32', layout16: 'test-ps2-gs-layout16', events: 'test-ps2-gs-events', modes: 'test-ps2-gs-modes', masks: 'test-ps2-gs-masks', buffers: 'test-ps2-gs-buffers', effects32: 'test-ps2-gs-effects32', effects16: 'test-ps2-gs-effects16', shapes: 'test-ps2-gs-shapes', edges: 'test-ps2-gs-edges', filters: 'test-ps2-gs-filters', texels: 'test-ps2-gs-texels', screens: 'test-ps2-gs-screens' };
 const WORK = join(LOCAL, 'test-ps2-gs');
 const COPIES = join(LOCAL, 'copies.json');
 const STATUS = join(REPO, 'docs', 'STATUS.md');
@@ -140,6 +146,24 @@ async function strictly(game, what, mainC = join(gameFolder(inC(game)), 'src', '
   return join(work, 'pictures.raw');
 }
 
+// the game's Dreamport against the strict reference where the reference isn't exact, for what varies across a shape:
+// the same pixels covered, and every channel of every pixel within a step of it, which is as far as it is from itself
+async function nearly(game, what) {
+  if (!STRICT) return console.log(`  left out: ${what}, against PCSX2's software renderer, which is built on Linux alone`);
+  const work = join(WORK, `${game}-strict`), found = await strictCheck(join(gameFolder(inC(game)), 'src', 'main.c'), FRAMES, work);
+  check(found.near === found.frames && found.far === 0, `${what}: every pixel within a step of PCSX2's software renderer, ${found.near} of ${found.frames} frames, ${found.apart} pixels a step apart in all and ${found.far} further, the most ${found.worst}`);
+  return join(work, 'screen.raw');
+}
+
+// a program set up and its Dreamport's draw list proven against the original's, every frame
+function provenByList(game, made) {
+  setUp(game, made, 'draw lists');
+  writeGame(game, made);
+  const run = dp('prove', inC(game), 'still'), found = report(game);
+  check(run.status === 0 && found.matched === FRAMES, `the same draw list as the original's, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}`);
+  if (run.status) console.log(run.out.split('\n').slice(-12).join('\n'));
+}
+
 async function main() {
   tidy();
   mkdirSync(WORK, { recursive: true });
@@ -204,6 +228,31 @@ async function main() {
     const run = dp('prove', inC(game), 'still'), found = report(game);
     check(run.status === 0 && found.matched === FRAMES, `into ${depth} bits, the same draw list as the original's, every frame: ${found.matched} of ${found.frames}, ${JSON.stringify(found.firstDifference)}`);
     await strictly(game, `fog, dithering and points into ${depth} bits`);
+  }
+
+  console.log('Lines and triangles, shaded, textured, in the fog and under the depth test');
+  provenByList(GAMES.shapes, madeUpPs2Shapes());
+  await nearly(GAMES.shapes, 'lines, line strips and triangles in lists, strips and fans');
+  console.log('The same antialiased');
+  provenByList(GAMES.edges, madeUpPs2Shapes(true));
+  await nearly(GAMES.edges, 'antialiased lines and triangles');
+
+  console.log('A texture between its texels, and its smaller copies');
+  provenByList(GAMES.texels, madeUpPs2Filters(true));
+  await strictly(GAMES.texels, 'sprites by whole texels, magnified between texels and from each smaller copy, in every colour');
+  provenByList(GAMES.filters, madeUpPs2Filters());
+  await nearly(GAMES.filters, 'the same with places worked out in floats, and triangles whose level comes from Q');
+
+  console.log("What the screen shows: both read circuits, PMODE's merge, BGCOLOR, DISPLAY's rectangle and interlace");
+  provenByList(GAMES.screens, madeUpPs2Screens());
+  // no emulator merges the circuits exactly, so what the kit shows is checked against the GS's rule written again
+  const screens = STRICT && await strictCheck(join(gameFolder(inC(GAMES.screens)), 'src', 'main.c'), SCREENS.length * 2, join(WORK, 'screens-strict')).then(() => readFileSync(join(WORK, 'screens-strict', 'screen.raw')));
+  if (screens) {
+    for (const [n, { about, shows }] of SCREENS.entries()) {
+      let wrong = 0;
+      for (const frame of [n, n + SCREENS.length]) for (let y = 0; y < 448; y++) for (let x = 0; x < 640; x++) if ((screens.readUInt32LE(((frame * 448 + y) * 640 + x) * 4) & 0xFFFFFF) !== shows(x, y)) wrong++;
+      check(wrong === 0, `the kit shows ${about} as the GS's rule gives it, both times round: ${wrong} pixels wrong`);
+    }
   }
 }
 
