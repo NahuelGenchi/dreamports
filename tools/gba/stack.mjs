@@ -23,8 +23,8 @@
 //   save reach the functions it calls as its caller left them. Its own registers, its locals and where its calls go
 //   back to are left out, as the code after its start isn't proven.
 //
-// A routine the original has in hand-written assembly, whose twin is C proven by the same memory, has no compiler to
-// give its frame back: a shared library keeps such routines in a table (library.json's "frames"), their assembly as a
+// A routine the original has in hand-written assembly, whose twin is C, has no compiler to give its frame back, also
+// when the twin's assembly for the console's build is proven by the same bytes (#1726): a shared library keeps such routines in a table (library.json's "frames"), their assembly as a
 // decompilation writes it, which stack-map.mjs reads (routineMap), and the twin's frame is the routine's
 // (routineFrame): its stores to the stack written at the points of its C the table pairs with the routine's.
 
@@ -191,9 +191,12 @@ export function withStack({ file, text, tree, map, matched, addressOf, starts = 
   for (const fn of kids(tree).filter(node => node.kind === 'FunctionDecl' && node.place?.file === file)) {
     const body = kids(fn).find(node => node.kind === 'CompoundStmt');
     const info = map.functions[fn.name];
-    // a routine the original has in assembly, which no compiler gives back: its frame is its table's
+    // a routine the original has in assembly, which no compiler gives back from C: its frame is its table's, also
+    // when its twin's assembly for the console's build is proven by the same bytes, as the C a Dreamport runs is still
+    // what the stack's points are written in, and the console's compiler gives no frame for a routine written as
+    // assembly (#1726)
     const routine = routines?.[fn.name];
-    if (body?.place && routine && !matched.has(fn.name) && !without.has('routines') && addressOf(fn.name) !== null) {
+    if (body?.place && routine && !without.has('routines') && addressOf(fn.name) !== null) {
       const made = routineFrame({ fn, body, text, file, tree, routine, address: addressOf(fn.name), addressOf, valueOf });
       header.push(...made.header);
       edits.push(...made.edits);
