@@ -23,6 +23,12 @@ void ppu_vblank(void);
 
 /** Moves memory by DMA on each channel `channels` has a bit for, as a write to $420B does, one after another. */
 void dma_start(uint8_t channels);
+/** Starts HDMA on the channels $420C turns on, as line 0 of a frame starts. */
+void hdma_start(void);
+/** HDMA's writes for one line, as its H-blank comes, which show from the next line down. */
+void hdma_line(void);
+/** A write to a channel's $43xA, its lines left. */
+void hdma_lines_written(int c, uint8_t value);
 
 /** Puts the sound side as the console starts it: its memory cleared, its timers off, the sound chip reset, and the
  *  start-up program waiting for the main processor. */
