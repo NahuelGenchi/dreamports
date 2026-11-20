@@ -240,7 +240,7 @@ async function findIn(version) {
   if (!codeMap) throw new Error(`games/${versionOf(version).game}/proof/ has no code map yet: npm run dp -- codemap ${versionOf(version).game} makes one.`);
   const file = librariesFile(version);
   const kept = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : { about: '', libraries: {} };
-  let any = false;
+  const results = [];
   // a library of names alone, with no twin written yet, has nothing to find by
   for (const library of libraryIds().map(readLibrary).filter(each => each.consoles.includes(original.console) && !namesOnly(each))) {
     const found = await finder.find({ library, rom, codeMap, version });
@@ -250,12 +250,18 @@ async function findIn(version) {
     for (const { name, why } of found.missing) console.log(`  Not found   ${name}: ${why}`);
     for (const error of found.errors) console.log(`  Didn't build  ${error}`);
     for (const problem of found.problems) console.log(`  Doesn't agree  ${problem}`);
-    if (!found.functions.size) continue;
-    any = true;
-    const at = [...found.functions, ...found.values].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name, address]) => [name, hex(address)]);
+    if (found.functions.size) results.push({ library, found });
+  }
+  // a version's libraries.json gives each name once: a function of one library isn't another's value, as a call to it
+  // finds it as that library's twin, and a value two libraries name is the first's
+  const functionsOf = new Set(results.flatMap(({ found }) => [...found.functions.keys()])), given = new Set();
+  for (const { library, found } of results) {
+    const values = [...found.values].filter(([name]) => !functionsOf.has(name) && !given.has(name));
+    for (const [name] of [...found.functions, ...values]) given.add(name);
+    const at = [...found.functions, ...values].sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([name, address]) => [name, hex(address)]);
     kept.libraries[library.id] = { ...(found.variant === null ? {} : { variant: found.variant }), at: Object.fromEntries(at) };
   }
-  if (!any) {
+  if (!results.length) {
     console.log(`No shared library of the ${CONSOLES[original.console].name}'s was found in ${original.name}, so ${inRepo(file)} is as it was.`);
     return 0;
   }

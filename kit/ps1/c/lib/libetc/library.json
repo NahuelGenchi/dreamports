@@ -3,7 +3,7 @@
   "compilers": {
     "ps1": {
       "name": "gcc",
-      "version": "2.7.2",
+      "version": "2.6.3",
       "flags": [
         "-O2",
         "-G0",

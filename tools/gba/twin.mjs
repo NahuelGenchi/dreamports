@@ -48,7 +48,7 @@ import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
 import { addressFinder, runIn, throughOf, twinsIn } from './match.mjs';
-import { addressAt, CARTRIDGE, IMAGE, inImage, REGIONS } from './twin-memory.mjs';
+import { addressAt, CARTRIDGE, IMAGE, inImage } from './twin-memory.mjs';
 import { hasMemories, memoriesKey, openMemories, takeMemories } from './twin-memories.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -65,14 +65,15 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 // where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
-// what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
-// and where the module's own values are, which the kit's and the version's hardware are among (twin-worker.mjs)
-const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
+// what of the kit the thread that runs the twins reaches by name: the copy, and where the module's own values are,
+// which the kit's and the version's hardware are among (twin-worker.mjs). Its video memory, colours and sprites are
+// where the console has them, as the check builds it (cKit's twinFlags)
+const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
-// the display's status, and its bit that says the display is in the V-blank
-const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1;
+// the display's status, and its bit that says the display is in the V-blank, and the line count
+const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1, VCOUNT = 0x04000006;
 // whether some code keeps a word beside it, where words start
 const holdsWord = (bytes, word) => {
   for (let at = 0; at + 4 <= bytes.length; at += 4) if (bytes.readUInt32LE(at) === word) return true;
@@ -942,7 +943,12 @@ export async function compareCalls({ original, twins, start, functions, options,
     // a function that may read whether the display is in the V-blank, as it keeps the status's address beside its
     // code or a call of it used the hardware, now and then started the other way: in a call the display's status stays
     // as it started, the clock a twin doesn't have stopped on both sides (#1569)
-    if (!aim && changing && !asPlayed && status !== null && f.status && !choose.below(4)) changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
+    // A function that keeps the line count's address beside its code starts such a call on a line of the picture,
+    // as the console's display is outside the V-blank then (#1729)
+    if (!aim && changing && !asPlayed && status !== null && (f.status || f.line) && !choose.below(4)) {
+      changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
+      if (f.line && !((status ^ DISPSTAT_VBLANK) & DISPSTAT_VBLANK)) changed.push([VCOUNT, 2, choose.below(160)]);
+    }
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
@@ -1262,7 +1268,10 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   if (functions.length) {
     const registers = await original.registers();
     // a function whose code keeps the display status's address beside it reads whether the display is in the V-blank
-    for (const f of functions) f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
+    for (const f of functions) {
+      f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
+      f.line = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), VCOUNT);
+    }
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers });
     try {
       await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000) });
