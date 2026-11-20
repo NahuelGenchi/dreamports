@@ -433,8 +433,12 @@ static int ps2SearchOpen(ps2Watch watch) {
 	return 1;
 }
 
+static void startsBlockRan(uint32_t begin, uint32_t count);   // starts.h
+
 static void ps2Ran(struct dpBlock* block, uint32_t taken) {
 	if (ps2.whyWatching && block->branch) ps2WhyWent(block, taken ? TAKEN : NOT_TAKEN);
+	// a function's start as play reaches it, for the function check's memories of play (starts.h)
+	if (block->processor == PS2_EE) startsBlockRan(block->begin, block->count);
 	ps2BlockRan(block, taken);
 }
 

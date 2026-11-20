@@ -17,6 +17,15 @@ dreamports_sound_list, and DP_SOUND_DUMP names a file the whole list goes to, th
 A picture the console reads back from the GS is in its memory before it goes on: the libretro front has no GS thread, so
 Play! didn't wait for the read, and what a program read back changed from one run to the next (#1590).
 
+It also gives Play!'s SPU2 four things of the console's that it leaves out, as the console does them, cross-checked
+against PCSX2's SPU2 (GPL-3.0-or-later): noise, at the rate the core's control says, on the voices NON names; pitch
+modulation, a voice's step bent by what the voice before it gave, on the voices PMON names; the master volume, MVOL, over
+everything a core gives, core 0's output coming into core 1 under core 1's; and the effect volume, EVOL, on what the
+reverb gives. The kit does the same (kit/ps2/c/spu2.c), so the two still match sample for sample.
+
+A picture the console reads back from the GS is in its memory before it goes on: the libretro front has no GS thread, so
+Play! didn't wait for the read, and what a program read back changed from one run to the next (#1590).
+
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
@@ -34,6 +43,11 @@ compare with a Dreamport's (tools/libretro/held.h). And it gives the console a c
 midnight on 1 January 2001, Coordinated Universal Time, as it starts, going on as its V-blanks do, for the time the game
 reads and for the times of a card's files, which Play! took from the computer's clock. How far the clock has got is
 kept in a saved state, so a search that brings one back has the time it was saved at (tools/route.mjs).
+
+And it says what the EE's registers hold as a block ends, and where it goes next (dreamports_registers), for the tools
+to keep a function's start as play reaches it, with the memory it starts from, which the function check's calls then
+start from (tools/libretro/starts.h, tools/ps2/twin-memories.mjs).
+
 diff --git a/Source/BasicBlock.cpp b/Source/BasicBlock.cpp
 index 4c460e6..1fec7a8 100644
 --- a/Source/BasicBlock.cpp
@@ -310,7 +324,7 @@ index 3ca3d52..6f98142 100644
  			m_stream->Read(block, MEDIA_BLOCKSIZE);
  		}
 diff --git a/Source/PS2VM.cpp b/Source/PS2VM.cpp
-index 5c8ded9..7d63eee 100644
+index 5c8ded9..c953e87 100644
 --- a/Source/PS2VM.cpp
 +++ b/Source/PS2VM.cpp
 @@ -777,6 +777,9 @@ void CPS2VM::UpdateSpu()
@@ -323,6 +337,27 @@ index 5c8ded9..7d63eee 100644
  	unsigned int blockOffset = (BLOCK_SIZE * m_currentSpuBlock);
  	int16* samplesSpu0 = m_samples + blockOffset;
  
+@@ -784,17 +787,10 @@ void CPS2VM::UpdateSpu()
+ 
+ 	if(m_iop->m_spuCore1.IsEnabled())
+ 	{
++		// Core0 output is mixed into Core1's at Core1's AVOL, under Core1's master volume, inside its Render
+ 		int16 samplesSpu1[BLOCK_SIZE];
+-		m_iop->m_spuCore1.Render(samplesSpu1, BLOCK_SIZE);
+-
+-		for(unsigned int i = 0; i < BLOCK_SIZE; i++)
+-		{
+-			// Core0 output should be mixed with Core1 at volume
+-			// corresponding to Core1's AVOL register values
+-			int32 volume = (i % 2) ? m_iop->m_spuCore1.m_extInputVolR : m_iop->m_spuCore1.m_extInputVolL;
+-			Iop::CSpuBase::MixSamples(samplesSpu0[i], volume, &samplesSpu1[i]);
+-			samplesSpu0[i] = samplesSpu1[i];
+-		}
++		m_iop->m_spuCore1.Render(samplesSpu1, BLOCK_SIZE, samplesSpu0);
++		memcpy(samplesSpu0, samplesSpu1, sizeof(samplesSpu1));
+ 	}
+ 
+ 	m_currentSpuBlock++;
 diff --git a/Source/ee/EeExecutor.cpp b/Source/ee/EeExecutor.cpp
 index c8c72f9..9367819 100644
 --- a/Source/ee/EeExecutor.cpp
@@ -364,7 +399,7 @@ index 72e80fc..7952e38 100644
  	{
  		auto beginBlockIterator = m_cachedBlocks.lower_bound(blockKey);
 diff --git a/Source/gs/GSHandler.cpp b/Source/gs/GSHandler.cpp
-index 57e58ba..bd6316f 100644
+index 57e58ba..e495a98 100644
 --- a/Source/gs/GSHandler.cpp
 +++ b/Source/gs/GSHandler.cpp
 @@ -456,6 +456,21 @@ uint32 CGSHandler::ReadPrivRegister(uint32 nAddress)
@@ -397,8 +432,7 @@ index 57e58ba..bd6316f 100644
  
  #ifdef _DEBUG
  	m_transferCount++;
-@@ -649,7 +665,9 @@ void CGSHandler::FeedImageData(const void* data, uint32 length)
- void CGSHandler::ReadImageData(void* data, uint32 length)
+@@ -650,7 +666,9 @@ void CGSHandler::ReadImageData(void* data, uint32 length)
  {
  	assert(m_writeBufferProcessIndex == m_writeBufferSize);
  	SubmitWriteBuffer();
@@ -408,6 +442,7 @@ index 57e58ba..bd6316f 100644
 +	SendGSCall([this, data, length]() { ReadImageDataImpl(data, length); }, true, true);
  }
  
+ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
 @@ -672,9 +690,20 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
  		    });
  	}
@@ -509,7 +544,7 @@ index 66bfe59..478f3d1 100644
  	FlipCompleteEvent OnFlipComplete;
  	NewFrameEvent OnNewFrame;
 diff --git a/Source/iop/IopBios.cpp b/Source/iop/IopBios.cpp
-index e6b722a..627f8f6 100644
+index e6b722a..c8301f3 100644
 --- a/Source/iop/IopBios.cpp
 +++ b/Source/iop/IopBios.cpp
 @@ -10,6 +10,7 @@
@@ -645,11 +680,86 @@ index 4ef7854..c790578 100644
  
  				entry.modificationTime.second = localChangeDate->tm_sec;
  				entry.modificationTime.minute = localChangeDate->tm_min;
+diff --git a/Source/iop/Iop_Spu2_Core.cpp b/Source/iop/Iop_Spu2_Core.cpp
+index 617a4b5..4bf301e 100644
+--- a/Source/iop/Iop_Spu2_Core.cpp
++++ b/Source/iop/Iop_Spu2_Core.cpp
+@@ -176,6 +176,18 @@ uint32 CCore::ReadRegisterCore(unsigned int channelId, uint32 address, uint32 va
+ 	case A_EEA_HI:
+ 		result = GetAddressHi(m_spuBase.GetReverbWorkAddressEnd());
+ 		break;
++	case P_MVOLL:
++		result = static_cast<uint32>(m_spuBase.m_masterLeftAbs) >> 16;
++		break;
++	case P_MVOLR:
++		result = static_cast<uint32>(m_spuBase.m_masterRightAbs) >> 16;
++		break;
++	case P_EVOLL:
++		result = static_cast<uint32>(m_spuBase.m_effectLeft) & 0xFFFF;
++		break;
++	case P_EVOLR:
++		result = static_cast<uint32>(m_spuBase.m_effectRight) & 0xFFFF;
++		break;
+ 	case P_AVOLL:
+ 		result = m_spuBase.m_extInputVolL;
+ 		break;
+@@ -233,6 +245,32 @@ uint32 CCore::WriteRegisterCore(unsigned int channelId, uint32 address, uint32 v
+ 		case A_TS_MODE:
+ 			m_spuBase.SetTransferMode(static_cast<uint16>(value));
+ 			break;
++		case S_PMON_HI:
++			m_spuBase.m_bentVoices = (m_spuBase.m_bentVoices & 0xFFFF0000) | static_cast<uint16>(value);
++			break;
++		case S_PMON_LO:
++			m_spuBase.m_bentVoices = (m_spuBase.m_bentVoices & 0x0000FFFF) | (static_cast<uint32>(static_cast<uint16>(value)) << 16);
++			break;
++		case S_NON_HI:
++			m_spuBase.m_noiseVoices = (m_spuBase.m_noiseVoices & 0xFFFF0000) | static_cast<uint16>(value);
++			break;
++		case S_NON_LO:
++			m_spuBase.m_noiseVoices = (m_spuBase.m_noiseVoices & 0x0000FFFF) | (static_cast<uint32>(static_cast<uint16>(value)) << 16);
++			break;
++		case P_MVOLL:
++			m_spuBase.m_masterLeft <<= static_cast<uint16>(value);
++			if(m_spuBase.m_masterLeft.mode.mode == 0) m_spuBase.m_masterLeftAbs = m_spuBase.m_masterLeft.volume.volume << 17;
++			break;
++		case P_MVOLR:
++			m_spuBase.m_masterRight <<= static_cast<uint16>(value);
++			if(m_spuBase.m_masterRight.mode.mode == 0) m_spuBase.m_masterRightAbs = m_spuBase.m_masterRight.volume.volume << 17;
++			break;
++		case P_EVOLL:
++			m_spuBase.m_effectLeft = static_cast<int16>(value);
++			break;
++		case P_EVOLR:
++			m_spuBase.m_effectRight = static_cast<int16>(value);
++			break;
+ 		case S_VMIXER_HI:
+ 			m_spuBase.SetChannelReverbLo(static_cast<uint16>(value));
+ 			break;
 diff --git a/Source/iop/Iop_SpuBase.cpp b/Source/iop/Iop_SpuBase.cpp
-index 231400b..3a15387 100644
+index 231400b..81c8636 100644
 --- a/Source/iop/Iop_SpuBase.cpp
 +++ b/Source/iop/Iop_SpuBase.cpp
-@@ -574,6 +574,19 @@ void CSpuBase::SetReverbCurrentAddress(uint32 address)
+@@ -194,6 +194,18 @@ void CSpuBase::Reset()
+ 
+ 	m_volumeAdjust = 1.0f;
+ 
++	m_noiseVoices = 0;
++	m_bentVoices = 0;
++	m_noiseCount = 0;
++	m_noiseOut = 0;
++	memset(m_voiceOut, 0, sizeof(m_voiceOut));
++	m_masterLeft <<= 0;
++	m_masterRight <<= 0;
++	m_masterLeftAbs = 0;
++	m_masterRightAbs = 0;
++	m_effectLeft = 0;
++	m_effectRight = 0;
++
+ 	m_channelOn.f = 0;
+ 	m_channelReverb.f = 0;
+ 	m_reverbTicks = 0;
+@@ -574,6 +586,19 @@ void CSpuBase::SetReverbCurrentAddress(uint32 address)
  }
  
  uint32 CSpuBase::ReceiveDma(uint8* buffer, uint32 blockSize, uint32 blockAmount, uint32 direction)
@@ -669,8 +779,131 @@ index 231400b..3a15387 100644
  {
  #ifdef _DEBUG
  	CLog::GetInstance().Print(LOG_NAME, "Receiving DMA transfer to 0x%08X. Size = 0x%08X bytes.\r\n",
+@@ -714,7 +739,29 @@ void CSpuBase::MixSamples(int32 inputSample, int32 volumeLevel, int16* output)
+ 	*output = static_cast<int16>(resultSample);
+ }
+ 
+-void CSpuBase::Render(int16* samples, unsigned int sampleCount)
++void CSpuBase::UpdateNoise()
++{
++	static const uint8 add[64] = {
++	    1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0,
++	    0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1};
++	static const uint16 rateAdd[5] = {0, 84, 140, 180, 210};
++	uint32 clock = (m_ctrl >> 8) & 0x3F;
++	uint32 level = (0x8000u >> (clock >> 2)) << 16;
++	m_noiseCount += 0x10000;
++	m_noiseCount += rateAdd[clock & 3];
++	if((m_noiseCount & 0xFFFF) >= rateAdd[4])
++	{
++		m_noiseCount += 0x10000;
++		m_noiseCount -= rateAdd[clock & 3];
++	}
++	if(m_noiseCount >= level)
++	{
++		while(m_noiseCount >= level) m_noiseCount -= level;
++		m_noiseOut = (m_noiseOut << 1) | add[(m_noiseOut >> 10) & 63];
++	}
++}
++
++void CSpuBase::Render(int16* samples, unsigned int sampleCount, const int16* external)
+ {
+ 	bool updateReverb = m_reverbEnabled && (m_ctrl & CONTROL_REVERB) && (m_reverbWorkAddrStart < m_reverbWorkAddrEnd);
+ 	bool irqEnabled = (m_ctrl & CONTROL_IRQ);
+@@ -756,7 +803,19 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 				reader.SetRepeat(channel.repeat);
+ 			}
+ 
++			// a voice the one before bends steps by its pitch times what that voice gave this sample
++			if((i > 0) && (m_bentVoices & (1 << i)))
++			{
++				int32 bent = static_cast<int32>(channel.pitch * (32768 + m_voiceOut[i - 1])) >> 15;
++				reader.SetBentPitch(m_baseSamplingRate, static_cast<uint32>(std::clamp<int32>(bent, 0, 0x3FFF)));
++			}
++			else
++			{
++				reader.SetBentPitch(0, 0);
++			}
+ 			int32 readSample = reader.GetSample();
++			if(m_noiseVoices & (1 << i)) readSample = static_cast<int16>(m_noiseOut);
++			m_voiceOut[i] = 0;
+ 			channel.current = reader.GetCurrent();
+ 
+ 			UpdateAdsr(channel);
+@@ -769,6 +828,7 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 			int32 inputSample = (readSample * static_cast<int32>(channel.adsrVolume >> 16)) / static_cast<int32>(MAX_ADSR_VOLUME >> 16);
+ 
+ 			if(inputSample == 0) continue;
++			m_voiceOut[i] = inputSample;
+ 
+ 			int32 volumeLeft = channel.volumeLeftAbs >> 16;
+ 			int32 volumeRight = channel.volumeRightAbs >> 16;
+@@ -833,12 +893,25 @@ void CSpuBase::Render(int16* samples, unsigned int sampleCount)
+ 			m_core0OutputOffset &= (CORE0_OUTPUT_SIZE - 1);
+ 		}
+ 
++		UpdateNoise();
++
+ 		//Update reverb
+ 		if(updateReverb)
+ 		{
+ 			UpdateReverb(reverbSample, samples);
+ 		}
+ 
++		if(external)
++		{
++			MixSamples(external[j * 2], m_extInputVolL, samples + 0);
++			MixSamples(external[(j * 2) + 1], m_extInputVolR, samples + 1);
++		}
++		// the master volume, which sweeps as a voice's does, over everything the core gives
++		m_masterLeftAbs = ComputeChannelVolume(m_masterLeft, m_masterLeftAbs);
++		m_masterRightAbs = ComputeChannelVolume(m_masterRight, m_masterRightAbs);
++		samples[0] = static_cast<int16>((samples[0] * (m_masterLeftAbs >> 16)) / 0x7FFF);
++		samples[1] = static_cast<int16>((samples[1] * (m_masterRightAbs >> 16)) / 0x7FFF);
++
+ 		samples += 2;
+ 	}
+ 
+@@ -1112,21 +1185,9 @@ void CSpuBase::UpdateReverb(int16 reverbSample[2], int16* samples)
+ 		float sampleL = 0.333f * (GetReverbSample(GetReverbOffset(MIX_DEST_A0)) + GetReverbSample(GetReverbOffset(MIX_DEST_B0)));
+ 		float sampleR = 0.333f * (GetReverbSample(GetReverbOffset(MIX_DEST_A1)) + GetReverbSample(GetReverbOffset(MIX_DEST_B1)));
+ 
+-		{
+-			int16* output = samples + 0;
+-			int32 resultSample = static_cast<int32>(sampleL) + static_cast<int32>(*output);
+-			resultSample = std::max<int32>(resultSample, SHRT_MIN);
+-			resultSample = std::min<int32>(resultSample, SHRT_MAX);
+-			*output = static_cast<int16>(resultSample);
+-		}
+-
+-		{
+-			int16* output = samples + 1;
+-			int32 resultSample = static_cast<int32>(sampleR) + static_cast<int32>(*output);
+-			resultSample = std::max<int32>(resultSample, SHRT_MIN);
+-			resultSample = std::min<int32>(resultSample, SHRT_MAX);
+-			*output = static_cast<int16>(resultSample);
+-		}
++		// at the effect volume
++		MixSamples(static_cast<int32>(sampleL), m_effectLeft, samples + 0);
++		MixSamples(static_cast<int32>(sampleR), m_effectRight, samples + 1);
+ 	}
+ 
+ 	m_reverbTicks++;
+@@ -1380,6 +1441,12 @@ void CSpuBase::CSampleReader::UpdateSampleStep()
+ 	m_sampleStep = m_srcSamplingRate / m_dstSamplingRate;
+ }
+ 
++void CSpuBase::CSampleReader::SetBentPitch(uint32 baseSamplingRate, uint32 pitch)
++{
++	//With no rate, the voice's own pitch
++	m_sampleStep = baseSamplingRate ? ((baseSamplingRate * pitch) / m_dstSamplingRate) : (m_srcSamplingRate / m_dstSamplingRate);
++}
++
+ void CSpuBase::CSampleReader::UnpackSamples(int16* dst)
+ {
+ 	int32 workBuffer[BUFFER_SAMPLES];
 diff --git a/Source/iop/Iop_SpuBase.h b/Source/iop/Iop_SpuBase.h
-index 1fab09e..467d19f 100644
+index 1fab09e..a01265c 100644
 --- a/Source/iop/Iop_SpuBase.h
 +++ b/Source/iop/Iop_SpuBase.h
 @@ -1,5 +1,6 @@
@@ -722,14 +955,42 @@ index 1fab09e..467d19f 100644
  	class CSpuBase
  	{
  	public:
-@@ -270,6 +306,7 @@ namespace Iop
+@@ -270,8 +306,25 @@ namespace Iop
  		void WriteWord(uint16);
  
  		uint32 ReceiveDma(uint8*, uint32, uint32, uint32);
+-
+-		void Render(int16*, unsigned int);
 +		uint32 ReceiveDmaTaken(uint8*, uint32, uint32, uint32);
++
++		// `external` is what comes in from the other core, core 0's output into core 1
++		void Render(int16*, unsigned int, const int16* external = nullptr);
++
++		// Noise, pitch modulation and the master and effect volumes, which Play! leaves out, as the console does them
++		// (Dreamports, cross-checked against PCSX2's SPU2)
++		uint32 m_noiseVoices = 0;
++		uint32 m_bentVoices = 0;
++		uint32 m_noiseCount = 0;
++		uint32 m_noiseOut = 0;
++		int32 m_voiceOut[24] = {};
++		CHANNEL_VOLUME m_masterLeft;
++		CHANNEL_VOLUME m_masterRight;
++		int32 m_masterLeftAbs = 0;
++		int32 m_masterRightAbs = 0;
++		int32 m_effectLeft = 0;
++		int32 m_effectRight = 0;
++		void UpdateNoise();
  
- 		void Render(int16*, unsigned int);
+ 		static bool g_reverbParamIsAddress[REVERB_PARAM_COUNT];
  
+@@ -315,6 +368,7 @@ namespace Iop
+ 			void SetParamsRead(uint32, uint32);
+ 			void SetParamsNoRead(uint32, uint32);
+ 			void SetPitch(uint32, uint16);
++			void SetBentPitch(uint32, uint32);
+ 			int32 GetSample();
+ 			uint32 GetRepeat() const;
+ 			void SetRepeat(uint32);
 diff --git a/Source/iop/Iop_SubSystem.cpp b/Source/iop/Iop_SubSystem.cpp
 index dd584b3..7aa467e 100644
 --- a/Source/iop/Iop_SubSystem.cpp
@@ -797,10 +1058,10 @@ index 42067f7..ef20871 100644
  
  bool CSH_LibreAudio::HasFreeBuffers()
 diff --git a/Source/ui_libretro/main_libretro.cpp b/Source/ui_libretro/main_libretro.cpp
-index 8a07c26..f5815cb 100644
+index 8a07c26..cdd25eb 100644
 --- a/Source/ui_libretro/main_libretro.cpp
 +++ b/Source/ui_libretro/main_libretro.cpp
-@@ -19,6 +19,11 @@
+@@ -19,6 +19,12 @@
  
  #include <vector>
  #include <cstdlib>
@@ -808,11 +1069,12 @@ index 8a07c26..f5815cb 100644
 +#include "DreamportsWatch.h"
 +#include "states/MemoryStateFile.h"
 +#include <cstdint>
++#include <cstring>
 +#include <mutex>
  
  #define LOG_NAME "LIBRETRO"
  
-@@ -37,6 +42,159 @@ struct retro_hw_render_callback g_hw_render
+@@ -37,6 +43,198 @@ struct retro_hw_render_callback g_hw_render
  {
  };
  
@@ -939,6 +1201,45 @@ index 8a07c26..f5815cb 100644
 +	return nullptr;
 +}
 +
++// The EE's registers as the function check gives and takes them, 327 words (tools/ps2/original.mjs, EE_REGISTERS): its
++// 32 registers, 128 bits each, HI and LO and their upper halves, SA, the FPU's registers, its accumulator and its
++// control word, and vector unit 0's registers, accumulator, integer registers, Q, I, P, R and its flags. And `next`, where
++// the EE goes after the block it's ending, or 1 when no jump waits. For the tools to keep a function's start as play
++// reaches it (tools/libretro/starts.h), asked from the block's own callback, on the EE's thread
++extern "C" RETRO_API const uint32_t* dreamports_registers(uint32_t* next)
++{
++	static uint32_t words[327];
++	const auto& state = m_virtualMachine->m_ee->m_EE.m_State;
++	uint32_t* at = words;
++	const auto take = [&](const void* from, size_t bytes) {
++		memcpy(at, from, bytes);
++		at += bytes / 4;
++	};
++	take(state.nGPR, sizeof(state.nGPR));
++	take(state.nHI, 8);
++	take(state.nLO, 8);
++	take(state.nHI1, 8);
++	take(state.nLO1, 8);
++	take(&state.nSA, 4);
++	take(state.nCOP1, sizeof(state.nCOP1));
++	take(&state.nCOP1A, 4);
++	take(&state.nFCSR, 4);
++	take(state.nCOP2, 32 * 16);
++	take(&state.nCOP2A, 16);
++	take(state.nCOP2VI, sizeof(state.nCOP2VI));
++	take(&state.nCOP2Q, 4);
++	take(&state.nCOP2I, 4);
++	take(&state.nCOP2P, 4);
++	take(&state.nCOP2R, 4);
++	take(&state.nCOP2SF, 4);
++	take(&state.nCOP2MF, 4);
++	take(&state.nCOP2CF, 4);
++	take(&state.nCOP2DF, 4);
++	static_assert(sizeof(state.nGPR) == 512 && sizeof(state.nCOP1) == 128 && sizeof(state.nCOP2VI) == 64, "the EE's registers aren't the size the tools take them for");
++	*next = state.nDelayedJumpAddr;
++	return words;
++}
++
 +// Where a memory card's files are, for port 0 or 1, and how many times the game has changed a card so far, for the tools
 +// to read them again when it has (Iop_McServ.cpp)
 +extern "C" RETRO_API const char* dreamports_memory_card(uint32_t port, uint32_t* changes)
@@ -972,7 +1273,7 @@ index 8a07c26..f5815cb 100644
  int g_res_factor = 1;
  CGSHandler::PRESENTATION_MODE g_presentation_mode = CGSHandler::PRESENTATION_MODE::PRESENTATION_MODE_FIT;
  bool g_forceBilinearTextures = false;
-@@ -258,6 +416,8 @@ bool retro_serialize(void* data, size_t size)
+@@ -258,6 +456,8 @@ bool retro_serialize(void* data, size_t size)
  		m_virtualMachine->m_ee->SaveState(archive);
  		m_virtualMachine->m_iop->SaveState(archive);
  		m_virtualMachine->m_ee->m_gs->SaveState(archive);
@@ -981,7 +1282,7 @@ index 8a07c26..f5815cb 100644
  
  		archive.Write(stateStream);
  		stateStream.Seek(0, Framework::STREAM_SEEK_DIRECTION::STREAM_SEEK_SET);
-@@ -285,6 +445,7 @@ bool retro_unserialize(const void* data, size_t size)
+@@ -285,6 +485,7 @@ bool retro_unserialize(const void* data, size_t size)
  			m_virtualMachine->m_ee->LoadState(archive);
  			m_virtualMachine->m_iop->LoadState(archive);
  			m_virtualMachine->m_ee->m_gs->LoadState(archive);
@@ -989,7 +1290,7 @@ index 8a07c26..f5815cb 100644
  		}
  		catch(...)
  		{
-@@ -446,15 +607,24 @@ void retro_run()
+@@ -446,15 +647,24 @@ void retro_run()
  
  	if(m_virtualMachine)
  	{
@@ -1017,7 +1318,7 @@ index 8a07c26..f5815cb 100644
  	}
  }
  
-@@ -554,7 +724,7 @@ void retro_init()
+@@ -554,7 +764,7 @@ void retro_init()
  	if(g_environ_cb(RETRO_ENVIRONMENT_GET_INPUT_BITMASKS, NULL))
  		libretro_supports_bitmasks = true;
  
@@ -1026,7 +1327,7 @@ index 8a07c26..f5815cb 100644
  
  	m_virtualMachine = new CPS2VM();
  	m_virtualMachine->Initialize();
-@@ -574,6 +744,7 @@ void retro_deinit()
+@@ -574,6 +784,7 @@ void retro_deinit()
  
  	if(m_virtualMachine)
  	{
