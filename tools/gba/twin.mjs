@@ -228,7 +228,13 @@ class Original {
    *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
    *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. `spare` is
    *  what the registers no argument fills hold, 0 unless given. */
-  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false }) {
+  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false, gives = 0 }) {
+    // a hand-written routine gives back in the register its twin's comment names (#1710)
+    if (gives !== (this.gives ?? 0)) {
+      this.ask('g', [gives]);
+      await this.take(4);
+      this.gives = gives;
+    }
     // a twin that says it follows reads and writes where no halfword or word starts has those calls compared
     if (Boolean(unaligned) !== Boolean(this.unaligned)) {
       this.ask('a', [unaligned ? 1 : 0]);
@@ -488,6 +494,12 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id).map(twin => ({ ...twin, address: placedAt(twin) })), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
+          // a hand-written routine's twin that says how it takes and gives in registers is called with the four of
+          // them, and gives back what its comment's C works out from them (#1710)
+          if (twin.registers && !wrap) {
+            calls.push({ ...twin, params: [0, 1, 2, 3].map(() => ({ bits: 32, signed: false, pointer: true })), returns: { bits: 32, signed: false }, call: `${CALL}${n}_${twin.name}` });
+            continue;
+          }
           const signature = signatureFor(text, twin.name);
           if (signature) calls.push({ ...twin, ...signature, call: `${CALL}${n}_${twin.name}` });
           else unknown.push(twin.name);
@@ -498,7 +510,11 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         const build = () => {
           const lines = [`#include "${placeOf(file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
-          for (const { name: twin, params, returns, call } of calls) {
+          for (const { name: twin, params, returns, call, registers } of calls) {
+            if (registers && !wrap) {
+              lines.push(`unsigned ${call}(unsigned r0, unsigned r1, unsigned r2, unsigned r3) { (void)r0; (void)r1; (void)r2; (void)r3; return (unsigned)(${registers.expression}); }`);
+              continue;
+            }
             if (wrap) {
               lines.push(wrap({ name: twin, params, returns, call }));
               continue;
@@ -908,7 +924,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0 });
     if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
@@ -1095,7 +1111,7 @@ export function outcome(f, { calls, seconds }) {
   const byte = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
   const hardware = f.result?.hardware ? ` The original used the hardware's register at ${at(f.result.hardware)} in this call, which a twin has to do through the kit.` : '';
   if (f.result?.kind === 'differs') {
-    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}` : null;
+    const gave = f.result.gave ? `the twin gave back ${at(f.result.gave.ours)} and the original ${at(f.result.gave.theirs)}${f.registers ? ` in r${f.registers.gives}, as its comment's ${f.registers.text} works it out` : ''}` : null;
     const memory = f.result.memory ? `at ${at(f.result.memory.address)}, in ${f.result.memory.name}, the twin left ${byte(f.result.memory.ours)} and the original ${byte(f.result.memory.theirs)}` : null;
     return { kind: 'differs', line: `${callText(f.name, f.result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
