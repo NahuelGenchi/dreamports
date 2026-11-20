@@ -2,9 +2,11 @@
 // them, a line at a time, as the console draws it. So far: the screen on and off and its brightness ($2100), the
 // sprites, with their table through its port ($2101 to $2104), the backgrounds of modes 0 and 1, of 8 or 16 pixels a
 // tile, with their maps, tiles and scrolling ($2105 to $2114), video memory through its port ($2115 to $2119), the
-// colours through theirs ($2121, $2122), and which layers the main screen shows ($212C). The brightness is each
-// colour's 5 bits times the brightness over 15, rounded, as Snes9x, the reference the proof tools run the original on,
-// has it, and a line's sprites are its first 32 and, of their tiles, the last 34, as Snes9x has them too.
+// colours through theirs ($2121, $2122), the two windows ($2123 to $212B), which layers the main and sub screens show
+// and hide in their windows ($212C to $212F), and colour maths with the sub screen or the fixed colour ($2130 to
+// $2132). The brightness is each colour's 5 bits times the brightness over 15, rounded, as Snes9x, the reference the
+// proof tools run the original on, has it, its maths is Snes9x's on its 16-bit pixels, and a line's sprites are its
+// first 32 and, of their tiles, the last 34, as Snes9x has them too.
 
 #include "snes-kit.h"
 
@@ -23,7 +25,14 @@ struct ppu_state {
   uint16_t vaddr;                     // the video memory's address, in words
   uint8_t cgaddr, cg_low;             // the colours' address, and the first byte of a colour written
   int cg_second;                      // whether the next byte written to $2122 is a colour's second
-  uint8_t main;                       // $212C: the layers the main screen shows
+  uint8_t main, sub;                  // $212C, $212D: the layers the main screen and the sub screen show
+  uint8_t main_masked, sub_masked;    // $212E, $212F: the layers each screen hides where their windows say
+  uint8_t window_select[6];           // $2123 to $2125: for BG1 to BG4, the sprites and the colours, each window on (bits
+                                      // 1 and 3) and turned inside out (bits 0 and 2)
+  uint8_t window_logic[6];            // $212A, $212B: how each one's two windows combine: or, and, xor or xnor
+  uint8_t window[4];                  // $2126 to $2129: window 1's left and right, then window 2's
+  uint8_t colour_select, colour_maths; // $2130 and $2131: where colours are black and maths is off, and what maths
+  uint8_t fixed[3];                   // $2132: the fixed colour, red, green and blue
   uint32_t obj_base, obj_gap;         // $2101: where the sprites' tiles are, and their second table's distance, in bytes
   uint8_t obj_sizes;                  // which two sizes the sprites are
   uint16_t oam_addr, oam_saved;       // the sprites' table's address, in words, and as last written, which V-blank goes back to
@@ -31,9 +40,12 @@ struct ppu_state {
   uint8_t rotation, first_sprite;     // $2103's top bit, and the sprite that comes first
 };
 static struct ppu_state ppu;
+// the fixed colour at the screen's brightness, as Snes9x last made it
+static uint16_t fixed_pixel;
 
 void ppu_power(void) {
   ppu = (struct ppu_state){ 0 };
+  fixed_pixel = 0;
   ppu.screen = 0x80;
   for (int i = 0; i < 0x10000; i++) snes_vram[i] = 0;
   for (int i = 0; i < 544; i++) snes_oam[i] = 0;
@@ -132,7 +144,31 @@ void ppu_write(uint16_t address, uint8_t value) {
     else snes_cgram[ppu.cgaddr++] = (uint16_t)((value & 0x7F) << 8 | ppu.cg_low);
     ppu.cg_second = !ppu.cg_second;
     break;
+  case 0x2123: case 0x2124: case 0x2125: {
+    int n = (address - 0x2123) * 2;
+    ppu.window_select[n] = value & 15;
+    ppu.window_select[n + 1] = value >> 4;
+    break;
+  }
+  case 0x2126: case 0x2127: case 0x2128: case 0x2129: ppu.window[address - 0x2126] = value; break;
+  case 0x212A:
+    for (int n = 0; n < 4; n++) ppu.window_logic[n] = value >> (n * 2) & 3;
+    break;
+  case 0x212B:
+    ppu.window_logic[4] = value & 3;
+    ppu.window_logic[5] = value >> 2 & 3;
+    break;
   case 0x212C: ppu.main = value; break;
+  case 0x212D: ppu.sub = value; break;
+  case 0x212E: ppu.main_masked = value; break;
+  case 0x212F: ppu.sub_masked = value; break;
+  case 0x2130: ppu.colour_select = value; break;
+  case 0x2131: ppu.colour_maths = value; break;
+  case 0x2132:
+    if (value & 0x20) ppu.fixed[0] = value & 31;
+    if (value & 0x40) ppu.fixed[1] = value & 31;
+    if (value & 0x80) ppu.fixed[2] = value & 31;
+    break;
   }
 }
 
@@ -276,47 +312,155 @@ static void obj_line(int y, uint8_t *colours, uint8_t *priorities) {
   }
 }
 
-// a colour of the palette's memory, at the screen's brightness, as the page shows it
-static uint32_t shown(uint16_t colour, int brightness) {
-  uint32_t r = colour & 31, g = colour >> 5 & 31, b = colour >> 10 & 31;
-  r = (r * (uint32_t)brightness * 2 + 15) / 30;
-  g = (g * (uint32_t)brightness * 2 + 15) / 30;
-  b = (b * (uint32_t)brightness * 2 + 15) / 30;
-  return 0xFF000000u | b << 19 | g << 11 | r << 3;
+//// Colours, as Snes9x makes them: each of the palette's 5-bit channels times the screen's brightness over 15, rounded,
+//// in Snes9x's 16-bit pixel, red at bit 11, green at bit 6 with its top bit copied to bit 5, blue at bit 0. Its colour
+//// maths works on those, and the proof tools keep each channel's 5 bits of the result, green's from bit 6, so the kit
+//// does the same sums on the same pixels.
+
+static uint8_t at_brightness(uint32_t channel, int brightness) { return (uint8_t)((channel * (uint32_t)brightness * 2 + 15) / 30); }
+static uint16_t pixel_of(uint32_t r, uint32_t g, uint32_t b) { return (uint16_t)(r << 11 | g << 6 | (g & 0x10) << 1 | b); }
+static uint16_t screen_colour(uint16_t colour, int brightness) {
+  return pixel_of(at_brightness(colour & 31, brightness), at_brightness(colour >> 5 & 31, brightness), at_brightness(colour >> 10 & 31, brightness));
+}
+// a pixel as the page shows it
+static uint32_t shown(uint16_t p) { return 0xFF000000u | (uint32_t)(p & 31) << 19 | (uint32_t)(p >> 6 & 31) << 11 | (uint32_t)(p >> 11) << 3; }
+
+// adding two pixels, each channel kept to 31
+static uint16_t colour_add(uint16_t a, uint16_t b) {
+  uint32_t rb = (a & 0xF81Fu) + (b & 0xF81Fu), g = (a & 0x07C0u) + (b & 0x07C0u);
+  uint16_t raw = (uint16_t)((rb & 0xF81F) | (g & 0x07C0) | (((g & 0x0800) | (rb & 0x10020)) >> 5) * 0x1F);
+  return (uint16_t)(raw | (raw & 0x0400) >> 5);
+}
+// adding them with each channel kept to the brightest the screen's brightness gives, as Snes9x does below brightness 15
+static uint16_t colour_add_capped(uint16_t a, uint16_t b, int brightness) {
+  uint32_t most = at_brightness(31, brightness);
+#define CAPPED(sum) ((sum) > most ? most : (sum))
+  uint32_t r = CAPPED((uint32_t)(a >> 11 & 31) + (b >> 11 & 31)), g = CAPPED((uint32_t)(a >> 6 & 31) + (b >> 6 & 31)), bl = CAPPED((uint32_t)(a & 31) + (b & 31));
+#undef CAPPED
+  return (uint16_t)(r << 11 | g << 6 | (g & 0x10) << 1 | bl);
+}
+// half their sum
+static uint16_t colour_add_half(uint16_t a, uint16_t b) { return (uint16_t)((((a & 0xF7DEu) + (b & 0xF7DEu)) >> 1) + (a & b & 0x0821u)); }
+// the second taken from the first, each channel kept to 0
+static uint16_t colour_sub(uint16_t a, uint16_t b) {
+  int rb = (int)((a & 0xF81Fu) | 0x10020u) - (int)(b & 0xF81Fu), g = (int)((a & 0x07E0u) | 0x0800u) - (int)(b & 0x07E0u);
+  int keep = (((g & 0x0800) | (rb & 0x10020)) >> 5) * 0x1F;
+  uint16_t raw = (uint16_t)(((rb & 0xF81F) | (g & 0x07E0)) & keep);
+  return (uint16_t)(raw | (raw & 0x0400) >> 5);
+}
+// half the difference, through Snes9x's table of it, which keeps a channel whose top bit is set and clears the rest
+static uint16_t colour_sub_half(uint16_t a, uint16_t b) {
+  uint32_t v = (((uint32_t)a | 0x10820u) - (b & 0xF7DEu)) >> 1;
+  uint32_t r = v >> 11 & 31, g = v >> 5 & 63, bl = v & 31;
+  r = r & 0x10 ? r & 0x0F : 0;
+  g = g & 0x20 ? g & 0x1F : 0;
+  bl = bl & 0x10 ? bl & 0x0F : 0;
+  return (uint16_t)(r << 11 | g << 5 | bl);
 }
 
-// One line of the main screen in modes 0 and 1: at each pixel, of the layers the main screen shows, the one with a
-// pixel there that's furthest in front, by the depth its mode and its priority give it, as Snes9x orders them: a
-// sprite at 4, 8, 12 or 16 by its priority, and each background at the depths of its two priorities below.
+// What $2131 and $2130 make of a pixel with maths on: add or take away, by half or not, the sub screen's pixel where it
+// has one of its layers, `sub_layer`, or the fixed colour where it shows its backdrop; a pixel the colour window made
+// black is never halved, as Snes9x has it. Below brightness 15 adding keeps to the brightest the screen shows, but not
+// in the half sum with the fixed colour, as Snes9x's choice of its seven ways has it.
+static uint16_t with_maths(uint16_t main, uint16_t sub, int sub_layer, int black, int brightness) {
+  int subtract = ppu.colour_maths & 0x80, half = ppu.colour_maths & 0x40, with_sub = ppu.colour_select & 2;
+  uint16_t other = sub_layer ? sub : fixed_pixel;
+  if (subtract) {
+    if (!half) return colour_sub(main, other);
+    if (!with_sub) return black ? colour_sub(main, fixed_pixel) : colour_sub_half(main, fixed_pixel);
+    return black ? colour_sub(main, other) : sub_layer ? colour_sub_half(main, sub) : colour_sub(main, fixed_pixel);
+  }
+  int capped = brightness != 15;
+#define ADD(x, y) (capped ? colour_add_capped((x), (y), brightness) : colour_add((x), (y)))
+  if (!half) return ADD(main, other);
+  if (!with_sub) return black ? colour_add(main, fixed_pixel) : colour_add_half(main, fixed_pixel);
+  return black ? ADD(main, other) : sub_layer ? colour_add_half(main, sub) : ADD(main, fixed_pixel);
+#undef ADD
+}
+
+//// Windows: two spans of each line, from a left edge to a right one, which hide a layer, turn colours black or keep
+//// maths off, each as its registers say
+
+static int in_window(int w, int x) {
+  int left = ppu.window[w * 2], right = ppu.window[w * 2 + 1];
+  return left <= right && x >= left && x <= right;
+}
+// whether the windows of `n`, BG1 to BG4, the sprites (4) or the colours (5), take in x
+static int windowed(int n, int x) {
+  int select = ppu.window_select[n], one = select & 2, two = select & 8;
+  int w1 = in_window(0, x) ^ (select & 1), w2 = in_window(1, x) ^ (select >> 2 & 1);
+  if (!one) return two ? w2 : 0;
+  if (!two) return w1;
+  switch (ppu.window_logic[n]) {
+  case 0: return w1 | w2;
+  case 1: return w1 & w2;
+  case 2: return w1 ^ w2;
+  default: return !(w1 ^ w2);
+  }
+}
+// $2130's two choices for the colour window, from its top bits or bits 4 and 5: never, outside it, inside it, always
+static int by_colour_window(int choice, int inside) { return choice == 3 || (choice == 1 && !inside) || (choice == 2 && inside); }
+
+//// A line of the screen
+
+// Of the layers a screen shows, at each pixel, the one with a pixel there that's furthest in front, by the depth its
+// mode and its priority give it, as Snes9x orders them: a sprite at 4, 8, 12 or 16 by its priority, and each background
+// at the depths of its two priorities below.
 static const int8_t DEPTHS[2][4][2] = {
   { { 11, 15 }, { 10, 14 }, { 3, 7 }, { 2, 6 } },
   { { 11, 15 }, { 10, 14 }, { 3, 7 }, { 0, 0 } },
 };
+enum { BACKDROP = 5 };
 
 static void draw_line(uint32_t *out, int line) {
   int mode = ppu.mode & 7, brightness = ppu.screen & 15;
   uint8_t obj_colours[SNES_WIDTH], obj_priorities[SNES_WIDTH];
-  if (ppu.main & 0x10) obj_line(line - SNES_FIRST_LINE, obj_colours, obj_priorities);
+  if ((ppu.main | ppu.sub) & 0x10) obj_line(line - SNES_FIRST_LINE, obj_colours, obj_priorities);
   // mode 1's third background in front at its high priority when $2105 is mode 1 with bit 3 alone
   int bg3_front = (ppu.mode & 0x0F) == 0x09;
+  // the sub screen is drawn only when maths can use it, as Snes9x has it: elsewhere maths uses the fixed colour
+  int sub_drawn = (ppu.colour_select & 0x30) != 0x30 && (ppu.colour_select & 2) && (ppu.colour_maths & 0x3F) && (ppu.sub & 0x1F);
   for (int x = 0; x < SNES_WIDTH; x++) {
-    int colour = 0, depth = 0;
-    if ((ppu.main & 0x10) && obj_colours[x]) {
-      colour = obj_colours[x];
-      depth = 4 + obj_priorities[x] * 4;
+    // each layer's pixel here, and its depth
+    int colours[5] = { 0 }, depths[5] = { 0 };
+    if (((ppu.main | ppu.sub) & 0x10) && obj_colours[x]) {
+      colours[4] = obj_colours[x];
+      depths[4] = 4 + obj_priorities[x] * 4;
     }
     for (int n = 0; n < 4 && mode <= 1; n++) {
-      if (!(ppu.main >> n & 1) || (mode == 1 && n == 3)) continue;
+      if (!((ppu.main | ppu.sub) >> n & 1) || (mode == 1 && n == 3)) continue;
       int priority = 0;
       int found = mode == 0 ? bg_pixel(n, 2, n * 32, x, line, &priority) : bg_pixel(n, n < 2 ? 4 : 2, 0, x, line, &priority);
       if (!found) continue;
-      int z = mode == 1 && n == 2 && priority && bg3_front ? 17 : DEPTHS[mode][n][priority];
-      if (z > depth) {
-        colour = found;
-        depth = z;
+      colours[n] = found;
+      depths[n] = mode == 1 && n == 2 && priority && bg3_front ? 17 : DEPTHS[mode][n][priority];
+    }
+    // the layer in front on each screen, of those it shows and its windows don't hide
+    int front = BACKDROP, sub_front = BACKDROP, depth = 0, sub_depth = 0;
+    for (int n = 0; n < 5; n++) {
+      if (!colours[n]) continue;
+      int hidden = windowed(n, x);
+      if ((ppu.main >> n & 1) && !(hidden && (ppu.main_masked >> n & 1)) && depths[n] > depth) {
+        front = n;
+        depth = depths[n];
+      }
+      if ((ppu.sub >> n & 1) && !(hidden && (ppu.sub_masked >> n & 1)) && depths[n] > sub_depth) {
+        sub_front = n;
+        sub_depth = depths[n];
       }
     }
-    out[x] = shown(snes_cgram[colour], brightness);
+    // where the colour window turns the main screen black, and where it keeps maths off
+    int inside = windowed(5, x);
+    int black = by_colour_window(ppu.colour_select >> 6, inside), no_maths = by_colour_window(ppu.colour_select >> 4 & 3, inside);
+    uint16_t main = black ? 0 : screen_colour(snes_cgram[front == BACKDROP ? 0 : colours[front]], brightness);
+    // maths for the layer's bit of $2131, the backdrop's bit 5, and of the sprites only those of palettes 4 to 7
+    int maths = !no_maths && (ppu.colour_maths >> front & 1) && (front != 4 || colours[4] >= 128 + 64);
+    if (maths) {
+      int sub_layer = sub_drawn && sub_front != BACKDROP;
+      uint16_t sub = screen_colour(snes_cgram[sub_layer ? colours[sub_front] : 0], brightness);
+      main = with_maths(main, sub, sub_layer, black, brightness);
+    }
+    out[x] = shown(main);
   }
 }
 
@@ -331,6 +475,11 @@ void ppu_vblank(void) {
 
 void ppu_frame(uint32_t *out) {
   obj_setup();
+  // the fixed colour at the screen's brightness, made again only when maths can use it, as Snes9x makes it
+  if ((ppu.colour_select & 0x30) != 0x30 && (ppu.colour_maths & 0x3F)) {
+    int brightness = ppu.screen & 15;
+    fixed_pixel = pixel_of(at_brightness(ppu.fixed[0], brightness), at_brightness(ppu.fixed[1], brightness), at_brightness(ppu.fixed[2], brightness));
+  }
   for (int y = 0; y < SNES_HEIGHT; y++) {
     if (ppu.screen & 0x80) {
       for (int x = 0; x < SNES_WIDTH; x++) out[y * SNES_WIDTH + x] = 0xFF000000u;
