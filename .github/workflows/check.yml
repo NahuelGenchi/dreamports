@@ -16,7 +16,8 @@ name: Check
 # test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
 # npm run test:n64-call and test:n64-twin, which run the functions of a seventh in Parallel N64's own processor and
 # check its twins against them, and npm run test:n64-match, which builds IDO from its translation's source and tries
-# match on the Nintendo 64 with an eighth. A pull
+# match on the Nintendo 64 with an eighth, and npm run test:n64-kit, which proves the Nintendo 64's kit in C against
+# Parallel N64 with a ninth, its RSP's microcodes and every sum of its vector unit among it. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
@@ -53,6 +54,7 @@ jobs:
               npm run test:real-console
               npm run test:ps1-kit
               npm run test:n64-twin
+              npm run test:n64-kit
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
