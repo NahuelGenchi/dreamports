@@ -185,6 +185,9 @@ test('maps every program on a made-up disc, and keeps its .vutext out of the EE\
     assert.deepEqual(code.programs.map(p => [p.path, p.kind]), [
       ['DATA/MODELS.BIN:0x' + data.programAt.toString(16).toUpperCase(), 'ee'], ['IOPRP.IMG:SECOND', 'iop'], ['MADE_UP.IRX', 'iop'], ['OTHER.ELF', 'ee'],
     ]);
+    // read a piece at a time, with the program inside the data file starting just before a piece's end, it's the same
+    const pieces = await ps2Disc(path, { chunk: data.programAt + 4 });
+    assert.deepEqual([pieces.programs.map(p => p.path), pieces.uploads], [code.programs.map(p => p.path), code.uploads]);
     const functions = discFunctions(code);
     const where = place => functions.filter(f => `${f.program ?? ''}${f.vu ? '~vu' : ''}` === place).map(f => [f.address, f.size]);
     assert.deepEqual(where(''), [[boot.labels.main, boot.labels.sum - boot.labels.main], [boot.labels.sum, BOOT.text + (MAIN.length - 3) * 4 - boot.labels.sum]]);

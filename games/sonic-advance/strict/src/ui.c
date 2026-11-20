@@ -1,5 +1,6 @@
 // The screens of menus' graphics.
 #include "ui.h"
+#include "time.h"
 
 /** 0x080535C8, sub_80535FC: once, a free list of ten entries and the stack's task, with its stack emptied. */
 void sub_80535FC(void) {
@@ -44,7 +45,7 @@ struct GraphicsData *UiGfxStackPop(void) {
 }
 
 /** 0x080536A0, Task_80536D4: the stack's task does nothing each frame. */
-void Task_80536D4(void) {}
+void Task_80536D4(void) { TIME(0x080536A0, 0x080536A0, BACK); }
 
 /** 0x080536A4, TaskDestructor_80536D8: the stack is gone with its task. */
 void TaskDestructor_80536D8(struct Task *t) { gTask_03006240 = NULL; }

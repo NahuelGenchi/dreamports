@@ -12,6 +12,7 @@
 #define FLASH_BASE ((u8 *)0xE000000)
 #define FLASH_WRITE(addr, data) ((*(vu8 *)(FLASH_BASE + (addr))) = (data))
 #define FLASH_POKE(at, data) (*(at) = (data))
+#define FLASH_PEEK(at) (*(at))
 #else
 // a Dreamport's flash chip is hardware.c's, on the kit's save memory: reads see its bytes, writes are its commands
 u8 *console_flash(void);
@@ -19,6 +20,9 @@ void console_flash_write(u32 addr, u8 data);
 #define FLASH_BASE console_flash()
 #define FLASH_WRITE(addr, data) console_flash_write(addr, data)
 #define FLASH_POKE(at, data) console_flash_write((u32)((u8 *)(at) - FLASH_BASE), data)
+/** A byte read as the chip answers: its own, or "busy" while it settles after a write or an erase. */
+u8 console_flash_read(const u8 *at);
+#define FLASH_PEEK(at) console_flash_read(at)
 #endif
 
 struct FlashSector {

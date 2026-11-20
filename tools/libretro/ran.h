@@ -43,8 +43,9 @@ enum { CALLED = 1, JUMPED = 2, RETURNED = 3 };
 #define RTS 0x60
 #define JMP_POINTER 0x6C
 
-struct ranPlayed { uint32_t place, code, start[HAPPENINGS]; long last[HAPPENINGS]; };
-struct ranFunction { uint32_t index; int inFrame, held; uint32_t (*registers)[2]; };
+struct ranPlayed { uint32_t place, code, processor, start[HAPPENINGS]; long last[HAPPENINGS]; };
+// `word`, with `hasWord`, is the first word a function only counts with (ran-ps2.h)
+struct ranFunction { uint32_t index; int inFrame, held, hasWord; uint32_t word; uint32_t (*registers)[2]; };
 
 static struct {
 	long frame;
@@ -86,17 +87,18 @@ static void ranReach(uint32_t place) {
 	ran.size = size;
 }
 
-/** Starts it: `functions` is FUNCTIONS as read, `words` how many 32-bit words it has. Whether anything was asked for. */
-static int ranOpen(const uint32_t* functions, size_t words) {
+/** Starts it: `functions` is FUNCTIONS as read, `words` how many 32-bit words it has, and `byPlace` whether its
+ *  functions go to their places here, as the NES's do, rather than in ran-ps2.h. Whether anything was asked for. */
+static int ranOpen(const uint32_t* functions, size_t words, int byPlace) {
 	ran.functionCount = words / 6;
 	ran.functions = calloc(ran.functionCount ? ran.functionCount : 1, sizeof(struct ranFunction));
 	ran.inFrame = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(uint32_t));
 	ran.inFrameOf = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(struct ranFunction*));
 	for (size_t i = 0; i < ran.functionCount; i++) {
 		uint32_t place = functions[i * 6], size = functions[i * 6 + 1];
-		if (!size || place + size < place) continue;
-		ranReach(place + size - 1);
 		ran.functions[i].index = functions[i * 6 + 2];
+		if (!byPlace || !size || place + size < place) continue;
+		ranReach(place + size - 1);
 		ran.starts[place] = (uint32_t) i + 1;
 		memset(ran.marks + place, 1, size);
 	}
@@ -117,7 +119,7 @@ static int ranOpen(const uint32_t* functions, size_t words) {
 }
 
 static void ranStretch(const struct ranPlayed* p, int what) {
-	uint32_t record[5] = { p->place, p->code, (uint32_t) what, p->start[what], (uint32_t) p->last[what] };
+	uint32_t record[5] = { p->place, p->code, (uint32_t) what | p->processor << 8, p->start[what], (uint32_t) p->last[what] };
 	fwrite(record, 4, 5, ran.playedFile);
 }
 
@@ -176,6 +178,7 @@ static void ranInstruction(uint32_t pc, uint32_t place, uint32_t op, uint32_t ax
 		struct ranPlayed* new = &ran.list[ran.count++];
 		new->place = place;
 		new->code = op;
+		new->processor = 0;
 		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
 		ran.played[place] = (uint32_t) ran.count;
 	}

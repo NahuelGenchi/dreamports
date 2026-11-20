@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sharedProofFolder } from './paths.mjs';
+import { cardEntries } from '../../kit/ps2/card.js';
 
 /** How many frames apart two changes of the save memory can be and still be one write: a flash takes a sector over
  *  some twenty frames. */
@@ -45,6 +46,45 @@ export function compareSaves(original, own, leftover = []) {
     first ??= { write: i + 1, frame: theirs[i]?.frame ?? null, at: at < 0 ? null : at, ...(at < 0 ? {} : { original: a[at] ?? null, dreamport: b[at] ?? null }) };
   }
   return { original: theirs.length, dreamport: mine.length, same, first };
+}
+
+/**
+ * Compares the memory cards a PlayStation 2 recording wrote, as compareSaves compares a cartridge's save memory: each
+ * change is both cards' files, as kit/ps2/card.js writes them, and a write is the same when every file and folder is
+ * there in both, with the same bytes. Returns { original, dreamport, same, first }, `first` the first write that
+ * isn't the same as { write, frame, file, at, original, dreamport }: which write, the original's frame, the path of the
+ * first entry that differs, the first byte of it that does, or null when one side hasn't the file or has a folder
+ * there, and what each side holds there. A whole card is compared: nothing is left out of it.
+ */
+export function compareCardSaves(original, own) {
+  const theirs = writesIn(original), mine = writesIn(own);
+  let same = 0, first = null;
+  for (let i = 0; i < Math.max(theirs.length, mine.length); i++) {
+    const a = theirs[i] ? cardEntries(theirs[i].bytes) : null, b = mine[i] ? cardEntries(mine[i].bytes) : null;
+    const apart = a && b ? cardsApart(a, b) : null;
+    if (a && b && !apart) {
+      same++;
+      continue;
+    }
+    first ??= { write: i + 1, frame: theirs[i]?.frame ?? null, ...(apart ?? { file: null, at: null }) };
+  }
+  return { original: theirs.length, dreamport: mine.length, same, first };
+}
+
+// where two cards' entries first differ: { file, at, original, dreamport }, or null when they're the same
+function cardsApart(theirs, mine) {
+  const byPath = list => new Map(list.map(entry => [entry.path, entry]));
+  const a = byPath(theirs), b = byPath(mine);
+  for (const path of [...new Set([...a.keys(), ...b.keys()])].sort()) {
+    const x = a.get(path), y = b.get(path);
+    if (!x || !y || x.folder !== y.folder) return { file: path, at: null, original: x ? (x.folder ? 'a folder' : 'a file') : 'nothing', dreamport: y ? (y.folder ? 'a folder' : 'a file') : 'nothing' };
+    if (x.folder) continue;
+    const shared = Math.min(x.bytes.length, y.bytes.length);
+    let at = 0;
+    while (at < shared && x.bytes[at] === y.bytes[at]) at++;
+    if (at < shared || x.bytes.length !== y.bytes.length) return { file: path, at, original: x.bytes[at] ?? null, dreamport: y.bytes[at] ?? null };
+  }
+  return null;
 }
 
 /**

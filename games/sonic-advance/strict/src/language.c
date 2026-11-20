@@ -1,6 +1,7 @@
 // The language screen, at a first start.
 #include "core.h"
 #include "language.h"
+#include "time.h"
 #include "save.h"
 #include "malloc.h"
 #include "sprite.h"
@@ -150,8 +151,20 @@ void TaskDestructor_EditLanguageScreen(struct Task *t) {
   struct EditLanguageScreen *screen = TASK_DATA(t);
   u8 i;
 
+#ifdef MATCHING
   for (i = 0; i < 6; i++) VramFree(screen->sprites[i].graphics.dest);
   VramFree(screen->spr120.graphics.dest);
+#else
+  for (i = 0; i < 6; i++) {
+    if (i == 0) TIME(0x0806AC6C, 0x0806AC88, 0x08006C35, IW, IW);
+    else TIME(0x0806AC7C, 0x0806AC88, 0x08006C35, IW);
+    VramFree(screen->sprites[i].graphics.dest);
+    if (i < 5) TIME(0x0806AC8A, 0x0806AC92, 0x0806AC7D);
+  }
+  TIME(0x0806AC8A, 0x0806AC9E, 0x08006C35, IW);
+  VramFree(screen->spr120.graphics.dest);
+  TIME(0x0806ACA0, 0x0806ACA4, BACK);
+#endif
 }
 
 /** What the screen goes back to: the title screen's menus at a first start, the options otherwise. */
@@ -163,16 +176,21 @@ void m4aSoundVSyncOn(void);
 void Task_806ABD4(void) {
   struct EditLanguageScreen *screen = TASK_DATA(gCurTask);
 
+  TIME(0x0806AA00, 0x0806AA18, 0x08054209, IW, IW);
   if (sub_805423C(&screen->unk180)) {
     gDispCnt &= ~0xE000;
     gBldRegs.bldCnt = 0;
     gBldRegs.bldY = 0;
+    TIME(0x0806AA1A, 0x0806AA1E, 0x0806AA23);
+    TIME(0x0806AA22, 0x0806AA38, 0x08001621, IW, IW, IW, IW, IW);
     TaskDestroy(gCurTask);
 
     if (screen->unk18C == 1) {
       u16 irqEnable, irqMasterEnable, dispStat;
 
+      TIME(0x0806AA3A, 0x0806AA46, 0x08097919, IW);
       m4aMPlayAllStop();
+      TIME(0x0806AA48, 0x0806AA4A, 0x08097DE9);
       m4aSoundVSyncOff();
       gFlags |= FLAGS_8000;
       irqEnable = REG_READ16(REG_IE);
@@ -190,6 +208,11 @@ void Task_806ABD4(void) {
         DMA_SLOW_STOP(1);
         DMA_SLOW_STOP(2);
         DMA_SLOW_STOP(3);
+        TIME(0x0806AA4C, 0x0806AAE2, 0x08012D4D, IW, 0x04000200, 0x04000208, 0x04000004, 0x04000200, 0x04000200, 0x04000208,
+             0x04000208, 0x04000004, 0x04000004, IW, 0x040000BA, 0x040000BA, 0x040000BA, 0x040000BA, 0x040000BA, 0x040000BA,
+             0x040000BA, 0x040000C6, 0x040000C6, 0x040000C6, 0x040000C6, 0x040000C6, 0x040000C6, 0x040000C6, 0x040000D2,
+             0x040000D2, 0x040000D2, 0x040000D2, 0x040000D2, 0x040000D2, 0x040000D2, 0x040000DE, 0x040000DE, 0x040000DE,
+             0x040000DE, 0x040000DE, 0x040000DE, 0x040000DE);
         WriteSaveGame();
       }
       REG_WRITE16(REG_IE, irqEnable);

@@ -43,12 +43,13 @@ export const KINDS = {
     ],
   },
   iop: {
-    image: 0x00210800, step: 4,
+    // the scratchpad, the hardware and the SPU2 as far apart as the console has them, so one fold of 0x1F000000 serves
+    image: 0x00300800, step: 4,
     regions: [
       { at: 0x00000000, address: 0x00000000, bytes: 0x00200000, name: 'the IOP\'s memory' },
       { at: 0x00200000, address: 0x1F800000, bytes: 0x00000400, name: 'its scratchpad' },
       { at: 0x00201000, address: 0x1F801000, bytes: 0x0000F000, name: 'the hardware\'s registers' },
-      { at: 0x00210000, address: 0x1F900000, bytes: 0x00000800, name: 'the SPU2\'s registers' },
+      { at: 0x00300000, address: 0x1F900000, bytes: 0x00000800, name: 'the SPU2\'s registers' },
     ],
   },
   vu1: {

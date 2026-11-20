@@ -16,8 +16,10 @@
 /** A register a function's start pushes (0 to 12, 14 for lr), and where, from the stack pointer as it was called. */
 typedef struct { int8_t reg; int16_t slot; } gba_push;
 
-/** What a function's start does to the stack: its pushes, and how many bytes more it takes for its locals. */
-typedef struct { uint8_t count; const gba_push *pushes; uint16_t frame; } gba_frame;
+/** What a function's start does to the stack: its pushes, and how many bytes more it takes for its locals. `unproven`
+ *  is for a function whose code isn't proven to be the original's: its frame takes its room, so the frames below it
+ *  are where the console has them, but nothing is written for its pushes, and no register's value is known in it. */
+typedef struct { uint8_t count; const gba_push *pushes; uint16_t frame; uint8_t unproven; } gba_frame;
 
 /** The stack from `sp`, as the console's start leaves it for the game, with no register's value known. */
 void gba_stack_start(uint32_t sp);

@@ -170,12 +170,25 @@ void EngineInit(void) {
  *  then the wait for the screen's blank lines, in which what the tasks drew goes to the screen. */
 void EngineMainLoop(void) {
   while (TRUE) {
+    // (the frame's work is timed where the recording goes: the sound each frame, no link cable)
     gExecSoundMain = FALSE;
+#ifdef MATCHING
     if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) m4aSoundMain();
+#else
+    if (!(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) {
+      TIME(0x080008A4, 0x080008B8, 0x080977D9, IW, IW);
+      m4aSoundMain();
+    }
+#endif
 
     if (sLastCalledVblankFuncId == VBLANK_FUNC_ID_NONE) {
+      TIME(0x080008BA, 0x080008C4, 0x08001225, IW);
       GetInput();
       if (gMultiSioEnabled) gMultiSioStatusFlags = MultiSioMain(gMultiSioSend, gMultiSioRecv, 0);
+#ifndef MATCHING
+      else TIME(0x080008C6, 0x080008CC, 0x080008DD, IW);
+#endif
+      TIME(0x080008DC, 0x080008DE, 0x080016AD);
       TasksExec();
     }
 
@@ -220,6 +233,13 @@ void GetInput(void) {
 
   if (gInputRecorder.mode == RECORDER_RECORD) InputRecorderWrite(gInput);
   else if (gInputRecorder.mode == RECORDER_PLAYBACK) gInput = InputRecorderRead();
+#ifndef MATCHING
+  // (timed with the recorder off, and each button as one not held)
+  else {
+    TIME(0x08001224, 0x0800124E, 0x08001279, 0x04000130, IW, IW, IW);
+    TIME(0x08001278, 0x0800127A, 0x08001283);
+  }
+#endif
 
   gPressedKeys = (gInput ^ gPrevInput) & gInput;
   gReleasedKeys = (gInput ^ gPrevInput) & gPrevInput;
@@ -229,12 +249,20 @@ void GetInput(void) {
   for (i = 0; i < 10; i++) {
     if (!((gInput >> i) & 1)) {
       repeatKeyCounters[i] = firstIntervals[i];
+#ifndef MATCHING
+      if (i == 0) TIME(0x08001282, 0x080012C6, 0x080012FB, IW, IW, IW, IW, IW, IW, IW, IW, IW);
+      else TIME(0x080012AA, 0x080012C6, 0x080012FB, IW, IW, IW);
+#endif
     } else if (repeatKeyCounters[i] > 0) {
       repeatKeyCounters[i]--;
     } else {
       gRepeatedKeys |= 1 << i;
       repeatKeyCounters[i] = continuedHoldIntervals[i];
     }
+#ifndef MATCHING
+    if (i < 9) TIME(0x080012FA, 0x08001306, 0x080012AB);
+    else TIME(0x080012FA, 0x08001312, BACK);
+#endif
   }
 }
 

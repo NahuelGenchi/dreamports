@@ -3,8 +3,8 @@
 // same SIF calls, sending what the program itself holds, waits for the IOP's replies, and draws the flat program's
 // square standing still, with a GS LABEL write for each thing the SIF gave it. And its IOP module, written again as a
 // twin that the kit's stand-in for the IOP's loader starts: it reads its tone and its click from the module the EE sent,
-// writes each SPU2 register as the module does, in its order, sends the click to core 1 by DMA, and has a thread that
-// runs at each V-blank. The test fills in the numbers, which are the program's own (ps2-sound.mjs).
+// writes each SPU2 register as the module does, in its order, sends the click to core 1 by DMA, sets the pad up through
+// the SIO2, and has a thread that runs at each V-blank and reads the pad. The test fills in the numbers, which are the program's own (ps2-sound.mjs).
 
 #include "ps2.h"
 
@@ -32,7 +32,21 @@ static const uint16_t voices[][2] = @VOICES@;
 // the frames since the module's thread first woke
 static uint32_t frame;
 
+// a command to the pad through the SIO2, as the module sends it: how long it is each way, the first of the commands,
+// then each byte out and each byte back
+static uint8_t pad_answer[32];
+static void sio2(const uint8_t *command, uint32_t sent, uint32_t answered) {
+  iop_write32(0xBF808200, sent << 8 | answered << 18);
+  iop_write32(0xBF808268, 0x0C);
+  for (uint32_t i = 0; i < sent; i++) iop_write32(0xBF808260, command[i]);
+  for (uint32_t i = 0; i < answered; i++) pad_answer[i] = (uint8_t)iop_read32(0xBF808264);
+}
+
 static void module_frame(void) {
+  // the pad read, and what it says written back two bytes at a time where the sound chip takes no notice
+  static const uint8_t pad_read[] = @PAD_READ@;
+  sio2(pad_read, sizeof pad_read, @PAD_ASKED@);
+  for (int i = 0; i < (@PAD_ANSWER@ - 1) / 2; i++) W(@MMIX@, pad_answer[1 + i * 2] | pad_answer[2 + i * 2] << 8);
   if (frame == 0) {
     W(@ATTR@, @ATTR_PLAYING@);
     W(@VOICE0_VOLR@, @SWEEP_UP@);
@@ -83,6 +97,8 @@ static int module_start(int argc, char **argv) {
   iop_write32(0xBF801508, 0x01000201);
   W(CORE1 + @ATTR@, 0x8000);
   for (uint32_t i = 0; i < sizeof voices / sizeof voices[0]; i++) W(voices[i][0], voices[i][1]);
+  // the pad set to give the pressure on its buttons
+@PAD_SET_UP@
   // its thread, which waits for each V-blank, and its server's
   iop_each_vblank(module_frame);
   sif_register_rpc(@SERVER@, answer, MODULE + @RPC_BUFFER_IN_MODULE@);

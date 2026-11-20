@@ -7,7 +7,8 @@
 
 /** Gives the GS its memory, once. */
 void gs_power(void);
-/** Starts a frame's draw list again. */
+/** Starts a frame: its draw list again, and the V-blank it starts with, CSR's VSINT and its field and the interrupt
+ *  they raise. */
 void gs_list_start(void);
 /** The hash of what has been written since, as the proof tools hash the original's, and how many things that was. */
 uint32_t gs_list_hash(void);
@@ -25,6 +26,14 @@ void sif_iop_run(void);
 void iop_bios_power(void);
 void iop_vblank(void);
 void iop_threads(void);
+/** The pads on the SIO2 (pad.c): set as the console starts, given the frame's buttons, and the SIO2's registers and its
+ *  two DMA channels as the IOP reaches them. */
+void pad_power(void);
+void pad_hold(uint32_t held);
+void sio2_write(uint32_t address, uint32_t value);
+uint32_t sio2_read(uint32_t address);
+uint32_t sio2_dma_in(uint8_t *buffer, uint32_t block_size, uint32_t blocks);
+uint32_t sio2_dma_out(uint8_t *buffer, uint32_t block_size, uint32_t blocks);
 /** The IOP's interrupt lines the kit keeps: the sound chip's, then the two sound DMA channels' ended transfers. */
 uint32_t iop_lines(void);
 /** The sound chip (spu2.c): a register written or read, at its IOP address, a DMA transfer to or from a core, giving

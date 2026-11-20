@@ -37,8 +37,9 @@ const ELF = 0x7F454C46, MIPS = 8, EXECUTABLE = 2, IOP_MODULE = 0xFF80;
 const VU_PAIRS = 2048;
 // how many instructions an upload needs, outside the boot program's own vector unit sections, to count as code
 const LEAST_IN_DATA = 8;
-// how much of a file is read at once when looking for code in it
-const CHUNK = 1 << 24;
+// how much of a file is read at once when looking for code in it, a multiple of 8, and how much of the next piece is
+// read with it, so an upload or a program's header that starts near a piece's end is read whole
+const CHUNK = 1 << 24, OVERLAP = 256 * 8 + 8;
 
 /** The program in a player's copy: an ELF file as it is, or the one a disc boots. */
 export async function ps2Program(path) {
@@ -49,8 +50,8 @@ export async function ps2Program(path) {
   return program;
 }
 
-// an ELF file's sections: { name, type, flags, address, offset, size }
-function sectionsOf(program) {
+/** An ELF file's sections: { name, type, flags, address, offset, size }. */
+export function sectionsOf(program) {
   const sections = [], count = program.readUInt16LE(48), at = program.readUInt32LE(32);
   if (!at || at + count * 40 > program.length) return sections;
   const names = program.readUInt16LE(50) < count ? program.readUInt32LE(at + program.readUInt16LE(50) * 40 + 16) : 0;
@@ -231,9 +232,10 @@ function imageModules(image) {
  * 'iop', with a module inside an image or a program inside another file named after the file, as `IOPRP254.IMG:CDVDMAN`
  * or `DATA/GAME.ARC:0x1000`, and `uploads` every vector unit program outside the boot program's own vector unit
  * sections, `path` its file, or null for the boot program, and `at` where its first instruction is there: an EE
- * address in the boot program, or an offset in a file. Given an ELF file, it's the boot program alone.
+ * address in the boot program, or an offset in a file. Given an ELF file, it's the boot program alone. `chunk` is how
+ * much of a file is read at once, a multiple of 8, for a test to make small.
  */
-export async function ps2Disc(path, { progress = () => {} } = {}) {
+export async function ps2Disc(path, { progress = () => {}, chunk = CHUNK } = {}) {
   const boot = await ps2Program(path);
   const bootName = extname(path).toLowerCase() === '.elf' ? basename(path) : await bootFile(path);
   const code = { boot, bootName, programs: [], uploads: [] };
@@ -259,19 +261,20 @@ export async function ps2Disc(path, { progress = () => {} } = {}) {
         continue;
       }
       // any other file a chunk at a time, overlapping by an upload's length, for programs, modules and uploads in it
-      for (let at = 0; at < file.size; at += CHUNK) {
-        const bytes = await disc.read(file.name, at, CHUNK + 256 * 8 + 8);
+      for (let at = 0; at < file.size; at += chunk) {
+        const bytes = await disc.read(file.name, at, chunk + OVERLAP);
         const image = at === 0 ? imageModules(bytes.subarray(0, Math.min(bytes.length, file.size))) : [];
         for (const m of image) code.programs.push({ path: `${file.name}:${m.name}`, kind: 'iop', bytes: Buffer.from(m.bytes) });
         if (!image.length) {
-          for (let o = 0; o + 52 <= Math.min(bytes.length, CHUNK); o += 4) {
+          // every header that starts in this piece, the last ones read with the start of the next
+          for (let o = 0; o < chunk && o + 52 <= bytes.length; o += 4) {
             if (bytes.readUInt32BE(o) !== ELF || !headerKind(bytes.subarray(o, o + 52))) continue;
             const inner = await programIn(disc, file.name, at + o, file.size);
             if (inner) code.programs.push({ path: `${file.name}:0x${(at + o).toString(16).toUpperCase()}`, kind: headerKind(inner), bytes: inner });
           }
         }
-        for (const u of findVuUploads(bytes, { least: LEAST_IN_DATA })) if (u.at - 4 < CHUNK) code.uploads.push({ path: file.name, ...u, at: at + u.at });
-        done += Math.min(CHUNK, file.size - at);
+        for (const u of findVuUploads(bytes, { least: LEAST_IN_DATA })) if (u.at - 4 < chunk) code.uploads.push({ path: file.name, ...u, at: at + u.at });
+        done += Math.min(chunk, file.size - at);
         progress(done, total);
       }
     }

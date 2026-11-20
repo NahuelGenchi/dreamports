@@ -25,6 +25,7 @@
 //   misaligned reads a word where none starts
 //   vu0        doubles a0 on vector unit 0, in macro mode
 //   shine      reached only through the table of functions
+//   ten        the sum of ten arguments, the last two on the stack, eight bytes apart from where sp points
 // and after them the program's values, the switch's table, the table of functions and a buffer.
 
 /** Where the program loads and starts, and where its stack starts. */
@@ -110,12 +111,14 @@ const PROGRAM = [
   here('misaligned'), lw('v0', 1, 'a0'), jr('ra'), nop,
   here('vu0'), qmtc2('a0', 1), vadd(2, 1, 1), qmfc2('v0', 2), jr('ra'), nop,
   here('shine'), jr('ra'), addiu('v0', 'zero', 1),
+  here('ten'), lw('v0', 0, 'sp'), lw('v1', 8, 'sp'), addu('v0', 'v0', 'v1'), addu('v0', 'v0', 'a0'), addu('v0', 'v0', 'a1'), addu('v0', 'v0', 'a2'),
+  addu('v0', 'v0', 'a3'), addu('v0', 'v0', 't0'), addu('v0', 'v0', 't1'), addu('v0', 'v0', 't2'), jr('ra'), addu('v0', 'v0', 't3'),
   here('end'),
 ];
 
 /** The program's functions, in order, each from its label to the next one's. */
 export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'scale', 'eight', 'copy16', 'biggest', 'likely', 'pick',
-  'hardware', 'kernel', 'forever', 'misaligned', 'vu0', 'shine'];
+  'hardware', 'kernel', 'forever', 'misaligned', 'vu0', 'shine', 'ten'];
 
 /** The program's words where it loads, every label's address, and each function's { name, address, size }. */
 export function madeUpProgram() {

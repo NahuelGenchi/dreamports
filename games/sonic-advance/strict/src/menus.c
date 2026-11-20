@@ -1,5 +1,6 @@
 // The screens of menus: their pictures, and their fade in and out through a window.
 #include "ui.h"
+#include "time.h"
 #include "core.h"
 
 #define DISPCNT_WIN0_ON 0x2000
@@ -121,6 +122,19 @@ u8 sub_805423C(struct StrcUi_805423C *param0) {
     param0->unk6 = r2 + param0->unk8;
     if (param0->unk6 >= 0x2000) {
       param0->unk6 = 0x2000;
+      // (timed along the one way the language screen's fade ends: the second window, no blend flags, brightness
+      // from unk6, at its most)
+      TIME(0x08054208, 0x0805421E, 0x0805422F, IW, IW);
+      TIME(0x0805422E, 0x0805423A, 0x08054259, IW, IW);
+      TIME(0x08054258, 0x08054264, 0x0805427D);
+      TIME(0x0805427C, 0x08054282, 0x08054297, IW, IW);
+      TIME(0x08054296, 0x080542B0, 0x080542CF, IW, IW, IW, IW);
+      TIME(0x080542CE, 0x080542E4, 0x080542F1, IW, IW, IW, IW);
+      TIME(0x080542F0, 0x08054306, 0x08054313, IW, IW, IW);
+      TIME(0x08054312, 0x0805431C, 0x08054323, IW, IW, IW);
+      TIME(0x08054322, 0x08054330, 0x08054349, IW, IW, IW, IW);
+      TIME(0x08054348, 0x08054354, 0x08054361, IW, IW);
+      TIME(0x08054360, 0x0805436C, BACK, IW);
       return TRUE;
     }
     return FALSE;

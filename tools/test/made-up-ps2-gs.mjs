@@ -2,7 +2,8 @@
 // (kit/ps2/c/gs.c), each run on the console's real emulator and as a Dreamport in C on the kit (ps2-gs.mjs). Each is a
 // list of steps, the same for both: what goes into the console's memory with the program, what it does as it starts, and
 // what it does each frame, the frames taking turns. A step sends a packet to the GIF, reads a picture back from the GS
-// into a packet's place, or writes half of one of the GS's privileged registers. The EE program does each step as a
+// into a packet's place, writes half of one of the GS's privileged registers, reads one into a packet's place, waits
+// for one of its bits, or gives the GS's interrupt a handler. The EE program does each step as a
 // game does, by DMA and by storing to the register, and the Dreamport does the same steps through the kit
 // (made-up-ps2-gs.c), so the two give the GS the same things in the same order.
 //
@@ -13,7 +14,7 @@
 // it comes in two: one that draws into a 32-bit framebuffer what has no 16-bit colours, and one that draws into a
 // 16-bit framebuffer what has.
 
-import { ZERO, T0, T1, T2, T3, addiu, andi, lw, sw, li, here, beq, bne, j, NOP, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, elfOf } from './made-up-ps2.mjs';
+import { ZERO, T0, T1, T2, T3, lui, ori, addiu, andi, lw, sw, li, here, beq, bne, j, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, elfOf } from './made-up-ps2.mjs';
 
 // ---- Packets for the GIF, as 32-bit words
 
@@ -75,8 +76,8 @@ function tex0(buffer, w, h, { palette, csm = 0, csa = 0, cld = 0 } = {}) {
 }
 /** A sprite at (x, y) showing the texture's texels from (0, 0) at their size, one pixel each. */
 const sprite = (x, y, w, h) => [write(0x03, UV(0, 0)), write(0x05, XY(x, y)), write(0x03, UV(w, h)), write(0x05, XY(x + w, y + h))];
-/** Where each picture goes on the screen: as high as it can go, the leftmost of the places as high, a pixel apart. */
-function placer() {
+/** Where each picture goes on the screen: as high as it can go, the leftmost of the places as high, `gap` pixels apart. */
+function placer(gap = 1) {
   const top = Array(WIDTH).fill(0);
   return (w, h) => {
     let best = null;
@@ -85,7 +86,7 @@ function placer() {
       if (!best || y < best[1]) best = [x, y];
     }
     if (!best || best[1] + h > HEIGHT) throw new Error(`no room on the screen for ${w} by ${h}`);
-    for (let x = best[0]; x < Math.min(WIDTH, best[0] + w + 1); x++) top[x] = best[1] + h + 1;
+    for (let x = best[0]; x < Math.min(WIDTH, best[0] + w + gap); x++) top[x] = best[1] + h + gap;
     return best;
   };
 }
@@ -109,12 +110,25 @@ function program(build, shownFormat = PSM.CT32) {
     blob.push(...padded(list));
     return at;
   };
-  const { start, frames } = build(place);
+  const { start, frames, ...more } = build(place);
   const made = elfOf(at => code(at, shownFormat, start, frames), blob);
-  return { ...made, blob, start, frames, shownFormat };
+  return { ...made, ...more, blob, start, frames, shownFormat };
 }
 
 const GS_BUSDIR = 0x12001040, VIF1_STAT = 0x10003C00, FDR = 0x00800000;
+export const GS_CSR = GS + 0x1000, GS_IMR = GS + 0x1010, GS_SIGLBLID = GS + 0x1080;
+const V0 = 2, V1 = 3, A0 = 4, A1 = 5, A2 = 6, A3 = 7, T4 = 12, SP = 29, RA = 31, SYSCALL = 0x0C;
+const addu = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x21) >>> 0, jr = rs => (rs << 21 | 8) >>> 0;
+const move = (rd, rs) => addu(rd, rs, ZERO);
+// where the kernel puts the arguments it gives a program as it starts it, the file's own name on that computer among
+// them: well away from the program's own bytes, which are the same on every computer
+const ARGUMENTS = 0x01000000;
+/** The GS interrupt's handler, as the console's kernel calls it with its argument in A1, the address of a word: it
+ *  clears SIGNAL in CSR when it's set, and adds 1 to the word for it. */
+const HANDLER = [
+  lui(T0, GS >>> 16), ori(T0, T0, 0x1000), lw(T1, 0, T0), andi(T1, T1, 1), sw(T1, 0, T0),
+  lw(T0, 0, A1), addu(T0, T0, T1), sw(T0, 0, A1), addiu(V0, ZERO, 0), jr(RA), NOP,
+];
 // a DMA transfer of `qwords` from or to the address in T2, on the channel at `channel`, waiting until it's done
 const dma = (channel, qwords, chcr, name) => [
   ...li(T0, channel), sw(T2, MADR, T0), ...li(T1, qwords), sw(T1, QWC, T0), addiu(T1, ZERO, chcr), sw(T1, 0, T0),
@@ -132,6 +146,17 @@ function stepCode(blobAt, step) {
       ...li(T0, VIF1_STAT), sw(ZERO, 0, T0), ...li(T0, GS_BUSDIR), sw(ZERO, 0, T0),
     ];
   }
+  if (step.peek !== undefined) return [...li(T0, step.peek), lw(T1, 0, T0), ...li(T2, blobAt + step.at * 4), sw(T1, 0, T2)];
+  if (step.wait !== undefined) {
+    return [...li(T0, step.wait), here(name), lw(T1, 0, T0), andi(T1, T1, step.mask), (step.clear ? bne : beq)(T1, ZERO, name), NOP];
+  }
+  if (step.handler !== undefined) {
+    // AddIntcHandler(INTC_GS, handler, 0, the word), then EnableIntc(INTC_GS)
+    return [
+      addiu(V1, ZERO, 0x10), addiu(A0, ZERO, 0), ...li(A1, blobAt + step.handler * 4), addiu(A2, ZERO, 0), ...li(A3, blobAt + step.counter * 4), SYSCALL,
+      addiu(V1, ZERO, 0x14), addiu(A0, ZERO, 0), SYSCALL,
+    ];
+  }
   return [...li(T0, step.screen), ...li(T1, step.value), sw(T1, 0, T0)];
 }
 function code(blobAt, shownFormat, start, frames) {
@@ -141,6 +166,9 @@ function code(blobAt, shownFormat, start, frames) {
     here(`turn${i}`), ...steps.flatMap(step => stepCode(blobAt, step)), j('next'), NOP,
   ]);
   return [
+    // SetupThread, as a program's start does, which makes it the kernel's main thread, with a stack at the top of memory:
+    // the kernel's handling of an interrupt needs one
+    addiu(A0, ZERO, 0), addiu(A1, ZERO, -1), addiu(A2, ZERO, 0), ...li(A3, ARGUMENTS), addiu(T4, ZERO, 0), addiu(V1, ZERO, 0x3C), SYSCALL, move(SP, V0),
     ...setUp(blobAt, shownFormat), ...start.flatMap(step => stepCode(blobAt, step)), addiu(S2, ZERO, 0),
     here('frame'),
     ...waitForVBlank,
@@ -151,6 +179,227 @@ function code(blobAt, shownFormat, start, frames) {
   ];
 }
 const gif = (at, list) => ({ gif: at, qwords: list.length / 4 });
+const screen = (address, value) => ({ screen: address, value: value >>> 0 });
+const peek = (address, at) => ({ peek: address, at });
+
+// ---- The modes program
+
+/** PRMODE and the masks. Each frame it draws a textured sprite with PRMODECONT off, PRMODE asking for a texture, texels
+ *  by UV and context 2, whose scissor, offset and texture differ from context 1's; two sprites with FBMSK keeping whole
+ *  channels of what's under them; and three sprites over a 32-bit depth buffer, the middle one with ZMSK, so the third
+ *  passes the depth test where the second didn't write its depth. */
+export function madeUpPs2Modes() {
+  return program(place => {
+    // the texture past the depth buffer, which takes pages 140 to 279
+    const texture = { block: 300 * 32, width: 1, format: PSM.CT32 };
+    const texels = Array.from({ length: 256 }, (_, n) => (0x80000000 | (n & 15) * 16 | (n >> 4) * 16 << 8 | ((n & 15) ^ (n >> 4)) * 16 << 16) >>> 0);
+    const upload16 = upload(texture, 0, 0, 16, 16, texels);
+    const DEPTH = 140, rect = (x0, y0, x1, y1, z = 0) => [write(0x05, XY(x0, y0), z), write(0x05, XY(x1, y1), z)];
+    const drawn = [
+      ...startFrame(0, PSM.CT32, 0x80402010),
+      // context 2: a scissor of its own, its places offset by (32, 16), and the texture
+      write(0x4D, FBW << 16), write(0x41, 100 | 299 << 16, 50 | 149 << 16), write(0x19, 32 << 4, 16 << 4), write(0x48, 0x30000), write(0x4F, 0, 1),
+      ...[tex0(texture, 16, 16)].map(([low, high]) => [low, high, 0x07, 0]), write(0x15, 0), write(0x09, 0),
+      write(0x1A, 0), write(0x1B, 1 << 4 | 1 << 8 | 1 << 9), write(0x00, 6), write(0x01, 0x80808080, 0x3F800000),
+      write(0x03, UV(0, 0)), write(0x05, XY(80, 30)), write(0x03, UV(240, 140)), write(0x05, XY(320, 170)),
+      write(0x1A, 1), write(0x00, 6),
+      // FBMSK: green kept, then red and blue kept, from what's under
+      write(0x01, 0x80F0F0F0, 0x3F800000), write(0x4C, FBW << 16, 0x0000FF00), ...rect(340, 30, 440, 130),
+      write(0x4C, FBW << 16, 0x00FF00FF), ...rect(400, 90, 500, 190), write(0x4C, FBW << 16),
+      // a 32-bit depth buffer after the framebuffer, cleared to 0 with every colour bit masked
+      write(0x4E, DEPTH), write(0x4C, FBW << 16, 0xFFFFFFFF), ...rect(0, 200, 640, 448, 0), write(0x4C, FBW << 16),
+      // a pixel passes when it's as near or nearer: the second sprite doesn't write its depth, so the third passes over it
+      write(0x47, 0x50000), write(0x01, 0x802020F0, 0x3F800000), ...rect(40, 220, 240, 420, 0x10000000),
+      write(0x4E, DEPTH, 1), write(0x01, 0x8020F020, 0x3F800000), ...rect(140, 260, 340, 380, 0x30000000),
+      write(0x4E, DEPTH), write(0x01, 0x80F02020, 0x3F800000), ...rect(100, 300, 400, 440, 0x20000000),
+      write(0x47, 0x30000), write(0x4E, 0, 1),
+    ];
+    const frame = writes(drawn, true);
+    return { start: [gif(place(upload16), upload16)], frames: [[gif(place(frame), frame)]] };
+  });
+}
+
+// ---- The buffers program
+
+/** What only the strict reference can judge, as the emulator keeps what the GS draws on its graphics card: a picture
+ *  the GS drew, with its depths, read as a texture in other formats; pictures copied from one place in memory to
+ *  another, onto themselves in each of TRXPOS's four orders and into another layout; the 16-bit depths' layouts; and,
+ *  with `readsBack`, the drawn picture read back, which the emulator can't do, so that one is the strict reference's
+ *  alone and its draw list isn't the emulator's. */
+export function madeUpPs2Buffers(readsBack = false) {
+  return program(place => {
+    const start = [], frame = [], sendOnce = list => start.push(gif(place(list), list));
+    const source = at(270, PSM.CT32), z16 = at(271, PSM.Z16), z16s = at(272, PSM.Z16S);
+    const p8 = palette(0, PSM.CT32), p4 = palette(4, PSM.CT32);
+    sendOnce(upload(source, 0, 0, 64, 64, pattern(64 * 64, 32, 41)));
+    sendOnce(upload(z16, 0, 0, 64, 64, pattern(64 * 64, 16, 42)));
+    sendOnce(upload(z16s, 0, 0, 64, 64, pattern(64 * 64, 16, 43)));
+    sendOnce(upload(p8, 0, 0, 16, 16, squareOrder(Array.from({ length: 256 }, (_, i) => entry32(i, 44)))));
+    sendOnce(upload(p4, 0, 0, 8, 2, Array.from({ length: 16 }, (_, i) => entry32(i, 45))));
+    // the picture the GS draws: 128 by 64 at page 150, with 16-bit depths at page 156, a texture and flat sprites over it
+    const drawn = { block: 150 * 32, width: 2, format: PSM.CT32 }, depths = { block: 156 * 32, width: 2, format: PSM.Z16S };
+    const flat = (colour, x0, y0, x1, y1, z) => [write(0x01, colour, 0x3F800000), write(0x05, XY(x0, y0), z), write(0x05, XY(x1, y1), z)];
+    const list = [
+      write(0x4C, 150 | 2 << 16), write(0x40, 127 << 16, 63 << 16), write(0x18, 0), write(0x4E, 156 | 0xA << 24), write(0x1A, 1), write(0x47, 0x30000),
+      write(0x3B, 0x80, 0x80), write(0x14, 0), write(0x08, 0), write(0x3F, 0),
+      write(0x00, 6), ...flat(0x80C08040, 0, 0, 128, 64, 0x1111),
+      tex0(source, 64, 64), write(0x00, 6 | 1 << 4 | 1 << 8), write(0x01, 0x80808080, 0x3F800000),
+      write(0x03, UV(0, 0)), write(0x05, XY(8, 4), 0x7777), write(0x03, UV(64, 48)), write(0x05, XY(72, 52), 0x7777),
+      write(0x00, 6), ...flat(0x4020E0A0, 60, 20, 120, 60, 0xCCCC), ...flat(0xFF1060F0, 90, 2, 126, 30, 0xFFFF),
+    ];
+    // copies: the picture into four places, then each onto itself, moved along, in one of TRXPOS's orders, the picture
+    // into the 32-bit depths' layout, and 16-bit depths into the other 16-bit layout
+    const copy = (from, to, sx, sy, dx, dy, w, h, order = 0) => [
+      write(0x50, from.block | from.width << 16 | from.format << 24, to.block | to.width << 16 | to.format << 24),
+      write(0x51, sx | sy << 16, dx | dy << 16 | order << 27), size(w, h), write(0x53, 2),
+    ];
+    const copies = [0, 1, 2, 3].map(order => ({ block: (160 + order * 4) * 32, width: 2, format: PSM.CT32 }));
+    copies.forEach((to, order) => list.push(...copy(drawn, to, 0, 0, 0, 0, 128, 64), ...copy(to, to, 0, 0, 16, 8, 96, 48, order)));
+    // the same with the destination before the source, in each order, and with it more than a page on, across and down
+    const before = [0, 1, 2, 3].map(order => ({ block: (192 + order * 4) * 32, width: 2, format: PSM.CT32 }));
+    before.forEach((to, order) => list.push(...copy(drawn, to, 0, 0, 0, 0, 128, 64), ...copy(to, to, 16, 8, 0, 0, 96, 48, order)));
+    const far = [[70, 0], [0, 34], [70, 34]].map((_, n) => ({ block: (232 + n * 8) * 32, width: 2, format: PSM.CT32 }));
+    far.forEach((to, n) => list.push(...copy(drawn, to, 0, 0, 0, 0, 128, 64), ...copy(to, to, 0, 0, [70, 0, 70][n], [0, 34, 34][n], 58, 30)));
+    const asDepths = { block: 180 * 32, width: 2, format: PSM.Z32 }, otherLayout = { block: 184 * 32, width: 1, format: PSM.CT16S };
+    list.push(...copy(drawn, asDepths, 0, 0, 0, 0, 128, 64), ...copy({ ...z16, format: PSM.CT16 }, otherLayout, 0, 0, 0, 0, 64, 64), write(0x3F, 0));
+    const first = writes(list, true);
+    frame.push(gif(place(first), first));
+    const back = { block: 260 * 32, width: 1, format: PSM.CT32 };
+    if (readsBack) {
+      // 64 by 32 of the drawn picture read back, and moved in again beside it
+      const out = readOut(drawn, 40, 16, 64, 32), again = upload(back, 0, 0, 64, 32, Array(64 * 32).fill(0)), where = place(again);
+      frame.push(gif(place(out), out), { read: where + UPLOAD_DATA, qwords: qwordsOf(PSM.CT32, 64, 32) }, gif(where, again));
+    }
+    // the screen: each of them as a texture, side by side
+    const room = placer(0), shown = [];
+    const show = (texture, w, h, options, tw = w, th = h) => {
+      const [x, y] = room(w, h);
+      shown.push(tex0(texture, tw, th, options), ...sprite(x, y, w, h));
+      return [x, y];
+    };
+    const as = (buffer, format, width = buffer.width) => ({ block: buffer.block, width, format });
+    show(drawn, 128, 64);
+    show(as(drawn, PSM.T8, 4), 128, 128, { palette: p8, cld: 1 }, 256, 128);
+    show(as(drawn, PSM.T4, 4), 128, 128, { palette: p4, cld: 1 }, 256, 256);
+    show(as(drawn, PSM.CT16), 128, 128);
+    show(as(drawn, PSM.CT16S), 128, 64, undefined, 128, 128);
+    show(as(drawn, PSM.T8H), 128, 64, { palette: p8, cld: 1 });
+    show(as(drawn, PSM.Z32), 128, 64);
+    show(as(depths, PSM.Z16S), 128, 64);
+    show(as(depths, PSM.CT16S), 128, 64);
+    show(as(depths, PSM.CT16), 128, 64);
+    for (const to of [...copies, ...before, ...far]) show(to, 128, 64);
+    show(as(asDepths, PSM.CT32), 128, 64);
+    show(otherLayout, 64, 64);
+    show(as(otherLayout, PSM.CT16), 64, 64);
+    show(z16, 64, 64);
+    show(as(z16, PSM.CT16), 64, 64);
+    show(z16s, 64, 64);
+    show(as(z16s, PSM.T8, 2), 128, 64, { palette: p8, cld: 1 });
+    const places = {};
+    if (readsBack) {
+      places.back = show(back, 64, 32);
+      // and the same 64 by 32 of the picture itself, to be the same as what was read
+      const [x, y] = room(64, 32);
+      shown.push(tex0(drawn, 128, 64), write(0x03, UV(40, 16)), write(0x05, XY(x, y)), write(0x03, UV(104, 48)), write(0x05, XY(x + 64, y + 32)));
+      places.itself = [x, y];
+    }
+    const second = writes([...startFrame(0, PSM.CT32, 0x80402010), ...shown], true);
+    frame.push(gif(place(second), second));
+    return { start, frames: [frame], places };
+  });
+}
+
+// ---- The effects program
+
+/** Fog, dithering and points, into a framebuffer of `depth` bits, 32 or 16. Fog: flat sprites from no fog to all of
+ *  it, a textured one in every colour, and sprites whose fog is FOG's and the last XYZF's. Dithering, which only a
+ *  16-bit framebuffer shows: a textured sprite in every colour with DIMX's sixteen numbers all different, kept in
+ *  range by COLCLAMP and not, and blended past a byte's range, both ways. Points: 256 of them at every sixteenth of a
+ *  pixel across and down, some textured, some in the fog. */
+export function madeUpPs2Effects(depth) {
+  return program(place => {
+    const texture = at(270, PSM.CT32), upload64 = upload(texture, 0, 0, 64, 64, pattern(64 * 64, 32, 51));
+    const withFog = (x, y, fog, z = 0) => write(0x04, XY(x, y), (z | fog << 24) >>> 0), plain = (x, y) => write(0x05, XY(x, y));
+    const textured = (x, y, last) => [write(0x03, UV(0, 0)), last(x, y), write(0x03, UV(64, 64)), last(x + 64, y + 64)];
+    const list = [
+      ...startFrame(0, depth === 16 ? PSM.CT16 : PSM.CT32, 0x80402010), tex0(texture, 64, 64), write(0x3D, 0x00C04020),
+      // fog: flat sprites, their fog from none to all
+      write(0x00, 6 | 1 << 5), write(0x01, 0x8020F0A0, 0x3F800000),
+      ...[0, 1, 64, 128, 200, 255].flatMap((fog, n) => [withFog(8 + n * 40, 8, fog), withFog(40 + n * 40, 40, fog)]),
+      // FOG's fog, then an XYZF's that the sprite after it keeps
+      write(0x0A, 0, 90 << 24), plain(248, 8), plain(280, 40), withFog(288, 8, 30), withFog(320, 40, 30), plain(328, 8), plain(360, 40),
+      // a textured sprite in the fog
+      write(0x00, 6 | 1 << 4 | 1 << 5 | 1 << 8), write(0x01, 0x80808080, 0x3F800000), ...textured(8, 48, (x, y) => withFog(x, y, 100)),
+      // dithering: DIMX's numbers 0 to 7, as -4 to 3, in two orders, with COLCLAMP on and off
+      write(0x00, 6 | 1 << 4 | 1 << 8), write(0x45, 1), write(0x44, 0x67452301, 0x10325476),
+      write(0x46, 1), ...textured(80, 48, plain), write(0x46, 0), ...textured(152, 48, plain),
+      // and blended, the sprite's colour added to what's there, past a byte's range
+      write(0x00, 6 | 1 << 4 | 1 << 6 | 1 << 8), write(0x42, 0x68, 0x80),
+      write(0x46, 1), ...textured(224, 48, plain), write(0x46, 0), ...textured(296, 48, plain), write(0x46, 1), write(0x45, 0),
+      // points: at every sixteenth of a pixel across and down, their colours from their places
+      write(0x00, 0),
+      ...Array.from({ length: 256 }, (_, n) => [write(0x01, (0x80000000 | (n * 37 & 255) | (n * 91 & 255) << 8 | (n * 53 & 255) << 16) >>> 0, 0x3F800000), write(0x05, ((8 * 16 + (n & 15) * 49) | (128 * 16 + (n >> 4) * 49) << 16) >>> 0)]).flat(),
+      // in the fog, and textured, a texel each
+      write(0x00, 0 | 1 << 5),
+      ...Array.from({ length: 64 }, (_, n) => [write(0x01, 0x80F0F0F0, 0x3F800000), write(0x04, ((80 * 16 + (n & 7) * 35) | (128 * 16 + (n >> 3) * 35) << 16) >>> 0, n * 4 << 24)]).flat(),
+      write(0x00, 0 | 1 << 4 | 1 << 8), write(0x01, 0x80808080, 0x3F800000),
+      ...Array.from({ length: 256 }, (_, n) => [write(0x03, ((n & 15) * 67 | (n >> 4) * 67 << 16) >>> 0), write(0x05, ((120 * 16 + (n & 15) * 33) | (128 * 16 + (n >> 4) * 33) << 16) >>> 0)]).flat(),
+    ];
+    const frame = writes(list, true);
+    return { start: [gif(place(upload64), upload64)], frames: [[gif(place(frame), frame)]] };
+  }, depth === 16 ? PSM.CT16 : PSM.CT32);
+}
+
+// ---- The masks program
+
+/** SCANMSK and FBMSK bit by bit, which Play! doesn't do exactly, for the strict reference to judge: sprites kept off
+ *  even lines, off odd lines and with SCANMSK's other value, and two that keep some bits of each channel. */
+export function madeUpPs2Masks() {
+  return program(place => {
+    const rect = (colour, x0, y0, x1, y1) => [write(0x01, colour, 0x3F800000), write(0x05, XY(x0, y0)), write(0x05, XY(x1, y1))];
+    const drawn = [
+      ...startFrame(0, PSM.CT32, 0x80402010), write(0x00, 6),
+      write(0x22, 2), ...rect(0x80F0F0F0, 20, 20, 220, 220), write(0x22, 3), ...rect(0x8020F0F0, 120, 120, 320, 320),
+      write(0x22, 1), ...rect(0x80F020F0, 260, 20, 360, 120), write(0x22, 0),
+      write(0x4C, FBW << 16, 0x0F3C55AA), ...rect(0xFFFFFFFF, 400, 20, 600, 220),
+      write(0x4C, FBW << 16, 0xF0C3AA55), ...rect(0x00000000, 450, 150, 620, 300), write(0x4C, FBW << 16),
+    ];
+    const frame = writes(drawn, true);
+    return { start: [], frames: [[gif(place(frame), frame)]] };
+  });
+}
+
+// ---- The events program
+
+/** The GS's status, CSR, with what SIGNAL, FINISH and LABEL leave in it and in SIGLBLID, IMR, and the GS's interrupt.
+ *  As it starts it reads IMR, unmasks SIGNAL alone and gives the interrupt a handler that clears SIGNAL and counts it.
+ *  Each frame it sends SIGNAL, LABEL and FINISH, waits for FINISH and for the handler, reads CSR, SIGLBLID and IMR,
+ *  clears FINISH and reads CSR again, and draws a sprite for each value read, in its colour, and one for the count,
+ *  which the handler keeps in its sprite's colour: so every value read is in the frame's draw list and its picture. */
+export function madeUpPs2Events() {
+  return program(place => {
+    const handler = place(HANDLER);
+    const send = place(writes([write(0x60, 0xBEEF, 0xFFFF), write(0x62, 0x12340000, 0xFFFF0000), write(0x61, 0)], true));
+    const values = ['csr', 'sigid', 'lblid', 'imr', 'csrAfter', 'imrBefore', 'imrBeforeHigh', 'count'];
+    const room = placer(), sprites = values.map(() => {
+      const [x, y] = room(64, 64);
+      return [write(0x01, 0, 0x3F800000), write(0x05, XY(x, y)), write(0x05, XY(x + 64, y + 64))];
+    });
+    const drawn = [...startFrame(0, PSM.CT32, 0x80402010), write(0x00, 6), ...sprites.flat()];
+    const frame = place(writes(drawn, true));
+    // where each sprite's colour is: after the tag, its first write
+    const colour = Object.fromEntries(values.map((name, i) => [name, frame + 4 + (drawn.length - sprites.flat().length + i * 3) * 4]));
+    return {
+      start: [peek(GS_IMR, colour.imrBefore), peek(GS_IMR + 4, colour.imrBeforeHigh), screen(GS_IMR, 0x7E00), { handler, counter: colour.count }],
+      frames: [[
+        { gif: send, qwords: 4 }, { wait: GS_CSR, mask: 2 }, { wait: GS_CSR, mask: 1, clear: true },
+        peek(GS_CSR, colour.csr), peek(GS_SIGLBLID, colour.sigid), peek(GS_SIGLBLID + 4, colour.lblid), peek(GS_IMR, colour.imr),
+        screen(GS_CSR, 2), peek(GS_CSR, colour.csrAfter), { gif: frame, qwords: (drawn.length + 1) },
+      ]],
+    };
+  });
+}
 
 // ---- The memory program
 
