@@ -24,6 +24,7 @@ extern int orig_bank;                // the bank switched in at $8000
 extern int orig_astray;              // reads where nothing answers on the cartridge
 extern int orig_bank_reads;          // reads of $8000-$BFFF on a cartridge that switches what's there
 extern uint8_t orig_stored[0x100];   // the bytes of the stack's page stored to other than by pushing
+extern uint8_t orig_lowest;          // the lowest the stack pointer went in the last call
 extern uint8_t orig_read[0x800];     // the bytes of the work memory the function read, or worked on
 // the instructions the last call ran: where each is in the program, and how each went on, by its place
 enum { TWIN_WENT_ELSEWHERE = 2, TWIN_WENT_ON = 4 };
@@ -31,9 +32,13 @@ extern uint32_t *orig_ran_at;
 extern uint8_t *orig_ran_ways;
 extern uint32_t orig_ran_count;
 void orig_init(const uint8_t *prg, uint32_t size, int mapper);
-/** Runs the function at `pc`, with `bank` at $8000, from `r` and `flags`, until it returns. 0 when it returned with
- *  the stack where it was, 1 when it ran too long, 2 when the processor jammed, 3 when it came back with the stack
- *  elsewhere. `r` gets what it left, and `cycles` how long it took, from its first instruction to the end of its RTS. */
+// where a call comes back to, which the JSR that called it leaves on the stack, above S, high byte first, as the address before it
+#define TWIN_RETURN_TO 0x4100
+/** Runs the function at `pc`, with `bank` at $8000, from `r`, until it returns. The stack pointer it starts with is
+ *  `r->S`, with the address it comes back to above it, which the call writes in its memory, as a JSR does. 0 when it
+ *  returned with the stack where it was, 1 when it ran too long, 2 when the processor jammed, 3 when it came back with
+ *  the stack elsewhere. `r` gets what it left, and `cycles` how long it took, from its first instruction to the end of
+ *  its RTS. */
 int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles);
 
 // ---- the twin's side (kit.c), which the game's C runs on
