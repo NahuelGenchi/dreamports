@@ -15,15 +15,16 @@ name: Check
 # test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
 # test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
 # npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
-# and npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
-# and reads the program an eighth gives the sound processor, and npm run test:snes-twin, which checks its twins against
-# it, and npm run test:snes-kit, which proves the Super Nintendo's kit in C against Snes9x with a ninth and a tenth. A pull
+# npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
+# and reads the program a ninth gives the sound processor, npm run test:snes-twin, which checks its twins against it,
+# npm run test:snes-kit, which proves the Super Nintendo's kit in C against Snes9x with programs of the project's
+# own, and npm run test:n64-call, which runs the functions of an eighth in Parallel N64's own processor. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
-# The tests run in four jobs side by side, as one after another they came near the 15-minute limit (#1503). The check
-# main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only when
-# all four have.
+# The tests run in six jobs side by side, as one after another they came near the 15-minute limit (#1503), the Super
+# Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and the first-entry bot read,
+# is the last job, Check, which passes only when all six have.
 on:
   pull_request:
 
@@ -45,18 +46,24 @@ jobs:
               npm run check
               npm run build
               npm run test:game
-          # the kits and the consoles' emulators, and the Super Nintendo's processor running one function at a time, its
-          # emulator saying what ran for the code map, and its function check
+          # the kits and the consoles' emulators
           - part: consoles
             run: |
               npm run test:c-kit
               npm run test:consoles
               npm run test:real-console
               npm run test:ps1-kit
+          # the Super Nintendo: its processor running one function at a time, its emulator saying what ran for the code
+          # map, its function check, and the first half of its kit's programs, proven against Snes9x
+          - part: snes
+            run: |
               npm run test:snes-call
               npm run test:real-snes
               npm run test:snes-twin
-              npm run test:snes-kit
+              npm run test:snes-kit -- --half 1
+          # the second half of the Super Nintendo kit's programs, beside the first
+          - part: snes kit
+            run: npm run test:snes-kit -- --half 2
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
@@ -79,6 +86,7 @@ jobs:
               npm run test:ps1-twin
               npm run test:ps1-gcc
               npm run test:ps1-match
+              npm run test:n64-call
               npm run test:same-memory
               npm run test:nes-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
