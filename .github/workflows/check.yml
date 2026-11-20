@@ -14,12 +14,12 @@ name: Check
 # tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
 # test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
 # test:ps2-twin-programs, which does the same for a made-up disc's IOP module and second EE program, and
-# npm run test:n64-call and test:n64-twin, which run the functions of a seventh in Parallel N64's own processor and
+# npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816, and
+# npm run test:n64-call and test:n64-twin, which run the functions of an eighth in Parallel N64's own processor and
 # check its twins against them, and npm run test:n64-match, which builds IDO from its translation's source and tries
-# match on the Nintendo 64 with an eighth, and npm run test:n64-kit, which proves the Nintendo 64's kit in C against
-# Parallel N64 with a ninth, its RSP's microcodes and every sum of its vector unit among it, and npm run
-# test:snes-call, which runs the functions of a tenth, a Super Nintendo cartridge, in Snes9x's own 65816. A pull
-# request's code runs here, with a token that can only read and no secrets.
+# match on the Nintendo 64 with a ninth, and npm run test:n64-kit, which proves the Nintendo 64's kit in C against
+# Parallel N64 with a tenth, its RSP's microcodes and every sum of its vector unit among it. A pull request's code
+# runs here, with a token that can only read and no secrets.
 #
 # The tests run in four jobs side by side, as one after another they came near the 15-minute limit (#1503). The check
 # main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only when
@@ -47,8 +47,8 @@ jobs:
               npm run build
               npm run test:game
               npm run test:n64-kit
-          # the kits and the consoles' emulators, the Nintendo 64's function check, here as the functions job is near its
-          # time, and the Super Nintendo's processor running one function at a time
+          # the kits and the consoles' emulators, the Super Nintendo's processor running one function at a time, and the
+          # Nintendo 64's function check, here as the functions job is near its time
           - part: consoles
             run: |
               npm run test:c-kit
