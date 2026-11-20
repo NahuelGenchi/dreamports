@@ -26,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
 import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -85,7 +85,7 @@ const rare = await matchFile({
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))));
+writeFileSync(copy, withPeek(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8')))));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -173,6 +173,21 @@ try {
   writeFileSync(join(unmarked, 'turn.c'), readFileSync(join(HERE, 'turn.c'), 'utf8').replace(', dp:unaligned:', ':'));
   const aside = await checking(join(unmarked, 'turn.c'), {}, arm);
   check(aside.by.Turn?.kind !== 'same' && /where a twin can't follow/.test(aside.by.Turn?.line ?? ''), `and without the mark its calls are set aside, as before: ${aside.by.Turn?.line ?? aside.error}`);
+
+  console.log('A routine that takes and gives in registers no C function uses:');
+  const peek = { sizeOf: address => (address === PEEK.Peek ? PEEK_LENGTH : sizeOf(address)) };
+  const peeked = await checking(join(HERE, 'peek.c'), {}, peek);
+  check(peeked.by.Peek?.kind === 'same' && peeked.by.Peek.compared === CALLS && peeked.by.Peek.whole === true, `a twin whose comment says it takes r2 and gives r3, dp:registers, leaves the same memory and gives back the same in r3${peeked.by.Peek?.kind === 'same' ? '' : `: ${peeked.by.Peek?.line ?? peeked.error}`}`);
+  const reworded = (from, to) => {
+    const folder = join(work, `changed-${++variants}`);
+    cpSync(HERE, folder, { recursive: true });
+    writeFileSync(join(folder, 'peek.c'), readFileSync(join(HERE, 'peek.c'), 'utf8').replace(from, to));
+    return join(folder, 'peek.c');
+  };
+  const asC = await checking(reworded(', dp:registers r3 = Peek((const unsigned char *)r2)', ''), {}, peek);
+  check(asC.by.Peek?.kind !== 'same' && asC.by.Peek?.kind !== undefined, `without it, it's called as C calls a function, from r0, and isn't the same: ${asC.by.Peek?.line ?? asC.error}`);
+  const off = await checking(reworded('r3 = Peek((const unsigned char *)r2)', 'r3 = Peek((const unsigned char *)r2) + 1'), {}, peek);
+  check(off.by.Peek?.kind === 'differs' && /in r3, as its comment's dp:registers r3 = /.test(off.by.Peek.line), `and with a line that works it out wrong, it differs in r3: ${off.by.Peek?.line ?? off.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));
