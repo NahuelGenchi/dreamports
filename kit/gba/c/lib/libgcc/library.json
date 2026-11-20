@@ -1,0 +1,31 @@
+{
+  "about": "The console's compiler's own helpers, as its libgcc links them: the calls through a register it makes for a call through a pointer, and the division with a sign, Thumb assembly the console's compiler gives back byte for byte",
+  "compilers": {
+    "gba": {
+      "name": "agbcc",
+      "flags": [
+        "-mthumb-interwork",
+        "-O2"
+      ]
+    }
+  },
+  "functions": [
+    ["_call_via_r0",2,"libgcc.c"],
+    ["_call_via_r1",2,"libgcc.c"],
+    ["_call_via_r2",2,"libgcc.c"],
+    ["_call_via_r3",2,"libgcc.c"],
+    ["_call_via_r4",2,"libgcc.c"],
+    ["_call_via_r5",2,"libgcc.c"],
+    ["_call_via_r6",2,"libgcc.c"],
+    ["_call_via_r7",2,"libgcc.c"],
+    ["_call_via_r8",2,"libgcc.c"],
+    ["_call_via_r9",2,"libgcc.c"],
+    ["_call_via_sl",2,"libgcc.c"],
+    ["_call_via_fp",2,"libgcc.c"],
+    ["_call_via_ip",2,"libgcc.c"],
+    ["_call_via_sp",2,"libgcc.c"],
+    ["_call_via_lr",2,"libgcc.c"],
+    ["__divsi3",146,"libgcc.c"],
+    ["__div0",2,"libgcc.c"]
+  ]
+}
