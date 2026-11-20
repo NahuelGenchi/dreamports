@@ -25,6 +25,9 @@ EXPORT("dp_start") void dp_start(void) {
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
   game_step(buttons);
   ppu_frame(frame);
+  // V-blank starts: the picture unit's sprite table goes back, and $4210 says so, with the processor's version, 2
+  ppu_vblank();
+  SNES_CPU_REGISTERS[0x210] = 0x82;
 }
 /** The frame, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
 EXPORT("dp_draw") uint32_t *dp_draw(void) {
