@@ -41,11 +41,11 @@ async function main() {
   const { width, height } = { width: machine.screen[0], height: machine.screen[1] };
   check(first.outside.sizes.length === 1 && first.outside.sizes[0].join() === `0,${width},${height}`, `its screen is ${width} by ${height} from the first frame, as kit/consoles.js says: ${JSON.stringify(first.outside.sizes)}`);
   check(first.hashes.every((hash, frame) => hash === second.hashes[frame]), 'both runs show the same pictures');
-  // Play! mixes 45 samples at a time, so a frame has the 735 a frame lasts, give or take one block, after the first
+  // the chip mixes 48 samples at a time, so a frame has the 800 a frame lasts, give or take one block, after the first
   const perFrame = machine.sound * machine.frame[0] / machine.frame[1], lengths = [...first.sound.lengths];
-  const samples = lengths.reduce((a, b) => a + b, 0), even = lengths.slice(1).every(length => Math.abs(length - perFrame) <= 45);
+  const samples = lengths.reduce((a, b) => a + b, 0), even = lengths.slice(1).every(length => Math.abs(length - perFrame) <= 48);
   check(sameSound(first.sound, second.sound), 'both runs give the same sound, each sample in the same frame');
-  check(even && Math.abs(samples - FRAMES * perFrame) <= 90, `every frame has its own sound, ${perFrame} samples give or take 45: ${samples} in all, for ${FRAMES * perFrame}`);
+  check(even && Math.abs(samples - FRAMES * perFrame) <= 96, `every frame has its own sound, ${perFrame} samples give or take 48: ${samples} in all, for ${FRAMES * perFrame}`);
   check(new Set(first.hashes).size === 512 / STEP + 1, `the square is in ${512 / STEP} places, round and round, after a black first frame: ${new Set(first.hashes).size} different pictures`);
 
   // the program draws once the first V-blank has started, so the first frame is black and the square is at 0 on the next
