@@ -33,6 +33,9 @@
 //               watch for, a count and then each. On the EE and the IOP a call ends when the processor comes back to
 //               where ra pointed as it started; on vector unit 1 at its E bit. Answers how it ended, the words below,
 //               and then the memory every call starts from is as it was.
+//   'R' range   where the code a call may run is, two words, from and to: a call that goes outside it, but back to
+//               where it came from, ends as one the check can't follow. With none, anywhere the processor has code.
+//               Answers 'k'.
 //   'Q'         ends the program.
 //
 // What a call answers, in words but for the bytes of what ran and of the memory:
@@ -84,6 +87,7 @@
 #include "ee/MA_VU.h"
 #include "ee/EeBasicBlock.h"
 #include "ee/VuExecutor.h"
+#include "ee/dreamports/Glue.h"
 #include "ee/VUShared.h"
 
 enum Kind { EE, IOP, VU1 };
@@ -149,6 +153,8 @@ static std::vector<uint32> readMarked;
 static uint32 top, itop;
 static std::vector<std::pair<uint32, std::vector<uint8>>> kicks;
 static bool codeWritten;
+// where the code a call may run is, when the check says ('R')
+static uint32 codeFrom = 0, codeTo = 0xFFFFFFFFu;
 static std::vector<uint8> codePages;
 // the image's pages written since the last start kept, and those that aren't zeros as every call starts
 static std::vector<uint8> pageWritten, pageHeld;
@@ -466,6 +472,13 @@ int main(int argc, char **argv) {
       fflush(stdout);
       continue;
     }
+    if(command == 'R') {
+      codeFrom = word();
+      codeTo = word();
+      putchar('k');
+      fflush(stdout);
+      continue;
+    }
     if(command != 'C') {
       fprintf(stderr, "Unknown command %d.\n", command);
       return 1;
@@ -597,6 +610,9 @@ int main(int argc, char **argv) {
         // the code it can run: the console's memory above the kernel's, or the IOP's, or the unit's micro memory
         if(kind == EE && (pc < 0x00080000u || pc >= 0x02000000u)) stop(pc < 0x00080000u ? END_KERNEL : END_ELSEWHERE, pc);
         if(kind == IOP && pc >= 0x00800000u) stop(END_ELSEWHERE, pc);
+        // empty memory is instructions that do nothing, which a call sent there by a made-up pointer would run through
+        // until it met where it comes back to
+        if(pc < codeFrom || pc >= codeTo) stop(END_ELSEWHERE, pc);
         if(kind == VU1 && pc >= 0x4000u) stop(END_ELSEWHERE, pc);
         // a block's quota runs out after one pass, so a block that branches back to its own start, which the emulator
         // runs again inside itself while it has quota left, comes back here each time round as well; what it does is
@@ -664,6 +680,9 @@ int main(int argc, char **argv) {
       }
     }
 
+    // what a vector unit's instructions did that is still on its way, its flags, Q and P, lands first, as it has by
+    // the time the EE reads any of it, or the unit's next program starts (the tools' patch of Play!, Glue.cpp)
+    if(kind != IOP) DpVuLandAll(cpu.get());
     held(left);
     if(kind == EE) {
       auto *r = reinterpret_cast<const EeRegisters *>(left.data());
