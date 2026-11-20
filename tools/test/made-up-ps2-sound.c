@@ -46,7 +46,7 @@ static void module_frame(void) {
   // the pad read, and what it says written back two bytes at a time where the sound chip takes no notice
   static const uint8_t pad_read[] = @PAD_READ@;
   sio2(pad_read, sizeof pad_read, @PAD_ASKED@);
-  for (int i = 0; i < (@PAD_ANSWER@ - 1) / 2; i++) W(@MMIX@, pad_answer[1 + i * 2] | pad_answer[2 + i * 2] << 8);
+  for (int i = 0; i < (@PAD_ANSWER@ - 1) / 2; i++) W(@NOTE@, pad_answer[1 + i * 2] | pad_answer[2 + i * 2] << 8);
   if (frame == 0) {
     W(@ATTR@, @ATTR_PLAYING@);
     W(@VOICE0_VOLR@, @SWEEP_UP@);
@@ -62,9 +62,9 @@ static void module_frame(void) {
     if (frame == @MASTER_SWEEP_AT@) W(@MVOLR@, @MASTER_SWEEP@);
     if (frame == @MASTER_BACK_AT@) W(@MVOLR@, @MASTER_RIGHT@);
     // what the chip says, written back where it takes no notice
-    W(@MMIX@, READ(@ENDX_HI@));
-    W(CORE1 + @MMIX@, READ(CORE1 + @ENDX_HI@));
-    W(@MMIX@, READ(@IRQINFO@));
+    W(@NOTE@, READ(@ENDX_HI@));
+    W(CORE1 + @NOTE@, READ(CORE1 + @ENDX_HI@));
+    W(@NOTE@, READ(@IRQINFO@));
   }
   frame++;
 }
@@ -85,7 +85,7 @@ static int module_start(int argc, char **argv) {
   W(@ATTR@, @ATTR_SET_UP@ | 0x10);
   W(@TSA_HI@, @TONE_AT@ >> 17);
   W(@TSA_LO@, @TONE_AT@ >> 1 & 0xFFFF);
-  for (uint32_t i = 0; i < TONE_SIZE; i += 2) W(@STD@, tone[i] | tone[i + 1] << 8);
+  for (int copy = 0; copy < 2; copy++) for (uint32_t i = 0; i < TONE_SIZE; i += 2) W(@STD@, tone[i] | tone[i + 1] << 8);
   W(@ATTR@, @ATTR_SET_UP@);
   for (uint32_t i = 0; i < sizeof reverb / sizeof reverb[0]; i++) W(reverb[i][0], reverb[i][1]);
   W(@IRQA_HI@, @IRQ_AT@ >> 17);

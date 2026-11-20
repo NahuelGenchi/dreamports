@@ -167,6 +167,7 @@ jobs:
       - run: npm run test:ps2-kit
       - run: npm run test:ps2-gs
       - run: npm run test:ps2-sound
+      - run: npm run test:ps2-spu2
       - run: npm run test:ps2-ee-vu
       # the function check: Play!'s processors built by themselves for Apple's chip, and memories of play
       - run: npm run test:ps2-call
