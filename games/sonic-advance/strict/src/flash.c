@@ -290,6 +290,7 @@ u32 VerifyFlashSectorNBytes(u16 sectorNum, u8 *src, u32 n) {
   u16 *funcDest;
   u8 *tgt;
   u32 (*verifyFlashSector_Core)(u8 *, u8 *, u32);
+  u32 differs;
 
   REG_WRITE16(REG_WAITCNT, (REG_READ16(REG_WAITCNT) & ~3) | 3);
   funcSrc = (u16 *)CODE(VerifyFlashSector_Core);
@@ -307,19 +308,15 @@ u32 VerifyFlashSectorNBytes(u16 sectorNum, u8 *src, u32 n) {
   }
   verifyFlashSector_Core = (u32(*)(u8 *, u8 *, u32))((s32)verifyFlashSector_Core_Buffer + 1);
   tgt = FLASH_BASE + (sectorNum << DefaultFlash512K.type.sector.shift);
-#ifdef MATCHING
-  return CALL(verifyFlashSector_Core)(src, tgt, n);
-#else
-  {
-    u32 differs;
-    TIME(0x08099110, 0x0809913A, 0x08099851, ROM, IW, ROM);
-    TIME(0x08099850, 0x08099850, (u32)verifyFlashSector_Core);
-    verify_core_at = (u32)verifyFlashSector_Core & ~1u;
-    differs = CALL(verifyFlashSector_Core)(src, tgt, n);
-    TIME(0x0809913C, 0x08099142, BACK);
-    return differs;
-  }
+#ifndef MATCHING
+  TIME(0x08099110, 0x0809913A, 0x08099851, ROM, IW, ROM);
+  TIME(0x08099850, 0x08099850, (u32)verifyFlashSector_Core);
+  verify_core_at = (u32)verifyFlashSector_Core & ~1u;
 #endif
+  // the call on the same line for both compilers, so the console's stack pairs the Dreamport's with the console's
+  differs = CALL(verifyFlashSector_Core)(src, tgt, n);
+  TIME(0x0809913C, 0x08099142, BACK);
+  return differs;
 }
 
 /** ProgramFlashSectorAndVerifyNBytes, 0x0809918C: a sector written and its first `n` bytes checked, up to three
