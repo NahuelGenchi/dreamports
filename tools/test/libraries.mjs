@@ -13,7 +13,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
@@ -275,7 +275,7 @@ for (const id of libraryIds()) {
     if (console_ !== 'gba') continue;
     if (!isCompilerBuilt(given.name)) withBuildTools(console.log, tools => buildCompilers([given.name], console.log, tools));
     const built = [];
-    for (const file of library.files) built.push(await compileFile({ file, root: library.folder, includes: [library.folder], compiler: given, work: join(work, 'kit', id, file.split('/').pop().replace(/\.c$/, '')) }));
+    for (const file of library.files) built.push(await compileFile({ file, root: library.folder, includes: [library.folder], compiler: given, work: join(work, 'kit', id, basename(file, '.c')) }));
     const wrong = built.find(one => one.error);
     check(!wrong, `${id} builds with ${given.name}, as match builds it${wrong ? `: ${wrong.error}` : ''}`);
   }

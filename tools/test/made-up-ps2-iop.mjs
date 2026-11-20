@@ -26,7 +26,7 @@ export const SPU2 = 0x1F900000, CORE1 = 0x400, CORE1_LOW = 40;
 export const R = {
   VOLL: 0x0, VOLR: 0x2, PITCH: 0x4, ADSR1: 0x6, ADSR2: 0x8, PMON_HI: 0x180, NON_HI: 0x184,
   MVOLL: 0x760, MVOLR: 0x762, EVOLL: 0x764, EVOLR: 0x766,
-  VMIXER_HI: 0x194, MMIX: 0x198, ATTR: 0x19A, IRQA_HI: 0x19C, IRQA_LO: 0x19E, KON_HI: 0x1A0, KOFF_HI: 0x1A4, TSA_HI: 0x1A8, TSA_LO: 0x1AA, STD: 0x1AC,
+  VMIXER_HI: 0x194, MMIX: 0x198, NOTE: 0x1B2, ATTR: 0x19A, IRQA_HI: 0x19C, IRQA_LO: 0x19E, KON_HI: 0x1A0, KOFF_HI: 0x1A4, TSA_HI: 0x1A8, TSA_LO: 0x1AA, STD: 0x1AC,
   SSA_HI: 0x1C0, SSA_LO: 0x1C2, ESA_HI: 0x2E0, ESA_LO: 0x2E2, REVERB: 0x2E4, EEA_HI: 0x33C, ENDX_HI: 0x340, ENDX_LO: 0x342,
   AVOLL: 0x768, AVOLR: 0x76A, COEF: 0x774, IRQINFO: 0x7C2,
 };
@@ -37,7 +37,11 @@ export const voiceAddress = (n, register) => register + n * 12;
 /** The module's own RPC server's number, and the call the EE makes to it every frame. */
 export const SERVER = 0x01234567, SERVER_CALL = 7;
 /** Where the tone and the click go in the sound chip's memory, in bytes. */
-export const TONE_AT = 0x5000, CLICK_AT = 0x6000;
+export const TONE_AT = 0x5800, CLICK_AT = 0x6800;
+/** A second copy of the tone, right after the first, for the voices that are keyed on once and loop: a voice keyed on
+ *  again comes to a block with other samples behind it than one that looped there, and the second emulator the chip is
+ *  checked against keeps one decoded copy of a block for every voice on it (kit/ps2/c/README.md). */
+export const TONE_BYTES = 16 * 16, TONE_AGAIN_AT = TONE_AT + TONE_BYTES;
 /** The reverb's work area: from here to the end of the chip's memory. */
 export const REVERB_START = 0x1E0000;
 /** The pitch the first voice starts at, how far it moves a frame and where it starts again. */
@@ -57,11 +61,11 @@ export const VOICES = [
   [voice(0, R.VOLL), 0x3000], [voice(0, R.PITCH), PITCH_START], [voice(0, R.ADSR1), 0x308A], [voice(0, R.ADSR2), 0xD030],
   [voiceAddress(0, R.SSA_HI), TONE_AT >>> 17], [voiceAddress(0, R.SSA_LO), TONE_AT >>> 1 & 0xFFFF],
   [voice(1, R.VOLL), 0x1800], [voice(1, R.VOLR), 0x2000], [voice(1, R.PITCH), 0x0C00], [voice(1, R.ADSR1), 0x0F8F], [voice(1, R.ADSR2), 0x1FC0],
-  [voiceAddress(1, R.SSA_HI), TONE_AT >>> 17], [voiceAddress(1, R.SSA_LO), TONE_AT >>> 1 & 0xFFFF],
+  [voiceAddress(1, R.SSA_HI), TONE_AGAIN_AT >>> 17], [voiceAddress(1, R.SSA_LO), TONE_AGAIN_AT >>> 1 & 0xFFFF],
   [R.VMIXER_HI, 1],
   // core 0's 2 plays noise, and its 1 is bent by its 0
   [voice(2, R.VOLL), 0x0600], [voice(2, R.VOLR), 0x0500], [voice(2, R.PITCH), 0x1000], [voice(2, R.ADSR1), 0x208F], [voice(2, R.ADSR2), 0x1FC8],
-  [voiceAddress(2, R.SSA_HI), TONE_AT >>> 17], [voiceAddress(2, R.SSA_LO), TONE_AT >>> 1 & 0xFFFF],
+  [voiceAddress(2, R.SSA_HI), TONE_AGAIN_AT >>> 17], [voiceAddress(2, R.SSA_LO), TONE_AGAIN_AT >>> 1 & 0xFFFF],
   [R.NON_HI, 4], [R.PMON_HI, 2],
   // the master volume of each core and core 0's effect volume
   [R.MVOLL, 0x3FFF], [R.MVOLR, MASTER_RIGHT], [CORE1_LOW + R.MVOLL, 0x3800], [CORE1_LOW + R.MVOLR, 0x3FFF], [R.EVOLL, 0x6000], [R.EVOLR, 0x5000],
@@ -69,6 +73,8 @@ export const VOICES = [
   [CORE1 + voice(0, R.ADSR1), 0x007F], [CORE1 + voice(0, R.ADSR2), 0x1FC0],
   [CORE1 + voiceAddress(0, R.SSA_HI), CLICK_AT >>> 17], [CORE1 + voiceAddress(0, R.SSA_LO), CLICK_AT >>> 1 & 0xFFFF],
   [CORE1_LOW + R.AVOLL, 0x5000], [CORE1_LOW + R.AVOLR, 0x6000],
+  // each core's twelve mixing switches, as the console's sound library sets them: everything but core 0's external input
+  [R.MMIX, 0xFF0], [CORE1 + R.MMIX, 0xFFC],
 ];
 /** The first voice's right volume, a linear sweep up, and the second's left, an exponential sweep down, both set on
  *  the frame they start, as a sweep moves with every sample from when it's written. */
@@ -223,6 +229,9 @@ const soundModule = () => assembleIop([
   spu(R.ATTR, ATTR_SET_UP | 0x10), spu(R.TSA_HI, TONE_AT >>> 17), spu(R.TSA_LO, TONE_AT >>> 1 & 0xFFFF),
   placeOf(T1, 'tone'), ...li(T2, TONE.length / 2),
   at('port'), lhu(T0, 0, T1), NOP, sh(T0, R.STD, S3), addiu(T1, T1, 2), addiu(T2, T2, -1), bne(T2, ZERO, 'port'), NOP,
+  // and again, right after it
+  placeOf(T1, 'tone'), ...li(T2, TONE.length / 2),
+  at('portAgain'), lhu(T0, 0, T1), NOP, sh(T0, R.STD, S3), addiu(T1, T1, 2), addiu(T2, T2, -1), bne(T2, ZERO, 'portAgain'), NOP,
   spu(R.ATTR, ATTR_SET_UP), spuAll(REVERB), spu(R.IRQA_HI, IRQ_AT >>> 17), spu(R.IRQA_LO, IRQ_AT >>> 1 & 0xFFFF),
   // core 1 on, taking the click by DMA on channel 7
   spu(CORE1 + R.ATTR, 0x8000 | 0x20), spu(CORE1 + R.TSA_HI, CLICK_AT >>> 17), spu(CORE1 + R.TSA_LO, CLICK_AT >>> 1 & 0xFFFF),
@@ -241,7 +250,7 @@ const soundModule = () => assembleIop([
   // its buttons, its sticks and the pressure on each button
   lui(T3, 0xBF81), sio2('padRead', PAD_READ.length, PAD_ANSWER),
   placeOf(T1, 'padAnswer'),
-  Array.from({ length: (PAD_ANSWER - 1) / 2 }, (_, i) => [lbu(T0, 1 + i * 2, T1), lbu(T2, 2 + i * 2, T1), NOP, sll(T2, T2, 8), or(T0, T0, T2), sh(T0, R.MMIX, S3)]),
+  Array.from({ length: (PAD_ANSWER - 1) / 2 }, (_, i) => [lbu(T0, 1 + i * 2, T1), lbu(T2, 2 + i * 2, T1), NOP, sll(T2, T2, 8), or(T0, T0, T2), sh(T0, R.NOTE, S3)]),
   bne(S1, ZERO, 'playing'), NOP,
   spu(R.ATTR, ATTR_PLAYING), spu(voice(0, R.VOLR), SWEEP_UP), spu(R.KON_HI, 7), spu(CORE1 + R.KON_HI, 1),
   beq(ZERO, ZERO, 'next'), NOP,
@@ -257,9 +266,9 @@ const soundModule = () => assembleIop([
   ...li(T1, MASTER_SWEEP_AT), bne(S1, T1, 'noMaster'), NOP, spu(R.MVOLR, MASTER_SWEEP), at('noMaster'),
   ...li(T1, MASTER_BACK_AT), bne(S1, T1, 'noBack'), NOP, spu(R.MVOLR, MASTER_RIGHT), at('noBack'),
   // what the chip says, written back where the emulator takes no notice of it
-  lhu(T0, R.ENDX_HI, S3), NOP, sh(T0, R.MMIX, S3),
-  lhu(T0, CORE1 + R.ENDX_HI, S3), NOP, sh(T0, CORE1 + R.MMIX, S3),
-  lhu(T0, R.IRQINFO, S3), NOP, sh(T0, R.MMIX, S3),
+  lhu(T0, R.ENDX_HI, S3), NOP, sh(T0, R.NOTE, S3),
+  lhu(T0, CORE1 + R.ENDX_HI, S3), NOP, sh(T0, CORE1 + R.NOTE, S3),
+  lhu(T0, R.IRQINFO, S3), NOP, sh(T0, R.NOTE, S3),
   at('next'),
   beq(ZERO, ZERO, 'frame'), addiu(S1, S1, 1),
 
