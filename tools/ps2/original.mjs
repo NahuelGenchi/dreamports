@@ -131,7 +131,7 @@ function sourcesOf(source) {
     ...play('MIPS.cpp', 'MIPSArchitecture.cpp', 'MA_MIPSIV.cpp', 'MA_MIPSIV_Templates.cpp', 'MA_MIPSIV_Reflection.cpp', 'MIPSInstructionFactory.cpp',
       'MIPSReflection.cpp', 'MIPSCoprocessor.cpp', 'COP_SCU.cpp', 'COP_SCU_Reflection.cpp', 'COP_FPU.cpp', 'COP_FPU_Reflection.cpp', 'MemoryMap.cpp',
       'MipsJitter.cpp', 'BasicBlock.cpp', 'FpUtils.cpp', 'MIPSAnalysis.cpp', 'MIPSTags.cpp', 'app_shared/Log.cpp'),
-    ...play(...['MA_EE.cpp', 'MA_EE_Reflection.cpp', 'COP_VU.cpp', 'COP_VU_Reflection.cpp', 'VUShared.cpp', 'VUShared_Reflection.cpp', 'FpAddTruncate.cpp',
+    ...play(...['MA_EE.cpp', 'MA_EE_Reflection.cpp', 'COP_VU.cpp', 'COP_VU_Reflection.cpp', 'VUShared.cpp', 'VUShared_Reflection.cpp', 'dreamports/floats.cpp', 'dreamports/Glue.cpp', 'FpAddTruncate.cpp',
       'FpMulTruncate.cpp', 'EeBasicBlock.cpp', 'MA_VU.cpp', 'MA_VU_Lower.cpp', 'MA_VU_Upper.cpp', 'MA_VU_LowerReflection.cpp', 'MA_VU_UpperReflection.cpp',
       'VuBasicBlock.cpp', 'VuExecutor.cpp', 'VuAnalysis.cpp'].map(name => `ee/${name}`)),
     ...codeGen, ...framework,

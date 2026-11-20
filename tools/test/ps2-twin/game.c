@@ -44,18 +44,14 @@ s64 wide(s64 a, s64 b) {
   return a + b;
 }
 
-// a float as the EE's FPU takes it in: one whose exponent is all ones is the largest there is, with its sign
-static float clamped(float value) {
-  unsigned bits;
-  __builtin_memcpy(&bits, &value, 4);
-  if (bits < 0x80000000u ? bits > 0x7F7FFFFFu : bits > 0xFF7FFFFFu) bits = (bits & 0x80000000u) | 0x7F7FFFFFu;
-  __builtin_memcpy(&value, &bits, 4);
-  return value;
+// a product as the EE's FPU makes it: cut towards zero, a float whose exponent is all ones taken as the number it is
+static f32 product(f32 a, f32 b) {
+  return ee_mul(a, b);
 }
 
 /** 0x001000F8: a product of two floats, cut towards zero */
 f32 scale(f32 a, f32 b) {
-  return ee_mul(clamped(a), clamped(b));
+  return product(a, b);
 }
 
 /** 0x00100104: eight numbers' sum, four of them in t0 to t3 */

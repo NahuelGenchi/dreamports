@@ -4,6 +4,7 @@
 #define DREAMPORTS_PS2_KIT_H
 
 #include "ps2.h"
+#include "floats.h"
 
 /** Gives the GS its memory, once. */
 void gs_power(void);
@@ -15,6 +16,53 @@ uint32_t gs_list_hash(void);
 uint32_t gs_list_count(void);
 /** The whole list since it started, its size in `size`, or 0xFFFFFFFF there when it was too long to keep. */
 const uint8_t *gs_list_bytes(uint32_t *size);
+
+// What the EE's memories and the paths to the GS share (bus.c, dmac.c, vif.c, gif.c, vu.c)
+
+/** Where a DMA address points: the scratchpad when its top bit is set, or main memory, which wraps at 32 MB as the
+ *  console's does. */
+uint8_t *ps2_dma_memory(uint32_t address);
+
+/** The DMA controller's registers, read and written (dmac.c). */
+uint32_t dmac_read(uint32_t address);
+void dmac_write(uint32_t address, uint32_t value);
+/** Goes on with every channel that's started and was held up, as the console does as soon as what held it is gone. */
+void dmac_resume(void);
+/** Goes on with one channel at once, from inside another's transfer, as unmasking PATH3 does with the GIF's (2). */
+void dmac_resume_channel(int n);
+
+/** The VIFs (vif.c): their registers and their FIFOs, a word at a time, and a DMA transfer to one, `qwc` quadwords at
+ *  a DMA address, the first being the DMA tag when `tag` is set. It gives how many it took. */
+uint32_t vif_read(uint32_t address);
+void vif_write(uint32_t address, uint32_t value);
+uint32_t vif_receive(int unit, uint32_t address, uint32_t qwc, int tag);
+/** What a program on vector unit 1 reads with XTOP, and on either with XITOP. */
+uint32_t vif1_top(void);
+uint32_t vif_itop(int unit);
+
+/** The GIF (gif.c): one packet, or as many as there are, from `memory` of `size` bytes, from `at` to `end`, on `path`
+ *  (1 for vector unit 1's XGKICK, 2 for the VIF's DIRECT, 3 for its own DMA channel). Each gives how many bytes it took,
+ *  which is fewer when the GIF is busy with another path. */
+uint32_t gif_path_packet(int path, const uint8_t *memory, uint32_t size, uint32_t at, uint32_t end);
+uint32_t gif_path_packets(int path, const uint8_t *memory, uint32_t size, uint32_t at, uint32_t end);
+/** A DMA transfer to the GIF, as vif_receive's. */
+uint32_t gif_receive(uint32_t address, uint32_t qwc, int tag);
+uint32_t gif_read(uint32_t address);
+void gif_write(uint32_t address, uint32_t value);
+/** Which path is sending a packet, or 0, and PATH3 masked or let through, as the VIF's MSKPATH3 does. */
+int gif_active_path(void);
+void gif_mask_path3(int masked);
+
+/** The vector units (vu.c): each one's code and data memory, whether it's free to start a program, and starting one
+ *  at a place in its code, which runs to its end then and there. */
+uint8_t *vu_code(int unit);
+uint8_t *vu_data(int unit);
+uint32_t vu_code_size(int unit);
+uint32_t vu_data_size(int unit);
+int vu_ready(int unit);
+void vu_start(int unit, uint32_t address);
+/** Where the program last stopped, for MSCNT to go on from. */
+uint32_t vu_stopped_at(int unit);
 
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);

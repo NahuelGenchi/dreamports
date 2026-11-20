@@ -4,7 +4,7 @@
 // the console's kit, with the console's addresses folded by a table (../lib/wasm-fold.mjs). Every twin has to leave the
 // same memory as its original over every path, but those whose original the check can't follow, which say why. Then one
 // line of the twins is changed at a time, and the check has to find each: a wrong sum, a byte too many, a value one
-// along, a 64-bit sum cut to 32, a product rounded as a computer rounds, one that doesn't clamp what the FPU clamps, a
+// along, a 64-bit sum cut to 32, a product rounded as a computer rounds, one that clamps a float the console takes as a number, a
 // quadword copied from where the console doesn't, an argument in t3 left out, one on the stack left out, a switch with a case too many, a GS
 // register four bytes off, a twin that never comes back, one that takes a struct as it is, and one that calls what
 // nothing built is. Then memories of play: each function's start as the program's own play reaches it, a path only
@@ -82,7 +82,7 @@ try {
   check(right.kernel?.kind === 'unchecked' && /called the console's kernel \(syscall 60\)/.test(right.kernel.line), `a function whose original calls the kernel isn't checked, and says so: ${right.kernel?.line}`);
   check(right.misaligned?.kind === 'unchecked' && /where none of its size starts/.test(right.misaligned.line), `nor one whose original reads where no word starts: ${right.misaligned?.line}`);
   check(right.vu0?.kind === 'unchecked' && /vector unit 0's registers/.test(right.vu0.line), `nor one whose original leaves vector unit 0's registers changed: ${right.vu0?.line}`);
-  check(right.clamped?.address === null, 'a function of the C\'s own, with no address, is named as one');
+  check(right.product?.address === null, 'a function of the C\'s own, with no address, is named as one');
 
   console.log('A line changed, a twin at a time:');
   // the twins that call each, which a change to it changes too
@@ -95,9 +95,9 @@ try {
   await wrong('sum', [['return a + b;', 'return a - b;']], 'differs', 'a difference instead of a sum', /the twin gave back .* and the original/);
   await wrong('fill', [['while (count != 0) {', 'while (count-- >= 0) {\n    count++;']], 'differs', 'a byte too many', /in the console's memory, the twin left 0x/);
   await wrong('lookup', [['return values[index];', 'return values[index + 1];']], 'differs', 'the value one along');
-  await wrong('wide', [['return a + b;\n}\n\n// a float', 'return (int)a + b;\n}\n\n// a float']], 'differs', 'a 64-bit sum with one of its numbers cut to 32 bits', /gave back 0x[0-9A-F]{16}/);
-  await wrong('scale', [['return ee_mul(clamped(a), clamped(b));', 'return clamped(a) * clamped(b);']], 'differs', 'a product rounded to the nearest, as a computer rounds, where the EE cuts', /as floats' bits/);
-  await wrong('scale', [['return ee_mul(clamped(a), clamped(b));', 'return ee_mul(a, b);']], 'differs', 'a product of floats the FPU would have clamped first');
+  await wrong('wide', [['return a + b;\n}\n\n// a product', 'return (int)a + b;\n}\n\n// a product']], 'differs', 'a 64-bit sum with one of its numbers cut to 32 bits', /gave back 0x[0-9A-F]{16}/);
+  await wrong('scale', [['return ee_mul(a, b);', 'return a * b;']], 'differs', 'a product rounded to the nearest, as a computer rounds, where the EE cuts', /as floats' bits/);
+  await wrong('scale', [['return ee_mul(a, b);', 'unsigned x;\n  __builtin_memcpy(&x, &a, 4);\n  if ((x & 0x7F800000u) == 0x7F800000u) x = (x & 0x80000000u) | 0x7F7FFFFFu;\n  __builtin_memcpy(&a, &x, 4);\n  return ee_mul(a, b);']], 'differs', 'a product of a float clamped first, as a computer would need, where the console takes it as a number');
   await wrong('copy16', [['*(unsigned __int128 *)((unsigned)to & ~15u) = *(const unsigned __int128 *)((unsigned)from & ~15u);', '*to = *from;']], 'differs', 'a quadword copied from where the address says, where LQ and SQ leave its low bits out');
   await wrong('eight', [['+ g + h;', '+ g;']], 'differs', 'the eighth argument, in t3, left out');
   await wrong('ten', [['+ i + j;', '+ i;']], 'differs', 'the tenth argument, the second on the stack, left out');
