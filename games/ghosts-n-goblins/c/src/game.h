@@ -232,7 +232,7 @@ void add_score(uint8_t x, uint8_t y);
 /** sub_D902: the same with thousands and ten thousands, from $24 and $25. */
 void add_score_with_thousands(uint8_t x, uint8_t y);
 /** $F7BE, kind 0: a zombie's turn (enemies.c). */
-void zombie(uint8_t object);
+void zombie(uint8_t object, uint8_t y);
 /** sub_04_BBEE, kind $12: the pot a zombie carries (enemies.c). */
 void pot(uint8_t object);
 /** sub_02_8416: the zombies that come out of the ground. `x` is the processor's X register, which it leaves changed. */
@@ -253,18 +253,18 @@ int arthur_is_right_of(uint8_t object);
 void plant(uint8_t object);
 /** sub_04_9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
 void flier(uint8_t object);
-void flier_shot(uint8_t object);
+void flier_shot(uint8_t object, uint8_t y);
 /** sub_02_8574: kind 7, by the second stage's apartments, and sub_04_AA4F, kind 7: the small white thing from a window (apartments.c). */
 void apartments_come(uint8_t *x);
 void window_thing(uint8_t object);
 /** sub_04_ABC1, kind 8: the big man of each of the apartments' floors (apartments.c); $F504, kind $2F: what it throws (enemies.c). */
 void big_man(uint8_t object);
-void thrown(uint8_t object);
+void thrown(uint8_t object, uint8_t y);
 /** sub_02_8748: the crows of the second set of stages (enemies.c). */
 void tower_crows_come(uint8_t *x);
 /** sub_02_84E0: the flying knights that come on the first stage's last screens; sub_04_A530, kind 3: one of them (enemies.c). */
 void knights_come(uint8_t *x);
-void knight(uint8_t object);
+void knight(uint8_t object, uint8_t y);
 /** sub_02_88F6: every sixth of the enemies that come by themselves carries a pot (enemies.c). */
 void sixth_carries_a_pot(uint8_t object, uint8_t *x);
 /** sub_F687: whether Arthur is within the box in $26 and $27 around an object that's shown (flier.c). */
@@ -273,17 +273,17 @@ int arthur_near(uint8_t object, uint8_t y);
 void forest_enemies_come(uint8_t *x);
 void forest_enemy(uint8_t object);
 /** $F41C, kind $29: its shot (enemies.c). */
-void forest_shot(uint8_t object);
+void forest_shot(uint8_t object, uint8_t y);
 /** sub_04_BC9C, kind $1E: the key a stage's last boss leaves (objects.c). */
 void key(uint8_t object, uint8_t y);
 /** $FBC4, kind 5: the stage's boss (boss.c); $F524, kind $30: its shot (enemies.c). */
 void boss(uint8_t object);
-void boss_shot(uint8_t object);
+void boss_shot(uint8_t object, uint8_t y);
 /** sub_F585: an enemy's touch tests, with the spark and sound of a weapon that hits it; the weapon, or 0 (flier.c). */
 uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched);
 /** sub_F5A0: what touches an enemy this round: the weapon that hit it, which is gone and counted at $0647, or 0, with
  *  whether Arthur touched it and is hit. */
-uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched);
+uint8_t enemy_touch_tests(uint8_t enemy, int *arthur_touched, uint8_t *y);
 /** $F770: an enemy that a weapon has hit falls for six rounds, the way its flag $02 says, and is gone (enemies.c). */
 void hit_enemy_falls(uint8_t object);
 /** sub_04_B9AD, kind $0F: a flame of the fourth stage's bridge, burning while Arthur is near (bridge.c). */
@@ -298,20 +298,20 @@ void lift(uint8_t object);
 void bat(uint8_t object);
 /** sub_04_B56F, kind $0B: the cave's shooter in the ground (cave.c); $F461, kind $2A: its shot (enemies.c). */
 void cave_shooter(uint8_t object);
-void cave_shot(uint8_t object);
+void cave_shot(uint8_t object, uint8_t y);
 /** sub_04_B0E3, kind $15: the cave dragon's head; sub_04_B355, kinds $16 to $1D: its pieces (dragon.c). */
 void dragon_head(uint8_t object);
 void dragon_piece(uint8_t object);
 /** $F3F1, kind $28: the dragon's fire (enemies.c). */
-void dragon_fire(uint8_t object);
-void water_crow(uint8_t object);
+void dragon_fire(uint8_t object, uint8_t y);
+void water_crow(uint8_t object, uint8_t y);
 void falling_thing(uint8_t object);
 /** $F6F6: an enemy that a weapon has killed burns away. */
 void enemy_burns_away(uint8_t object);
 /** sub_EF25: the way from the place in $75, $79, $76 and $7A to the one in $73, $77, $74 and $78, one of 16. */
 uint8_t way_to_first(uint8_t y);
-void crow(uint8_t object);
-void plant_shot(uint8_t object);
+void crow(uint8_t object, uint8_t y);
+void plant_shot(uint8_t object, uint8_t y);
 /** $EA55: the block of the stage at the place in $77 and $73, down, and $78 and $74, across. A block from $C6 up is solid. */
 uint8_t block_at_stage_place(int s);
 enum { BLOCK_SOLID = 0xC6 };

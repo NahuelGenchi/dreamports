@@ -34,7 +34,7 @@ static int killed(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 4;
   took(BAT_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched, NULL);
   if (!HITS(object)) { took(BAT_NOT_HIT); return 0; }
   took(BAT_HIT);
   set_flag(object, HIT);
@@ -162,7 +162,7 @@ static void shooter_tests(uint8_t object, uint8_t spark) {
   RAM[0x26] = 0x08;
   RAM[0x27] = 0x10;
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched, NULL);
   if (weapon) {
     RAM[OBJECT_FLAGS + weapon] = spark;
     took(SHOOTER_WEAPON_SPARKS);

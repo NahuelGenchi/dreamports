@@ -67,7 +67,7 @@ static void tests(uint8_t object) {
   RAM[OBJECT_SCREEN_Y + object] -= 4;
   took(FOREST_TESTS_BEGIN);
   int arthur_touched;
-  enemy_touch_tests(object, &arthur_touched);
+  enemy_touch_tests(object, &arthur_touched, NULL);
   RAM[OBJECT_SCREEN_Y + object] += 4;
   took(FOREST_TESTS_END);
 }

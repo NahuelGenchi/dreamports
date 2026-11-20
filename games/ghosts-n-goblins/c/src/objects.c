@@ -878,10 +878,10 @@ wait objects_task(void) {
       set_ram16(0x26, peek16((uint16_t)(0x9CED + kind * 2)));
       uint8_t y = (uint8_t)(kind * 2);   // the processor's Y register as each kind's routine starts: its place in the list
       switch (kind) {
-        case 0x00: zombie(object); break;
+        case 0x00: zombie(object, y); break;
         case 0x01: plant(object); break;
         case 0x02: flier(object); break;
-        case 0x03: knight(object); break;
+        case 0x03: knight(object, y); break;
         case 0x04: forest_enemy(object); break;
         case 0x05: boss(object); break;
         case 0x06: devil(object); break;
@@ -890,25 +890,25 @@ wait objects_task(void) {
         case 0x0A: bat(object); break;
         case 0x0B: cave_shooter(object); break;
         case 0x21: waiting_enemy(object, y); break;
-        case 0x2A: cave_shot(object); break;
+        case 0x2A: cave_shot(object, y); break;
         case 0x15: dragon_head(object); break;
         case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C: case 0x1D: dragon_piece(object); break;
-        case 0x28: dragon_fire(object); break;
-        case 0x2F: thrown(object); break;
+        case 0x28: dragon_fire(object, y); break;
+        case 0x2F: thrown(object, y); break;
         case 0x0C: lift(object); break;
         case 0x0D: case 0x0E: platform(object); break;
         case 0x0F: bridge_flame(object); break;
-        case 0x13: water_crow(object); break;
+        case 0x13: water_crow(object, y); break;
         case 0x10: pick_up(object); break;
         case 0x11: hidden_thing(object, y); break;
         case 0x12: pot(object); break;
-        case 0x14: crow(object); break;
+        case 0x14: crow(object, y); break;
         case 0x1E: key(object, y); break;
         case 0x20: gravestone(object); break;
-        case 0x2B: plant_shot(object); break;
-        case 0x29: forest_shot(object); break;
-        case 0x2C: flier_shot(object); break;
-        case 0x30: boss_shot(object); break;
+        case 0x2B: plant_shot(object, y); break;
+        case 0x29: forest_shot(object, y); break;
+        case 0x2C: flier_shot(object, y); break;
+        case 0x30: boss_shot(object, y); break;
         case 0x22: map_marker(object); break;
         case 0x36: rising_thing(object); break;
         case 0x37: falling_thing(object); break;

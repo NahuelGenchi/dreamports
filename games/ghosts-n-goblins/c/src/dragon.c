@@ -294,7 +294,7 @@ void dragon_piece(uint8_t object) {
     RAM[0x26] = RAM[0x27] = 8;
     took(DRAGON_PIECE_TESTS);
     int arthur_touched;
-    enemy_touch_tests(object, &arthur_touched);
+    enemy_touch_tests(object, &arthur_touched, NULL);
   } else took(DRAGON_PIECE_HIDDEN);
   int found;
   if (HITS(object)) {

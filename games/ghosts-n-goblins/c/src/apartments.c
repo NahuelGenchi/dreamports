@@ -204,7 +204,7 @@ void window_thing(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 6;
   took(WINDOW_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched, NULL);
   if (HITS(object)) { killed(object, weapon); return; }
   took(WINDOW_NOT_KILLED);
   // $AB04: its two shapes, by its count, one way round or the other

@@ -154,7 +154,7 @@ void devil(uint8_t object) {
   RAM[0x26] = RAM[0x27] = 4;
   took(DEVIL_TESTS);
   int arthur_touched;
-  enemy_touch_tests(object, &arthur_touched);
+  enemy_touch_tests(object, &arthur_touched, NULL);
   if (HITS(object)) {
     killed(object);
     return;

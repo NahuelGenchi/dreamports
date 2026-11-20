@@ -43,7 +43,7 @@ int arthur_near(uint8_t object, uint8_t y) {
 uint8_t enemy_spark_tests(uint8_t object, int *arthur_touched) {
   took(CALLS);
   took(CALLS);
-  uint8_t weapon = enemy_touch_tests(object, arthur_touched);
+  uint8_t weapon = enemy_touch_tests(object, arthur_touched, NULL);
   if (!weapon) { took(*arthur_touched ? SPARK_TESTS_TOUCHED : SPARK_TESTS_NOTHING); return 0; }
   RAM[OBJECT_FLAGS + weapon] = 0x41;
   took(SPARK_BEGINS);
