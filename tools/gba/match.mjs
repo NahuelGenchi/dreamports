@@ -105,6 +105,16 @@ function namedBase(text, name, console) {
   return found && bases.has(of(found[1])) ? of(found[1]) : null;
 }
 
+/** The last function of the run a twin is the twin of, among the code map's `functions`, or null for a twin of one
+ *  function: as its comment names it, `0x08001AA4 to 0x0800258E`, or for a twin that gives its routine's length,
+ *  `dp:run 16`, the function that ends where the routine does. */
+export function throughOf(twin, functions) {
+  if (twin.through !== undefined && twin.through !== null) return twin.through;
+  if (!twin.runBytes || twin.address === null || twin.address === undefined) return null;
+  const end = twin.address + twin.runBytes;
+  return functions.find(f => !f.bytes && f.address > twin.address && f.address + f.size === end)?.address ?? null;
+}
+
 /** The functions of a code map from `from` through the one at `through`, each { address, size, key }, when each starts
  *  where the one before ends, as one routine's do; or null when they don't, or no function starts at either end. */
 export function runIn(functions, from, through) {
@@ -239,7 +249,11 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
-      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
+      // dp:run and a number of bytes in the comment: a twin of the original's routine of that length from its start,
+      // which the code map may hold as several functions, as a shared library's twin, which names no address, says it
+      // (throughOf)
+      const runBytes = Number(/\bdp:run\s+(\d+)\b/.exec(above.join('\n'))?.[1] ?? 0);
+      twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(runBytes ? { runBytes } : {}), ...(unaligned ? { unaligned } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);
       from = first;

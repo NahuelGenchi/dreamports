@@ -23,10 +23,10 @@ import { LOCAL, REPO } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
-import { addressFinder, matchFile, twinsIn } from '../gba/match.mjs';
-import { checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
+import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
+import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPlay, withRegister, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -85,7 +85,7 @@ const rare = await matchFile({
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))));
+writeFileSync(copy, withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8')))));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -173,6 +173,21 @@ try {
   writeFileSync(join(unmarked, 'turn.c'), readFileSync(join(HERE, 'turn.c'), 'utf8').replace(', dp:unaligned:', ':'));
   const aside = await checking(join(unmarked, 'turn.c'), {}, arm);
   check(aside.by.Turn?.kind !== 'same' && /where a twin can't follow/.test(aside.by.Turn?.line ?? ''), `and without the mark its calls are set aside, as before: ${aside.by.Turn?.line ?? aside.error}`);
+
+  console.log('A routine the code map holds as two functions, a Thumb start and the ARM code it goes on into:');
+  const isArm = armIn(readFileSync(copy));
+  check(!isArm(TWICE.Twice) && isArm(TWICE_PIECES[1].address) && isArm(TURN.Turn), 'its Thumb start is called as Thumb, though the words after it look like ARM, and its ARM part is ARM');
+  const pieces = {
+    isArm, sizeOf: address => TWICE_PIECES.find(piece => piece.address === address)?.size ?? sizeOf(address),
+    runOf: twin => (throughOf(twin, TWICE_PIECES) === null ? null : runIn(TWICE_PIECES, twin.address, throughOf(twin, TWICE_PIECES))),
+  };
+  const twice = await checking(join(HERE, 'twice.c'), {}, pieces);
+  check(twice.by.Twice?.kind === 'same' && twice.by.Twice.whole === true && twice.by.Twice.run?.join() === TWICE_PIECES.map(piece => piece.address).join(), `a twin that says how long the routine is, dp:run, leaves the same memory, its calls took every path of both, each read as the code it is, and it's the twin of both${twice.by.Twice?.kind === 'same' ? `: ${twice.by.Twice.line}` : `: ${twice.by.Twice?.line ?? twice.error}`}`);
+  const longer = join(work, `changed-${++variants}`);
+  cpSync(HERE, longer, { recursive: true });
+  writeFileSync(join(longer, 'twice.c'), readFileSync(join(HERE, 'twice.c'), 'utf8').replace('dp:run 28', 'dp:run 30'));
+  const unended = await checking(join(longer, 'twice.c'), {}, pieces);
+  check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));
