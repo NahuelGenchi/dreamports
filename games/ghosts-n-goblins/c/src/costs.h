@@ -1810,6 +1810,7 @@ COST(BOSS_SHOT_FLIES_RIGHT, 27)   // or $F530 to $F54D, less sub_F321: to the ri
 COST(BOSS_SHOT_FLIES_LEFT, 33)    // or to the left
 COST(BOSS_NOT_SHOWN, 9)           // $FC65, and back: it isn't shown,
 COST(BOSS_LOOKS, 27)              // or to sub_F687
+COST(BOSS_ASLEEP_FIFTH_SET, 6)    // $FC72: the BNE that doesn't branch, and its other shape
 COST(BOSS_NEAR, 3)                // $FC82 to $FCA0: Arthur is near,
 COST(BOSS_ARTHUR_BELOW, 30)       // or isn't, and is below it: back,
 COST(BOSS_WAITED, 32)             // or to $FCA0 after 40 rounds,

@@ -18,7 +18,12 @@
 #include "nes.h"
 #include "check.h"
 
-enum { MOST_DRAWS = 4000, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
+// MOST_DRAWS: the registers tried for one call before its `if` is taken to say no, enough for an `if` that holds one
+// stack pointer and one register in 25
+// PER_MEMORY: how many of those with one memory, before another is taken
+enum { MOST_DRAWS = 1 << 17, PER_MEMORY = 1 << 11, MOST_HANGS = 3, ROUNDS = 2, MOST_CHANGED = 6 };
+// the stack pointer a call starts with when its twin isn't given it: below where a game's stack starts, at $01FF
+enum { STACK_AT = 0xDE };
 
 static uint32_t seed;
 static uint32_t rnd(uint32_t n) {
@@ -86,17 +91,30 @@ static int bank_for(const uint8_t *start) {
   return twin_bank_at >= 0 ? start[twin_bank_at] % banks : -1;
 }
 
-// A memory and registers for one call. 0 when the contract's `if` took none of the registers tried.
+// What the JSR that calls the function leaves above the stack pointer it starts with: the address it comes back to,
+// less one, high byte first. It's in the memory both sides start with, as it is on the console when the call begins.
+static void place_return(uint8_t *start, uint8_t s) {
+  start[0x100 | (uint8_t)(s + 2)] = (TWIN_RETURN_TO - 1) >> 8;
+  start[0x100 | (uint8_t)(s + 1)] = (TWIN_RETURN_TO - 1) & 0xFF;
+}
+
+// A memory and registers for one call: registers are drawn until the contract's `if` takes them, with another memory
+// every so many tries, as an `if` can ask something of the memory too, such as the kind of the object in X. 0 when
+// the `if` took none of them.
 static int draw(uint8_t *start, twin_regs *r, int changed) {
-  if (memory_count) memcpy(start, memories + (long)rnd((uint32_t)memory_count) * 0x800, 0x800);
-  else for (int i = 0; i < 0x800; i++) start[i] = (uint8_t)rnd(256);
-  if (own_bank >= 0 && twin_bank_at >= 0) start[twin_bank_at] = (uint8_t)own_bank;
-  int tries = 0;
-  do {
+  for (int tries = 0; ; tries++) {
+    if (tries == MOST_DRAWS) return 0;
+    if (tries % PER_MEMORY == 0) {
+      if (memory_count) memcpy(start, memories + (long)rnd((uint32_t)memory_count) * 0x800, 0x800);
+      else for (int i = 0; i < 0x800; i++) start[i] = (uint8_t)rnd(256);
+      if (own_bank >= 0 && twin_bank_at >= 0) start[twin_bank_at] = (uint8_t)own_bank;
+    }
     r->A = any_byte(); r->X = any_byte(); r->Y = any_byte();
+    r->S = twin->stack ? any_byte() : STACK_AT;
     r->N = (int)rnd(2); r->V = (int)rnd(2); r->Z = (int)rnd(2); r->C = (int)rnd(2);
-  } while (!is_given(start, r) && ++tries < MOST_DRAWS);
-  if (tries == MOST_DRAWS) return 0;
+    place_return(start, r->S);
+    if (is_given(start, r)) break;
+  }
   // what the function reads, changed: the original runs to say what it reads, a few of those bytes get other values,
   // and it runs again, as other values lead it to read other bytes
   for (int round = 0; changed && round < ROUNDS; round++) {
@@ -112,6 +130,7 @@ static int draw(uint8_t *start, twin_regs *r, int changed) {
     if (!count) break;
     memcpy(before, start, 0x800);
     for (int n = 1 + (int)rnd(MOST_CHANGED); n > 0; n--) start[read[rnd((uint32_t)count)]] = any_byte();
+    place_return(start, r->S);
     if (!is_given(start, r)) memcpy(start, before, 0x800);
   }
   return 1;
@@ -152,10 +171,14 @@ static void run(tally *out, long calls, int changed) {
     if (how) out->not_back++;
 
     // every byte of the work memory. In the stack's page, what the original pushed and left behind isn't the game's
-    // memory, so a byte there counts only if the original stored to it or the twin changed it.
+    // memory, so a byte there counts only if the original stored to it or the twin changed it. And the bytes from
+    // where the call came back to down to the lowest its stack went are where its calls' return addresses were, free
+    // once it has returned, as the next call pushes there: a twin that writes there what its original's calls pushed,
+    // for a read through a pointer to find, can leave there what the original's later calls pushed over it.
     int at = -1, apart = 0;
+    uint8_t frames = (uint8_t)(entry.S + 2 - orig_lowest);
     for (int j = 0; j < 0x800; j++) {
-      if ((j & 0x700) == 0x100 && !orig_stored[j & 0xFF] && nes_ram[j] == start[j]) continue;
+      if ((j & 0x700) == 0x100 && !orig_stored[j & 0xFF] && (nes_ram[j] == start[j] || (uint8_t)(entry.S + 2 - j) < frames)) continue;
       if (left_out[j]) continue;
       if (nes_ram[j] != orig_ram[j]) { apart++; out->differs[j]++; if (at < 0) at = j; }
     }
@@ -192,7 +215,9 @@ static void run(tally *out, long calls, int changed) {
     } else if (!out->first[0]) {
       char *text = out->first;
       size_t room = sizeof out->first;
-      int used = snprintf(text, room, "A %02X, X %02X, Y %02X, flags %s%s%s%s: %s%s", entry.A, entry.X, entry.Y, entry.N ? "N" : "-", entry.V ? "V" : "-", entry.Z ? "Z" : "-", entry.C ? "C" : "-",
+      char stack[8] = "";
+      if (twin->stack) snprintf(stack, sizeof stack, "S %02X, ", entry.S);
+      int used = snprintf(text, room, "A %02X, X %02X, Y %02X, %sflags %s%s%s%s: %s%s", entry.A, entry.X, entry.Y, stack, entry.N ? "N" : "-", entry.V ? "V" : "-", entry.Z ? "Z" : "-", entry.C ? "C" : "-",
         how == 1 ? "the original didn't come back; " : how == 2 ? "the original's processor jammed; " : how == 3 ? "the original came back with its stack elsewhere; " : "",
         sig == RAN_ON ? "the twin didn't come back in time; " : sig ? "the twin fell over; " : "");
       text += used; room -= (size_t)used;

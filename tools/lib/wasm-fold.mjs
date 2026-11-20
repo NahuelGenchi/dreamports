@@ -17,6 +17,18 @@
 // its module's memory has 4 KB, and the pairs past the console's 16 MB keep the module's own values where they are
 // (../snes/twin.mjs).
 //
+// The Nintendo 64 keeps its 8 MB at 0x80000000 and 0xA0000000 and its hardware at 0xA4000000 and up, so the low 27 bits
+// fold it into a module of 128 MB, its memory at 0 and its hardware at 0x04000000, and the module's own values sit
+// between them. And it keeps a number's highest byte first, where a module keeps its lowest first, so with `own` the
+// pass also turns round the bytes of every 16-, 32- and 64-bit number a load or a store moves outside the module's own
+// stretch [own[0], own[1]), floats too, as their bits, as #1451's trial did: the console's memory keeps the console's
+// order, byte for byte, and the C reads and writes it as the console does. A byte, and memory.copy, memory.fill and
+// memory.init, move bytes as they are. The module's own values, its stack among them, stay in its own order, as the C
+// the compiler made of them expects. With `flush` too, every float and double a sum, a difference, a product, a
+// quotient, a square root or a double made a float gives that's too small for an ordinary number becomes zero with its
+// sign, as the VR4300 makes it with the FS bit set, which games set, and as the reference emulator does, where a
+// browser keeps it as it is.
+//
 // Every load and store gets its address and its offset added and folded, with an offset of 0 left on it, and
 // memory.copy, memory.fill and memory.init have each address folded. It reads only what clang writes for C, as
 // wasm-addresses.mjs does, and stops with what it met on anything else, never a guess.
@@ -30,6 +42,15 @@ const STORED = { 0x36: I32, 0x37: I64, 0x38: F32, 0x39: F64, 0x3A: I32, 0x3B: I3
 // the locals the pass adds to every function, in this order: two whole words, one of each kind a store keeps, two
 // words a fold by a table works in, and the folded address a write marks its page by
 const ADDED = [I32, I32, I64, F32, F64, I32, I32, I32];
+// and with `own`, the folded address a load or a store turns round by, a word and two doublewords it works in
+const TURNED = [I32, I32, I64, I64];
+// and with `flush`, a float and a double it works in
+const FLUSHED = [F32, F64];
+// what makes a float or a double, by its opcode: a sum, a difference, a product, a quotient and a square root, and a
+// double made a float
+const MADE_F32 = new Set([0x91, 0x92, 0x93, 0x94, 0x95, 0xB6]), MADE_F64 = new Set([0x9F, 0xA0, 0xA1, 0xA2, 0xA3]);
+// the least ordinary float and double, as their bits
+const LEAST_F32 = [0x00, 0x00, 0x80, 0x00], LEAST_F64 = [0, 0, 0, 0, 0, 0, 0x10, 0x00];
 // with a map of pages written, how big a page is, as a power of two, and the byte after the map's that says a copy or
 // a fill wrote more than two pages
 const PAGE = 12, PAGES = 0x10000;
@@ -72,6 +93,69 @@ function parametersOf(bytes, sections) {
   return params;
 }
 
+// A 64-bit number as clang writes one, for i64.const
+function sleb64(value) {
+  const out = [];
+  let v = BigInt.asIntN(64, value);
+  for (;;) {
+    const byte = Number(v & 0x7Fn);
+    v >>= 7n;
+    if ((v === 0n && !(byte & 0x40)) || (v === -1n && byte & 0x40)) {
+      out.push(byte);
+      return out;
+    }
+    out.push(byte | 0x80);
+  }
+}
+
+// The bytes of the value in a local turned round, left on the stack: a 16-bit number in an i32 or an i64, a 32-bit
+// one in an i32, and a 64-bit one in an i64, which works through `wider`
+const swap16 = (local, wide) => (wide
+  ? [0x20, ...leb(local), 0x42, 8, 0x88, 0x42, ...sleb64(0xFFn), 0x83, 0x20, ...leb(local), 0x42, ...sleb64(0xFFn), 0x83, 0x42, 8, 0x86, 0x84]
+  : [0x20, ...leb(local), 0x41, 8, 0x76, 0x41, ...sleb(0xFF), 0x71, 0x20, ...leb(local), 0x41, ...sleb(0xFF), 0x71, 0x41, 8, 0x74, 0x72]);
+const swap32 = local => [0x20, ...leb(local), 0x41, ...sleb(0xFF00FF00), 0x71, 0x41, 8, 0x78, 0x20, ...leb(local), 0x41, ...sleb(0x00FF00FF), 0x71, 0x41, 8, 0x77, 0x72, 0x41, 16, 0x77];
+const swap64 = (local, wider) => [
+  0x20, ...leb(local), 0x42, ...sleb64(0xFF00FF00FF00FF00n), 0x83, 0x42, 8, 0x88, 0x20, ...leb(local), 0x42, ...sleb64(0x00FF00FF00FF00FFn), 0x83, 0x42, 8, 0x86, 0x84, 0x21, ...leb(wider),
+  0x20, ...leb(wider), 0x42, ...sleb64(0xFFFF0000FFFF0000n), 0x83, 0x42, 16, 0x88, 0x20, ...leb(wider), 0x42, ...sleb64(0x0000FFFF0000FFFFn), 0x83, 0x42, 16, 0x86, 0x84, 0x42, 32, 0x89,
+];
+
+// One load or store with its address folded and, outside the module's own stretch, its number's bytes turned round:
+// each access takes the turned value or the plain one by where its folded address is, so the module's own values move
+// as they always did
+function turned(op, align, offset, { fold, set, get, where, word, wide, wider, valueOf, own: [from, to] }) {
+  const console = [0x20, ...leb(where), 0x41, ...sleb(from), 0x6B, 0x41, ...sleb(to - from), 0x4F];
+  const address = [...fold(offset), 0x22, ...leb(where)];
+  const access = (code, a = align) => [code, ...leb(a), 0];
+  // the value just loaded, kept in `local`, turned or not by where it was
+  const choose = (local, swapped) => [0x21, ...leb(local), ...swapped, 0x20, ...leb(local), ...console, 0x1B];
+  switch (op) {
+    case 0x2C: case 0x2D: case 0x30: case 0x31: return [...address, ...access(op)];
+    case 0x28: return [...address, ...access(0x28), ...choose(word, swap32(word))];
+    case 0x2A: return [...address, ...access(0x28), ...choose(word, swap32(word)), 0xBE];
+    case 0x2E: case 0x2F: return [...address, ...access(0x2F), ...choose(word, swap16(word)), ...(op === 0x2E ? [0xC1] : [])];
+    case 0x29: return [...address, ...access(0x29), ...choose(wide, swap64(wide, wider))];
+    case 0x2B: return [...address, ...access(0x29), ...choose(wide, swap64(wide, wider)), 0xBF];
+    case 0x32: case 0x33: return [...address, ...access(0x33), ...choose(wide, swap16(wide, true)), ...(op === 0x32 ? [0xC3] : [])];
+    case 0x34: case 0x35: return [...address, ...access(0x28, Math.min(align, 2)), ...choose(word, swap32(word)), op === 0x34 ? 0xAC : 0xAD];
+    default: break;
+  }
+  // a store: its value kept while the address is folded, then turned or not
+  const kept = valueOf[STORED[op]];
+  const store = (value, code, a = align) => [...set(kept), ...address, ...value, code, ...leb(a), 0];
+  const either = (local, swapped) => [...swapped, 0x20, ...leb(local), ...console, 0x1B];
+  switch (op) {
+    case 0x3A: case 0x3C: return store(get(kept), op);
+    case 0x36: return store([...get(kept), 0x21, ...leb(word), ...either(word, swap32(word))], 0x36);
+    case 0x38: return store([...get(kept), 0xBC, 0x21, ...leb(word), ...either(word, swap32(word))], 0x36);
+    case 0x3B: return store([...get(kept), 0x21, ...leb(word), ...either(word, swap16(word))], 0x3B);
+    case 0x37: return store([...get(kept), 0x21, ...leb(wide), ...either(wide, swap64(wide, wider))], 0x37);
+    case 0x39: return store([...get(kept), 0xBD, 0x21, ...leb(wide), ...either(wide, swap64(wide, wider))], 0x37);
+    case 0x3D: return store([...get(kept), 0x21, ...leb(wide), ...either(wide, swap16(wide, true))], 0x3D);
+    case 0x3E: return store([...get(kept), 0xA7, 0x21, ...leb(word), ...either(word, swap32(word))], 0x36, Math.min(align, 2));
+    default: throw new Error(`The module has an instruction this can't read (0x${op.toString(16)}).`);
+  }
+}
+
 /**
  * The module with every address it reads or writes folded: to its low bits when `fold` is a mask, such as 0x03FFFFFF,
  * or by a table when it's { table }, the address of 256 pairs of words in the module's memory, a mask and a start for
@@ -80,13 +164,15 @@ function parametersOf(bytes, sections) {
  * mask's last byte, and its own values and stack to sit below it; with a table, the table says where they are. With
  * { table, written } too, every write also sets a byte of a map at `written`, one for each 4 KB of the module's memory
  * as folded, and the byte after its 65,536 when a copy or a fill reached more than two of them, so whoever runs the
- * module compares only what a call wrote.
+ * module compares only what a call wrote. With `own`, [from, to), a fold by a mask also turns round the bytes of every
+ * number of 16 bits and more a load or a store moves outside that stretch of the folded memory, the module's own.
  */
-export function foldAddresses(module, fold) {
+export function foldAddresses(module, fold, { own = null, flush = false } = {}) {
   const table = typeof fold === 'object' ? fold.table : null, mask = table === null ? fold : null;
   // which bits of an address choose its pair: the top byte, or with `shift` 12 its 4 KB, as many pairs as `entries`
   const shift = typeof fold === 'object' ? fold.shift ?? 24 : 24, entries = typeof fold === 'object' ? fold.entries ?? 2 ** (32 - shift) : 0;
   const written = typeof fold === 'object' ? fold.written ?? null : null;
+  if (own && table !== null) throw new Error('Numbers are turned round only with a fold by a mask.');
   const bytes = Uint8Array.from(module);
   const sections = sectionsOf(bytes);
   const code = sections.find(s => s.id === CODE);
@@ -111,7 +197,13 @@ export function foldAddresses(module, fold) {
     const first = params[i] + locals, [wordA, wordB] = [first, first + 1];
     const valueOf = { [I32]: first, [I64]: first + 2, [F32]: first + 3, [F64]: first + 4 }, [foldA, foldB, folded] = [first + 5, first + 6, first + 7];
     const set = index => [0x21, ...leb(index)], get = index => [0x20, ...leb(index)];
-    const out = [...leb(groups + ADDED.length), ...declared.flatMap(part => [...part]), ...ADDED.flatMap(kind => [1, kind])];
+    const added = [...ADDED, ...(own ? TURNED : []), ...(flush ? FLUSHED : [])];
+    const out = [...leb(groups + added.length), ...declared.flatMap(part => [...part]), ...added.flatMap(kind => [1, kind])];
+    const [where, word, wide, wider] = [first + 8, first + 9, first + 10, first + 11];
+    const [single, double] = own ? [first + 12, first + 13] : [first + 8, first + 9];
+    // the float or double on the stack, made zero with its sign when it's too small for an ordinary number
+    const flushed = (local, f64) => [0x21, ...leb(local), ...(f64 ? [0x44, 0, 0, 0, 0, 0, 0, 0, 0] : [0x43, 0, 0, 0, 0]), 0x20, ...leb(local), f64 ? 0xA6 : 0x98,
+      0x20, ...leb(local), 0x20, ...leb(local), f64 ? 0x99 : 0x8B, ...(f64 ? [0x44, ...LEAST_F64] : [0x43, ...LEAST_F32]), f64 ? 0x63 : 0x5D, 0x1B];
     // the address on the stack, folded: masked, or masked by its top byte's pair in the table and moved to its start,
     // the table's own words read as they are
     const masked = table === null ? [0x41, ...sleb(mask), 0x71]
@@ -128,7 +220,8 @@ export function foldAddresses(module, fold) {
       const at = r.at, op = r.byte();
       if (op >= 0x28 && op <= 0x3E) {
         const align = r.u32(), offset = r.u32();
-        if (op <= 0x35) out.push(...fold(offset), op, ...leb(align), 0);
+        if (own) out.push(...turned(op, align, offset, { fold, set, get, where, word, wide, wider, valueOf, own }));
+        else if (op <= 0x35) out.push(...fold(offset), op, ...leb(align), 0);
         else {
           const kept = valueOf[STORED[op]];
           out.push(...set(kept), ...fold(offset), ...marked, ...get(kept), op, ...leb(align), 0);
@@ -160,6 +253,10 @@ export function foldAddresses(module, fold) {
         } else if (sub >= 15 && sub <= 17) r.skip();
         else throw new Error(`The module has an instruction this can't read (0xFC ${sub}).`);
         out.push(...bytes.subarray(at, r.at));
+        continue;
+      }
+      if (flush && (MADE_F32.has(op) || MADE_F64.has(op))) {
+        out.push(op, ...flushed(MADE_F64.has(op) ? double : single, MADE_F64.has(op)));
         continue;
       }
       if (op === 0x02 || op === 0x03 || op === 0x04 || op === 0x0C || op === 0x0D || op === 0x10 || (op >= 0x20 && op <= 0x26) || op === 0x41 || op === 0x42 || op === 0x3F || op === 0x40 || op === 0xD2) r.skip();

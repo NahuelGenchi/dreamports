@@ -36,6 +36,41 @@ test('the choices GNU\'s assembler made, which the original\'s bytes hold', () =
   assert.deepEqual(halfwords('\tmov\tr0, #0\n\tldr\tr1, .L1+0x4\n\tbx\tlr\n\t.align\t2, 0\n.L1:\n\t.word\t0x1\n\t.word\t0x2'), ['2000', '4902', '4770', '0000', '0001', '0000', '0002', '0000']);
 });
 
+test('the newer way of writing Thumb, as a decompilation writes a routine, comes out as GNU\'s assembler made it', () => {
+  // flags set by an s, numbers with no # and names given one, a value kept at the pool, adr, stm with !, and a low
+  // register moved to another as a shift by nothing
+  const made = assemble('\t.syntax unified\n\t.equ off, 4\n\tadds r3, 1\n\tmovs r0, 0\n\tmovs r1, r2\n\tlsls r0, 2\n\tmuls r2, r1\n\tstr r1, [sp, 0x14]\n\tldr r3, [r0, off]\n\tsub sp, off * 6\n\tstm r5!, {r0}\n\tldr r1, =0x4000000 + 6\n\tadr r2, there\n\tbx r2\n\t.pool\n\t.arm\nthere:\n\tmov r0, r1, asr 9\n\tbx lr\n');
+  const halves = [...made.sections['.text'].bytes.toString('hex').match(/..../g)].map(pair => pair.slice(2) + pair.slice(0, 2));
+  assert.deepEqual(halves.slice(0, 14), ['3301', '2000', '0011', '0080', '434a', '9105', '6843', 'b086', 'c501', '4901', 'a201', '4710', '0006', '0400']);
+  // ARM code takes its place and is said to be left out
+  assert.deepEqual(made.unassembled.map(({ at, bytes }) => [at, bytes]), [[28, 4], [32, 4]]);
+  assert.equal(made.symbols.get('there').at, 28);
+  assert.throws(() => assemble('\t.syntax unified\n\tmov r0, r1\n'), /written movs/);
+});
+
+test('ARM code written the older way comes out as the ARM processor reads it, and ARM it doesn\'t know takes its place as zeros', () => {
+  const made = assemble([
+    '\t.arm', 'start:', '\tmov r0, #18', '\tmsr cpsr_cf, r0', '\tldr sp, [pc, #40]', '\tadd r0, pc, #24', '\tstr r0, [r1, #0]', '\tmov lr, pc', '\tbx r1',
+    '\tmov r3, #67108864', '\tadd r3, r3, #512', '\tand r1, r2, r2, lsr #16', '\tands r0, r1, #8192', '\tbne start', '\tstrh r0, [r3, #2]', '\tldrb r2, [r1, #-3]',
+    '\tldr r1, =0x03000470', '\tmrs r0, cpsr', '\tb elsewhere', '\tmla r0, r1, r2, r3', '\t.pool', '',
+  ].join('\n'));
+  const bytes = made.sections['.text'].bytes, words = Array.from({ length: bytes.length / 4 }, (_, i) => bytes.readUInt32LE(i * 4));
+  assert.deepEqual(words, [0xE3A00012, 0xE129F000, 0xE59FD028, 0xE28F0018, 0xE5810000, 0xE1A0E00F, 0xE12FFF11, 0xE3A03301, 0xE2833C02, 0xE0021822, 0xE2110A02,
+    0x1AFFFFF3, 0xE1C300B2, 0xE5512003, 0xE59F1008, 0xE10F0000, 0xEA000000, 0, 0x03000470]);
+  // a branch to a name the file doesn't have is match's to fill in, and the instruction it doesn't know is left out
+  assert.deepEqual(made.relocations, [{ section: '.text', at: 64, kind: 'arm-branch', name: 'elsewhere', addend: 0 }]);
+  assert.deepEqual(made.unassembled, [{ section: '.text', at: 68, bytes: 4 }]);
+  // and so is a branch to a function, which match places where the original has it, not where the file does
+  assert.deepEqual(assemble('\t.arm\n\t.type start,function\nstart:\n\tb start\n').relocations, [{ section: '.text', at: 0, kind: 'arm-branch', name: 'start', addend: 0 }]);
+  // a decompilation's ARM, after .syntax unified, is left as zeros, as m4a's table of frames has it
+  assert.deepEqual(assemble('\t.syntax unified\n\t.arm\n\tmov r0, #18\n').unassembled, [{ section: '.text', at: 0, bytes: 4 }]);
+});
+
+test('a twin of the function at a base address, as a cartridge\'s first instruction, names it with its own name right after it', () => {
+  const twins = twinsIn('/** 0x08000000, CartridgeStart: the jump past the header. */\nvoid CartridgeStart(void)\n{\n}\n\n/** Reads at 0x08000000, the cartridge. */\nvoid Reads(void)\n{\n}\n');
+  assert.deepEqual(twins.map(twin => [twin.name, twin.address]), [['CartridgeStart', 0x08000000], ['Reads', null]]);
+});
+
 test('a function knows its length, and a line the assembler can\'t read is named', () => {
   const made = assemble('\t.type\t f,function\n\t.thumb_func\nf:\n\tbx\tlr\n.Lfe1:\n\t.size\t f,.Lfe1-f\n\t.align\t2, 0\n\t.comm\tvalue, 4\n');
   assert.equal(made.sizes.get('f'), 2);

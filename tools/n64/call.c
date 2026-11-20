@@ -25,7 +25,7 @@
 //                  unit's 32, 64 bits each as the processor keeps them, and the changes, a count and then each one's
 //                  address, bytes (1, 2 or 4) and value. A call ends when the processor comes back to where ra pointed
 //                  as it started. Answers how it ended, the words below, and then the memory every call starts from is
-//                  as it was.
+//                  as it was: what the call and its changes wrote is put back before the next.
 //   'Q'            ends the program.
 //
 // What a call answers, in words but for the bytes of what ran and of the memory:
@@ -110,6 +110,25 @@ uint64_t cpu_features_get(void) { return 0; }
 // own memory keeps it
 static u32 base[IMAGE / 4], image[IMAGE / 4];
 static u8 dirty[CHUNKS];
+// the chunks the last call wrote, or its changes did, which are put back from `base` before the next call, so a call
+// doesn't copy all 8 MB
+static u8 stale[CHUNKS];
+static u32 stale_list[CHUNKS], stale_count;
+
+static void mark_stale(u32 chunk) {
+  if (stale[chunk]) return;
+  stale[chunk] = 1;
+  stale_list[stale_count++] = chunk;
+}
+
+static void put_back(void) {
+  for (u32 i = 0; i < stale_count; i++) {
+    u32 chunk = stale_list[i];
+    memcpy(&image[chunk * CHUNK / 4], &base[chunk * CHUNK / 4], CHUNK);
+    stale[chunk] = 0;
+  }
+  stale_count = 0;
+}
 static jmp_buf out;
 static u32 ended, detail, ended_at, steps, fpu, hardware;
 static u32 reads[MOST_READS][2], read_count;
@@ -346,14 +365,17 @@ static void call(void) {
   u64 registers[34], floats[32];
   for (int i = 0; i < 34; i++) registers[i] = dword();
   for (int i = 0; i < 32; i++) floats[i] = dword();
-  memcpy(image, base, sizeof image);
+  put_back();
   u32 changes = word();
   for (u32 i = 0; i < changes; i++) {
     u32 address = word(), bytes = word(), value = word();
     u32 physical = (address & 0xC0000000u) == 0x80000000u ? address & 0x1FFFFFFFu : address;
     u32 at = place(physical);
     if (bytes > 4 || at >= IMAGE || place(physical + bytes - 1) != at + bytes - 1) continue;
-    for (u32 b = 0; b < bytes; b++) put_byte(at + b, value >> (8 * (bytes - 1 - b)));
+    for (u32 b = 0; b < bytes; b++) {
+      put_byte(at + b, value >> (8 * (bytes - 1 - b)));
+      mark_stale((at + b) / CHUNK);
+    }
   }
   memset(dirty, 0, sizeof dirty);
 
@@ -408,6 +430,7 @@ static void call(void) {
   say(written);
   for (u32 i = 0; i < CHUNKS; i++) {
     if (!dirty[i]) continue;
+    mark_stale(i);
     say(i);
     u8 bytes[CHUNK];
     for (u32 b = 0; b < CHUNK; b++) bytes[b] = (u8)(image[(i * CHUNK + b) / 4] >> ((3 - (b & 3)) * 8));
@@ -447,6 +470,9 @@ int main(void) {
       if (!bytes || !take(bytes, IMAGE)) return 1;
       for (u32 i = 0; i < IMAGE / 4; i++) base[i] = (u32)bytes[4 * i] << 24 | (u32)bytes[4 * i + 1] << 16 | (u32)bytes[4 * i + 2] << 8 | bytes[4 * i + 3];
       free(bytes);
+      memcpy(image, base, sizeof image);
+      memset(stale, 0, sizeof stale);
+      stale_count = 0;
       putchar('k');
       fflush(stdout);
     } else if (command == 'C') {

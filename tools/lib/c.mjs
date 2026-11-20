@@ -1,6 +1,7 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/ and the PlayStation 2 kit/ps2/c/, and
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
+// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
@@ -50,6 +51,14 @@ const OWN = {
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
+  n64: {
+    folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
+    // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
+    // pointer of another type or through address 0, and no two stores the compiler sees side by side made into one, as
+    // the fold pass turns round each number by its own size, which two merged in the module's own order would undo
+    // (wasm-fold.mjs)
+    twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
+  },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
@@ -345,8 +354,10 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
     const { stackSources } = await import('../gba/stack.mjs');
     const src = join(folder, 'src'), withSrc = [...all, src];
     const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
-    const made = await stackSources({ game, folder, own, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
-    const stacked = sources.map(file => made.sources[own.indexOf(file)] ?? file);
+    // the shared libraries' files too, whose functions proven by the same bytes leave the stack as the game's do
+    const stackable = [...own, ...libraries.flatMap(library => library.files)];
+    const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+    const stacked = sources.map(file => made.sources[stackable.indexOf(file)] ?? file);
     return buildWasm(stacked, out, { ...kit, folders: withSrc, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
   }
   return buildWasm(sources, out, { ...kit, folders: all, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
