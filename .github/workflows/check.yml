@@ -18,8 +18,10 @@ name: Check
 # npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
 # npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
 # and reads the program a ninth gives the sound processor, npm run test:snes-twin, which checks its twins against it,
-# and npm run test:n64-call and test:n64-twin, which run the functions of an eighth in Parallel N64's own processor
-# and check its twins against them. A pull request's code runs here, with a token that can only read and no secrets.
+# npm run test:n64-call and test:n64-twin, which run the functions of an eighth in Parallel N64's own processor and
+# check its twins against them, and npm run test:n64-match, which builds IDO from its translation's source and tries
+# match on the Nintendo 64 with a tenth. A pull request's code runs here, with a token that can only read and no
+# secrets.
 #
 # The tests run in five jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695). The
 # check main requires, and the Readme workflow and the first-entry bot read, is the last job, Check, which passes only
@@ -88,12 +90,14 @@ jobs:
               npm run test:ps1-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
           # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
-          # under one; and a shared library of the project's own, proven in two made-up games at addresses of their own
+          # under one; and a shared library of the project's own, proven in two made-up games at addresses of their own;
+          # and match on the Nintendo 64, with IDO built from its translation's source
           - part: tasks
             run: |
               npm run test:function-tasks
               npm run test:function-homes
               npm run test:libraries
+              npm run test:n64-match
           # the PlayStation 2, in a job of its own as it took tasks near the 15-minute limit (#1695): Sony's own
           # compiler and assemblers, built from Sony's GPL source with the runner's clang, kept only if they make the
           # original compiler's objects, the tools' tables checked against them, and match on the console against a
