@@ -31,9 +31,9 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
-// The environment's DP_STARTS, when it's set, names a file of the EE's addresses to tell of each time play reaches one,
-// with the registers and the memory the function starts from, from the same core (starts.h), for the function check's
-// memories of play.
+// The environment's DP_STARTS, when it's set, names a file of the processor's addresses to tell of each time play
+// reaches one, with the registers and the memory the function starts from, from the same core (starts.h), for the
+// function check's memories of play on the PlayStation and the PlayStation 2.
 //
 // The environment's DP_MEMORY and DP_SAVES, when they're set, ask for the console's memory after every frame and its
 // memory cards' files each time they change, from a core that says where it keeps them, as the PlayStation 2's does with
@@ -791,7 +791,11 @@ int main(int argc, char** argv) {
 	const uint8_t* (*memories)(uint32_t, uint32_t, uint32_t) = dlsym(library, "dreamports_memory");
 	if (!memories) memories = dlsym(library, "retro_dreamports_memory");
 	heldOpen(memories, dlsym(library, "dreamports_memory_card"));
-	startsOpen(dlsym(library, "dreamports_registers"), memories);
+	if (startsOpen(dlsym(library, "dreamports_registers"), memories, dlsym(library, "dreamports_starts_layout"))) {
+		// a core that tells of each instruction it's about to run, as the PlayStation's does with the tools' patch
+		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
+		if (watchPc) watchPc(startsReached);
+	}
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
