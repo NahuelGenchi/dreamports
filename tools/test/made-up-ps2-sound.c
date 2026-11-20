@@ -85,7 +85,7 @@ static int module_start(int argc, char **argv) {
   W(@ATTR@, @ATTR_SET_UP@ | 0x10);
   W(@TSA_HI@, @TONE_AT@ >> 17);
   W(@TSA_LO@, @TONE_AT@ >> 1 & 0xFFFF);
-  for (uint32_t i = 0; i < TONE_SIZE; i += 2) W(@STD@, tone[i] | tone[i + 1] << 8);
+  for (int copy = 0; copy < 2; copy++) for (uint32_t i = 0; i < TONE_SIZE; i += 2) W(@STD@, tone[i] | tone[i + 1] << 8);
   W(@ATTR@, @ATTR_SET_UP@);
   for (uint32_t i = 0; i < sizeof reverb / sizeof reverb[0]; i++) W(reverb[i][0], reverb[i][1]);
   W(@IRQA_HI@, @IRQ_AT@ >> 17);

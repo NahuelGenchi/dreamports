@@ -211,6 +211,11 @@ static void core_reset(core *c, unsigned number) {
 // the chip as the console starts, with `ram` its memory
 static void wake(uint8_t *ram) {
   spu.ram = ram;
+  // what the console's own start-up leaves in the chip's memory, as PCSX2 has it from the console's BIOS: a block that
+  // ends and loops at once where every voice starts, so a voice nothing has used yet stays in it instead of running
+  // through the memory, and another further on that a game is known to lean on
+  __builtin_memset(ram + 0x2800 * 2, 7, 16);
+  __builtin_memset(ram + 0xE870 * 2, 7, 16);
   core_reset(&spu.cores[0], 0);
   core_reset(&spu.cores[1], 1);
 }
