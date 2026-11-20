@@ -81,9 +81,10 @@ export function readOriginal(text) {
 
 // its functions, each its address, with a function the game makes in its work RAM its first 8 bytes after a slash, and
 // its size, and the stretches of the cartridge the game copies into its work RAM, each where, from where and how long
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16})?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?\s*\}\s*$/;
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16})?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
 
-/** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null. */
+/** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null.
+ *  A Super Nintendo game's map also says the processor's mode each function starts in (tools/snes/functions.mjs). */
 export function readCodeMap(text, sha1, console = 'gba') {
   const found = CODE_MAP.exec(text);
   if (!found || found[1] !== sha1) return null;
