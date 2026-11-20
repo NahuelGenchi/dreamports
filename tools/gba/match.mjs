@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { namesOf } from '../portmap.mjs';
+import { snesTwinsIn } from '../snes/contracts.mjs';
 import { assemble } from './thumb.mjs';
 import { compilerPath, COMPILERS } from './agbcc.mjs';
 
@@ -158,8 +159,10 @@ export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
  *  it is a proof of (../lib/proofs.mjs). A file of a shared library names no address: `given`, a Map of its twins'
- *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. */
-export const twinsIn = (text, shifts = [], given = null, console = 'gba') => piecesIn(text, shifts, given, console).functions;
+ *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. On the Super Nintendo a twin
+ *  is what a contract line calls, `dp:twin` and the original's function, as the 65816's functions take their values in
+ *  registers C can't name (../snes/contracts.mjs). */
+export const twinsIn = (text, shifts = [], given = null, console = 'gba') => (console === 'snes' ? snesTwinsIn(text) : piecesIn(text, shifts, given, console).functions);
 
 /** A file of C in pieces: the `functions` it defines, as twinsIn gives them, and the `rest`, everything it holds
  *  outside them, in order, each { text, pre }: a line for the preprocessor, with `pre`, or a declaration up to its ;,
