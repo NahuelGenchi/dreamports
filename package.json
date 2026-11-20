@@ -36,6 +36,7 @@
     "test:ps1-call": "node tools/test/ps1-call.mjs",
     "test:n64-call": "node tools/test/n64-call.mjs",
     "test:n64-twin": "node tools/test/n64-twin.mjs",
+    "test:n64-match": "node tools/test/n64-match.mjs",
     "test:ps1-twin": "node tools/test/ps1-twin.mjs",
     "test:ps1-gcc": "node tools/test/ps1-gcc.mjs",
     "test:ps2-gcc": "node tools/test/ps2-gcc.mjs",

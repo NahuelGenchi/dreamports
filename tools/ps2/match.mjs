@@ -85,20 +85,25 @@ export function wayAt(compiler, address) {
 export const wayText = way => `${COMPILERS[way.name]?.called ?? way.name} ${way.version} ${way.flags.join(' ')}`;
 
 /**
- * An object file as match takes it: { sections, functions, names }. `sections` is a Map of each loaded section's name
- * to { bytes, zeroed, relocations }, `zeroed` for one a program's file doesn't hold, as .bss, and each relocation
+ * An object file as match takes it: { sections, functions, names, bigEndian }. `sections` is a Map of each loaded
+ * section's name to { bytes, zeroed, relocations }, `zeroed` for one a program's file doesn't hold, as .bss, and each relocation
  * { at, kind, section, symbol, addend }: a place a linker fills in, `kind` 'hi16', 'lo16', 'gprel16', 'jump26' or
  * 'word32', with where it points, `section` and `addend`, a distance into a section of this file, or `symbol` and
  * `addend`, past a name another file defines. The addend an object keeps in the place itself is taken out of the bytes.
  * `functions` are the code's, { name, at, size }, and `names` each section's named values, { name, at, size }.
  */
 export function objectOf(object) {
-  if (object.length < 52 || object.readUInt32BE(0) !== 0x7F454C46 || object.readUInt16LE(16) !== 1) throw new Error('The compiler didn\'t make an object file.');
-  const count = object.readUInt16LE(48), table = object.readUInt32LE(32), strings = object.readUInt32LE(table + object.readUInt16LE(50) * 40 + 16);
+  // a MIPS object keeps its numbers in the order of the console it's for: the lowest byte first on the PlayStation 2,
+  // the highest first on the Nintendo 64 (../n64/match.mjs), as its header's sixth byte says
+  const bigEndian = object.length >= 6 && object[5] === 2;
+  const u16 = (at, from = object) => (bigEndian ? from.readUInt16BE(at) : from.readUInt16LE(at));
+  const u32 = (at, from = object) => (bigEndian ? from.readUInt32BE(at) : from.readUInt32LE(at));
+  if (object.length < 52 || object.readUInt32BE(0) !== 0x7F454C46 || u16(16) !== 1) throw new Error('The compiler didn\'t make an object file.');
+  const count = u16(48), table = u32(32), strings = u32(table + u16(50) * 40 + 16);
   const text = (from, at) => object.toString('latin1', from + at, object.indexOf(0, from + at));
   const headers = Array.from({ length: count }, (_, i) => {
     const o = table + i * 40;
-    return { name: text(strings, object.readUInt32LE(o)), type: object.readUInt32LE(o + 4), flags: object.readUInt32LE(o + 8), offset: object.readUInt32LE(o + 16), size: object.readUInt32LE(o + 20), link: object.readUInt32LE(o + 24), info: object.readUInt32LE(o + 28) };
+    return { name: text(strings, u32(o)), type: u32(o + 4), flags: u32(o + 8), offset: u32(o + 16), size: u32(o + 20), link: u32(o + 24), info: u32(o + 28) };
   });
   const sections = new Map();
   for (const h of headers) {
@@ -110,26 +115,26 @@ export function objectOf(object) {
   if (symtab) {
     const names = headers[symtab.link].offset;
     for (let o = symtab.offset; o + 16 <= symtab.offset + symtab.size; o += 16) {
-      const index = object.readUInt16LE(o + 14);
-      symbols.push({ name: text(names, object.readUInt32LE(o)), value: object.readUInt32LE(o + 4), size: object.readUInt32LE(o + 8), type: object[o + 12] & 15, section: index && index < count ? headers[index].name : null, common: index === 0xFFF2 });
+      const index = u16(o + 14);
+      symbols.push({ name: text(names, u32(o)), value: u32(o + 4), size: u32(o + 8), type: object[o + 12] & 15, section: index && index < count ? headers[index].name : null, common: index === 0xFFF2 });
     }
   }
   // what $gp is taken to be inside the object, which a distance from it to one of the file's own values counts from
   const reginfo = headers.find(h => h.name === '.reginfo');
-  const gp0 = reginfo && reginfo.size >= 24 ? object.readUInt32LE(reginfo.offset + 20) : 0;
+  const gp0 = reginfo && reginfo.size >= 24 ? u32(reginfo.offset + 20) : 0;
   for (const h of headers) {
     if (h.type !== 9) continue;
     const section = sections.get(headers[h.info].name);
     if (!section) continue;
     const entries = [];
     for (let o = h.offset; o + 8 <= h.offset + h.size; o += 8) {
-      const info = object.readUInt32LE(o + 4), kind = KINDS[info & 0xFF];
+      const info = u32(o + 4), kind = KINDS[info & 0xFF];
       if (!kind) throw new Error(`The object has a kind of place to fill in that match doesn't know, ${info & 0xFF}, in ${headers[h.info].name}.`);
-      entries.push({ at: object.readUInt32LE(o), kind, symbol: symbols[info >>> 8], index: info >>> 8 });
+      entries.push({ at: u32(o), kind, symbol: symbols[info >>> 8], index: info >>> 8 });
     }
     // each place's addend, kept in the place itself: an upper half's with the lower half of the next lo16 of the same
     // symbol, and a lower half's near the last upper half's, as the two make one address
-    const word = at => section.bytes.readUInt32LE(at);
+    const word = at => u32(at, section.bytes);
     const last = new Map();
     entries.forEach((entry, i) => {
       const held = word(entry.at);
@@ -148,7 +153,9 @@ export function objectOf(object) {
     for (const entry of entries) {
       // the addend out of the place, so filling it in is the same for every kind
       const held = word(entry.at);
-      section.bytes.writeUInt32LE((entry.kind === 'word32' ? 0 : entry.kind === 'jump26' ? held & 0xFC000000 : held & 0xFFFF0000) >>> 0, entry.at);
+      const cleared = (entry.kind === 'word32' ? 0 : entry.kind === 'jump26' ? held & 0xFC000000 : held & 0xFFFF0000) >>> 0;
+      if (bigEndian) section.bytes.writeUInt32BE(cleared, entry.at);
+      else section.bytes.writeUInt32LE(cleared, entry.at);
       const { symbol } = entry;
       if (symbol.section && sections.has(symbol.section)) section.relocations.push({ at: entry.at, kind: entry.kind, section: symbol.section, addend: (symbol.type === 3 ? 0 : symbol.value) + entry.addend });
       else if (symbol.common) throw new Error(`${symbol.name} is a value with no start, which the linker places among every file's: give it one, as = 0, or build with -fno-common.`);
@@ -159,7 +166,7 @@ export function objectOf(object) {
   const code = symbols.filter(s => s.type === 2 && s.section === '.text').sort((a, b) => a.value - b.value);
   const functions = code.map((s, i) => ({ name: s.name, at: s.value, size: s.size || (code[i + 1]?.value ?? sections.get('.text').bytes.length) - s.value }));
   const names = new Map([...sections.keys()].map(name => [name, symbols.filter(s => s.section === name && s.name && (s.type === 1 || s.type === 0) && !/^(gcc2_compiled\.|__gnu_compiled_c(plusplus)?)$/.test(s.name)).map(s => ({ name: s.name, at: s.value, size: s.size }))]));
-  return { sections, functions, names };
+  return { sections, functions, names, bigEndian };
 }
 
 /**
@@ -194,8 +201,8 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
 }
 
 // a place filled in with `target`: false when it can't hold it
-function fill(buffer, at, kind, target, { place, gp }) {
-  const word = buffer.readUInt32LE(at);
+function fill(buffer, at, kind, target, { place, gp, bigEndian = false }) {
+  const word = bigEndian ? buffer.readUInt32BE(at) : buffer.readUInt32LE(at);
   let made;
   if (kind === 'hi16') made = (word & 0xFFFF0000) | (((target + 0x8000) >>> 16) & 0xFFFF);
   else if (kind === 'lo16') made = (word & 0xFFFF0000) | (target & 0xFFFF);
@@ -208,7 +215,8 @@ function fill(buffer, at, kind, target, { place, gp }) {
     if (((place + 4) & 0xF0000000) !== (target & 0xF0000000) || target % 4) return false;
     made = (word & 0xFC000000) | ((target >>> 2) & 0x3FFFFFF);
   } else made = target;
-  buffer.writeUInt32LE(made >>> 0, at);
+  if (bigEndian) buffer.writeUInt32BE(made >>> 0, at);
+  else buffer.writeUInt32LE(made >>> 0, at);
   return true;
 }
 
@@ -218,16 +226,18 @@ function fill(buffer, at, kind, target, { place, gp }) {
  *   addressOf(name): the address in the original of a name the version gives one, or null
  *   sizeOf(address): how long the code map says the function there is, or null when none starts there
  *   runOf(address, through): for a twin of a run, the code map's functions it's the twin of, as runIn gives them
- *   program: the program the disc boots as it's loaded, { load, text }, and `gp`, where it points $gp
+ *   program: the program the disc boots as it's loaded, { load, text }, with `bigEndian` for a console that keeps a
+ *     number's highest byte first, as the Nintendo 64 does, and `gp`, where it points $gp
+ *   decode(word, address): the console's reader of its instructions, the EE's unless said
  * Answers { functions: [{ name, address, line, same, bytes, words, differing, first, longer, missing, data, ours,
  * theirs, made, calls }], unknown }, as the PlayStation's matchFile does: `missing` is the names in a function with
  * no address, `data` each piece of the file's own values it reaches, { name, address, bytes, same, why }, and
  * `unknown` every name with none.
  */
-export function matchObject(made, { twins, addressOf, sizeOf, runOf = () => null, program, gp = 0 }) {
+export function matchObject(made, { twins, addressOf, sizeOf, runOf = () => null, program, gp = 0, decode: decodeAt = decode }) {
   const code = made.sections.get('.text') ?? { bytes: Buffer.alloc(0), relocations: [] };
   const inProgram = (address, bytes) => address >= program.load && address + bytes <= program.load + program.text.length;
-  const wordAt = address => program.text.readUInt32LE(address - program.load);
+  const wordAt = address => (program.bigEndian ? program.text.readUInt32BE(address - program.load) : program.text.readUInt32LE(address - program.load));
   const functions = made.functions.map(f => ({
     name: f.name, at: f.at, length: f.size, address: twins.get(f.name)?.address ?? null, through: twins.get(f.name)?.through ?? null,
     line: twins.get(f.name)?.line ?? null, missing: new Set(), calls: [], reaches: new Set(),
@@ -294,7 +304,7 @@ export function matchObject(made, { twins, addressOf, sizeOf, runOf = () => null
     for (const r of section.relocations) {
       const holder = pieceAt(name, r.at), base = baseOf(name), target = targetOf(r);
       if (r.section && r.section !== '.text') holder.reaches.add(pieceAt(r.section, r.addend));
-      if (target === null || base === null || !fill(section.bytes, r.at, r.kind, target, { place: base + r.at, gp })) {
+      if (target === null || base === null || !fill(section.bytes, r.at, r.kind, target, { place: base + r.at, gp, bigEndian: made.bigEndian })) {
         holder.missing.add(r.section ?? r.symbol);
         if (!r.section) unknown.add(r.symbol);
       }
@@ -306,7 +316,7 @@ export function matchObject(made, { twins, addressOf, sizeOf, runOf = () => null
     if (!f || f.address === null) continue;
     if (r.section && r.section !== '.text') f.reaches.add(pieceAt(r.section, r.addend));
     const target = targetOf(r);
-    if (target === null || !fill(code.bytes, r.at, r.kind, target, { place: f.address + r.at - f.at, gp })) {
+    if (target === null || !fill(code.bytes, r.at, r.kind, target, { place: f.address + r.at - f.at, gp, bigEndian: made.bigEndian })) {
       // a section of the file's own that isn't placed is said where its piece is: unknown is the version's names
       if (!r.section) unknown.add(r.symbol);
       f.missing.add(r.section ?? r.symbol);
@@ -364,10 +374,10 @@ export function matchObject(made, { twins, addressOf, sizeOf, runOf = () => null
     f.theirs = [];
     for (let i = 0; i < f.words; i++) {
       const address = f.address + i * 4;
-      const mine = i * 4 < f.length ? code.bytes.readUInt32LE(f.at + i * 4) : null;
+      const mine = i * 4 >= f.length ? null : made.bigEndian ? code.bytes.readUInt32BE(f.at + i * 4) : code.bytes.readUInt32LE(f.at + i * 4);
       const its = i * 4 < length && inProgram(address, 4) ? wordAt(address) : null;
-      f.ours.push({ value: mine, text: mine === null ? '' : decode(mine, address)?.text ?? '' });
-      f.theirs.push({ value: its, text: its === null ? '' : decode(its, address)?.text ?? '' });
+      f.ours.push({ value: mine, text: mine === null ? '' : decodeAt(mine, address)?.text ?? '' });
+      f.theirs.push({ value: its, text: its === null ? '' : decodeAt(its, address)?.text ?? '' });
       if (mine !== its) {
         f.differing++;
         if (f.first < 0) f.first = i * 4;
