@@ -8,7 +8,10 @@
 // of 300, and found at its first frame once a corner of one triangle is a pixel off. A third (madeUpSoundExe) plays the
 // sound chip: sounds moved into its memory by DMA and by hand, six voices with their envelopes, noise, a pitch moved
 // by another voice's and the reverb, keyed on and off over the frames. Its Dreamport in C (ps1-kit/sound.c) has to
-// sound the same in all 300, and be found by its sound where it leaves the voice of noise unkeyed.
+// sound the same in all 300, and be found by its sound where it leaves the voice of noise unkeyed. A fourth
+// (madeUpPadExe) reads the pad through SIO0 a byte at a time and draws what came back, proven with a recording that
+// holds each button in turn: its Dreamport in C (ps1-kit/pad.c) has to be the same in all 300 frames, and be found at
+// the first button held when it reads the second port, where nothing is held.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -16,11 +19,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { GPU, SOUND, drawList, madeUpDrawExe, madeUpGpuExe, madeUpSoundExe, soundList } from './made-up-ps1.mjs';
+import { GPU, PAD, SOUND, drawList, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
 
 const GAME = 'test-ps1-kit', VERSION = `${GAME}/c`;
 const DRAWING = 'test-ps1-kit-draw', DRAWN = `${DRAWING}/c`;
 const SOUNDING = 'test-ps1-kit-sound', SOUNDED = `${SOUNDING}/c`;
+const PADDING = 'test-ps1-kit-pad', PADDED = `${PADDING}/c`;
 const WORK = join(LOCAL, 'test-ps1-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -35,15 +39,15 @@ const dp = (...args) => {
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 26 });
   return { status, out: stdout + stderr };
 };
-const report = (version = VERSION) => {
-  const file = join(resultFolder(version, 'still'), 'report.json');
+const report = (version = VERSION, recording = 'still') => {
+  const file = join(resultFolder(version, recording), 'report.json');
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 };
 const tracked = () => spawnSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: REPO, encoding: 'utf8' }).stdout;
 
 function tidy() {
   const kept = existsSync(MEDIA) ? readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file)) : [];
-  for (const game of [GAME, DRAWING, SOUNDING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
+  for (const game of [GAME, DRAWING, SOUNDING, PADDING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
   for (const path of [WORK, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
@@ -54,12 +58,12 @@ function writeGame(changes = []) {
   writeFileSync(join(gameFolder(VERSION), 'src', 'main.c'), code);
 }
 
-// a game of the test's own in games/, with the program `exe` as its copy, which rom knows, its code map, its first
-// files in JavaScript and in C, and a recording of 300 frames with nothing held
-async function makeGame(game, version, exe, name) {
+// a game of the test's own in games/, with the program `exe` as its copy, and `more` in its original.json, which rom
+// knows, its code map, its first files in JavaScript and in C, and a recording of 300 frames with nothing held
+async function makeGame(game, version, exe, name, more = {}) {
   const copy = join(WORK, `${game}.exe`);
   writeFileSync(copy, exe);
-  const original = { console: 'ps1', name, title: game, code: '', sha1: createHash('sha1').update(exe).digest('hex') };
+  const original = { console: 'ps1', name, title: game, code: '', sha1: createHash('sha1').update(exe).digest('hex'), ...more };
   mkdirSync(join(proofFolder(game), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(game), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
@@ -93,6 +97,13 @@ function writeSound(changes = []) {
     .replace(/@([A-Z_]+)@/g, (_, key) => `0x${SOUND[key].toString(16).toUpperCase()}`);
   for (const [from, to] of changes) code = code.replace(from, to);
   writeFileSync(join(gameFolder(SOUNDED), 'src', 'main.c'), code);
+}
+
+// the pad program's Dreamport in C, reading the port `select` says, 0x1003 the first and 0x3003 the second
+function writePad(select = 0x1003) {
+  const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'pad.c'), 'utf8').replace('@PORT@', `0x${select.toString(16).toUpperCase()}`)
+    .replace(/@([A-Z_]+)@/g, (_, key) => `0x${PAD[key].toString(16).toUpperCase()}`);
+  writeFileSync(join(gameFolder(PADDED), 'src', 'main.c'), code);
 }
 
 async function main() {
@@ -141,6 +152,19 @@ async function main() {
     run = dp('prove', SOUNDED, 'still');
     const heard = report(SOUNDED).sound?.firstDifference;
     check(run.status !== 0 && !report(SOUNDED).firstPictureDifference && heard?.frame >= 98 && heard?.frame <= 102, `with the voice of noise never keyed on, its sound differs where the noise starts: ${JSON.stringify(heard)}`);
+
+    console.log('The pads, each button held in turn:');
+    // it reads the pad just after the V-blank, in the frame the emulator gives it that frame's buttons
+    await makeGame(PADDING, PADDED, await madeUpPadExe(), 'Test PlayStation Pad (World)', { keysAfterVBlank: true });
+    writeFileSync(join(proofFolder(PADDING), 'recordings', 'buttons.json'), `${JSON.stringify(padRecording(FRAMES), null, 2)}\n`);
+    writePad();
+    run = dp('prove', PADDED, 'buttons');
+    if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
+    check(run.status === 0 && report(PADDED, 'buttons').frames === FRAMES && !report(PADDED, 'buttons').firstDifference, `all ${FRAMES} frames the same as the emulator's, every button: ${run.out.trim().split('\n').at(-1)}`);
+    writePad(0x3003);
+    run = dp('prove', PADDED, 'buttons');
+    const first = report(PADDED, 'buttons').firstDifference;
+    check(run.status !== 0 && first?.frame >= 5 && first?.frame <= 8, `reading the second port, where nothing is held, it differs at the first button held: ${JSON.stringify(first)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
@@ -152,7 +176,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe PlayStation\'s kit draws and sounds as the console does, every frame.');
+  console.log('\nThe PlayStation\'s kit draws, sounds and reads its pads as the console does, every frame.');
 }
 
 main().catch(error => {

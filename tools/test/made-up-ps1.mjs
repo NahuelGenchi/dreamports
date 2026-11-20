@@ -654,3 +654,153 @@ done:
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return Buffer.concat([header, text]);
 }
+
+/** What the pad program sends the pad each frame, a byte at a time, where it keeps what comes back, and what it draws
+ *  with: the background, and a held button's square and a button not held's. */
+export const PAD = { SENDS: [0x01, 0x42, 0x00, 0x00, 0x00], RECEIVED: 0x80100000, BACKGROUND: 0x203010, HELD: 0x40F0F0, LOOSE: 0x404040 };
+
+/** A program that reads the pad in the first port each frame through SIO0, a byte at a time, as a game that talks to
+ *  the pad itself does, and draws what came back: each byte as a square of its grey, and each of the 16 buttons' bits
+ *  as a square, lit while its button is held. As the console boots it: a PS-X EXE, the bytes it sends after its code. */
+export async function madeUpPadExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { SENDS, RECEIVED, BACKGROUND, HELD, LOOSE } = PAD;
+  const SENDS_AT = LOAD + 0x400;
+  const made = assemble(`
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE5000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0x000D
+	sh	$t1, 0x1048($t0)
+	li	$t1, 0x0088
+	sh	$t1, 0x104E($t0)
+	li	$s1, ${RECEIVED}
+wait:
+	lw	$t1, 0x1070($t0)
+	nop
+	andi	$t1, $t1, 1
+	beqz	$t1, wait
+	nop
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	li	$t1, 0x1003
+	sh	$t1, 0x104A($t0)
+	li	$t3, ${SENDS_AT}
+	move	$t4, $s1
+	li	$t5, ${SENDS.length}
+byte:
+	lbu	$t1, 0($t3)
+	nop
+	sb	$t1, 0x1040($t0)
+rx:
+	lhu	$t1, 0x1044($t0)
+	nop
+	andi	$t1, $t1, 2
+	beqz	$t1, rx
+	nop
+	lbu	$t1, 0x1040($t0)
+	addiu	$t3, $t3, 1
+	sb	$t1, 0($t4)
+	addiu	$t5, $t5, -1
+	bnez	$t5, byte
+	addiu	$t4, $t4, 1
+	sh	$zero, 0x104A($t0)
+	li	$t1, ${0x02000000 | BACKGROUND}
+	sw	$t1, 0x1810($t0)
+	sw	$zero, 0x1810($t0)
+	li	$t1, ${240 << 16 | 320}
+	sw	$t1, 0x1810($t0)
+	move	$t4, $s1
+	move	$t5, $zero
+	li	$t6, ${40 << 16 | 20}
+bytes:
+	lbu	$t1, 0($t4)
+	nop
+	sll	$t2, $t1, 8
+	or	$t2, $t2, $t1
+	sll	$t2, $t2, 8
+	or	$t2, $t2, $t1
+	lui	$t7, 0x6000
+	or	$t2, $t2, $t7
+	sw	$t2, 0x1810($t0)
+	sw	$t6, 0x1810($t0)
+	li	$t1, ${16 << 16 | 16}
+	sw	$t1, 0x1810($t0)
+	addiu	$t6, $t6, 24
+	addiu	$t4, $t4, 1
+	addiu	$t5, $t5, 1
+	sltiu	$t1, $t5, ${SENDS.length}
+	bnez	$t1, bytes
+	nop
+	lbu	$t1, 3($s1)
+	lbu	$t2, 4($s1)
+	nop
+	sll	$t2, $t2, 8
+	or	$s2, $t1, $t2
+	move	$t5, $zero
+	li	$t6, ${100 << 16 | 20}
+bits:
+	srlv	$t1, $s2, $t5
+	andi	$t1, $t1, 1
+	li	$t2, ${0x60000000 | HELD}
+	beqz	$t1, lit
+	nop
+	li	$t2, ${0x60000000 | LOOSE}
+lit:
+	sw	$t2, 0x1810($t0)
+	sw	$t6, 0x1810($t0)
+	li	$t1, ${12 << 16 | 12}
+	sw	$t1, 0x1810($t0)
+	addiu	$t6, $t6, 18
+	addiu	$t5, $t5, 1
+	sltiu	$t1, $t5, 16
+	bnez	$t1, bits
+	nop
+	b	wait
+	nop
+`);
+  const code = Buffer.from(made.sections.get('.text').bytes);
+  if (code.length > 0x400) throw new Error('The pad program\'s code is longer than the room before its bytes.');
+  const text = Buffer.alloc(2048);
+  code.copy(text);
+  Buffer.from(SENDS).copy(text, 0x400);
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}
+
+/** The recording the pad program is proven with: each of the console's buttons held in turn for six frames, the
+ *  stick's four too, which a digital pad doesn't have, and then four held at once. */
+export function padRecording(frames) {
+  const held = [[0, []]];
+  const names = ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'STICK_LEFT', 'STICK_RIGHT', 'STICK_UP', 'STICK_DOWN'];
+  names.forEach((name, k) => held.push([6 + k * 12, [name]], [12 + k * 12, []]));
+  held.push([250, ['UP', 'CROSS', 'START', 'L1']], [270, []]);
+  return { about: 'Each button held in turn, then four at once.', frames, held };
+}

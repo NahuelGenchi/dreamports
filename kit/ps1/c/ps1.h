@@ -2,7 +2,8 @@
 // graphics chip, the GPU, as its original does, a word at a time to its two ports, GP0 and GP1, and the kit draws what
 // it's told into the GPU's own 1 MB of video memory and shows the part the GPU is told to show. It writes the sound
 // chip, the SPU, a halfword at a time to its registers, and moves sound data into its memory as DMA does, and the kit
-// mixes what it's told (kit/ps1/c/README.md).
+// mixes what it's told. It reads the pads a byte at a time through their serial port, SIO0, and the kit's pads answer
+// as the console's do (kit/ps1/c/README.md).
 
 #ifndef DREAMPORTS_PS1_H
 #define DREAMPORTS_PS1_H
@@ -39,6 +40,20 @@ void spu_dma_write(const uint16_t *halves, int count);
 void spu_dma_read(uint16_t *halves, int count);
 /** Fills `left` and `right` with the sound chip's next `count` samples, each -1 to 1. For game_sound. */
 void spu_sound(float *left, float *right, int count);
+
+// where the processor sees the serial port the pads and memory cards share, SIO0: the byte sent and received, its
+// status, mode, control and speed
+enum { SIO_BASE = 0x1F801040 };
+
+/** A write to one of SIO0's registers, at its address: a byte sent to the selected port at SIO_BASE, its mode at
+ *  SIO_BASE + 8, its control at SIO_BASE + 0xA, which selects a port, and its speed at SIO_BASE + 0xE. */
+void sio_write(uint32_t address, uint32_t value);
+/** What a read of one of SIO0's registers gives: the byte the port sent back at SIO_BASE, and its status at
+ *  SIO_BASE + 4, which says a byte has come back. */
+uint32_t sio_read(uint32_t address);
+/** The 16 bits the pad in `port` (0 or 1) sends back for its buttons this frame, low byte first, a bit clear for each
+ *  button held, as the console's BIOS keeps them in its pad buffers. */
+uint16_t pad_buttons(int port);
 
 // What a game defines, as on every console (kit/c/README.md).
 void game_start(void);

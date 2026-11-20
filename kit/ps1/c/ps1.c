@@ -12,10 +12,14 @@ static float sound[SOUND_MAX * 2];
 EXPORT("dp_start") void dp_start(void) {
   gpu_power();
   spu_power();
+  pad_power();
   game_start();
 }
 /** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). */
-EXPORT("dp_step") void dp_step(uint32_t buttons) { game_step(buttons); }
+EXPORT("dp_step") void dp_step(uint32_t buttons) {
+  pad_hold(buttons);
+  game_step(buttons);
+}
 /** Draws the frame, and gives where its words are, dp_width() × dp_height() of them. */
 EXPORT("dp_draw") uint32_t *dp_draw(void) {
   game_draw();

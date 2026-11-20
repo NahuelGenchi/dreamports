@@ -1,4 +1,4 @@
-// What the PlayStation kit's own files share (gpu.c, draw.c, sound.c, ps1.c), which a game doesn't need.
+// What the PlayStation kit's own files share (gpu.c, draw.c, sound.c, pad.c, ps1.c), which a game doesn't need.
 
 #ifndef DREAMPORTS_PS1_KIT_H
 #define DREAMPORTS_PS1_KIT_H
@@ -24,6 +24,10 @@
 void gpu_power(void);
 /** Puts the sound chip as the console's BIOS leaves it when it starts a game, with nothing heard yet. */
 void spu_power(void);
+/** Puts the pads' serial port as it starts, with nothing held. */
+void pad_power(void);
+/** The buttons the player holds this frame, a bit each in kit/consoles.js's order (console.h). */
+void pad_hold(uint32_t buttons);
 
 // What the GPU draws with (draw.c): psx_gpu, as PCSX ReARMed draws with it.
 /** How many words each GP0 command has after its first, as the emulator's gpulib counts them. */
