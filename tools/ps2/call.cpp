@@ -140,7 +140,9 @@ static uint32 imageSize;
 static uint8 *base, *image;
 static std::vector<uint8> dirty;
 static jmp_buf out;
-static uint32 ended, detail, steps, hardware, readCount;
+// kept in memory, never in a register: a call ends by jumping out of the middle of it (stop), and what a compiler
+// keeps in a register then goes back to what it was when the call began, as it did on Apple's chip
+static volatile uint32 ended, detail, steps, hardware, readCount;
 static uint32 reads[MOST_READS][3];
 static std::vector<uint8> readBefore;
 static std::vector<uint32> readMarked;
