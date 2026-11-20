@@ -450,6 +450,8 @@ void console_power_on(void) {
   gba_clock_registers(console_io);
   gba_clock_on_interrupt(0x030004B0, console_intr_main);
   gba_clock_on_wait(console_intr_check, console_intr_checked);
+  // each line of the picture drawn as the console draws it, when its time reaches the line's H-blank
+  gba_clock_on_line(gba_draw_line_now);
   console_io[IO_RCNT >> 1] = 0x8000;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;
