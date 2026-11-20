@@ -19,6 +19,12 @@
 enum { CLOCK = 33868800, LINE = CLOCK / 60 / 263, VBLANK_LINE = 240, LINE_STEP = 8791293 };
 // where the first V-blank comes after power, and every later one, a frame apart (psxcounters.c, scheduleRcntBase)
 #define FIRST_VBLANK ((uint32_t)((uint64_t)VBLANK_LINE * LINE_STEP >> 12))
+// when the emulator's BIOS hands the console to a game, and resets the root counters as it does (psxbios.c,
+// psxBiosSetupBootState): its own start-up, which psxbios.c charges through use_cycles at two cycles each, from power,
+// in psxBiosInit: setup_tt's SysEnqIntRP_, 9; setup_cd_irq_and_events's EnqueueCdIntr_, two more SysEnqIntRP_ and 31,
+// 49; its five OpenEvents' get_free_EvCB_slot, 19 and 8 a slot looked at, 215; and DeliverEvent of the CD's first event
+// over 16 slots, 8 each, 4 and 4 more for each of the 5 open ones of its class, 6 for the one of its spec, and 29, 203
+enum { BIOS_HANDOFF = 2 * (9 + 49 + 215 + 203) };
 
 // a root counter's mode bits (psxcounters.c)
 enum {
@@ -165,7 +171,8 @@ static void frame_line0(void) {
 }
 
 void clock_power(void) {
-  clock.now = 0;
+  // the frame's time counts from power; the game, and the root counters, start where the BIOS hands over
+  clock.now = BIOS_HANDOFF;
   clock.frame_end = FIRST_VBLANK;
   // libpcsxcore/psxbios.c, psxBiosSetupBootState: the BIOS leaves the CD's and DMA's interrupts let in, and the
   // V-blank's set
@@ -180,7 +187,7 @@ void clock_power(void) {
     counter_count(i, 0);
   }
   counters_set();
-  clock_event(CLOCK_LINE0, FRAME, frame_line0);
+  clock_event(CLOCK_LINE0, FRAME - BIOS_HANDOFF, frame_line0);
 }
 
 int ps1_wait(void) {

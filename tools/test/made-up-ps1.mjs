@@ -806,10 +806,13 @@ export function padRecording(frames) {
 }
 
 /** What the clock program counts and draws: where its handler keeps each interrupt's count, the root counters' targets,
- *  in cycles for counter 0 and eighths for counter 2, and its colours. The program starts its counters a few cycles
- *  after power, where its Dreamport starts them at once, so each target puts its interrupts at least 43,000 cycles from
- *  every V-blank of 300 frames, and each frame counts the same on both. */
-export const CLOCK = { COUNTS: 0x80100000, SAVED: 0x80100040, TARGET_0: 47183, TARGET_2: 35378, BACKGROUND: 0x102010, BARS: [0xF04040, 0x40F040, 0x4040F0] };
+ *  in cycles for counter 0 and eighths for counter 2, and its colours. Its Dreamport runs a step all at once, as the kit
+ *  can't count a step's instructions: so its counters start 74 and 81 cycles sooner than the program's, which runs 42
+ *  and 46 instructions first, and it reads the counts at the V-blank, where the program's handler and main loop read
+ *  them about 145 and 175 cycles after it. An interrupt in the first 94 cycles or so after a V-blank is counted a frame
+ *  later by the Dreamport. Each target puts its nearest interrupt to a V-blank of 300 frames just past that, 247 and
+ *  290 cycles after one, so a gap any bigger than the kit's own shows. */
+export const CLOCK = { COUNTS: 0x80100000, SAVED: 0x80100040, TARGET_0: 30017, TARGET_2: 10047, BACKGROUND: 0x102010, BARS: [0xF04040, 0x40F040, 0x4040F0] };
 
 /** A program that takes interrupts, as a game does, with a handler of its own where the processor goes for them: it
  *  starts counter 0 counting cycles to its target and counter 2 counting eighths to its, each interrupting there and
