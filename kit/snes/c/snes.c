@@ -45,6 +45,12 @@ void snes_write(uint16_t address, uint8_t value) {
   uint8_t *at = place(&address);
   if (!at) return;
   note(address, value, 1);
+#ifndef DP_TWIN_CHECK
+  if (address >= 0x2140 && address < 0x2144) {
+    apu_port_write(address & 3, value);
+    return;
+  }
+#endif
   if (address == 0x2180) {
     uint32_t to = port();
     SNES_RAM[to] = value;
@@ -79,6 +85,10 @@ uint8_t snes_read(uint16_t address) {
     uint32_t from = port();
     value = SNES_RAM[from];
     port_next(from);
+#ifndef DP_TWIN_CHECK
+  } else if (address >= 0x2140 && address < 0x2144) {
+    value = apu_port_read(address & 3);
+#endif
   } else {
     value = *at;
     if (address == 0x4210 || address == 0x4211) *at = value & 0x7F;

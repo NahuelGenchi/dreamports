@@ -19,11 +19,14 @@ EXPORT("dp_start") void dp_start(void) {
   for (uint32_t i = 0; i < SNES_RAM_SIZE; i++) SNES_RAM[i] = 0x55;
   for (int i = 0; i < 0x100; i++) SNES_B_REGISTERS[i] = 0;
   for (int i = 0; i < 0x400; i++) SNES_CPU_REGISTERS[i] = 0;
+  apu_power();
   game_start();
 }
-/** Runs the game's step, with the buttons in `buttons` held, and draws the frame's lines. */
+/** Runs the game's step, with the buttons in `buttons` held, the sound side on to the frame's end, and draws the
+ *  frame's lines. */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
   game_step(buttons);
+  apu_frame();
   ppu_frame(frame);
   // V-blank starts: the picture unit's sprite table goes back, and $4210 says so, with the processor's version, 2
   ppu_vblank();
@@ -37,11 +40,14 @@ EXPORT("dp_draw") uint32_t *dp_draw(void) {
   return out;
 }
 /** The next `count` samples of the game's sound, at most dp_sound_render_max(), the left ones and then the right ones
- *  dp_sound_render_max() words on, each -1 to 1. */
+ *  dp_sound_render_max() words on, each -1 to 1: the sound chip's, with the game's own added. */
 EXPORT("dp_sound_render") float *dp_sound_render(int count) {
   if (count > SOUND_MAX) count = SOUND_MAX;
   for (int i = 0; i < SOUND_MAX * 2; i++) sound[i] = 0;
-  if (count > 0) game_sound(sound, sound + SOUND_MAX, count);
+  if (count > 0) {
+    apu_samples(sound, sound + SOUND_MAX, count);
+    game_sound(sound, sound + SOUND_MAX, count);
+  }
   return sound;
 }
 EXPORT("dp_sound_render_max") int dp_sound_render_max(void) { return SOUND_MAX; }

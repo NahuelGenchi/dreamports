@@ -2,13 +2,16 @@
 // of the project's own (made-up-snes.mjs) run on the console's real emulator, Snes9x, and their Dreamports in C
 // (snes-kit/) on the kit, each in a game of its own that the test removes after, so no game's copy is needed: what
 // `new` writes in C has to differ at once, and each Dreamport's every frame of 300 has to be the same, pixel for pixel,
-// and so does the sound, silence. Then each Dreamport with one thing a little off is found at its first frame.
+// and so does the sound. Then each Dreamport with one thing a little off is found where it's first seen or heard.
 //
 // The picture program fills video memory, the colours and two maps by DMA, shows two backgrounds of mode 1, the third
 // in front, scrolls them both ways, and steps the screen's brightness through every value. The sprite program shows
 // 128 sprites over a background, every size $2101 chooses in turn, flips, priorities, more than 32 sprites on a line
 // and more than 34 of their tiles, moves 8 of them through their table's port each frame, and turns $2103's priority
-// rotation on and off, from an even address and an odd one.
+// rotation on and off, from an even address and an odd one. The music program sends the sound processor a program
+// with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
+// each frame; that program plays three voices through the sound chip, with envelopes, BRR's filters, a bent pitch,
+// noise and the echo, and changes them as its timer counts.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -16,7 +19,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { madeUpPictureCartridge, madeUpSpriteCartridge, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -24,7 +27,7 @@ const FRAMES = 300;
 
 const PROGRAMS = [
   {
-    game: 'test-snes-kit', title: 'DREAMPORTS PICTURE', cartridge: madeUpPictureCartridge, data: PICTURE, file: 'main.c',
+    name: 'picture', game: 'test-snes-kit', title: 'DREAMPORTS PICTURE', cartridge: madeUpPictureCartridge, data: PICTURE, file: 'main.c',
     wrongs: [
       [[['snes_write(0x2105, 0x09);', 'snes_write(0x2105, 0x01);']], 'the third background behind the first, not in front'],
       [[['snes_write(0x210D, low);', 'snes_write(0x210D, (uint8_t)(low + 1));']], 'the first background a pixel off'],
@@ -32,11 +35,20 @@ const PROGRAMS = [
     ],
   },
   {
-    game: 'test-snes-kit-sprites', title: 'DREAMPORTS SPRITES', cartridge: madeUpSpriteCartridge, data: SPRITES, file: 'sprites.c',
+    name: 'sprite', game: 'test-snes-kit-sprites', title: 'DREAMPORTS SPRITES', cartridge: madeUpSpriteCartridge, data: SPRITES, file: 'sprites.c',
     wrongs: [
       [[['snes_write(0x2104, (uint8_t)(x ^ low));', 'snes_write(0x2104, (uint8_t)((x ^ low) ^ 0x30));']], 'a sprite\'s priority off'],
       [[['snes_write(0x2104, (uint8_t)((x << 4) + low));', 'snes_write(0x2104, (uint8_t)((x << 4) + low + 1));']], 'a sprite a pixel off'],
       [[['snes_write(0x2101, (uint8_t)(SNES_RAM[2] | (low & 0x80) >> 4));', 'snes_write(0x2101, (uint8_t)(SNES_RAM[2] | 0x18));']], 'the sprites\' second table on the background\'s tiles'],
+    ],
+  },
+  {
+    name: 'music', game: 'test-snes-kit-music', title: 'DREAMPORTS MUSIC', cartridge: madeUpMusicCartridge, data: MUSIC, file: 'sound.c',
+    wrongs: [
+      // each found where it's first heard: voice 0 fading out, and the echo once voice 1's rise has made it loud
+      [[['(uint8_t)((count >> 1 & 0x1F) | 0x1C)', '(uint8_t)((count >> 1 & 0x1F) | 0x0C)']], 'the noise slower'],
+      [[['if (phase == 0x20) {', 'if (phase == 0x01) {']], 'voice 0 keyed off at once', 2],
+      [[['(uint8_t)((count >> 1 & 0x1F) | 0x1C)', '(uint8_t)((count >> 1 & 0x1F) | 0x3C)']], 'the echo never written', 14],
     ],
   },
 ];
@@ -101,11 +113,11 @@ async function prove({ game, title, cartridge, data, file, wrongs }) {
     run = dp('prove', version, 'still');
     if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
     check(run.status === 0 && report().frames === FRAMES && !report().firstDifference, `its Dreamport in C: all ${FRAMES} frames the same as the emulator's, pictures and sound`);
-    for (const [changes, what] of wrongs) {
+    for (const [changes, what, at = 0] of wrongs) {
       writeGame(changes);
       run = dp('prove', version, 'still');
       const first = report().firstDifference;
-      check(run.status !== 0 && first?.frame === 0, `${what}, at the first frame: ${JSON.stringify(first)}`);
+      check(run.status !== 0 && first?.frame === at, `${what}, at ${at ? `frame ${at}, where it first differs` : 'the first frame'}: ${JSON.stringify(first)}`);
     }
   } finally {
     tidy(game);
@@ -116,8 +128,9 @@ async function prove({ game, title, cartridge, data, file, wrongs }) {
 async function main() {
   const before = tracked(), copies = existsSync(COPIES) ? readFileSync(COPIES) : null;
   try {
-    for (const program of PROGRAMS) {
-      console.log(`The ${program.file === 'main.c' ? 'picture' : 'sprite'} program:`);
+    // one program alone when it's named, as `npm run test:snes-kit -- music`
+    for (const program of PROGRAMS.filter(each => !process.argv[2] || each.name === process.argv[2])) {
+      console.log(`The ${program.name} program:`);
       await prove(program);
     }
   } finally {
@@ -129,7 +142,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe Super Nintendo\'s kit draws as the console does, every frame.');
+  console.log('\nThe Super Nintendo\'s kit draws and plays as the console does, every frame.');
 }
 
 main().catch(error => {

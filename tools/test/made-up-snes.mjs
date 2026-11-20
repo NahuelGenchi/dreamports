@@ -339,3 +339,102 @@ export function madeUpSpriteCartridge() {
   rom.set(w(sum & 0xFFFF), header + 0x1E);
   return { rom };
 }
+
+// The music program, for the kit's test of the sound side: the main program sends the sound processor a program of
+// the project's own, with a table for the sound chip and two samples, through the console's start-up program, waits
+// for its first answer, and then gives it the frame's count on the first port at each V-blank. The sound program sets the sound chip from its
+// table: a square wave on voice 0, loud, through an envelope of attack, decay and sustain; a ramp of three blocks, each
+// with another of BRR's filters, on voice 1, low, its pitch bent by voice 0's output, through GAIN's two-slope rise, and
+// into the echo, which is most of what's heard of it, with its filter of eight steps and its feedback; and noise on
+// voice 2, high and quiet. So each voice is most of what's heard in pitches of its own. Then at each count of its first timer,
+// every 4 ms, it sets voice 0's pitch from the main program's count, the noise's rate from its own, which writes the
+// echo too, keys voice 0 off at the 32nd count of every 64 and on again at the 64th, and says its count on the second
+// port.
+const spcLayout = (program, origin) => {
+  const labels = {};
+  let pc = origin;
+  for (const piece of program) {
+    if (typeof piece === 'number') pc++;
+    else if (piece.name) labels[piece.name] = pc;
+    else pc += piece.size;
+  }
+  const bytes = [];
+  pc = origin;
+  for (const piece of program) {
+    if (typeof piece === 'number') bytes.push(piece), pc++;
+    else if (!piece.name) for (const byte of piece.at(labels, pc)) bytes.push(byte), pc++;
+  }
+  return { bytes, labels };
+};
+// the sound chip's registers as the table sets them, each a register and its value, and the end, a byte with its top
+// bit set
+const DSP_TABLE = [
+  [0x6C, 0x20], [0x0C, 0x30], [0x1C, 0x28], [0x2C, 0x7F], [0x3C, 0x70], [0x5D, 0x02], [0x6D, 0x80], [0x7D, 0x02], [0x0D, 0x50],
+  [0x0F, 0x40], [0x1F, 0x20], [0x2F, 0x10], [0x3F, 0x08], [0x4F, 0x04], [0x5F, 0x02], [0x6F, 0x01], [0x7F, 0x00],
+  [0x4D, 0x02], [0x2D, 0x02], [0x3D, 0x04],
+  [0x00, 0x7F], [0x01, 0x70], [0x02, 0x00], [0x03, 0x08], [0x04, 0x00], [0x05, 0x9A], [0x06, 0xA9], [0x07, 0x00],
+  [0x10, 0x40], [0x11, 0x48], [0x12, 0x80], [0x13, 0x00], [0x14, 0x01], [0x15, 0x00], [0x16, 0x00], [0x17, 0xE8],
+  [0x20, 0x50], [0x21, 0x50], [0x22, 0x00], [0x23, 0x10], [0x24, 0x00], [0x25, 0x00], [0x26, 0x00], [0x27, 0x50],
+  [0x5C, 0x00], [0x4C, 0x07],
+].flat();
+const SOUND_START = 0x0200;
+const SOUND_PROGRAM_BYTES = spcLayout([
+  // the samples' directory, at the page the table gives the sound chip: each sample's start and where it loops
+  here('directory'), abs('square'), abs('square'), abs('ramp'), abs('loop'),
+  // a square wave, two blocks of 16 samples, looping
+  here('square'), 0xB0, ...Array(8).fill(0x55), 0xB3, ...Array(8).fill(0xBB),
+  // a ramp, three blocks with filters 1, 2 and 3, looping from the second
+  here('ramp'), 0x94, 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+  here('loop'), 0x98, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10, 0x9F, 0x11, 0x22, 0x33, 0x44, 0xCC, 0xDD, 0xEE, 0xFF,
+  here('table'), ...DSP_TABLE, 0xFF,
+  // the program: the table into the sound chip, through $F2 and $F3
+  here('init'), 0xCD, 0x00,
+  here('next'), 0xF5, abs('table'), 0x30, rel('done'), 0xC4, 0xF2, 0x3D, 0xF5, abs('table'), 0xC4, 0xF3, 0x3D, 0x2F, rel('next'),
+  // the first timer every 32 steps of 8 kHz
+  here('done'), 0x8F, 0x20, 0xFA, 0x8F, 0x01, 0xF1,
+  // each count: the count at $10 on by one, voice 0's pitch from the main program's count
+  here('tick'), 0xE4, 0xFD, 0xF0, rel('tick'), 0xAB, 0x10,
+  0xE4, 0xF4, 0x5C, 0x5C, 0x5C, 0x5C, 0x08, 0x08, 0x8F, 0x03, 0xF2, 0xC4, 0xF3,
+  // the noise's rate from its own count, with the echo written
+  0xE4, 0x10, 0x5C, 0x28, 0x1F, 0x08, 0x1C, 0x8F, 0x6C, 0xF2, 0xC4, 0xF3,
+  // voice 0 keyed on again at every 64th count, and off at the 32nd between
+  0xE4, 0x10, 0x28, 0x3F, 0xD0, rel('off'), 0x8F, 0x5C, 0xF2, 0x8F, 0x00, 0xF3, 0x8F, 0x4C, 0xF2, 0x8F, 0x01, 0xF3,
+  here('off'), 0x68, 0x20, 0xD0, rel('say'), 0x8F, 0x5C, 0xF2, 0x8F, 0x01, 0xF3,
+  // its count on the second port
+  here('say'), 0xFA, 0x10, 0xF5, 0x2F, rel('tick'),
+], SOUND_START);
+
+const MUSIC_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00,
+  // the backdrop's colour, and the screen on
+  ...store(0x00, 0x2121), ...store(0x6B, 0x2122), ...store(0x2D, 0x2122), ...store(0x0F, 0x2100),
+  // the sound processor's program and what it plays, sent as the console's start-up program takes them
+  here('ready'), 0xAE, ...w(0x2140), 0xE0, ...w(0xBBAA), 0xD0, rel('ready'),
+  0xA2, ...w(SOUND_START), 0x8E, ...w(0x2142), 0xA9, 0x01, 0x8D, ...w(0x2141), 0xA9, 0xCC, 0x8D, ...w(0x2140),
+  here('begun'), 0xCD, ...w(0x2140), 0xD0, rel('begun'),
+  0xA0, ...w(0),
+  here('send'), 0xB9, abs('sound'), 0x8D, ...w(0x2141), 0x98, 0x8D, ...w(0x2140),
+  here('said'), 0xCD, ...w(0x2140), 0xD0, rel('said'), 0xC8, 0xC0, ...w(SOUND_PROGRAM_BYTES.bytes.length), 0xD0, rel('send'),
+  0xA2, ...w(SOUND_PROGRAM_BYTES.labels.init), 0x8E, ...w(0x2142), 0x9C, ...w(0x2141), 0x98, 0x1A, 0x8D, ...w(0x2140),
+  // and waits for its first answer, its count on the second port, where the start-up program left $BB, reading both
+  // ports as a word
+  here('answer'), 0xC2, 0x20, 0xAD, ...w(0x2140), 0x29, ...w(0xFF00), 0xC9, ...w(0xBB00), 0xE2, 0x20, 0xF0, rel('answer'),
+  ...store(0x80, 0x4200),
+  here('spin'), 0x80, rel('spin'),
+  // the V-blank: the frame's count to the first port, and on by one
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210), 0xA5, 0x00, 0x8D, ...w(0x2140), 0xE6, 0x00, 0x40,
+  here('sound'), ...SOUND_PROGRAM_BYTES.bytes,
+];
+const music = assemble(MUSIC_PROGRAM, { title: 'DREAMPORTS MUSIC', nmi: 'nmi' });
+
+/** Where the music program keeps what its Dreamport needs: the sound processor's program in the ROM and how long it
+ *  is, where it goes and where it starts in the sound processor's memory, and where the sound chip's table is there. */
+export const MUSIC = {
+  SOUND: music.labels.sound, SOUND_BYTES: SOUND_PROGRAM_BYTES.bytes.length, SOUND_START,
+  SOUND_INIT: SOUND_PROGRAM_BYTES.labels.init, TABLE: SOUND_PROGRAM_BYTES.labels.table,
+};
+
+/** The music program's cartridge: { rom }. */
+export function madeUpMusicCartridge() {
+  return { rom: music.rom };
+}
