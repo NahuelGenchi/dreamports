@@ -228,6 +228,12 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.equal(readOriginal(`${JSON.stringify({ ...nes, title: 'Buy at romsite.example' }, null, 2)}\n`), null, 'a title that isn\'t the game\'s name');
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'MADE UP' }, null, 2)}\n`));
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'Made Up (USA)' }, null, 2)}\n`), 'the copy\'s own name');
+  // a Super Nintendo game's map says the mode each function starts in, and nothing else
+  const snes = { ...nes, console: 'snes' };
+  const modes = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/snes/functions.mjs)","functions":[["00000000",24],["00000018",72]],"modes":${text}}\n`);
+  assert.equal(entry(modes('{"00000000":"e","00000018":"a16i16"}'), 'c', snes).why, undefined);
+  assert.equal(entry(modes('{"00000018":"a16i32"}'), 'c', snes).why, 'proof');
+  assert.equal(entry(modes('{"00000018":"see https://example.com"}'), 'c', snes).why, 'proof');
 });
 
 // a game's card as `capture` writes it, for a game on main, which each test changes in one way

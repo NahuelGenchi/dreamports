@@ -347,8 +347,10 @@ export async function buildGame(folder, out = join(folder, 'src', 'game.wasm')) 
     const { stackSources } = await import('../gba/stack.mjs');
     const src = join(folder, 'src'), withSrc = [...all, src];
     const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
-    const made = await stackSources({ game, folder, own, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
-    const stacked = sources.map(file => made.sources[own.indexOf(file)] ?? file);
+    // the shared libraries' files too, whose functions proven by the same bytes leave the stack as the game's do
+    const stackable = [...own, ...libraries.flatMap(library => library.files)];
+    const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+    const stacked = sources.map(file => made.sources[stackable.indexOf(file)] ?? file);
     return buildWasm(stacked, out, { ...kit, folders: withSrc, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
   }
   return buildWasm(sources, out, { ...kit, folders: all, flags, addressOf: twins.addressOf, codeOf: twins.codeOf });
