@@ -31,6 +31,10 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
+// The environment's DP_STARTS, when it's set, names a file of the EE's addresses to tell of each time play reaches one,
+// with the registers and the memory the function starts from, from the same core (starts.h), for the function check's
+// memories of play.
+//
 // The environment's DP_MEMORY and DP_SAVES, when they're set, ask for the console's memory after every frame and its
 // memory cards' files each time they change, from a core that says where it keeps them, as the PlayStation 2's does with
 // the tools' patch (held.h).
@@ -158,6 +162,7 @@ static size_t sizeCount, sizeRoom;
 #include "ran.h"
 #include "ran-ps2.h"
 #include "held.h"
+#include "starts.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -678,7 +683,7 @@ int main(int argc, char** argv) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
 		void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)) = dlsym(library, "dreamports_watch");
-		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY")))) {
+		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			if (watch) ps2Open(watch, functions);
 			else if (tell) tell(ranInstruction);
@@ -780,6 +785,7 @@ int main(int argc, char** argv) {
 		return 2;
 	}
 	heldOpen(dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_memory_card"));
+	startsOpen(dlsym(library, "dreamports_registers"), dlsym(library, "dreamports_memory"));
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
@@ -792,6 +798,7 @@ int main(int argc, char** argv) {
 		}
 		sampleCount = 0;
 		ran.frame = frame;
+		startsFrame((uint32_t) frame);
 		retro_run();
 		noteSize(frame);
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
@@ -843,6 +850,7 @@ int main(int argc, char** argv) {
 	ranClose();
 	ps2Close();
 	heldClose();
+	startsClose();
 	fflush(out);
 	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);

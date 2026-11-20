@@ -29,15 +29,24 @@ const check = (ok, what) => {
 };
 const said = what => console.log(`  found: ${what}`);
 
-// The console's float arithmetic: a sum or a product is cut towards zero to a float, where a computer rounds to the
-// nearest. Each is worked out in a double, which holds these exactly, and stepped back if rounding took it further out.
+// The console's float arithmetic (kit/ps2/c/floats.c): a sum or a product is cut towards zero to a float, where a
+// computer rounds to the nearest, and a sum first drops all of the smaller number but one bit below the larger's last.
+// Each is worked out in a double, which holds these exactly, and stepped back if rounding took it further out.
 const steps = new Float32Array(1), bits = new Int32Array(steps.buffer);
 function cut(exact) {
   steps[0] = exact;
   if (Math.abs(steps[0]) > Math.abs(exact)) bits[0] -= 1;
   return steps[0];
 }
-const add = (a, b) => cut(a + b), subtract = (a, b) => cut(a - b), multiply = (a, b) => cut(a * b);
+const exponentOf = float => { steps[0] = float; return bits[0] >>> 23 & 0xFF; };
+function add(a, b) {
+  if (a === 0 || b === 0) return a + b;
+  const [larger, smaller] = Math.abs(a) >= Math.abs(b) ? [a, b] : [b, a];
+  // half of the larger's last bit: what the smaller is cut to a whole number of
+  const kept = 2 ** (exponentOf(larger) - 127 - 24);
+  return cut(larger + Math.sign(smaller) * Math.floor(Math.abs(smaller) / kept) * kept);
+}
+const subtract = (a, b) => add(a, -b), multiply = (a, b) => cut(a * b);
 
 // The draw list's hash as the emulator keeps it (tools/libretro/play.patch): FNV-1a over each write, in order
 function hashOf(writes) {
