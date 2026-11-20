@@ -7,7 +7,7 @@
 // the function's own frame, or simple arithmetic of those. Anything else, such as a load from memory or two paths that
 // bring different values, is unknown, with the reason, and never guessed.
 
-import { assemble } from './thumb.mjs';
+import { assemble, valueOf } from './thumb.mjs';
 
 const REGISTERS = { r0: 0, r1: 1, r2: 2, r3: 3, r4: 4, r5: 5, r6: 6, r7: 7, r8: 8, r9: 9, r10: 10, r11: 11, r12: 12, r13: 13, r14: 14, r15: 15, sl: 10, fp: 11, ip: 12, sp: 13, lr: 14, pc: 15 };
 const SP = 13, LR = 14, PC = 15;
@@ -30,10 +30,16 @@ const AT = { location: 0x02, name: 0x03, byteSize: 0x0b, lowPc: 0x11, lowerBound
  * - params: [{ name, location, entry, bytes }], location as DWARF gives it ({ reg } or { fbreg }), entry where it
  *   arrives ('r0' to 'r3', or { stack: offset from the sp at entry }).
  * - locals: [{ name, fbreg, bytes }], the locals DWARF keeps in the frame, bytes null where the type's size is unknown.
+ * - registers: [{ name, reg, bytes }], the locals DWARF keeps in a register. agbcc gives none for a local of one or
+ *   two bytes, which it holds widened to a word, as its debugging records take it for one optimized out.
+ * - start: { bytes, loads }, how many bytes the prologue is, from the function's first, and whether it loads a word
+ *   kept beside the function, as one with a frame too big for an instruction's own number does.
  * - calls: [{ offset, returnOffset, line, file, callee, regs, args, sp }], each bl that calls, offset from the
  *   function's start. callee is null for a call through a register (bl _call_via_rN), with `through` and `target`
  *   saying which register and what it holds. regs are r4 to r11 at the call, only those the function changed on some
- *   path to it; args are r0 to r3; sp is the sp at the call from the frame base.
+ *   path to it, and writers, for each of those, the lines of the instructions that can have written it last ([{ line,
+ *   file }], with { entry: true } for a path on which nothing has); args are r0 to r3; sp is the sp at the call from
+ *   the frame base.
  * - stores: [{ offset, line, file, bytes, fbreg, slot, value }], every store to the stack after the prologue, fbreg
  *   from the frame base and slot from the sp at entry (both null where the address in the frame isn't known).
  * - lines: [{ section, at, line, file }], the rows of .debug_line, by their place in the code.
@@ -453,7 +459,7 @@ function readInfo(debug) {
           signed: signedOf(typeOf(p)),
         }));
         const frameBase = locationOf(info, die.attrs.get(AT.frameBase));
-        const locals = [];
+        const locals = [], registers = [];
         const walk = scope => {
           for (const child of scope.children) {
             if (child.tag === TAG.block) walk(child);
@@ -461,6 +467,7 @@ function readInfo(debug) {
             const where = locationOf(info, child.attrs.get(AT.location));
             const fbreg = where?.fbreg ?? (where?.breg && where.breg === frameBase?.reg ? where.offset : undefined);
             if (fbreg !== undefined) locals.push({ name: child.attrs.get(AT.name) ?? null, fbreg, bytes: sizeOf(typeOf(child)) });
+            else if (where?.reg) registers.push({ name: child.attrs.get(AT.name) ?? null, reg: where.reg, bytes: sizeOf(typeOf(child)) });
           }
         };
         walk(die);
@@ -468,7 +475,7 @@ function readInfo(debug) {
         // caller passes in r0.
         const returned = bare(typeOf(die)), size = returned ? sizeOf(returned) : null;
         const returnsInMemory = !!returned && [TAG.structure, TAG.union, TAG.array].includes(returned.tag) && ![1, 2, 4].includes(size);
-        functions.set(die.attrs.get(AT.name), { params, locals, frameBase, returnsInMemory });
+        functions.set(die.attrs.get(AT.name), { params, locals, registers, frameBase, returnsInMemory });
       }
       for (const child of die.children) visit(child);
     };
@@ -658,18 +665,28 @@ const registerList = text => {
 
 // --- following the values through a function
 
-// What instruction `i` does to `state` ({ r: the sixteen registers, slots: the words of the arguments the caller left
-// on the stack, by their offset from the sp at entry }): { state, next }, the instructions that can come after it.
+// What instruction `i` does to `state` ({ r: the sixteen registers, d: for each, the instructions that can have written
+// it last, -1 for none since entry, slots: the words of the arguments the caller left on the stack, by their offset
+// from the sp at entry }): { state, next }, the instructions that can come after it.
 // `record`, when given, hears of each store to the stack and each call.
 function transfer(ctx, i, state, record) {
   const { op, args } = ctx.instrs[i];
   const r = state.r.slice();
   let slots = state.slots;
   const next = [];
-  const done = () => ({ state: { r, slots }, next });
+  const done = () => ({ state: { r, d: state.d.map((list, n) => (r[n] !== state.r[n] ? [i] : list)), slots }, next });
   const fall = () => { if (i + 1 < ctx.instrs.length) next.push(i + 1); };
   const reg = text => REGISTERS[text.trim().replace(/!$/, '').toLowerCase()];
-  const read = text => (isImmediate(text) ? constant(immediate(text)) : r[reg(text)] ?? unknown(`"${text}", which isn't a register`));
+  // a number: #n, or in a routine written the newer way any sum of numbers and names given one
+  const bare = text => ctx.routine && reg(text) === undefined && !/^[[{=]/.test(text.trim());
+  const numberOf = text => (isImmediate(text) ? immediate(text) ?? valueOf(text.trim().slice(1), ctx.routine?.constants) : valueOf(text, ctx.routine?.constants));
+  const read = text => {
+    if (isImmediate(text) || bare(text)) {
+      const n = numberOf(text);
+      return n === null ? unknown(`"${text}", which isn't a number`) : constant(n);
+    }
+    return r[reg(text)] ?? unknown(`"${text}", which isn't a register`);
+  };
   const set = (text, value) => {
     const n = reg(text);
     if (n !== undefined) r[n] = value;
@@ -700,12 +717,16 @@ function transfer(ctx, i, state, record) {
     }
     // A store into the arguments the caller left changes the words it touches; a whole word is known again.
     slots = Object.fromEntries(Object.entries(slots).filter(([at]) => +at >= address.sp + bytes || +at + 4 <= address.sp));
-    if (bytes === 4 && address.sp >= 0) slots[address.sp] = value;
+    // in a routine, its own frame too, which nothing else reaches as no address in it is ever taken
+    if (bytes === 4 && (address.sp >= 0 || ctx.routine?.ownFrame)) slots[address.sp] = value;
   };
   const load = (address, bytes, signed) => {
     // Only the words of the arguments the caller left are followed: anything else in memory is unknown.
     const v = 'sp' in address ? slots[address.sp] : undefined;
-    return v ? narrow(v, 8 * bytes, signed) : unknown('a load from memory');
+    if (v) return narrow(v, 8 * bytes, signed);
+    // a word the routines never write while they run, which holds its value whenever it's read
+    if (ctx.routine?.fixed.has(address.const) && bytes === 4) return { load: address.const, bytes };
+    return unknown('a load from memory');
   };
 
   switch (op) {
@@ -725,7 +746,7 @@ function transfer(ctx, i, state, record) {
     }
     case 'lsl': case 'lsr': case 'asr': case 'ror': {
       const [d, from, by] = args.length === 3 ? args : [args[0], args[0], args[1]];
-      set(d, shift(op, read(from), read(by), !isImmediate(by)));
+      set(d, shift(op, read(from), read(by), !isImmediate(by) && !bare(by)));
       break;
     }
     case 'and': case 'orr': case 'eor': case 'bic': case 'mul': case 'adc': case 'sbc': {
@@ -736,6 +757,12 @@ function transfer(ctx, i, state, record) {
     case 'cmp': case 'cmn': case 'tst':
       break;
     case 'ldr': case 'ldrh': case 'ldrb': case 'ldrsh': case 'ldsh': case 'ldrsb': case 'ldsb': {
+      if (args[1].trim().startsWith('=')) {
+        // a value kept at the next pool
+        const written = args[1].trim().slice(1), n = valueOf(written, ctx.routine?.constants), e = n === null ? expression(written) : null;
+        set(args[0], n !== null ? constant(n) : e && typeof e === 'object' && !e.less ? symbol(e.name, e.addend) : unknown(`a load of ${written}`));
+        break;
+      }
       if (!args[1].startsWith('[')) {
         // a word kept beside the function
         const e = expression(args[1]);
@@ -770,25 +797,28 @@ function transfer(ctx, i, state, record) {
     }
     case 'pop': {
       const list = registerList(args.join(','));
-      for (const n of list) if (n !== PC) r[n] = unknown('a load from memory');
+      list.forEach((n, k) => {
+        if (n !== PC) r[n] = ctx.routine?.ownFrame && 'sp' in r[SP] ? load(offset(r[SP], 4 * k), 4, false) : unknown('a load from memory');
+      });
       r[SP] = offset(r[SP], 4 * list.length);
       if (list.includes(PC)) return done();
       break;
     }
     case 'bl': {
       const e = expression(args[0]), name = e && typeof e === 'object' ? e.name : args[0];
-      // A bl to a label of this function is a far jump, not a call.
-      if (!ctx.isFunction(name) && ctx.target(name) !== undefined) {
+      // A bl to a label of this function is a far jump, not a call, unless the table says it's one.
+      if (!ctx.isFunction(name) && ctx.target(name) !== undefined && !ctx.routine?.calls.has(i)) {
         r[LR] = unknown('changed by a far jump');
         jumpTo(name);
         return done();
       }
       const via = /^_call_via_(\w+)$/.exec(name), through = via && REGISTERS[via[1]] !== undefined ? via[1] : null;
-      if (record) record({ kind: 'call', i, callee: through ? null : name, through, target: through ? r[REGISTERS[through]] : undefined, r: r.slice() });
+      if (record) record({ kind: 'call', i, callee: through ? null : name, through, target: through ? r[REGISTERS[through]] : undefined, r: r.slice(), d: state.d });
       const what = through ? `the function in ${through}` : name;
       r[0] = unknown(`what ${what} returns`);
       for (const n of [1, 2, 3, 12, LR]) r[n] = unknown(`changed by the call to ${what}`);
-      slots = {};
+      // what the call can't reach: in a routine, its own frame above where the call starts
+      slots = ctx.routine?.ownFrame && 'sp' in r[SP] ? Object.fromEntries(Object.entries(slots).filter(([at]) => +at < 0 && +at >= r[SP].sp)) : {};
       break;
     }
     case 'b':
@@ -814,7 +844,7 @@ function transfer(ctx, i, state, record) {
 function joinStates(a, b) {
   const slots = {};
   for (const [at, v] of Object.entries(a.slots)) if (b.slots[at] && same(v, b.slots[at])) slots[at] = v;
-  return { r: a.r.map((v, n) => join(v, b.r[n])), slots };
+  return { r: a.r.map((v, n) => join(v, b.r[n])), d: a.d.map((list, n) => [...new Set([...list, ...b.d[n]])].sort((x, y) => x - y)), slots };
 }
 
 function mapFunction(fn, made, words, info, rowAt) {
@@ -866,7 +896,7 @@ function mapFunction(fn, made, words, info, rowAt) {
 
   // Forward through the code until nothing changes, in the order of the code.
   const states = new Array(fn.instrs.length);
-  if (fn.instrs.length) states[0] = { r, slots };
+  if (fn.instrs.length) states[0] = { r, d: r.map(() => [-1]), slots };
   const waiting = new Set(fn.instrs.length ? [0] : []);
   while (waiting.size) {
     const i = Math.min(...waiting);
@@ -912,12 +942,16 @@ function mapFunction(fn, made, words, info, rowAt) {
       if (!('caller' in event.value)) push.value = exported(event.value, base, params);
       pushes.push(push);
     } else if (event.kind === 'call') {
-      const at = placeOf(event.i), regs = {}, args = {};
-      for (let n = 4; n <= 11; n++) if (!same(event.r[n], caller(nameOf(n)))) regs[nameOf(n)] = exported(event.r[n], base, params);
+      const at = placeOf(event.i), regs = {}, args = {}, writers = {};
+      for (let n = 4; n <= 11; n++) {
+        if (same(event.r[n], caller(nameOf(n)))) continue;
+        regs[nameOf(n)] = exported(event.r[n], base, params);
+        writers[nameOf(n)] = event.d[n].map(k => (k < 0 ? { entry: true } : (({ line, file }) => ({ line, file }))(placeOf(k))));
+      }
       for (let n = 0; n < 4; n++) args[nameOf(n)] = exported(event.r[n], base, params);
       const call = { offset: at.offset, returnOffset: at.offset + 4, line: at.line, file: at.file, callee: event.callee };
       if (event.through) Object.assign(call, { through: event.through, target: exported(event.target, base, params) });
-      calls.push(Object.assign(call, { regs, args, sp: 'sp' in event.r[SP] && base !== null ? event.r[SP].sp - base : null }));
+      calls.push(Object.assign(call, { regs, writers, args, sp: 'sp' in event.r[SP] && base !== null ? event.r[SP].sp - base : null }));
     } else if (event.kind === 'store' || event.kind === 'push') {
       const at = placeOf(event.i);
       stores.push({ offset: at.offset, line: at.line, file: at.file, bytes: event.bytes, fbreg: event.slot !== null && base !== null ? event.slot - base : null, slot: event.slot, value: exported(event.value, base, params, event.bytes) });
@@ -925,7 +959,186 @@ function mapFunction(fn, made, words, info, rowAt) {
   };
   states.forEach((state, i) => { if (state) transfer(ctx, i, state, record); });
 
-  const map = { pushes, frame: frameBytes, frameBase: base, params: paramList, locals: info?.locals ?? [], calls, stores };
+  const start = { bytes: last < 0 ? 0 : fn.instrs[last].at + 2 - fn.start, loads: fn.instrs.slice(0, last + 1).some(ins => ins.op === 'ldr') };
+  const map = { pushes, frame: frameBytes, frameBase: base, params: paramList, locals: info?.locals ?? [], registers: info?.registers ?? [], start, calls, stores };
+  if (notes.length) map.notes = notes;
+  return map;
+}
+
+// --- routines written in assembly
+
+// The instructions the newer way writes with an s, as the older way writes them, and stm and ldm as stmia and ldmia.
+const FLAGGED = new Set(['add', 'sub', 'mov', 'lsl', 'lsr', 'asr', 'ror', 'and', 'orr', 'eor', 'bic', 'mvn', 'neg', 'mul', 'adc', 'sbc']);
+const older = op => (op === 'stm' || op === 'ldm' ? `${op}ia` : op.endsWith('s') && FLAGGED.has(op.slice(0, -1)) ? op.slice(0, -1) : op);
+
+/**
+ * The frames of routines a game's original has in hand-written assembly, from a table that keeps their assembly, as a
+ * library's does (tools/README.md, The console's stack): `text` is Thumb as tools/gba/thumb.mjs reads it, with what
+ * pairs the routine with its twin in C written in comments that start `@ dp:`:
+ *   @ dp:args r0=name ...   before a routine's label: the parameters of its twin each register holds as it starts
+ *   @ dp:alias name         before its label: another name a twin's timed runs call it by, as its copy in RAM
+ *   @ dp:fixed expression   anywhere: a word no routine writes while they run, so a load of it holds its value
+ *   @ dp:call callee [#n]   on a bl: the twin's call it is, by the text of what it calls, the nth if more than one
+ *   @ dp:jump callee [#n]   on a branch, or the last instruction before another routine: the twin's call of a routine
+ *                           that goes on with this one's frame, as the original jumps there
+ *   @ dp:return [n]         on an exit: the twin's return statements, or only its nth
+ *   @ dp:end                on an exit: the end of the twin's body
+ *   @ dp:value [rN=]C       on a store or a push: what the register it stores holds, as the twin's C has it, and on
+ *                           a call or a jump, what register rN holds as it's made
+ *   @ dp:pointer [rN=]C     the same for a value that is a pointer in the C
+ * Gives { routines: { [name]: { start, size, aliases, instrs, notes } } }, each instruction { offset, bytes, op, next,
+ * sp, writes, call, anchor, regs }: `next` the instructions that can follow it, `sp` where the stack pointer is from
+ * where it was as the routine started, `writes` its stores to the stack, [{ slot, bytes, value }], `call` for a bl
+ * that calls, `anchor` what the table pairs it with, and `regs` r0 to r11 as it starts, for a call or a jump. A value
+ * is as stackMap's, with { sp } from the routine's start, { load, bytes } for a word kept at a fixed address, and
+ * { c, pointer } for one the table gives as the twin's C.
+ */
+export function routineMap(text) {
+  const lines = text.split(/\r?\n/), said = new Map(), fixedText = [];
+  let routineSays = [];
+  const before = new Map();
+  lines.forEach((raw, k) => {
+    const notes = [...raw.matchAll(/@\s*dp:(\w+)[ \t]*([^@]*)/g)].map(([, word, rest]) => ({ word, rest: rest.trim() }));
+    const code = uncomment(raw);
+    for (const note of notes) {
+      if (note.word === 'fixed') fixedText.push(note.rest);
+      else if (!code && (note.word === 'args' || note.word === 'alias')) routineSays.push(note);
+      else if (code) {
+        if (!said.has(k + 1)) said.set(k + 1, []);
+        said.get(k + 1).push(note);
+      }
+    }
+    const { labels } = labelsOf(code);
+    if (labels.length && routineSays.length) {
+      for (const label of labels) before.set(label, routineSays);
+      routineSays = [];
+    }
+  });
+  const made = assemble(text);
+  const constants = made.constants;
+  const fixed = new Set(fixedText.map(t => valueOf(t, constants)).filter(n => n !== null).map(n => n >>> 0));
+  const where = new Map();
+  for (const [name, { lines: byLine }] of Object.entries(made.sections)) byLine.forEach((n, at) => { if (!where.has(n)) where.set(n, { section: name, at }); });
+  const arm = new Set(made.unassembled.flatMap(u => Array.from({ length: u.bytes }, (_, i) => `${u.section}:${u.at + i}`)));
+  // each routine's instructions, in the older way's names, ARM code as one opaque instruction for each of its
+  const routines = [];
+  let fn = null;
+  lines.forEach((raw, k) => {
+    const n = k + 1, { labels, rest } = labelsOf(uncomment(raw));
+    for (const label of labels) {
+      const symbol = made.symbols.get(label);
+      if (symbol?.function) routines.push(fn = { name: label, section: symbol.section, start: symbol.at, instrs: [], says: before.get(label) ?? [] });
+    }
+    if (!fn || !rest || rest.startsWith('.')) return;
+    const m = /^(\S+)\s*(.*)$/.exec(rest), at = where.get(n)?.at;
+    if (at === undefined || at < fn.start) return;
+    const op = arm.has(`${fn.section}:${at}`) ? 'arm' : older(m[1].toLowerCase());
+    fn.instrs.push({ n, op, args: op === 'arm' ? [] : operands(m[2]), at, said: said.get(n) ?? [] });
+  });
+  const words = new Map(made.relocations.filter(r => r.kind === 'word').map(r => [`${r.section}:${r.at}`, r]));
+  const out = {};
+  for (const routine of routines) out[routine.name] = mapRoutine(routine, made, words, fixed, constants);
+  return { routines: out };
+}
+
+// One routine's map, from its instructions and the notes on them, followed through its paths as mapFunction follows
+// agbcc's, but from what the table says it starts with.
+function mapRoutine(fn, made, words, fixed, constants) {
+  const notes = [];
+  const index = new Map(fn.instrs.map((ins, i) => [ins.at, i]));
+  const size = made.sizes.get(fn.name) ?? null;
+  const args = {}, aliases = [];
+  for (const { word, rest } of fn.says) {
+    if (word === 'alias') aliases.push(...rest.split(/\s+/).filter(Boolean));
+    else for (const pair of rest.split(/\s+/).filter(Boolean)) {
+      const [reg, name] = pair.split('=');
+      if (REGISTERS[reg] === undefined || REGISTERS[reg] > 3 || !name) throw new Error(`${fn.name}: "@ dp:args ${rest}" names each parameter as rN=name, r0 to r3.`);
+      args[reg] = name;
+    }
+  }
+  const calls = new Map();
+  fn.instrs.forEach((ins, i) => {
+    const said = ins.said.find(s => s.word === 'call');
+    if (said) calls.set(i, said);
+  });
+  const ctx = {
+    instrs: fn.instrs,
+    start: fn.start,
+    routine: { calls, fixed, constants, ownFrame: true },
+    note: text => { if (!notes.includes(text)) notes.push(text); },
+    isFunction: name => !!made.symbols.get(name)?.function,
+    target: name => {
+      const symbol = made.symbols.get(name);
+      return symbol && symbol.section === fn.section ? index.get(symbol.at) : undefined;
+    },
+    table: () => [],
+    word: e => {
+      const at = made.symbols.get(e.name);
+      if (!at) return unknown(`a load from ${e.name}, which isn't in the file`);
+      const named = words.get(`${at.section}:${at.at + e.addend}`);
+      if (named) return named.name ? symbol(named.name, named.addend) : constant(named.addend);
+      const bytes = made.sections[at.section].bytes;
+      return at.at + e.addend + 4 <= bytes.length ? constant(bytes.readUInt32LE(at.at + e.addend)) : unknown(`a load from past the end of ${at.section}`);
+    },
+  };
+  // as it starts: the parameters the table names, and every other register as its caller left it
+  const r = Array.from({ length: 16 }, (_, n) => (n <= 12 ? caller(nameOf(n)) : unknown(`${nameOf(n)}`)));
+  for (const [reg, name] of Object.entries(args)) r[REGISTERS[reg]] = param(name);
+  r[SP] = frame(0);
+  r[LR] = caller('lr');
+  r[PC] = unknown('an address in the code');
+  const states = new Array(fn.instrs.length);
+  if (fn.instrs.length) states[0] = { r, d: r.map(() => [-1]), slots: {} };
+  // an ARM instruction ends a path: the stack map doesn't read ARM
+  const step = (i, state, record) => (fn.instrs[i].op === 'arm' ? { state, next: [] } : transfer(ctx, i, state, record));
+  const waiting = new Set(fn.instrs.length ? [0] : []);
+  while (waiting.size) {
+    const i = Math.min(...waiting);
+    waiting.delete(i);
+    const { state, next } = step(i, states[i], null);
+    for (const to of next) {
+      const merged = states[to] ? joinStates(states[to], state) : state;
+      if (!states[to] || !same(merged, states[to])) {
+        states[to] = merged;
+        waiting.add(to);
+      }
+    }
+  }
+  const params = new Map(Object.values(args).map(name => [name, { bytes: 4 }]));
+  const value = (v, bytes = 4) => ('load' in v ? { load: v.load, bytes: v.bytes } : exported(v, 0, params, bytes));
+  const instrs = fn.instrs.map((ins, i) => {
+    const out = { offset: ins.at - fn.start, bytes: ins.op === 'bl' || ins.op === 'arm' ? 4 : 2, op: ins.op, next: [], sp: null, writes: [], call: null, anchor: null, regs: null };
+    const anchor = ins.said.find(s => ['call', 'jump', 'return', 'end'].includes(s.word));
+    if (anchor) {
+      const m = /^(.*?)(?:\s+#(\d+))?$/.exec(anchor.rest);
+      out.anchor = { kind: anchor.word, text: anchor.word === 'call' || anchor.word === 'jump' ? m[1].trim() : null, n: anchor.word === 'return' ? (anchor.rest ? Number(anchor.rest) : null) : m[2] ? Number(m[2]) : null };
+    }
+    const state = states[i];
+    if (!state) return out;
+    out.sp = 'sp' in state.r[SP] ? state.r[SP].sp : null;
+    out.next = step(i, state, null).next;
+    const told = new Map();
+    for (const s of ins.said.filter(s => s.word === 'value' || s.word === 'pointer')) {
+      const m = /^(r\d+)\s*=\s*(.+)$/.exec(s.rest);
+      told.set(m ? REGISTERS[m[1]] : null, { c: m ? m[2] : s.rest, pointer: s.word === 'pointer' });
+    }
+    if (out.anchor && (out.anchor.kind === 'call' || out.anchor.kind === 'jump')) out.regs = Object.fromEntries(state.r.slice(0, 12).map((v, n) => [nameOf(n), value(v)]));
+    step(i, state, event => {
+      if (event.kind === 'call') {
+        out.call = { callee: event.callee, through: event.through, returnOffset: out.offset + 4 };
+        out.regs = Object.fromEntries(event.r.slice(0, 12).map((v, n) => [nameOf(n), value(v)]));
+      } else if (event.slot !== null) {
+        const c = told.get(event.from) ?? told.get(null);
+        out.writes.push({ slot: event.slot, bytes: event.bytes, value: c ?? value(event.value, event.bytes) });
+      } else {
+        out.writes.push({ slot: null, bytes: event.bytes, value: { unknown: 'a store to the stack at a place the stack map can\'t follow' } });
+      }
+    });
+    // at a call or a jump, what the table says a register holds, as the twin's C has it
+    if (out.regs) for (const [reg, c] of told) if (reg !== null && reg < 12) out.regs[nameOf(reg)] = c;
+    return out;
+  });
+  const map = { start: fn.start, size, aliases, args, instrs };
   if (notes.length) map.notes = notes;
   return map;
 }

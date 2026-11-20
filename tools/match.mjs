@@ -225,7 +225,7 @@ export async function run(args) {
       bytes += f.bytes;
       const unmapped = f.mapped ? '' : ', where the code map has no function starting';
       // a twin of a run proves, or fails, each function of it
-      if (inside && f.mapped) for (const address of f.run ? f.run.map(each => each.address) : [f.address]) (f.same ? proven : differing).push({ key: hex(address) });
+      if (inside && f.mapped) for (const address of f.run ? f.run.map(each => each.address) : [f.address]) (f.same ? proven : differing).push({ key: hex(address), start: !f.same && !f.run && !f.missing.length ? f.first : 0 });
       const run = f.run ? `, the ${count(f.run.length)} functions to 0x${hex(f.through)} together` : '';
       if (f.same) {
         same++;
@@ -255,7 +255,7 @@ export async function run(args) {
   if (!asksForProofs(game)) {
     // a version made a part at a time keeps no proofs, and nothing is said of them
   } else if (more) console.log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
-  else for (const line of keptText(game, keepProofs(game, { kind: 'bytes', proven, failed: differing.map(f => f.key) }), 'bytes')) console.log(line);
+  else for (const line of keptText(game, keepProofs(game, { kind: 'bytes', proven, failed: differing.map(f => f.key), starts: differing.filter(f => f.start > 0).map(f => ({ key: f.key, bytes: f.start })) }), 'bytes')) console.log(line);
   if (kept) console.log(`Each of the original's instructions is beside the twin's in ${kept}. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
   return 0;
 }

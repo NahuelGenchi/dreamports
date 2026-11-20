@@ -1,0 +1,95 @@
+Snes9x (https://github.com/libretro/snes9x, the Snes9x licence, free use and never for sale) runs the Super Nintendo,
+and like every libretro core it says nothing of the instructions it runs. The tools apply this change of Dreamports'
+own to its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so
+the program that plays the original (tools/libretro/host.c) can ask to be told of each one: its address, bank and all,
+where that is in the cartridge's ROM whichever bank shows it, its first byte, and the processor's registers with the
+flags M, X and E, which say how long each of its instructions is. That's how the code map learns which functions ran in
+play and the mode each ran in (tools/snes/functions.mjs), and gameplay proven which instructions and which way each
+branch went (tools/lib/played.mjs). It also says where Snes9x keeps each of the console's memories, the work memory,
+the sound processor's, the video memory, the colours and the sprites' table, so the tools can read them as a frame ends
+(tools/libretro/held.h), as `read` reads the program a game gives the sound processor (tools/snes/read.mjs).
+
+The processor only calls the function it was given, when it was given one, between reading an instruction and running
+it, and the memories are only read: nothing of the console changes, so every frame's picture and sound are the same with it or without. Nothing of
+Snes9x is in the repository but the lines of its own this change sits between.
+
+diff --git a/cpuexec.cpp b/cpuexec.cpp
+index 0494810..830af52 100644
+--- a/cpuexec.cpp
++++ b/cpuexec.cpp
+@@ -21,6 +21,10 @@
+ 
+ static inline void S9xReschedule (void);
+ 
++/* Dreamports: what the tools' program asks to be told of every instruction, between reading it and running it: its
++ * address, bank and all, and its first byte. It only looks, so the game plays the same with it or without. */
++void (*DreamportsRan)(uint32 pbpc, uint8 op);
++
+ void S9xMainLoop (void)
+ {
+ 	#define CHECK_FOR_IRQ_CHANGE() \
+@@ -168,6 +172,7 @@ void S9xMainLoop (void)
+ 				Opcodes = S9xOpcodesSlow;
+ 		}
+ 
++		if (DreamportsRan) DreamportsRan(Registers.PBPC, Op);
+ 		Registers.PCw++;
+ 		(*Opcodes[Op].S9xOpcode)();
+ 
+diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
+index b7aaace..26ec087 100644
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -2246,6 +2246,52 @@ static void report_buttons()
+     }
+ }
+ 
++/* Dreamports: the processor tells the tools' program of every instruction (cpuexec.cpp), with where its address is in
++ * the cartridge's ROM, as an offset from its first byte, whichever bank shows it, or 0xFFFFFFFF outside it, as in the
++ * work memory, and the registers: A, X, Y, S, D, DB, P with its flags as they are, and E. retro_dreamports_ran65816
++ * gives the function to tell, or none. Its name starts as libretro's own do, as those are the only names this core
++ * lets out (link.T). */
++extern void (*DreamportsRan)(uint32 pbpc, uint8 op);
++static void (*dreamports_told)(uint32_t pc, uint32_t place, uint32_t op, const uint32_t *registers);
++
++static void dreamports_ran(uint32 pbpc, uint8 op)
++{
++   uint32 block = (pbpc & 0xffffff) >> MEMMAP_SHIFT;
++   uint8 *base = Memory.Map[block];
++   uint32_t place = 0xFFFFFFFF;
++   if (base >= (uint8 *) CMemory::MAP_LAST && Memory.BlockIsROM[block])
++   {
++      uintptr_t at = (uintptr_t) (base + (pbpc & 0xffff)) - (uintptr_t) Memory.ROM;
++      if (at < Memory.CalculatedSize) place = (uint32_t) at;
++   }
++   uint32_t p = (Registers.PL & ~(Zero | Negative | Carry | Overflow)) | ICPU._Carry | ((ICPU._Zero == 0) << 1) | (ICPU._Negative & 0x80) | (ICPU._Overflow << 6);
++   uint32_t registers[8] = { Registers.A.W, Registers.X.W, Registers.Y.W, Registers.S.W, Registers.D.W, Registers.DB, p, (uint32_t) (Registers.P.W >> 8 & 1) };
++   dreamports_told(pbpc & 0xffffff, place, op, registers);
++}
++
++extern "C" RETRO_API void retro_dreamports_ran65816(void (*told)(uint32_t, uint32_t, uint32_t, const uint32_t *))
++{
++   dreamports_told = told;
++   DreamportsRan   = told ? dreamports_ran : NULL;
++}
++
++/* Dreamports: where Snes9x keeps each of the console's memories, so the tools' program can read them as a frame ends
++ * (tools/libretro/held.h): 0 the work memory, 1 the sound processor's, 2 the video memory, 3 the colours, two bytes
++ * each, lowest first, and 4 the sprites' table. Null for a stretch past a memory's end. */
++extern "C" RETRO_API const uint8_t *retro_dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++{
++   static const uint32_t sizes[5] = { 0x20000, 0x10000, 0x10000, 512, 512 + 32 };
++   if (memory >= 5 || address > sizes[memory] || bytes > sizes[memory] - address) return NULL;
++   switch (memory)
++   {
++      case 0: return Memory.RAM + address;
++      case 1: return SNES::smp.apuram + address;
++      case 2: return Memory.VRAM + address;
++      case 3: return (const uint8_t *) PPU.CGDATA + address;
++      default: return PPU.OAMData + address;
++   }
++}
++
+ void retro_run()
+ {
+     static uint16 height = PPU.ScreenHeight;

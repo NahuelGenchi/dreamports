@@ -146,11 +146,11 @@ void game_step(uint32_t buttons) {
     vu_maddf(&acc, &acc, &matrix[2], place.f[2], VU_XYZW);       // MADDAz
     vu_maddf(&turned, &acc, &matrix[3], place.f[3], VU_XYZW);    // MADDw
     float q = ee_div(1, turned.f[3]);                            // DIV Q, vf0w, vf7w
-#if @PLAIN_SUMS@
-    // a computer's own division, which the test uses to see that the proof finds it
-    q = 1 / turned.f[3];
-#endif
     vu_mulf(&turned, &turned, q, VU_XYZ);                        // MULq
+#if @PLAIN_SUMS@
+    // a computer's own sums in the turn's place, which the test uses to see that the proof finds them
+    for (int c = 0; c < 3; c++) turned.f[c] = (place.f[0] * matrix[0].f[c] + place.f[1] * matrix[1].f[c] + place.f[2] * matrix[2].f[c] + place.f[3] * matrix[3].f[c]) * q;
+#endif
     vu_ftoi(&whole, &turned, 4, VU_XYZ);                         // FTOI4
     for (int c = 0; c < 4; c++) packet.corners[i].colour[c] = colours[i][c];
     packet.corners[i].place = whole;
