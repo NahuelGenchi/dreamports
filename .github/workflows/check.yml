@@ -17,7 +17,7 @@ name: Check
 # npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816,
 # and npm run test:real-snes, which plays it in Snes9x, built with the tools' change to it, maps its code and reads it,
 # and reads the program an eighth gives the sound processor, and npm run test:snes-twin, which checks its twins against
-# it, and npm run test:snes-kit, which proves the Super Nintendo's kit in C against Snes9x with a ninth. A pull
+# it, and npm run test:snes-kit, which proves the Super Nintendo's kit in C against Snes9x with a ninth and a tenth. A pull
 # request's code runs here, with a token that
 # can only read and no secrets.
 #
