@@ -263,6 +263,14 @@ export class Original {
     if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take the image.');
   }
 
+  /** Says where the code a call may run is, from `from` to `to`: a call that goes outside it ends as one that went
+   *  where the check can't follow. Until it's said, anywhere the processor has code. */
+  async code(from, to) {
+    this.child.stdin.write(Buffer.concat([Buffer.from('R'), words([from, to])]));
+    const answer = await this.take(1);
+    if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take where its code is.');
+  }
+
   /**
    * Runs the function at `address`, `span` bytes long, from the image with `changes`, each [address, bytes, value],
    * and with `registers`, the words of its processor's registers (EE_REGISTERS, IOP_REGISTERS, VU_REGISTERS), ra the
