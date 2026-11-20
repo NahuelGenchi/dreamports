@@ -11,6 +11,9 @@
 // register that holds a local worked out from memory (Local), a function proven only at its start (Pass, under
 // Wrap), and a routine the cartridge has in assembly, whose twin is C (Hand, from stack/routines.s, as a library's
 // table keeps one). With each rule the stack is mGBA's, and without it it isn't.
+//
+// And the function check (../gba/twin.mjs) builds the same copy for a call of Again, which does what Main's first two
+// calls do in one call: the same memory as the original's with the copy, and not without it.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -24,6 +27,7 @@ import { ensureOriginal, runOriginal } from '../gba/original.mjs';
 import { memorySpec } from '../lib/memory.mjs';
 import { stackOfFile, syntaxOf, withStack } from '../gba/stack.mjs';
 import { routineMap } from '../gba/stack-map.mjs';
+import { checkFile, ensureCaller, openBuild, openOriginal } from '../gba/twin.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { CARTRIDGE, VIA, place } from './twin/cartridge.mjs';
 
@@ -31,7 +35,7 @@ const HERE = fileURLToPath(new URL('./stack/', import.meta.url));
 const WORK = join(LOCAL, 'tmp', 'stack-test');
 const PROGRAM = join(HERE, 'leftovers.c'), ROUTINES = join(HERE, 'routines.s');
 const compiler = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
-const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000740, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640, Hand: 0x08000700 };
+const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000740, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640, Hand: 0x08000700, Again: 0x08000800 };
 // those the cartridge has as the console's compiler builds the C, all but the routine in assembly
 const COMPILED = new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Hand'));
 const NAMED = new Map([['gKept', 0x03000100], ['gOther', 0x03000104], ['gInner', 0x03000108], ['gDone', 0x0300010C], ['gOut', 0x03000110],
@@ -172,6 +176,28 @@ check(theirLeft('gHandLeft')[1] === NAMED.get('gHanded') && theirLeft('gHandLeft
 const noRoutines = await built_('no-routines', { without: new Set(['routines']) });
 check(!sameLeft(noRoutines, 'gHandLeft') && sameLeft(noRoutines, 'gPassLeft'), `without the table, what Hand left is missing: ${show(noRoutines.left('gHandLeft'))}`);
 check(made.text.includes('gba_stack_asm_enter(&gba_asm_Hand)') && noRoutines.gaps.some(gap => gap.startsWith('Hand:')), `its twin starts from the table's frame, and without the table that's listed: ${noRoutines.gaps.filter(gap => gap.startsWith('Hand:')).join('; ')}`);
+
+// The function check builds a version's twins as its build does, from the copies with the stack's calls in, and starts
+// each call's stack where the original's call starts (../gba/twin.mjs): Again's call of Read then finds what Keep's
+// calls left, as the original's does, and built from the file as it is, what the module's own stack holds
+console.log('The function check, with the console\'s stack:');
+ensureCaller(console.log);
+const opened = await openOriginal(cartridge, 3);
+const checked = async copies => {
+  const result = await checkFile({
+    original: opened.original, start: opened.start, copy: cartridge, file: PROGRAM, build: openBuild({ root: HERE, files: [PROGRAM], stacked: copies }),
+    only: FUNCTIONS.Again, addressOf: name => NAMED.get(name) ?? null, options: { calls: 50, seconds: 2 },
+  });
+  return result.functions?.find(f => f.name === 'Again') ?? { line: result.error ?? `no address for ${result.missing}` };
+};
+try {
+  const onStack = await checked(new Map([[PROGRAM, stacked]]));
+  check(onStack.kind === 'same', `built as the version's build builds it, Again leaves the same memory as the original's: ${onStack.line}`);
+  const plainly = await checked(null);
+  check(plainly.kind === 'differs' && /at 0x0300011[0-9A-F]/.test(plainly.line), `built from its file as it is, it differs at gOut, where Copy puts Read's box: ${plainly.line}`);
+} finally {
+  opened.original.close();
+}
 
 if (failed) {
   console.log(`${failed} failed.`);

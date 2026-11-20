@@ -59,12 +59,11 @@ bool32 SaveGameExists(void) {
   return res;
 }
 
-/** WriteSaveGame, 0x08012D4C: (no wording found gives the original's bytes: two registers come out swapped, as in the
- *  decompilation's, which comes to 97.6%, so its proof is the same memory.) Nothing with no flash, or when the sector the save was read from holds it already.
+/** WriteSaveGame, 0x08012D4C: nothing with no flash, or when the sector the save was read from holds it already.
  *  Otherwise the sector after next is erased, so reading stops there, and the next takes the save, marked and summed:
  *  ten sectors in turn. Gives back the flash's error, or 0. */
 u16 WriteSaveGame(void) {
-  u32 i;
+  s32 i;
   s8 sectorID;
   u16 result;
 
@@ -77,10 +76,8 @@ u16 WriteSaveGame(void) {
     ReadFlash(gUsedSaveSectorID, 0, sectorBuffer, sizeof(struct SaveGame));
     sectorIsUpToDate = TRUE;
     for (i = 0; i < sizeof(struct SaveGame); i++) {
-      u8 *dataBuffer = sectorBuffer + i;
-      u8 *dataIWRAM = (u8 *)&gLoadedSaveGame + i;
-
-      if (*dataBuffer != *dataIWRAM) {
+      bool32 neq = sectorBuffer[i] != ((u8 *)&gLoadedSaveGame)[i];
+      if (neq) {
         sectorIsUpToDate = FALSE;
         break;
       }

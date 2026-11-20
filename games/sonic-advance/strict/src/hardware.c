@@ -7,9 +7,9 @@
 #include "stack.h"
 
 // Where the console has an address, in a Dreamport: the work memory and the cartridge are at their own addresses, and
-// the colours, the video memory and the sprites' list are the kit's. Each memory shows again all through its stretch
-// of addresses, as on the console, and the cartridge in each of its three. NULL for anywhere else, and for the
-// cartridge when it's written to: the console's DMA reads nothing there and writes nothing.
+// so are the colours, the video memory and the sprites' list, the kit's (gba.h). Each memory shows again all through
+// its stretch of addresses, as on the console, and the cartridge in each of its three. NULL for anywhere else, and for
+// the cartridge when it's written to: the console's DMA reads nothing there and writes nothing.
 static u8 *console_at(u32 address, int writing) {
   switch (address >> 24) {
   case 0x02: return (u8 *)(0x02000000 + (address & 0x3FFFF));

@@ -117,6 +117,15 @@ void Hand(int *out) {
   *out = 7;
 }
 
+/** Again, 0x08000800: Keep, then Read over what Keep's calls left, keeping an address of its own across both, another
+ *  than Main keeps, as one call of the function check makes them (../../gba/twin.mjs). */
+void Again(void) {
+  int *wrap = &gWrap;
+  Keep();
+  Read();
+  *wrap = 2;
+}
+
 /** Main, 0x08000740: Keep, then Read, at the same depth, and then each of the rest, with two addresses kept across
  *  them all. */
 void Main(void) {
