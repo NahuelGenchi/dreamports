@@ -25,7 +25,7 @@ export const LOAD_AT = 0x00100000, DATA_AT = 0x00200000, RESULTS_AT = 0x00300000
 export const FRAMES = 120;
 
 // ---- The EE's instructions, as MIPS and the EE's own encode them ----
-const T0 = 8, T1 = 9, T2 = 10, T3 = 11, T4 = 12, S0 = 16, S1 = 17, A0 = 4, A1 = 5, A2 = 6, V0 = 2, V1 = 3, A3 = 7;
+const T0 = 8, T1 = 9, T2 = 10, T3 = 11, S0 = 16, S1 = 17, A0 = 4, A1 = 5, A2 = 6, V0 = 2, V1 = 3, A3 = 7;
 const imm = (op, rs, rt, value) => (op << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;
 const special = (rs, rt, rd, sa, funct) => (rs << 21 | rt << 16 | rd << 11 | sa << 6 | funct) >>> 0;
 const lui = (rt, value) => imm(0x0F, 0, rt, value), ori = (rt, rs, value) => imm(0x0D, rs, rt, value);
@@ -567,29 +567,28 @@ function frameSteps(p) {
     step([mtc1(T1, 3), fpuWord(0x20, 2, 3), swc1(2, result, S1)], put('float_word(ee_from_int(n))'));
     for (const [funct, c] of COMPARES) {
       const compare = (0x11 << 26 | 16 << 21 | (funct === 0x32 ? 0 : 1) << 16 | 0 << 11 | funct) >>> 0;
-      step([compare, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_fcsr >> 23 & 1)`));
+      step([compare, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_cfc1(31) >> 23 & 1)`));
     }
     step([], '}');
   }
   // the same on the floats the console treats its own way, each against another of them and against one of the others,
-  // each result with the flags it leaves in FCSR, which starts each frame clear
-  const FLAGS = 0x0083C078;
-  step([ctc1(0, 31), ...li(T4, FLAGS)], 'ee_fcsr = 0;');
+  // each result with the whole FCSR it leaves, which starts each frame with its flags clear
+  step([ctc1(0, 31)], 'ee_ctc1(31, 0);');
   for (let i = 0; i < 8; i++) {
     const other = i & 1 ? [p.FIN, i * 4, `FIN + ${i * 4}`] : [p.SPECIAL, ((i + 3) & 7) * 4, `SPECIAL + ${((i + 3) & 7) * 4}`];
     step([...li(T0, p.SPECIAL), lwc1(0, i * 4, T0), ...li(T0, other[0]), lwc1(1, other[1], T0)], `{ float a = word_float(SPECIAL + ${i * 4}), b = word_float(${other[2]});`);
     for (const [mips, c, kind] of FPU_OPS) {
       step([...mips, swc1(2, result, S1)], put(kind === 'int' ? `(uint32_t)${c}` : `float_word(${c})`));
-      step([cfc1(T2, 31), and(T2, T2, T4), sw(T2, result, S1)], put(`ee_fcsr & ${FLAGS}u`));
+      step([cfc1(T2, 31), sw(T2, result, S1)], put('ee_cfc1(31)'));
     }
     for (const [mips, c] of [[[fpu(0x16, 2, 0, 1)], 'ee_rsqrt(a, b)'], [[fpu(0x03, 2, 1, 0)], 'ee_div(b, a)'], [[fpu(0x04, 2, 0, 1)], 'ee_sqrt(b)']]) {
       step([...mips, swc1(2, result, S1)], put(`float_word(${c})`));
-      step([cfc1(T2, 31), and(T2, T2, T4), sw(T2, result, S1)], put(`ee_fcsr & ${FLAGS}u`));
+      step([cfc1(T2, 31), sw(T2, result, S1)], put('ee_cfc1(31)'));
     }
     // and against a third, compared, and the larger and the smaller
     step([...li(T0, p.SPECIAL), lwc1(1, ((i + 6) & 7) * 4, T0)], `b = word_float(SPECIAL + ${((i + 6) & 7) * 4});`);
     for (const [funct, c] of [[0x34, 'ee_c_lt(a, b)'], [0x36, 'ee_c_le(a, b)'], [0x32, 'ee_c_eq(a, b)']]) {
-      step([(0x11 << 26 | 16 << 21 | 1 << 16 | 0 << 11 | funct) >>> 0, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_fcsr >> 23 & 1)`));
+      step([(0x11 << 26 | 16 << 21 | 1 << 16 | 0 << 11 | funct) >>> 0, cfc1(T2, 31), srl(T2, T2, 23), andi(T2, T2, 1), sw(T2, result, S1)], put(`(${c}, ee_cfc1(31) >> 23 & 1)`));
     }
     step([fpu(0x28, 2, 0, 1), swc1(2, result, S1)], put('float_word(ee_max(a, b))'));
     step([fpu(0x29, 2, 0, 1), swc1(2, result, S1)], put('float_word(ee_min(a, b))'));
