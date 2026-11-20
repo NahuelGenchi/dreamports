@@ -7,6 +7,8 @@ name: Mac
 # does with a new PlayStation 2 game, rom, codemap, new, capture and prove, with a stand-in for GitHub, and plays its
 # page in Safari and in Chrome. A job on Linux and the Mac each run npm run test:ps2-same on the same small programs, and
 # a third compares the two: every draw list, sound and memory the same on both, as a Mac's proofs have to be Linux's.
+# And the function check: npm run test:ps2-call and test:ps2-twin on the Mac, where Play!'s processors are built for
+# Apple's chip, and npm run test:ps2-memories on both, which takes a made-up program's memories of play in Play! itself.
 # Nothing from any game is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as building Play! takes a while. It runs on pull requests that touch what the PlayStation 2's
@@ -89,6 +91,8 @@ jobs:
           name: ps2-same-linux
           path: ps2-same-linux.json
           retention-days: 7
+      # the function check's memories of play, taken in Play! itself, which Check doesn't build
+      - run: npm run test:ps2-memories
 
   mac:
     name: Mac (PlayStation 2)
@@ -163,6 +167,10 @@ jobs:
       - run: npm run test:ps2-kit
       - run: npm run test:ps2-gs
       - run: npm run test:ps2-sound
+      # the function check: Play!'s processors built by themselves for Apple's chip, and memories of play
+      - run: npm run test:ps2-call
+      - run: npm run test:ps2-twin
+      - run: npm run test:ps2-memories
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
