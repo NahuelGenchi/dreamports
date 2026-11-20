@@ -18,6 +18,10 @@
 //                       it called through a pointer a function of another kind ('mismatch'). With `unit`,
 //                       { number, words }, the vector unit's registers are those words as the call starts, as the
 //                       kit's vu_registers takes them, and it answers what the call left them as too, `unit`.
+//                       With `unit.memory` too, the unit's data memory is those bytes as the call starts, in the
+//                       kit's own memory for it, and it answers what the call left there, `memory`, and each
+//                       packet the call sent with XGKICK, `kicks`, { at, memory }: where it starts and the
+//                       unit's data memory as it was sent.
 //
 // Besides the image there's a stretch where the table sends every address the console has nothing at, `nowhere`, which
 // a twin must leave as it was given, empty, as the original would have stopped had it gone there. The module marks each
@@ -130,6 +134,11 @@ parentPort.on('message', message => {
     views();
     message.unit.words.forEach((word, n) => view.setUint32(at + n * 4, word, true));
     registersAt(1);
+    if (message.unit.memory) {
+      const at = exports.vu_data(message.unit.number) >>> 0;
+      views();
+      memory.set(message.unit.memory, at);
+    }
   }
   let gave;
   try {
@@ -167,6 +176,15 @@ parentPort.on('message', message => {
     views();
     unit = Array.from(message.unit.words, (_, n) => view.getUint32(at + n * 4, true));
   }
-  parentPort.postMessage({ gave, differs, unit });
+  let left = null, kicks = null;
+  if (message.unit?.memory && exports.vu_data) {
+    const at = exports.vu_data(message.unit.number) >>> 0, size = message.unit.memory.length;
+    views();
+    left = memory.slice(at, at + size);
+    // the packets the build's own vu_kicked kept: how many, then where each starts, and the memory as each was sent
+    const list = exports.__twin_kicks() >>> 0, held = exports.__twin_kicked() >>> 0, count = view.getUint32(list, true);
+    kicks = Array.from({ length: count }, (_, n) => ({ at: view.getUint32(list + 4 + n * 4, true), memory: memory.slice(held + n * size, held + (n + 1) * size) }));
+  }
+  parentPort.postMessage({ gave, differs, unit, memory: left, kicks });
 });
 parentPort.postMessage({ ready: true });

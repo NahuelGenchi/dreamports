@@ -1,4 +1,4 @@
-// npm run dp -- libraries [<version>] [--find | --hash] [--shared <game> <game>] [--check]: the shared libraries in the kit (lib/libraries.mjs), code a console's
+// npm run dp -- libraries [<version>] [--find | --hash | --frames] [--shared <game> <game>] [--check]: the shared libraries in the kit (lib/libraries.mjs), code a console's
 // games share without having written it, written once as twins and taken by every version that has it (#1508).
 //
 // With nothing named it says, for each console with a library, how much of its known shared code is proven: every
@@ -19,6 +19,10 @@
 //   --hash    with a version, writes into each library's library.json the short hash of every function the version
 //             proves by the same memory and no version proves by the same bytes, as no compiler rebuilds it: the first
 //             16 digits of a SHA-1 of the original's bytes with every address masked, which --find finds it by
+//   --frames  with a version, assembles each routine of its libraries' tables of routines in assembly (library.json's
+//             "frames") with the tools' own assembler, fills in each address as the version gives it, and compares the
+//             routine with its copy's bytes: the same, or where it differs, which says the table is wrong for it, as
+//             the original's instructions are what the console runs. ARM code the assembler leaves out isn't compared
 //   --shared  lists the functions two games on this computer share, with every address masked, by each one's address
 //             and size, as a code map has them, which is how a new library is found
 //
@@ -42,7 +46,7 @@ import { CONSOLES } from './consoles.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { sharedText } from '../src/lib/shared-map.mjs';
 
-const USAGE = 'Usage: npm run dp -- libraries [<version>] [--find | --hash] [--shared <game> <game>] [--check]';
+const USAGE = 'Usage: npm run dp -- libraries [<version>] [--find | --hash | --frames] [--shared <game> <game>] [--check]';
 // each console's way of finding a library in a game, for the consoles that have one
 const FINDERS = { gba: './gba/libraries.mjs', nes: './nes/libraries.mjs' };
 const count = n => n.toLocaleString('en');
@@ -50,14 +54,18 @@ const plural = (n, word, words = `${word}s`) => `${count(n)} ${n === 1 ? word : 
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
 export async function run(args) {
-  const check = args.includes('--check'), finding = args.includes('--find'), hashing = args.includes('--hash'), sharing = args.includes('--shared');
-  const rest = args.filter(arg => !['--check', '--find', '--hash', '--shared'].includes(arg));
+  const check = args.includes('--check'), finding = args.includes('--find'), hashing = args.includes('--hash'), sharing = args.includes('--shared'), framing = args.includes('--frames');
+  const rest = args.filter(arg => !['--check', '--find', '--hash', '--shared', '--frames'].includes(arg));
   for (const arg of rest) if (arg.startsWith('--')) throw new Error(`libraries has no ${arg}.\n${USAGE}`);
   if (sharing) {
     if (rest.length !== 2) throw new Error(`--shared needs two games.\n${USAGE}`);
     return shared(rest[0], rest[1]);
   }
   if ((finding || hashing) && rest.length !== 1) throw new Error(`${finding ? '--find' : '--hash'} needs a version, such as sonic-advance/c.\n${USAGE}`);
+  if (framing) {
+    if (rest.length !== 1) throw new Error(`--frames needs a version, such as sonic-advance/c.\n${USAGE}`);
+    return framesIn(rest[0]);
+  }
   if (finding) return findIn(rest[0]);
   if (hashing) return hashIn(rest[0]);
   if (rest.length > 1) throw new Error(USAGE);
@@ -142,6 +150,72 @@ async function finderOf(id) {
 }
 
 // a game's copy on this computer, checked, as the tools read it: its bytes, and what reads `size` of them at an address
+// Each routine of the tables of routines in assembly a version's libraries keep (library.json's "frames"), assembled and
+// compared with the version's copy, where the version says each is.
+async function framesIn(version) {
+  const { original, rom } = copyOf(version);
+  if (original.console !== 'gba') throw new Error('A library\'s table of routines in assembly is read on the Game Boy Advance only.');
+  const { assemble } = await import('./gba/thumb.mjs');
+  const { versionTwins } = await import('./lib/twins.mjs');
+  const { named, twins, libraries } = versionTwins(version);
+  const CARTRIDGE = 0x08000000;
+  let tables = 0, differ = 0;
+  for (const { library, functions } of libraries) {
+    if (!library.frames) continue;
+    tables++;
+    const made = assemble(readFileSync(library.frames, 'utf8'));
+    const code = Buffer.from(made.sections['.text'].bytes);
+    const routines = [...made.symbols].filter(([, symbol]) => symbol.function && symbol.section === '.text').sort((a, b) => a[1].at - b[1].at);
+    const addressOf = name => functions.get(name) ?? named.get(name) ?? (twins.get(name)?.size === 1 ? [...twins.get(name)][0] : null);
+    // where the copy has a place of the table: in the routine it's in, as far on from the routine's start
+    const placeOf = at => {
+      const owner = routines.filter(([, symbol]) => symbol.at <= at).at(-1);
+      const start = owner ? addressOf(owner[0]) : null;
+      return start === null ? null : (start & ~1) + at - owner[1].at;
+    };
+    for (const { at, kind, name, addend } of made.relocations) {
+      const symbol = made.symbols.get(name);
+      let target = symbol?.section === '.text' ? placeOf(symbol.at) : addressOf(name);
+      if (target === null) continue;
+      if (symbol?.function) target |= 1;
+      target += addend;
+      if (kind === 'word') code.writeUInt32LE(target >>> 0, at);
+      else {
+        const from = placeOf(at);
+        if (from === null) continue;
+        const jump = (target & ~1) - (from + 4);
+        code.writeUInt16LE(0xF000 | ((jump >> 12) & 0x7FF), at);
+        code.writeUInt16LE(0xF800 | ((jump >> 1) & 0x7FF), at + 2);
+      }
+    }
+    const left = new Set(made.unassembled.flatMap(each => Array.from({ length: each.bytes }, (_, k) => each.at + k)));
+    console.log(`${library.id}, ${inRepo(library.frames)}:`);
+    for (const [name, symbol] of routines) {
+      const address = addressOf(name), size = made.sizes.get(name);
+      if (address === null || size === undefined) {
+        console.log(`  ${name}: ${address === null ? `${version} gives it no address` : 'its table gives it no .size'}, so it isn't compared`);
+        continue;
+      }
+      const from = (address & ~1) - CARTRIDGE;
+      let first = -1, skipped = 0;
+      for (let k = 0; k < size; k++) {
+        if (left.has(symbol.at + k)) skipped++;
+        else if (first < 0 && code[symbol.at + k] !== rom[from + k]) first = k;
+      }
+      const arm = skipped ? `, and ${plural(skipped, 'byte')} of ARM code the assembler leaves out` : '';
+      if (first < 0) console.log(`  0x${hex(address & ~1)}  ${name}: the same, ${plural(size - skipped, 'byte')}${arm}`);
+      else {
+        differ++;
+        const at = first & ~1;
+        console.log(`  0x${hex(address & ~1)}  ${name}: differs from +0x${at.toString(16)}, the table's ${code.readUInt16LE(symbol.at + at).toString(16).padStart(4, '0')} and the copy's ${rom.readUInt16LE(from + at).toString(16).padStart(4, '0')}${arm}`);
+      }
+    }
+  }
+  if (!tables) console.log(`None of the libraries ${version} takes has a table of routines in assembly.`);
+  else if (differ) console.log(`${plural(differ, 'routine')} of the tables differ${differ === 1 ? 's' : ''} from the copy: the copy's instructions are the original's, so the table is wrong there.`);
+  return differ ? 1 : 0;
+}
+
 function copyOf(version) {
   const original = readOriginal(version), copy = copyWith(original.sha1);
   if (!copy) throw new Error(`This reads ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
@@ -290,7 +364,7 @@ export function checkLibraries(versions = keptVersions()) {
     if (!existsSync(notice) || !readFileSync(notice, 'utf8').trim()) problems.push(`${inRepo(notice)} isn't there: each library has a notice that names each source its twins were written from, by repository and commit, or says it was written from nothing but the console's own code.`);
     const listed = new Map(library.functions.filter(f => f.file).map(f => [`${f.file}\n${f.name}`, f]));
     for (const id of library.consoles) for (const name of readdirSync(library.folder).filter(each => /\.[ch]$/.test(each))) place(id, name, inRepo(join(library.folder, name)));
-    for (const file of [...library.files, ...readdirSync(library.folder).filter(name => name.endsWith('.h')).map(name => join(library.folder, name))]) {
+    for (const file of [...library.files, ...readdirSync(library.folder).filter(name => name.endsWith('.h')).map(name => join(library.folder, name)), ...(library.frames ? [library.frames] : [])]) {
       const text = readFileSync(file, 'utf8');
       // a library names no address of any game: where its copy has each thing is the version's to say
       text.split('\n').forEach((line, i) => {
