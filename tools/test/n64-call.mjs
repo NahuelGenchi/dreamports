@@ -81,8 +81,9 @@ try {
   const numbers = labels.numbers;
   const sixtyFour = await call('wide', { a0: 0x12345678, a1: 0x9ABCDEF0 & 0x7FFFFFFF, a2: numbers });
   const kept = imageAfter(image, [], sixtyFour.chunks);
-  check(reg(sixtyFour, 'v0') === 0x123456781ABCDEF0n && word(kept, numbers) === 0x12345678 && word(kept, numbers + 4) === 0x1ABCDEF0,
-    `a 64-bit number is made in one register and kept as a doubleword, its highest word first (0x${reg(sixtyFour, 'v0').toString(16)})`);
+  check(reg(sixtyFour, 't0') === 0x123456781ABCDEF0n && word(kept, numbers) === 0x12345678 && word(kept, numbers + 4) === 0x1ABCDEF0,
+    `a 64-bit number is made in one register and kept as a doubleword, its highest word first (0x${reg(sixtyFour, 't0').toString(16)})`);
+  check(reg(sixtyFour, 'v0') === 0x12345678n && reg(sixtyFour, 'v1') === 0x1ABCDEF0n, 'and given back as the console\'s compilers give one, its high word in v0 and its low in v1');
   const taken = await call('likely', { a0: 0 }), past = await call('likely', { a0: 5 });
   check(reg(taken, 'v0') === 1n && [...taken.ran].join('') === '31011', `a likely branch that goes runs its delay slot (${[...taken.ran].join('')})`);
   check(reg(past, 'v0') === 2n && [...past.ran].join('') === '50111', `one that doesn't go skips it (${[...past.ran].join('')})`);

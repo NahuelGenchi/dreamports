@@ -49,6 +49,12 @@ const OWN = {
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
 };
 
+// what the twins of a console with no kit of its own yet are built with besides: on the Nintendo 64, a char with no sign,
+// as IDO, which most of its games were built with, has it, code that reads a value through a pointer of another type or
+// through address 0, and no two stores the compiler sees side by side made into one, as the fold pass turns round each
+// number by its own size, which two merged in the module's own order would undo (wasm-fold.mjs)
+const TWIN_FLAGS = { n64: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'] };
+
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 /** console.h for a console with no kit in C of its own, from what kit/consoles.js says of it. */
@@ -119,7 +125,7 @@ export function cKit(id) {
     return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
-  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
+  return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: TWIN_FLAGS[id] ?? [] };
 }
 
 /** How every build of a game's C works it out, the function check's too (../gba/twin.mjs): made fast the same way, and
