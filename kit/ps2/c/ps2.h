@@ -54,19 +54,90 @@ void gif_send(const void *data, uint32_t bytes);
  *  how many bytes it was. */
 uint32_t gif_packet(const void *data, uint32_t most);
 
-// The EE's float sums: each result is cut towards zero, where a computer rounds to the nearest, so a sum done with a
-// plain + lands a last bit away, and a turning model's corner is a sixteenth of a pixel out within a hundred frames.
+// The EE's memories and what its code reaches at an address (bus.c), for a game whose functions are twins of its
+// original's: the DMA controller, the VIF and the GIF take what it writes to their registers as the console's do, and
+// run then and there, so the GS gets the original's writes in the original's order (kit/ps2/c/README.md).
+#define PS2_RAM_SIZE (32u << 20)
+#define PS2_SCRATCHPAD_SIZE (16u << 10)
+/** The scratchpad, 16 KB, at 0x70000000 for the EE's code. The EE's main memory is ee_memory(), below: a DMA address is
+ *  an offset into it, as on the console, or into the scratchpad when its top bit is set, so a game builds its DMA chains
+ *  there and gives the controller their offsets. */
+uint8_t *ps2_scratchpad(void);
+/** What the EE's code reads and writes at an address: main memory, the scratchpad, the vector units' memories, and
+ *  the registers of the DMA controller, the VIF, the GIF and the GS's screen. An address the kit has nothing at reads 0. */
+uint32_t ps2_read32(uint32_t address);
+void ps2_write32(uint32_t address, uint32_t value);
+uint64_t ps2_read64(uint32_t address);
+void ps2_write64(uint32_t address, uint64_t value);
+/** 128 bits at once, as SQ and LQ move them, which is how the VIF's and the GIF's FIFOs are written. */
+void ps2_read128(uint32_t address, void *value);
+void ps2_write128(uint32_t address, const void *value);
+
+// where the EE sees them: each DMA channel's registers, from the channel's address, and the controller's own
+enum {
+  DMA_VIF0 = 0x10008000, DMA_VIF1 = 0x10009000, DMA_GIF = 0x1000A000, DMA_FROM_IPU = 0x1000B000, DMA_TO_IPU = 0x1000B400,
+  DMA_SIF0 = 0x1000C000, DMA_SIF1 = 0x1000C400, DMA_SIF2 = 0x1000C800, DMA_FROM_SPR = 0x1000D000, DMA_TO_SPR = 0x1000D400,
+  DMA_CHCR = 0x00, DMA_MADR = 0x10, DMA_QWC = 0x20, DMA_TADR = 0x30, DMA_ASR0 = 0x40, DMA_ASR1 = 0x50, DMA_SADR = 0x80,
+  D_CTRL = 0x1000E000, D_STAT = 0x1000E010, D_PCR = 0x1000E020, D_SQWC = 0x1000E030, D_RBSR = 0x1000E040,
+  D_RBOR = 0x1000E050, D_STADR = 0x1000E060, D_ENABLER = 0x1000F520, D_ENABLEW = 0x1000F590,
+};
+// the VIFs', the GIF's and their FIFOs, and the vector units' memories
+enum {
+  VIF0_STAT = 0x10003800, VIF0_FBRST = 0x10003810, VIF0_ERR = 0x10003820, VIF0_MARK = 0x10003830, VIF0_CYCLE = 0x10003840,
+  VIF0_MODE = 0x10003850, VIF0_NUM = 0x10003860, VIF0_MASK = 0x10003870, VIF0_CODE = 0x10003880, VIF0_ITOPS = 0x10003890,
+  VIF0_ITOP = 0x100038D0, VIF0_R0 = 0x10003900, VIF0_C0 = 0x10003940,
+  VIF1_STAT = 0x10003C00, VIF1_FBRST = 0x10003C10, VIF1_ERR = 0x10003C20, VIF1_MARK = 0x10003C30, VIF1_CYCLE = 0x10003C40,
+  VIF1_MODE = 0x10003C50, VIF1_NUM = 0x10003C60, VIF1_MASK = 0x10003C70, VIF1_CODE = 0x10003C80, VIF1_ITOPS = 0x10003C90,
+  VIF1_BASE = 0x10003CA0, VIF1_OFST = 0x10003CB0, VIF1_TOPS = 0x10003CC0, VIF1_ITOP = 0x10003CD0, VIF1_TOP = 0x10003CE0,
+  VIF1_R0 = 0x10003D00, VIF1_C0 = 0x10003D40,
+  GIF_CTRL = 0x10003000, GIF_MODE = 0x10003010, GIF_STAT = 0x10003020,
+  VIF0_FIFO = 0x10004000, VIF1_FIFO = 0x10005000, GIF_FIFO = 0x10006000,
+  VU0_CODE = 0x11000000, VU0_DATA = 0x11004000, VU1_CODE = 0x11008000, VU1_DATA = 0x1100C000,
+};
+
+// The EE's floats, as its FPU works them out (ee.c): each result exact and then cut towards zero, where a computer
+// rounds to the nearest, with no infinity or NaN, the largest float on overflow, tiny floats as zero, and the FPU's flags
+// in ee_fcsr. A sum done with a plain + lands a last bit away, and a turning model's corner is a sixteenth of a pixel
+// out within a hundred frames, so a twin of the EE's code does its float sums with these.
 float ee_add(float a, float b);
 float ee_sub(float a, float b);
 float ee_mul(float a, float b);
-/** A float as a whole number, what's after its point dropped, as the EE's CVT.W.S makes it. */
-int32_t ee_to_int(float value);
-/** A whole number as a float. */
-float ee_from_int(int32_t value);
 /** A division, cut the same way. By zero it gives the largest float there is, with the sign the two make. */
 float ee_div(float a, float b);
 /** The square root of a float taken without its sign, cut the same way. */
 float ee_sqrt(float value);
+/** RSQRT.S: a over the square root of b, worked out at once and cut once. */
+float ee_rsqrt(float a, float b);
+/** The accumulator, which ADDA.S, SUBA.S, MULA.S, MADDA.S and MSUBA.S set, and MADD.S and MSUB.S add a product to. */
+extern float ee_acc;
+float ee_adda(float a, float b);
+float ee_suba(float a, float b);
+float ee_mula(float a, float b);
+float ee_madd(float a, float b);
+float ee_msub(float a, float b);
+float ee_madda(float a, float b);
+float ee_msuba(float a, float b);
+float ee_abs(float value);
+float ee_neg(float value);
+float ee_max(float a, float b);
+float ee_min(float a, float b);
+/** C.F.S, C.EQ.S, C.LT.S and C.LE.S: each sets FCSR's C bit, which BC1T and BC1F test, and gives it. */
+int ee_c_f(void);
+int ee_c_eq(float a, float b);
+int ee_c_lt(float a, float b);
+int ee_c_le(float a, float b);
+/** A float as a whole number, what's after its point dropped, as the EE's CVT.W.S makes it, the largest there is with
+ *  its sign for one too large. */
+int32_t ee_to_int(float value);
+/** A whole number as a float, cut to 24 bits as CVT.S.W cuts it. */
+float ee_from_int(int32_t value);
+/** The FPU's control and status register, FCSR, as CFC1 reads it: the condition bit C, and overflow, underflow,
+ *  division by zero and invalid, each with the sticky bit that keeps it until the game clears it with CTC1. */
+extern uint32_t ee_fcsr;
+enum {
+  EE_FCSR_C = 1 << 23, EE_FCSR_I = 1 << 17, EE_FCSR_D = 1 << 16, EE_FCSR_O = 1 << 15, EE_FCSR_U = 1 << 14,
+  EE_FCSR_SI = 1 << 6, EE_FCSR_SD = 1 << 5, EE_FCSR_SO = 1 << 4, EE_FCSR_SU = 1 << 3,
+};
 
 // The console's memory, for a game that keeps it where the console does, for the proof tools to compare after every
 // frame (ps2.c): `memory` is PS2_EE, PS2_IOP or PS2_SPU2, `address` where the stretch starts in that memory, as the
@@ -75,11 +146,25 @@ float ee_sqrt(float value);
 enum { PS2_EE, PS2_IOP, PS2_SPU2 };
 void ps2_console_memory(uint32_t memory, uint32_t address, uint32_t size, void *at);
 
-// The vector units' sums, for a program on one written again in C. A vector is four floats, x, y, z and w, or the same
-// bits as whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
+// The vector units (vu.c). A program on one runs from its code memory as the console runs it, started by the VIF's
+// MSCAL or by VCALLMS, with its floats on the EE's rules. A vector is four floats, x, y, z and w, or the same bits as
+// whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
 typedef union { float f[4]; int32_t i[4]; uint32_t u[4]; } vu_vector;
 enum { VU_X = 8, VU_Y = 4, VU_Z = 2, VU_W = 1, VU_XYZ = 14, VU_XYZW = 15 };
-// ADD, SUB, MUL, and MADD and MSUB with the accumulator: with a whole vector
+
+/** Vector unit 0's registers as the EE's code reaches them in macro mode: VF0 to VF31 with QMFC2 and QMTC2, and VI0 to
+ *  VI15, the status, MAC and clip flags, R, I, Q, TPC, CMSAR0, FBRST, VPU_STAT and CMSAR1 with CFC2 and CTC2, by their
+ *  numbers. Writing CMSAR1 starts vector unit 1 there. */
+vu_vector *vu0_vf(int reg);
+uint32_t vu0_cfc2(int reg);
+void vu0_ctc2(int reg, uint32_t value);
+/** One COP2 macro instruction of vector unit 0's, VADD.xyz to VCALLMS, as the original's 32-bit word encodes it. */
+void vu0_macro(uint32_t instruction);
+/** Whether vector unit 0 or 1 is running a program, as VPU_STAT and BC2T see it. */
+int vu_running(int unit);
+
+// For a unit's program written again in C, an instruction a line: the upper instructions' sums on whole vectors, on the
+// fields `dest` names, with the same rules and no flags. ADD, SUB, MUL, and MADD and MSUB with the accumulator:
 void vu_add(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
 void vu_sub(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
 void vu_mul(vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest);
