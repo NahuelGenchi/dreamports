@@ -12,10 +12,13 @@
 //
 // clock-check CARTRIDGE FRAMES
 //
+// Each line of the picture the emulator draws, as its H-blank starts, the clock has to say it's drawn then too
+// (gba_clock_on_line), the same line at the same time, with the frames all timed.
+//
 // It prints a line per frame, as JSON, with what the emulator's frame ended after, and one at the end: how many
 // instructions were compared, how many differed, and the first that did, how many interrupts the clock took, and how
-// many it took that the emulator didn't or missed that it did. It exits with 1 when anything differed
-// (tools/test/clock.mjs).
+// many it took that the emulator didn't or missed that it did, and how many lines each drew and how many of them
+// differ. It exits with 1 when anything differed (tools/test/clock.mjs).
 
 #include <mgba/core/core.h>
 #include <mgba/gba/core.h>
@@ -71,6 +74,19 @@ static void clockEnded(void) {
 	if (f + 1 > clockFrames) clockFrames = f + 1;
 }
 static int runningWrong;
+
+// the picture's lines as each was drawn, the emulator's and the clock's: which, and when
+#define LINES_KEPT (FRAMES * 160)
+static uint64_t emulatorLineAt[LINES_KEPT], clockLineAt[LINES_KEPT];
+static int emulatorLine[LINES_KEPT], clockLine[LINES_KEPT], emulatorLines, clockLines;
+static void (*drawScanline)(struct GBAVideoRenderer* renderer, int y);
+static void emulatorDrew(struct GBAVideoRenderer* renderer, int y) {
+	if (emulatorLines < LINES_KEPT) { emulatorLine[emulatorLines] = y; emulatorLineAt[emulatorLines++] = (uint64_t) mTimingCurrentTime(&gba->timing); }
+	drawScanline(renderer, y);
+}
+static void clockDrew(int y) {
+	if (clockLines < LINES_KEPT) { clockLine[clockLines] = y; clockLineAt[clockLines++] = gba_clock_now(); }
+}
 
 static struct ARMCore* cpu;
 static int frames, skip = -1, skipping, jumped, lastCounter;
@@ -183,6 +199,9 @@ int main(int argc, char** argv) {
 	// just after its start (clock.mjs)
 	gba_clock_on_interrupt(0x080000CC, handler);
 	gba_clock_on_wait(acknowledged, acknowledge);
+	drawScanline = gba->video.renderer->drawScanline;
+	gba->video.renderer->drawScanline = emulatorDrew;
+	gba_clock_on_line(clockDrew);
 	frames = atoi(argv[2]);
 	// with a third argument, a frame the clock isn't told of, as a game leaves its time alone between the stretches it
 	// times: the clock stops as that frame starts, and goes on from the emulator's time at the first instruction after
@@ -198,8 +217,19 @@ int main(int argc, char** argv) {
 		if (!same) framesDiffer++;
 		printf("{\"frame\":%d,\"pc\":%u,\"emulator\":%llu,\"clock\":%lld}\n", f, emulatorPcs[f], (unsigned long long) emulatorEnds[f], f < clockFrames ? (long long) clockEnds[f] : -1LL);
 	}
-	printf("{\"compared\":%ld,\"differ\":%ld,\"first\":{\"pc\":%u,\"op\":%u,\"clock\":%llu,\"emulator\":%llu},\"framesDiffer\":%d,\"interrupts\":%ld,\"unasked\":%ld,\"missed\":%ld}\n",
-		compared, differ, firstPc, firstOp, (unsigned long long) firstClock, (unsigned long long) firstEmulator, framesDiffer, interrupts, unasked, missed);
+	// the lines, where every frame was timed: the same line drawn at the same time by both, up to the last the clock drew
+	int linesDiffer = 0, firstLine = -1;
+	if (skip < 0) {
+		for (int i = 0; i < clockLines; i++)
+			if (i >= emulatorLines || clockLine[i] != emulatorLine[i] || clockLineAt[i] != emulatorLineAt[i]) {
+				if (firstLine < 0) firstLine = i;
+				linesDiffer++;
+			}
+		if (clockLines + 160 < emulatorLines) linesDiffer++;
+	}
+	printf("{\"compared\":%ld,\"differ\":%ld,\"first\":{\"pc\":%u,\"op\":%u,\"clock\":%llu,\"emulator\":%llu},\"framesDiffer\":%d,\"interrupts\":%ld,\"unasked\":%ld,\"missed\":%ld,\"lines\":{\"emulator\":%d,\"clock\":%d,\"differ\":%d,\"first\":%d,\"emulatorAt\":%llu,\"clockAt\":%llu}}\n",
+		compared, differ, firstPc, firstOp, (unsigned long long) firstClock, (unsigned long long) firstEmulator, framesDiffer, interrupts, unasked, missed,
+		emulatorLines, clockLines, linesDiffer, firstLine, firstLine >= 0 && firstLine < emulatorLines ? (unsigned long long) emulatorLineAt[firstLine] : 0ULL, firstLine >= 0 ? (unsigned long long) clockLineAt[firstLine] : 0ULL);
 	core->deinit(core);
-	return differ || framesDiffer || unasked || missed ? 1 : 0;
+	return differ || framesDiffer || unasked || missed || linesDiffer ? 1 : 0;
 }

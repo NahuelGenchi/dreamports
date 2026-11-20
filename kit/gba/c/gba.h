@@ -59,6 +59,16 @@ uint32_t gba_color555(uint16_t c);
  * them. The registers are as they were before it afterwards, so a frame can be drawn again.
  */
 void gba_draw_frame(uint32_t *out);
+/**
+ * Draws the frame's lines up to line `y` not drawn yet into `out`, with what the video hardware holds now, each with
+ * its H-blank after it (gba_on_hblank), for a game that keeps the console's time: the console draws each line as its
+ * H-blank starts, so a change the game makes while the picture is drawn shows only on the lines after it. The frame's
+ * own draw then draws the rest. A `y` lower than the lines drawn starts a new frame's.
+ */
+void gba_draw_lines_to(int y, uint32_t *out);
+/** The same into the frame the page shows (dp_draw), as the console's clock reaches line `y`'s H-blank
+ *  (gba_clock_on_line). */
+void gba_draw_line_now(int y);
 
 // The player's copy of the game, which game.js checked against the versions the game supports, its save memory, the
 // words of the page's address and memory for the game, as every console's kit in C has them (kit/c/kit.h), under the
