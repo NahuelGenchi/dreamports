@@ -65,13 +65,23 @@ static uint8_t exchange(uint8_t sent, int *more) {
   }
 }
 
+// the pad's answer that it has more, which reaches the processor as the controller's interrupt, bit 7, the time of a
+// byte later: libpcsxcore/sio.c's SIO_CYCLES
+enum { BYTE_CYCLES = 535 };
+static void acknowledged(void) {
+  if (sio.stat & STAT_IRQ) return;
+  sio.stat |= STAT_IRQ;
+  clock_interrupt(0x80);
+}
+
 void sio_write(uint32_t address, uint32_t value) {
   switch (address) {
     case SIO_DATA: {
-      int more = 0;
+      int more = 0, first = sio.at == 0;
       sio.received = sio.ctrl & CTRL_SELECT && sio.ctrl & CTRL_TX ? exchange((uint8_t)value, &more) : 0xFF;
       sio.stat |= STAT_RX_READY;
-      if (more && sio.ctrl & CTRL_ACK_IRQ) sio.stat |= STAT_IRQ;
+      // sio.c answers a pad's first byte that way whatever the control says, and each later one when it asks
+      if (more && (first || sio.ctrl & CTRL_ACK_IRQ)) clock_event(CLOCK_SIO, BYTE_CYCLES, acknowledged);
       break;
     }
     case SIO_MODE: sio.mode = (uint16_t)(value & 0x013F); break;
@@ -81,6 +91,7 @@ void sio_write(uint32_t address, uint32_t value) {
       if (value & CTRL_RESET || !(value & CTRL_SELECT)) {
         sio.at = 0;
         sio.stat = STAT_TX_READY | STAT_TX_DONE;
+        clock_cancel(CLOCK_SIO);
       }
       sio.ctrl = (uint16_t)(value & 0x3F2F);
       break;

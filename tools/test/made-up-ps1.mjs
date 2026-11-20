@@ -804,3 +804,170 @@ export function padRecording(frames) {
   held.push([250, ['UP', 'CROSS', 'START', 'L1']], [270, []]);
   return { about: 'Each button held in turn, then four at once.', frames, held };
 }
+
+/** What the clock program counts and draws: where its handler keeps each interrupt's count, the root counters' targets,
+ *  20 of counter 0's sysclock periods a frame and 4 of counter 2's eighths, and its colours. */
+export const CLOCK = { COUNTS: 0x80100000, SAVED: 0x80100040, TARGET_0: 28224, TARGET_2: 17640, BACKGROUND: 0x102010, BARS: [0xF04040, 0x40F040, 0x4040F0] };
+
+/** A program that takes interrupts, as a game does, with a handler of its own where the processor goes for them: it
+ *  starts counter 0 counting cycles to its target and counter 2 counting eighths to its, each interrupting there and
+ *  starting again, lets in theirs and the V-blank's, and each frame, after its handler has counted a V-blank, draws as
+ *  bars the V-blanks and each counter's interrupts counted so far, the low 8 bits of each. */
+export async function madeUpClockExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { COUNTS, SAVED, TARGET_0, TARGET_2, BACKGROUND, BARS } = CLOCK;
+  // the tools' assembler leaves a name's address for a linker, so the program is assembled twice: once to learn where
+  // its handler and colours are, and again with them written in, as two instructions each time so nothing moves
+  const at = (labels, name) => LOAD + (labels.get(name)?.at ?? 0);
+  const source = labels => `
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE5000000
+	sw	$t1, 0x1810($t0)
+	li	$s1, ${COUNTS}
+	sw	$zero, 0($s1)
+	sw	$zero, 4($s1)
+	sw	$zero, 8($s1)
+	lui	$t2, 0x8000
+	lui	$t1, ${at(labels, 'handler') >>> 16}
+	ori	$t1, $t1, ${at(labels, 'handler') & 0xFFFF}
+	sll	$t1, $t1, 4
+	srl	$t1, $t1, 6
+	lui	$t3, 0x0800
+	or	$t1, $t1, $t3
+	sw	$t1, 0x80($t2)
+	sw	$zero, 0x84($t2)
+	li	$t1, ${TARGET_0}
+	sh	$t1, 0x1108($t0)
+	li	$t1, 0x58
+	sh	$t1, 0x1104($t0)
+	li	$t1, ${TARGET_2}
+	sh	$t1, 0x1128($t0)
+	li	$t1, 0x258
+	sh	$t1, 0x1124($t0)
+	sw	$zero, 0x1070($t0)
+	li	$t1, 0x51
+	sw	$t1, 0x1074($t0)
+	li	$t1, 0x401
+	mtc0	$t1, $12
+	move	$s0, $zero
+wait:
+	lw	$t1, 0($s1)
+	nop
+	beq	$t1, $s0, wait
+	nop
+	move	$s0, $t1
+	li	$t1, ${0x02000000 | BACKGROUND}
+	sw	$t1, 0x1810($t0)
+	sw	$zero, 0x1810($t0)
+	li	$t1, ${240 << 16 | 320}
+	sw	$t1, 0x1810($t0)
+	move	$t4, $s1
+	li	$t5, 60
+	lui	$t6, ${at(labels, 'colours') >>> 16}
+	ori	$t6, $t6, ${at(labels, 'colours') & 0xFFFF}
+bar:
+	lw	$t1, 0($t6)
+	nop
+	sw	$t1, 0x1810($t0)
+	sll	$t1, $t5, 16
+	ori	$t1, $t1, 20
+	sw	$t1, 0x1810($t0)
+	lw	$t1, 0($t4)
+	nop
+	andi	$t1, $t1, 0xFF
+	addiu	$t1, $t1, 1
+	lui	$t2, 16
+	or	$t1, $t1, $t2
+	sw	$t1, 0x1810($t0)
+	addiu	$t4, $t4, 4
+	addiu	$t6, $t6, 4
+	addiu	$t5, $t5, 40
+	sltiu	$t1, $t5, 180
+	bnez	$t1, bar
+	nop
+	b	wait
+	nop
+handler:
+	li	$k0, ${SAVED}
+	sw	$t0, 0($k0)
+	sw	$t1, 4($k0)
+	sw	$t2, 8($k0)
+	sw	$t3, 12($k0)
+	lui	$t0, 0x1F80
+	lw	$t1, 0x1070($t0)
+	lw	$t2, 0x1074($t0)
+	nop
+	and	$t1, $t1, $t2
+	nor	$t2, $t1, $zero
+	sw	$t2, 0x1070($t0)
+	li	$t3, ${COUNTS}
+	andi	$t2, $t1, 0x01
+	beqz	$t2, not_vblank
+	nop
+	lw	$t2, 0($t3)
+	nop
+	addiu	$t2, $t2, 1
+	sw	$t2, 0($t3)
+not_vblank:
+	andi	$t2, $t1, 0x10
+	beqz	$t2, not_counter0
+	nop
+	lw	$t2, 4($t3)
+	nop
+	addiu	$t2, $t2, 1
+	sw	$t2, 4($t3)
+not_counter0:
+	andi	$t2, $t1, 0x40
+	beqz	$t2, not_counter2
+	nop
+	lw	$t2, 8($t3)
+	nop
+	addiu	$t2, $t2, 1
+	sw	$t2, 8($t3)
+not_counter2:
+	lw	$t0, 0($k0)
+	lw	$t1, 4($k0)
+	lw	$t2, 8($k0)
+	lw	$t3, 12($k0)
+	mfc0	$k0, $14
+	nop
+	jr	$k0
+	rfe
+colours:
+	.word	${BARS.map(c => `0x${(0x60000000 | c).toString(16)}`).join(', ')}
+`;
+  const made = assemble(source(assemble(source(new Map())).symbols));
+  const code = Buffer.from(made.sections.get('.text').bytes);
+  if (code.length > 2048) throw new Error('The clock program is longer than its 2 KB.');
+  const text = Buffer.alloc(2048);
+  code.copy(text);
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}

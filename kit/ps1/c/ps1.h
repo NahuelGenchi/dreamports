@@ -55,6 +55,27 @@ uint32_t sio_read(uint32_t address);
  *  button held, as the console's BIOS keeps them in its pad buffers. */
 uint16_t pad_buttons(int port);
 
+// The console's time and its interrupts (kit/ps1/c/README.md, The clock and interrupts). A frame's step runs just after
+// a V-blank; the kit then runs the frame's events to the next V-blank, at the cycles the console has them.
+
+/** A read of the interrupt controller's status, at 0x1F801070, or its mask, at 0x1F801074. */
+uint32_t irq_read(uint32_t address);
+/** A write to them: to the status, the interrupts it acknowledges, 0 for each; to the mask, the ones it lets in. */
+void irq_write(uint32_t address, uint32_t value);
+/** A read of a root counter's count, mode or target, from 0x1F801100, 16 bytes a counter. */
+uint32_t timer_read(uint32_t address);
+/** A write to a root counter's count, mode or target. */
+void timer_write(uint32_t address, uint32_t value);
+/** What the original's processor does to its interrupts: on (1) or off (0), as its status register's bit 0 says. */
+void ps1_interrupts(int on);
+/** Goes on to the frame's next event, for a step that waits for something within its frame, and gives 1, or 0 when
+ *  nothing more comes before the frame's V-blank, where the step returns. */
+int ps1_wait(void);
+/** The twin of the original's interrupt handler, which a game defines when its original takes interrupts: the kit runs
+ *  it while an interrupt the mask lets in is set and interrupts are on. It acknowledges what it handles, as the original
+ *  does, with irq_write. */
+void game_interrupt(void);
+
 // What a game defines, as on every console (kit/c/README.md).
 void game_start(void);
 void game_step(uint32_t buttons);
