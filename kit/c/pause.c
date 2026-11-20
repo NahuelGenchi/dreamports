@@ -1,9 +1,10 @@
 // Ending a frame from anywhere in a game's C, and going on from there in the next (kit.h: kit_wait_frame, kit_run), or
 // pausing partway through one until the page has what the game waits for (kit_pause), and running a second program
 // beside the game's, in turns, as a console's second processor runs one (kit_run_beside). A console's game waits for
-// the screen from inside its own functions, as a fade written as a loop does, and its main loop never returns. WebAssembly has no way to leave a function halfway, so the build runs one pass over a game that
-// calls these (Binaryen's Asyncify, tools/lib/c.mjs), which makes every function on the way to a wait able to put its
-// values away and come back to them. The pass's four calls are made from here, so the page needs nothing new.
+// the screen from inside its own functions, as a fade written as a loop does, and its main loop never returns.
+// WebAssembly has no way to leave a function halfway, so the build runs one pass over a game that calls these
+// (Binaryen's Asyncify, tools/lib/c.mjs), which makes every function on the way to a wait able to put its values away
+// and come back to them. The pass's four calls are made from here, so the page needs nothing new.
 //
 // A game with no wait calls none of this, the linker leaves it out, and its build gets no pass.
 

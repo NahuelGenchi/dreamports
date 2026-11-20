@@ -9,6 +9,7 @@
       ]
     }
   },
+  "frames": "m4a_frames.s",
   "functions": [
     ["umul3232H32",4,"m4a_mixer.c"],
     ["SoundMain",132,"m4a_mixer.c"],
