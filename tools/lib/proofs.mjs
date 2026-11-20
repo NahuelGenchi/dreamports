@@ -42,6 +42,7 @@ import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
+import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
@@ -219,6 +220,12 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
     // another program's, or a vector unit's, is somewhere else on the disc: its bytes are kept by its key once the
     // function check has read it, and until then nothing is known of it, which is null
     return read && (f => (f.program || f.vu ? (keptPiece(original.sha1, f.key) ? markOf(keptPiece(original.sha1, f.key)) : null) : markOf(read(f.address, f.size))));
+  }
+  // a PlayStation game's, from the program its disc boots, as match and twin keep it on this computer as they read it,
+  // and until one has nothing is known of it
+  if ((codeMap?.console ?? original.console) === 'ps1') {
+    const exe = readProgram(copy.path) ?? keptPs1Program(original.sha1);
+    return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));

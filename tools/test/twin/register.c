@@ -6,7 +6,8 @@
 // the console's registers itself does: the check gives that file the original's registers before each call (#1527).
 // A fourth has DMA channel 3 copy from the BIOS, which a DMA can't read: the check sets such a call aside (#1559). A
 // fifth reads the line count, waits and reads it again, and whether the display is in the V-blank: a twin has no clock,
-// so the check holds both as each call starts, and starts some calls outside the V-blank (#1569).
+// so the check holds both as each call starts, and starts some calls outside the V-blank (#1569). A sixth adds 228 to a
+// line of the picture, as m4a's SoundMain does: a call the check starts outside the V-blank starts on one (#1729).
 #include "program.h"
 
 #ifdef MATCHING
@@ -79,4 +80,12 @@ void Ready(void) {
   while (n < 2000);
   if (DISPSTAT & 1) gFrame = (u16)(VCOUNT - line);
   else gFrame = 0x100 + (u16)(VCOUNT - line);
+}
+
+/** Picture, 0x08000AC0: the line count in the frame, 228 on for a line of the picture, as m4a's SoundMain counts its
+ *  line limit on past the V-blank. */
+void Picture(void) {
+  u32 line = (u8)VCOUNT;
+  if (line < 160) line += 228;
+  gFrame = line;
 }

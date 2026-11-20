@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, sep } from 'node:path';
 import { namesOf } from '../portmap.mjs';
+import { snesTwinsIn } from '../snes/contracts.mjs';
 import { assemble } from './thumb.mjs';
 import { compilerPath, COMPILERS } from './agbcc.mjs';
 
@@ -106,13 +107,16 @@ export function throughOf(twin, functions) {
 }
 
 /** What a twin's comment says of how its original takes and gives in registers, `dp:registers r3 = <C>`: { gives,
- *  expression, text }, the register it gives back in, the C over r0 to r3 that works out what it gives, and the
- *  words as written, or null for a twin of a function as C calls one. The C ends with its line, or where the comment
- *  does. */
+ *  expression, text, takes }, the register it gives back in, the C over r0 to r7 that works out what it gives, the
+ *  words as written, and how many registers from r0 the call takes, 4 or up to r7 when the C names one (#1728); or
+ *  null for a twin of a function as C calls one. A routine that gives nothing back is written with no `rN =`, as
+ *  `dp:registers ChnVolSetAsm((struct MixerSource *)r4, (struct MP2KTrack *)r5)`, and `gives` is then null. The C
+ *  ends with its line, or where the comment does. */
 export function registersIn(text) {
-  const found = /\bdp:registers\s+r(\d{1,2})\s*=\s*([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
-  if (!found || Number(found[1]) > 12 || !found[2]) return null;
-  return { gives: Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim() };
+  const found = /\bdp:registers\s+(?:r(\d{1,2})\s*=\s*)?([^\n]*?)\s*(?:\*\/)?\s*$/m.exec(text);
+  if (!found || (found[1] !== undefined && Number(found[1]) > 12) || !found[2]) return null;
+  const takes = Math.max(3, ...[...found[2].matchAll(/\br([0-7])\b/g)].map(named => Number(named[1]))) + 1;
+  return { gives: found[1] === undefined ? null : Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim(), takes };
 }
 
 // A twin of a function at an address code uses as the base of others, as a Game Boy Advance cartridge's first
@@ -187,8 +191,10 @@ export const codeOf = text => lex(text).kept.replace(/\s+/g, ' ').trim();
  *  whether it's the file's own, a static function no other file can name, and `code` what it's written as, from its
  *  first word to its last brace, without its comments and with each run of spaces as one, which is what a proof of
  *  it is a proof of (../lib/proofs.mjs). A file of a shared library names no address: `given`, a Map of its twins'
- *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. */
-export const twinsIn = (text, shifts = [], given = null, console = 'gba') => piecesIn(text, shifts, given, console).functions;
+ *  names to where the version's copy has each (../lib/libraries.mjs), says them instead. On the Super Nintendo a twin
+ *  is what a contract line calls, `dp:twin` and the original's function, as the 65816's functions take their values in
+ *  registers C can't name (../snes/contracts.mjs). */
+export const twinsIn = (text, shifts = [], given = null, console = 'gba') => (console === 'snes' ? snesTwinsIn(text) : piecesIn(text, shifts, given, console).functions);
 
 /** A file of C in pieces: the `functions` it defines, as twinsIn gives them, and the `rest`, everything it holds
  *  outside them, in order, each { text, pre }: a line for the preprocessor, with `pre`, or a declaration up to its ;,
@@ -353,6 +359,8 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  *   sizeOf(address): how long the code map says the function there is, or null when none starts there
  *   runOf(address, through): for a twin of a run (throughIn), the code map's functions it's the twin of, as runIn
  *     gives them, or null
+ *   runEnd(address, bytes): for a twin that names its run by its length, `dp:run`, as a shared library's does, the
+ *     address of the run's last function, as throughOf gives it, or null
  *   original(address, bytes): that many of the original's bytes from there, as a Buffer, and with `lines` what the
  *     reader says of each halfword
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
@@ -362,16 +370,18 @@ export async function compileFile({ file, root = dirname(file), includes = [dirn
  * function's bytes as built, with every address filled in, and `calls` the addresses its calls go to; or { error } when
  * the file didn't build, with what the compiler said.
  */
-export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, original, shifts = [], given = null }) {
+export async function matchFile({ file, root = dirname(file), includes = [dirname(file)], compiler, work, addressOf, sizeOf, runOf = () => null, runEnd = () => null, original, shifts = [], given = null }) {
   const built = await compileFile({ file, root, includes, compiler, work });
   if (built.error) return built;
   const { made, assembly } = built;
   const code = made.sections['.text'].bytes, madeBy = made.sections['.text'].lines, lines = assembly.split(/\r?\n/);
   const twins = new Map(twinsIn(readFileSync(file, 'utf8'), shifts, given).map(twin => [twin.name, twin]));
+  // the last function of a twin's run: as its comment names it, or as long as its dp:run says
+  const throughOfTwin = twin => twin?.through ?? (twin?.runBytes && twin.address !== null ? runEnd(twin.address, twin.runBytes) : null) ?? null;
 
   // the functions the file defines, in the order they sit in its code, each up to the next
   const functions = [...made.symbols].filter(([, symbol]) => symbol.section === '.text' && symbol.function)
-    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: twins.get(name)?.through ?? null, line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
+    .map(([name, symbol]) => ({ name, at: symbol.at, address: twins.get(name)?.address ?? null, through: throughOfTwin(twins.get(name)), line: twins.get(name)?.line ?? null, missing: new Set(), calls: [] }))
     .sort((a, b) => a.at - b.at);
   functions.forEach((f, i) => {
     f.until = functions[i + 1]?.at ?? code.length;

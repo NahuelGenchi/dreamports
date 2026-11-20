@@ -26,7 +26,7 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
 import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, PEEK, PEEK_LENGTH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, PEEK, PEEK_LENGTH, SPILL_LENGTH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -158,6 +158,7 @@ try {
   check(shifted.by.Await?.kind === 'unchecked' && /a DMA the console's clock started wrote memory/.test(shifted.by.Await.line), `and a call in which a DMA the V-blank started writes memory is set aside, as a twin has no clock: ${shifted.by.Await?.line ?? shifted.error}`);
   check(shifted.by.Fetch?.kind !== 'same' && /left for 0x00000100, where a twin can't follow/.test(shifted.by.Fetch?.line ?? ''), `and so is one whose DMA copies from the BIOS, which a DMA can't read: ${shifted.by.Fetch?.line ?? shifted.error}`);
   check(shifted.by.Ready?.kind === 'same' && shifted.by.Ready.whole === true, `a call reads the line count and the V-blank as it started, as a twin with no clock does, and some calls start outside the V-blank, so every path is taken: ${shifted.by.Ready?.line ?? shifted.error}`);
+  check(shifted.by.Picture?.kind === 'same' && shifted.by.Picture.whole === true, `and one that adds 228 to a line of the picture takes that way too, as a call outside the V-blank starts on one: ${shifted.by.Picture?.line ?? shifted.error}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
@@ -190,7 +191,7 @@ try {
   check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
 
   console.log('A routine that takes and gives in registers no C function uses:');
-  const peek = { sizeOf: address => (address === PEEK.Peek ? PEEK_LENGTH : sizeOf(address)) };
+  const peek = { sizeOf: address => (address === PEEK.Peek ? PEEK_LENGTH : address === PEEK.Spill ? SPILL_LENGTH : sizeOf(address)) };
   const peeked = await checking(join(HERE, 'peek.c'), {}, peek);
   check(peeked.by.Peek?.kind === 'same' && peeked.by.Peek.compared === CALLS && peeked.by.Peek.whole === true, `a twin whose comment says it takes r2 and gives r3, dp:registers, leaves the same memory and gives back the same in r3${peeked.by.Peek?.kind === 'same' ? '' : `: ${peeked.by.Peek?.line ?? peeked.error}`}`);
   const reworded = (from, to) => {
@@ -203,6 +204,9 @@ try {
   check(asC.by.Peek?.kind !== 'same' && asC.by.Peek?.kind !== undefined, `without it, it's called as C calls a function, from r0, and isn't the same: ${asC.by.Peek?.line ?? asC.error}`);
   const off = await checking(reworded('r3 = Peek((const unsigned char *)r2)', 'r3 = Peek((const unsigned char *)r2) + 1'), {}, peek);
   check(off.by.Peek?.kind === 'differs' && /in r3, as its comment's dp:registers r3 = /.test(off.by.Peek.line), `and with a line that works it out wrong, it differs in r3: ${off.by.Peek?.line ?? off.error}`);
+  check(peeked.by.Spill?.kind === 'same' && peeked.by.Spill.compared === CALLS && peeked.by.Spill.whole === true, `one whose comment says it takes r4 and r5 and gives nothing back leaves the same memory${peeked.by.Spill?.kind === 'same' ? '' : `: ${peeked.by.Spill?.line ?? peeked.error}`}`);
+  const fromR0 = await checking(reworded(', dp:registers Spill(r4, r5)', ''), {}, peek);
+  check(fromR0.by.Spill?.kind !== 'same' && fromR0.by.Spill?.kind !== undefined, `and without it, it's called from r0 and r1 and isn't the same: ${fromR0.by.Spill?.line ?? fromR0.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));

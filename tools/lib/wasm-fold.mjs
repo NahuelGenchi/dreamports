@@ -11,7 +11,11 @@
 // seen again through other addresses. So the other way of folding takes a table in the module's memory, two words for
 // each value of an address's top byte: what to keep of the address, and where in the module that memory starts. An
 // address is folded to (address & mask) + start, and a byte the console has nothing at points where the check can see
-// what was written there (../ps2/twin.mjs).
+// what was written there (../ps2/twin.mjs). The Super Nintendo's 24-bit addresses see the same memory through many
+// banks, its work memory's first 8 KB at the bottom of most of them and its ROM in two halves of the map or more, 4 KB
+// at a time, so its table has a pair for each 4 KB instead, by the address's bits from the 12th up, as many pairs as
+// its module's memory has 4 KB, and the pairs past the console's 16 MB keep the module's own values where they are
+// (../snes/twin.mjs).
 //
 // The Nintendo 64 keeps its 8 MB at 0x80000000 and 0xA0000000 and its hardware at 0xA4000000 and up, so the low 27 bits
 // fold it into a module of 128 MB, its memory at 0 and its hardware at 0x04000000, and the module's own values sit
@@ -155,7 +159,8 @@ function turned(op, align, offset, { fold, set, get, where, word, wide, wider, v
 /**
  * The module with every address it reads or writes folded: to its low bits when `fold` is a mask, such as 0x03FFFFFF,
  * or by a table when it's { table }, the address of 256 pairs of words in the module's memory, a mask and a start for
- * each top byte, which whoever runs the module writes there. With a mask the module's memory has to reach past the
+ * each top byte, which whoever runs the module writes there, or with { table, shift, entries } a pair for each value
+ * of the address's bits from `shift` up, `entries` of them, a power of two. With a mask the module's memory has to reach past the
  * mask's last byte, and its own values and stack to sit below it; with a table, the table says where they are. With
  * { table, written } too, every write also sets a byte of a map at `written`, one for each 4 KB of the module's memory
  * as folded, and the byte after its 65,536 when a copy or a fill reached more than two of them, so whoever runs the
@@ -164,6 +169,8 @@ function turned(op, align, offset, { fold, set, get, where, word, wide, wider, v
  */
 export function foldAddresses(module, fold, { own = null, flush = false } = {}) {
   const table = typeof fold === 'object' ? fold.table : null, mask = table === null ? fold : null;
+  // which bits of an address choose its pair: the top byte, or with `shift` 12 its 4 KB, as many pairs as `entries`
+  const shift = typeof fold === 'object' ? fold.shift ?? 24 : 24, entries = typeof fold === 'object' ? fold.entries ?? 2 ** (32 - shift) : 0;
   const written = typeof fold === 'object' ? fold.written ?? null : null;
   if (own && table !== null) throw new Error('Numbers are turned round only with a fold by a mask.');
   const bytes = Uint8Array.from(module);
@@ -200,7 +207,7 @@ export function foldAddresses(module, fold, { own = null, flush = false } = {}) 
     // the address on the stack, folded: masked, or masked by its top byte's pair in the table and moved to its start,
     // the table's own words read as they are
     const masked = table === null ? [0x41, ...sleb(mask), 0x71]
-      : [0x22, ...leb(foldA), 0x41, 24, 0x76, 0x41, 3, 0x74, 0x22, ...leb(foldB), 0x28, 2, ...leb(table), ...get(foldA), 0x71, ...get(foldB), 0x28, 2, ...leb(table + 4), 0x6A];
+      : [0x22, ...leb(foldA), 0x41, ...sleb(shift), 0x76, ...(entries < 2 ** (32 - shift) ? [0x41, ...sleb(entries - 1), 0x71] : []), 0x41, 3, 0x74, 0x22, ...leb(foldB), 0x28, 2, ...leb(table), ...get(foldA), 0x71, ...get(foldB), 0x28, 2, ...leb(table + 4), 0x6A];
     const fold = offset => [...(offset ? [0x41, ...sleb(offset), 0x6A] : []), ...masked];
     // with a map, the folded address on the stack kept, and its page marked written
     const marked = written === null ? [] : [0x22, ...leb(folded), 0x20, ...leb(folded), 0x41, PAGE, 0x76, 0x41, 1, 0x3A, 0, ...leb(written)];

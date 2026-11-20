@@ -35,9 +35,13 @@
 // map's code compared, which finds what a function's own proof can't, as a function the code map missed. It prints
 // totals and stretches, by address, and keeps no proof: it changes nothing.
 //
+// A Super Nintendo game has no compiler to give its bytes back, as its games were written by hand in the 65816's own
+// language, and match says so: its functions are proven by twin (docs/CONSOLES.md).
+//
 // A PlayStation game's file is built and compared by ps1/match.mjs, with GCC 2.x and what Sony's assembler made of its
 // assembly, and the same names and proofs. A PlayStation 2 game's is by ps2/match.mjs, with Sony's own compiler and
-// assembler for the EE, built from Sony's source.
+// assembler for the EE, built from Sony's source, and a Nintendo 64 game's by n64/match.mjs, with IDO, translated into
+// C from its own programs and built on this computer (n64/ido.mjs).
 
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -51,7 +55,7 @@ import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
-import { addressFinder, compilerAt, matchFile, readCompiler, runIn } from './gba/match.mjs';
+import { addressFinder, compilerAt, matchFile, readCompiler, runIn, throughOf } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText, originalMarks, stateOf } from './lib/proofs.mjs';
 import { rebuildOf } from './lib/rebuild.mjs';
@@ -107,7 +111,11 @@ export async function run(args) {
   const original = readOriginal(game);
   if (original.console === 'ps1') return (await import('./ps1/match.mjs')).matchGame({ game, what, more, whole, original });
   if (original.console === 'ps2') return (await import('./ps2/match.mjs')).matchGame({ game, what, more, whole, original });
-  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's and the PlayStation's compilers and no other console's yet (docs/CONSOLES.md).`);
+  if (original.console === 'n64') return (await import('./n64/match.mjs')).matchGame({ game, what, more, whole, original });
+  // a Super Nintendo game was written by hand in its processor's own language, or with a compiler no one can have, so
+  // there's no compiler to give its bytes back, and the same memory is its functions' proof (docs/CONSOLES.md)
+  if (original.console === 'snes') throw new Error('match builds a twin with the compiler its game was built with and compares the bytes, and a Super Nintendo game was written by hand in its processor\'s own language, or with a compiler no one can have now: its functions are proven by the same memory, npm run dp -- twin (docs/CONSOLES.md).');
+  if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's, the PlayStation's, the PlayStation 2's and the Nintendo 64's compilers and no other console's yet (docs/CONSOLES.md).`);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);
   const compiler = readCompiler(original, `games/${base}/proof/original.json`);
   const codeMap = readCodeMap(game);
@@ -188,6 +196,8 @@ export async function run(args) {
       work: join(LOCAL, 'match', game, library ? join('lib', ...library.id.split('/'), basename(file, '.c')) : inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
       sizeOf: address => sizes.get(address) ?? null,
       runOf: (address, through) => runIn(codeMap.functions, address, through),
+      // a shared library's twin names its run by its length, dp:run, as it names no address (#1727)
+      runEnd: (address, bytes) => throughOf({ address, runBytes: bytes }, codeMap.functions),
     });
     if (result.error) {
       // all of what the compiler said for the file asked for, and for one of many the line that says what's wrong

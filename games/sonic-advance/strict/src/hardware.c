@@ -67,6 +67,9 @@ u32 console_vcount_at(void) {
     console_io[IO_VCOUNT >> 1] = gba_clock_vcount();
     return (u32)&console_io[IO_VCOUNT >> 1];
   }
+  // with no clock going, as in the function check, the line stays where the call started, as the check gives it in
+  // console_io and holds the original's: the console's own doesn't move in a call there either
+  if (!gba_clock_running()) return (u32)&console_io[IO_VCOUNT >> 1];
   console_line = (console_line + 1) % LINES;
   console_io[IO_VCOUNT >> 1] = (u16)console_line;
   return (u32)&console_io[IO_VCOUNT >> 1];
