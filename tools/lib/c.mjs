@@ -14,8 +14,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CONSOLES } from '../../kit/consoles.js';
 import { LOCAL, REPO } from './paths.mjs';
@@ -47,10 +47,14 @@ const OWN = {
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
-  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c'], header: true },
+  ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c'], header: true,
+    // psx_gpu, which draw.c builds as one with itself, in a folder of its own that isn't on the include path
+    trees: ['psx_gpu'],
+    // the few C library headers psx_gpu takes, which the kit built to WebAssembly has no other of
+    includes: ['psx_gpu/libc'] },
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
-  snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
+  snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'timing.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
   n64: {
     folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
     // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
@@ -117,7 +121,7 @@ export function cKit(id) {
   const disc = CONSOLES[id].disc ? [base('disc.c')] : [];
   if (own && !own.header) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
   }
   // console.h, written where the tools keep what they make, once it says something new
   const made = join(LOCAL, 'c', id);
@@ -128,7 +132,7 @@ export function cKit(id) {
   }
   if (own) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...(own.generalPage ? [base('console.c')] : []), ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, made, own.folder], sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, made, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), base('native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [], gameFlags: own.gameFlags ?? [] };
   }
   const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, base('console.c')];
   return { id, own: false, folders: [C_BASE, made], sources, native: [base('kit.c'), base('pause.c'), ...disc, base('console.c'), base('native.c')], twinFlags: [] };
@@ -144,11 +148,15 @@ export const WASM_FLAGS = ['--target=wasm32', '-ffreestanding', '-nostdlib', '-m
 const FLAGS = ['-std=c11', ...SAME_FLAGS, '-Wall', '-Wextra', '-Wno-unused-parameter'];
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
-// every .c and .h file in the folders the sources are in and in the kit's, in folders as they are in the repository,
-// for the compiler's own
+// a kit's folders that its own files include from by their path, without them being on the include path
+const TREES = Object.values(OWN).flatMap(own => (own.trees ?? []).map(name => ({ kit: resolve(own.folder), folder: join(own.folder, name) })));
+
+// every .c and .h file in the folders the sources are in and in the kit's, and in the folders a kit's own files include
+// from by their path, in folders as they are in the repository, for the compiler's own
 function filesFor(sources, folders) {
-  const tree = {};
-  for (const folder of new Set([...folders, ...sources.map(dirname)])) {
+  const tree = {}, all = [...folders, ...sources.map(dirname)];
+  const trees = TREES.filter(each => all.some(folder => resolve(folder) === each.kit)).map(each => each.folder);
+  for (const folder of new Set([...all, ...trees])) {
     let place = tree;
     for (const part of relative(REPO, folder).split(sep).filter(Boolean)) place = place[part] ??= {};
     for (const name of readdirSync(folder)) if (/\.[ch]$/.test(name)) place[name] = readFileSync(join(folder, name));
@@ -204,10 +212,50 @@ export function buildFingerprint(files, args, compiler) {
 // the builds going on now, by what they write, so two that ask for the same one at once share it
 const building = new Map();
 
+// Each kit source built to an object once, and kept by everything it's built from, so every game's build, and every
+// run of the function check, links it as it is: the PlayStation's draw.c, which builds psx_gpu, takes a minute and a
+// half to build to WebAssembly, the same in every game. A kept object no build has asked for in two weeks goes.
+const OBJECTS = join(LOCAL, 'c', 'objects');
+const KEPT_DAYS = 14;
+
+/** The object `make()` builds, `{ made }`, or what went wrong, `{ error }`, from the compiler's file tree `files` and
+ *  what it's asked, `args`: kept in .dreamports/c/objects/ by all three and the compiler's version, so it's made once,
+ *  and again only when one of those changes. The compiler runs with no file but those in `files`, every file of each
+ *  folder on its include path and of the kit's own folders it includes from by their path, so every header a source
+ *  can include is in the key, as is every flag and define in `args`. With no compiler installed, nothing is kept. */
+export async function keptObject(files, args, make) {
+  const compiler = compilerVersion(), file = compiler ? join(OBJECTS, `${buildFingerprint(files, args, compiler)}.o`) : null;
+  if (file && existsSync(file)) {
+    // a kept object's time is when a build last took it
+    const now = new Date();
+    utimesSync(file, now, now);
+    return { made: readFileSync(file) };
+  }
+  const built = await make();
+  if (file && built.made) {
+    mkdirSync(OBJECTS, { recursive: true });
+    const part = `${file}.${process.pid}.part`;
+    writeFileSync(part, built.made);
+    renameSync(part, file);
+    const old = Date.now() - KEPT_DAYS * 24 * 3600 * 1000;
+    for (const name of readdirSync(OBJECTS)) {
+      try {
+        if (statSync(join(OBJECTS, name)).mtimeMs < old) rmSync(join(OBJECTS, name), { force: true });
+      } catch {}
+    }
+  }
+  return built;
+}
+
+// whether a source is the kit's own, the base's or a console's, which keptObject keeps the object of
+const KIT_FOLDERS = [C_BASE, ...Object.values(OWN).map(own => own.folder)].map(folder => resolve(folder));
+const ofKit = source => KIT_FOLDERS.some(folder => !relative(folder, resolve(source)).startsWith('..'));
+
 /** Builds `sources` (paths of .c files) to the WebAssembly module `out`, with the kit's `folders` to include it from,
  *  as cKit gives them, `flags`, anything more the compiler is asked, and `addressOf(name)`, where the console keeps a
- *  value the C names and doesn't define, or null. A module inside the repository that was built from the same files, asked the same way of the
- *  same compiler, is left as it is, with nothing printed. */
+ *  value the C names and doesn't define, or null. The kit's own sources come from their kept objects (keptObject). A
+ *  module inside the repository that was built from the same files, asked the same way of the same compiler, is left
+ *  as it is, with nothing printed. */
 export function buildWasm(sources, out, kit) {
   if (!building.has(out)) building.set(out, build(sources, out, kit).finally(() => building.delete(out)));
   return building.get(out);
@@ -237,8 +285,30 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
   await runLLVM(null, {}, { fetchProgress: () => {} });
   let made, said = '';
   const stderr = bytes => { if (bytes) said += Buffer.from(bytes).toString('utf8'); };
+  // the kit's own sources each from its kept object, built as the whole build would build it
+  const compileArgs = [...WASM_FLAGS.filter(flag => flag !== '-nostdlib'), ...FLAGS, ...flags.filter(flag => !flag.startsWith('-Wl,')), ...folders.flatMap(folder => ['-I', inRepo(folder)])];
+  const objects = {}, own = [];
+  for (const source of sources) {
+    if (!ofKit(source)) {
+      own.push(inRepo(source));
+      continue;
+    }
+    const tree = filesFor([source], folders), ask = ['clang', ...compileArgs, '-c', inRepo(source), '-o', 'object.o'];
+    const built = await keptObject(tree, ask, async () => {
+      let object;
+      try {
+        object = await runClang(ask, tree, { stdout: stderr, stderr });
+      } catch (error) {
+        return { error: said.trim() || String(error.message ?? error).trim() };
+      }
+      return object?.['object.o'] ? { made: object['object.o'] } : { error: said.trim() || 'the compiler wrote nothing.' };
+    });
+    if (built.error) throw new Error(`The C didn't build to WebAssembly:\n${built.error}`);
+    objects[`${Object.keys(objects).length}.o`] = built.made;
+  }
+  const link = [...args.slice(0, args.length - sources.length), ...own, ...Object.keys(objects).map(object => `__kit_objects/${object}`)];
   try {
-    made = await runClang(args, files, { stdout: stderr, stderr });
+    made = await runClang(link, { ...files, __kit_objects: objects }, { stdout: stderr, stderr });
   } catch (error) {
     throw new Error(`The C didn't build to WebAssembly:\n${said.trim() || String(error.message ?? error).trim()}`);
   }

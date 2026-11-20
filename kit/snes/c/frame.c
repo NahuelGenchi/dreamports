@@ -9,7 +9,6 @@
 // the most samples one call makes, a tenth of a second's: the page asks again for more
 #define SOUND_MAX (CONSOLE_SOUND_RATE / 10 + 1)
 static float sound[SOUND_MAX * 2];
-static uint32_t frame[SNES_WIDTH * SNES_HEIGHT];
 
 /** Starts the game, with the console as it powers on. */
 EXPORT("dp_start") void dp_start(void) {
@@ -25,18 +24,23 @@ EXPORT("dp_start") void dp_start(void) {
 /** Runs the game's step, with the buttons in `buttons` held, the sound side on to the frame's end, and draws the
  *  frame's lines. */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
+  // the step is the NMI's handler, as V-blank starts; then V-blank's lines, with any IRQs on them, and the frame's
+  timing_nmi();
   game_step(buttons);
+  timing_vblank();
   apu_frame();
-  ppu_frame(frame);
+  ppu_frame();
   // V-blank starts: the picture unit's sprite table goes back, and $4210 says so, with the processor's version, 2
   ppu_vblank();
   SNES_CPU_REGISTERS[0x210] = 0x82;
 }
-/** The frame, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
+/** The frame, 256 or 512 words across and 224 or 448 down, as the page shows them. */
 EXPORT("dp_draw") uint32_t *dp_draw(void) {
   game_draw();
-  uint32_t *out = kit_screen(SNES_WIDTH, SNES_HEIGHT);
-  for (int i = 0; i < SNES_WIDTH * SNES_HEIGHT; i++) out[i] = frame[i];
+  int width, height;
+  const uint32_t *picture = ppu_picture(&width, &height);
+  uint32_t *out = kit_screen(width, height);
+  for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) out[y * width + x] = picture[y * 2 * SNES_WIDTH + x];
   return out;
 }
 /** The next `count` samples of the game's sound, at most dp_sound_render_max(), the left ones and then the right ones

@@ -1300,7 +1300,11 @@ void TrackStop(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track)
 #endif
 }
 
-/** A channel's right and left volume, from its velocity and pan and its track's volume. */
+/**
+ * A channel's right and left volume, from its velocity and pan and its track's volume. The engine's routine takes the
+ * channel in r4 and the track in r5, as its callers keep them there:
+ * dp:registers ChnVolSetAsm((struct MixerSource *)r4, (struct MP2KTrack *)r5)
+ */
 void ChnVolSetAsm(struct MixerSource *chan, struct MP2KTrack *track)
 {
 #ifdef MATCHING

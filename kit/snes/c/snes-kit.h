@@ -16,8 +16,10 @@ void ppu_power(void);
 void ppu_write(uint16_t address, uint8_t value);
 /** A read of $2134 to $2136, mode 7's product of its matrix's A and B's top byte. */
 uint8_t ppu_read(uint16_t address);
-/** Draws the frame's lines, as the registers are, into `out`, SNES_WIDTH by SNES_HEIGHT words, as the page shows them. */
-void ppu_frame(uint32_t *out);
+/** Draws the frame's lines, as the registers are, into the picture Snes9x keeps from frame to frame. */
+void ppu_frame(void);
+/** The frame as shown: its words, `width` by `height`, 512 words to a row, as the page shows them. */
+uint32_t *ppu_picture(int *width, int *height);
 /** What the console does to the picture unit as V-blank starts, after the frame's last line. */
 void ppu_vblank(void);
 
@@ -53,6 +55,24 @@ void dsp_run(uint32_t cycles);
 uint8_t dsp_read(uint8_t address);
 /** A write to the sound chip's register at `address`, as the sound processor writes $F3. */
 void dsp_write(uint8_t address, uint8_t value);
+
+/** Sets where the console is: a line, 0 to 261, and a cycle of the main clock from its start. */
+void timing_at(int line, int cycle);
+/** The line the console is on. */
+int timing_line(void);
+/** Runs the game's IRQ handler for each time the timers' interrupt comes on `line` from cycle `from` up to `to`. */
+void timing_run(int line, int from, int to);
+/** The moment of V-blank's interrupt, NMI, where a game's step runs: line 225, as Snes9x times it. */
+void timing_nmi(void);
+/** V-blank's lines after the frame's, from 225, with the IRQs that come on them. */
+void timing_vblank(void);
+/** One line of the frame, its events at their times: HDMA's start on line 0, `draw` of the row before at cycle 512,
+ *  HDMA's writes in H-blank, and the IRQs between. */
+void timing_line_run(int line, void (*draw)(int row), void (*hdma_init)(void), void (*hdma)(void));
+/** $4212 as read now: V-blank, H-blank and auto-joypad's reading. */
+uint8_t timing_4212(void);
+/** A write to $420C partway down the frame: the channels that haven't ended run from the next line. */
+void hdma_enable_written(uint8_t value);
 
 /** Reads the cartridge's header from the player's copy, as the console's wiring sees it. */
 void cartridge_load(void);

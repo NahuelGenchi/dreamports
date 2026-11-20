@@ -66,6 +66,9 @@ void snes_write(uint16_t address, uint8_t value) {
   if (address < 0x2134) ppu_write(address, value);
   if (address == 0x420B && value) dma_start(value);
   if ((address & 0xFF8F) == 0x430A) hdma_lines_written(address >> 4 & 7, value);
+  if (address == 0x420C) hdma_enable_written(value);
+  // turning both timers' interrupts off clears TIMEUP's flag
+  if (address == 0x4200 && !(value & 0x30)) SNES_CPU_REGISTERS[0x211] &= 0x7F;
 #endif
   uint8_t *cpu = SNES_CPU_REGISTERS;
   if (address == 0x4203) {
@@ -95,6 +98,8 @@ uint8_t snes_read(uint16_t address) {
     value = apu_port_read(address & 3);
   } else if (address >= 0x2134 && address <= 0x2136) {
     value = ppu_read(address);
+  } else if (address == 0x4212) {
+    value = timing_4212();
 #endif
   } else {
     value = *at;

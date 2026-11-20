@@ -270,3 +270,168 @@ wait:
   header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
   return Buffer.concat([header, text]);
 }
+
+// a vertex, a colour and a texture's place as GP0 takes them: y and x of 16 bits each, red lowest, and v and u
+const xy = (x, y) => ((y & 0xFFFF) << 16 | (x & 0xFFFF)) >>> 0;
+const rgb = (r, g, b) => (b << 16 | g << 8 | r) >>> 0;
+const uv = (u, v, high = 0) => ((high & 0xFFFF) << 16 | v << 8 | u) >>> 0;
+// a texture page, for E1 or a polygon's second corner: its x in 64s, its y in 256s, the mixing and the colours' depth
+const page = (x, y, depth, mixing = 0) => ((x / 64) | (y / 256) << 4 | mixing << 5 | depth << 7) >>> 0;
+// where a colour table is, for a polygon's first corner: its x in 16s and its y
+const clut = (x, y) => (y << 6 | x / 16) >>> 0;
+// a picture moved into video memory, its pixels two to a word
+const picture = (x, y, w, h, pixel) => {
+  const words = [0xA0000000, xy(x, y), (h << 16 | w) >>> 0];
+  for (let n = 0; n < w * h; n += 2) words.push((pixel(n % w, Math.floor(n / w)) | pixel((n + 1) % w, Math.floor((n + 1) / w)) << 16) >>> 0);
+  return words;
+};
+
+/**
+ * What the drawing program sends the GPU, of the project's own: `setup`, once, three textures and two colour tables
+ * moved into video memory, and `frame`, every frame, after a drawing offset that moves with the frame: a background,
+ * flat and shaded triangles, quads and lines, a line through many points, the four ways of mixing, dithering, textures
+ * of 16, 8 and 4 bits, a quad that lines up with its texture and one that doesn't, rectangles, a texture window and
+ * the mask bit.
+ */
+export function drawList() {
+  const setup = [
+    // 16-bit, at 512,0: a pattern of colours, its corners clear (0 isn't drawn) and its middle row half see-through
+    ...picture(512, 0, 16, 16, (x, y) => (x === 0 && y === 0) || (x === 15 && y === 15) ? 0 : ((x * 2) | (y * 2) << 5 | ((x + y) & 31) << 10 | (y === 8 ? 0x8000 : 0))),
+    // 4-bit, at 576,0, 16 texels wide in 4 pixels, and its colour table at 0,480
+    ...picture(576, 0, 4, 16, (x, y) => [0, 1, 2, 3].reduce((word, k) => word | ((x * 4 + k + y) & 15) << (4 * k), 0)),
+    ...picture(0, 480, 16, 1, x => (x === 0 ? 0 : (31 - x * 2) | (x * 2) << 5 | 16 << 10)),
+    // 8-bit, at 640,0, 16 texels wide in 8 pixels, and its colour table at 0,481
+    ...picture(640, 0, 8, 16, (x, y) => [0, 1].reduce((word, k) => word | ((x * 2 + k) * 16 + y * 3 & 255) << (8 * k), 0)),
+    ...picture(0, 481, 256, 1, x => (x & 31) | (x >> 3 & 31) << 5 | (31 - (x & 31)) << 10 | (x % 7 === 0 ? 0x8000 : 0)),
+  ];
+  const frame = [
+    0xE1000000, 0xE6000000,
+    0x02000000 | rgb(40, 24, 64), xy(0, 0), xy(320, 240),
+    // flat: a triangle, and a quad
+    0x20000000 | rgb(200, 40, 40), xy(10, 10), xy(70, 20), xy(30, 60),
+    0x28000000 | rgb(40, 200, 40), xy(80, 10), xy(130, 14), xy(84, 50), xy(126, 58),
+    // shaded, with dithering: a triangle, and a quad
+    0xE1000200,
+    0x30000000 | rgb(255, 0, 0), xy(140, 10), 0x00FF00, xy(200, 30), rgb(0, 0, 255), xy(150, 70),
+    0x38000000 | rgb(250, 250, 0), xy(210, 10), rgb(0, 250, 250), xy(260, 10), rgb(250, 0, 250), xy(210, 60), rgb(20, 20, 20), xy(262, 64),
+    // the four ways of mixing, each a see-through flat triangle over the shaded quad's corner
+    0xE1000200, 0x22000000 | rgb(120, 120, 120), xy(250, 40), xy(280, 40), xy(250, 70),
+    0xE1000220, 0x22000000 | rgb(60, 90, 30), xy(255, 45), xy(285, 45), xy(255, 75),
+    0xE1000240, 0x22000000 | rgb(60, 30, 90), xy(260, 50), xy(290, 50), xy(260, 80),
+    0xE1000260, 0x22000000 | rgb(200, 120, 40), xy(265, 55), xy(295, 55), xy(265, 85),
+    0xE1000000,
+    // lines: flat, shaded, see-through, and through many points, flat and shaded
+    0x40000000 | rgb(255, 255, 255), xy(10, 80), xy(120, 95),
+    0x50000000 | rgb(255, 0, 0), xy(10, 100), rgb(0, 0, 255), xy(120, 130),
+    0xE1000220, 0x42000000 | rgb(0, 120, 255), xy(10, 120), xy(60, 70), 0xE1000000,
+    0x48000000 | rgb(255, 200, 0), xy(130, 80), xy(170, 90), xy(150, 120), xy(190, 125), 0x55555555,
+    0x58000000 | rgb(0, 255, 0), xy(200, 80), rgb(255, 0, 255), xy(240, 100), rgb(0, 255, 255), xy(220, 130), 0x55555555,
+    // textures: a 16-bit triangle, an 8-bit quad that lines up with its texture and one that's turned, a shaded 4-bit
+    // triangle with dithering, a raw one, and a see-through one
+    0x24000000 | rgb(128, 128, 128), xy(10, 140), uv(0, 0, clut(0, 480)), xy(60, 140), uv(15, 0, page(512, 0, 2)), xy(10, 190), uv(0, 15),
+    0x2C000000 | rgb(128, 128, 128), xy(70, 140), uv(0, 0, clut(0, 481)), xy(86, 140), uv(16, 0, page(640, 0, 1)), xy(70, 156), uv(0, 16), xy(86, 156), uv(16, 16),
+    0x2C000000 | rgb(100, 160, 128), xy(95, 140), uv(0, 0, clut(0, 481)), xy(130, 148), uv(15, 0, page(640, 0, 1)), xy(90, 175), uv(0, 15), xy(126, 184), uv(15, 15),
+    0xE1000200,
+    0x34000000 | rgb(255, 128, 64), xy(140, 140), uv(0, 0, clut(0, 480)), rgb(64, 128, 255), xy(190, 150), uv(15, 0, page(576, 0, 0)), rgb(128, 255, 128), xy(150, 195), uv(0, 15),
+    0xE1000000,
+    0x25000000 | rgb(0, 0, 0), xy(195, 140), uv(0, 0, clut(0, 480)), xy(235, 145), uv(15, 0, page(576, 0, 0)), xy(200, 180), uv(0, 15),
+    0x26000000 | rgb(128, 128, 128), xy(240, 140), uv(0, 0, clut(0, 480)), xy(285, 140), uv(15, 0, page(512, 0, 2, 1)), xy(260, 190), uv(8, 15),
+    // rectangles: textured, of their own size and of 8 and 16, through a texture window, and flat of 1 and 8
+    0xE1000000 | page(512, 0, 2),
+    0x64000000 | rgb(128, 128, 128), xy(10, 200), uv(0, 0, clut(0, 480)), xy(24, 12),
+    0x74000000 | rgb(200, 100, 100), xy(40, 200), uv(4, 4, clut(0, 480)),
+    0x7C000000 | rgb(128, 128, 128), xy(55, 200), uv(0, 0, clut(0, 480)),
+    0xE2000000 | 0x21 | 0x2 << 10, 0x64000000 | rgb(128, 128, 128), xy(80, 200), uv(0, 0, clut(0, 480)), xy(30, 20), 0xE2000000,
+    0x68000000 | rgb(255, 255, 255), xy(120, 205),
+    0x70000000 | rgb(255, 255, 0), xy(125, 205),
+    // the mask bit: a rectangle drawn with it set, and a triangle over it that leaves what has it
+    0xE6000001, 0x60000000 | rgb(0, 80, 160), xy(140, 200), xy(30, 20),
+    0xE6000002, 0x20000000 | rgb(255, 255, 255), xy(135, 195), xy(185, 210), xy(150, 225),
+    0xE6000000, 0xE1000000,
+  ].map(word => word >>> 0);
+  return { setup, frame };
+}
+
+/** A program that sends drawList() to the GPU, as the console boots it: a PS-X EXE, its words after its code. Each
+ *  frame waits for the V-blank, sets the drawing offset to the frame's count, x by one a frame up to 63 and y by one
+ *  every two up to 31, and sends the frame's words. */
+export async function madeUpDrawExe() {
+  const { assemble } = await import('../ps1/assemble.mjs');
+  const { setup, frame } = drawList();
+  const SETUP_AT = LOAD + 0x400, FRAME_AT = SETUP_AT + setup.length * 4;
+  const made = assemble(`
+	.set noreorder
+start:
+	mtc0	$zero, $12
+	lui	$t0, 0x1F80
+	sw	$zero, 0x1074($t0)
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	sw	$zero, 0x1814($t0)
+	li	$t1, 0x08000001
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x06C60260
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x07040010
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x05000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0x03000000
+	sw	$t1, 0x1814($t0)
+	li	$t1, 0xE3000000
+	sw	$t1, 0x1810($t0)
+	li	$t1, 0xE403BD3F
+	sw	$t1, 0x1810($t0)
+	li	$t3, ${SETUP_AT}
+	li	$t4, ${setup.length}
+setup:
+	lw	$t1, 0($t3)
+	addiu	$t3, $t3, 4
+	addiu	$t4, $t4, -1
+	sw	$t1, 0x1810($t0)
+	bnez	$t4, setup
+	nop
+	move	$s0, $zero
+wait:
+	lw	$t1, 0x1070($t0)
+	nop
+	andi	$t1, $t1, 1
+	beqz	$t1, wait
+	nop
+	li	$t1, 0xFFFFFFFE
+	sw	$t1, 0x1070($t0)
+	andi	$t2, $s0, 63
+	srl	$t5, $s0, 1
+	andi	$t5, $t5, 31
+	sll	$t5, $t5, 11
+	or	$t2, $t2, $t5
+	lui	$t5, 0xE500
+	or	$t2, $t2, $t5
+	sw	$t2, 0x1810($t0)
+	li	$t3, ${FRAME_AT}
+	li	$t4, ${frame.length}
+draw:
+	lw	$t1, 0($t3)
+	addiu	$t3, $t3, 4
+	addiu	$t4, $t4, -1
+	sw	$t1, 0x1810($t0)
+	bnez	$t4, draw
+	nop
+	addiu	$s0, $s0, 1
+	b	wait
+	nop
+`);
+  const code = Buffer.from(made.sections.get('.text').bytes);
+  if (code.length > 0x400) throw new Error('The drawing program\'s code is longer than the room before its words.');
+  const size = Math.ceil((0x400 + (setup.length + frame.length) * 4) / 2048) * 2048, text = Buffer.alloc(size);
+  code.copy(text);
+  [...setup, ...frame].forEach((word, n) => text.writeUInt32LE(word, 0x400 + n * 4));
+  const header = Buffer.alloc(2048);
+  header.write('PS-X EXE', 0, 'latin1');
+  header.writeUInt32LE(LOAD, 0x10);
+  header.writeUInt32LE(LOAD, 0x18);
+  header.writeUInt32LE(text.length, 0x1C);
+  header.writeUInt32LE(STACK, 0x30);
+  header.write('A made-up program of the Dreamports tools', 0x4C, 'latin1');
+  return Buffer.concat([header, text]);
+}
