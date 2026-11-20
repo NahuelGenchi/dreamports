@@ -450,11 +450,14 @@ const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 
  *   signature(text, name): what a twin takes and gives, as signatureOf says it, and wrap(call): the line of C that
  *     calls it from the check, for a console whose calls carry more than whole words (../ps2/twin.mjs)
  *   shifts: how far the labels' release is from the copy (portmap.mjs)
+ *   placed(twin): where this build has a twin, for one whose twins aren't all in one memory: a PlayStation 2 module's
+ *     or a vector unit's, named by its key, has its address only in a build of its own program (../ps2/twin.mjs)
+ *   kitNames: more of the kit's names for the check to call, beside those every console's has
  *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
  *     twinsIn takes it, or null (../lib/twins.mjs)
  * Answers { unit(file), link({ file, only, addressOf }) }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null, placed: placedAt = twin => twin.address, kitNames = [] }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
   const source = treeOf(root), elsewhere = {}, placed = new Map();
@@ -481,7 +484,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       units.set(file, (async () => {
         const kit = await kitBuilt(id);
         const text = readFileSync(file, 'utf8');
-        const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id), calls = [], unknown = [];
+        const twins = twinsIn(text, givenOf(file) ? [] : shifts, givenOf(file), id).map(twin => ({ ...twin, address: placedAt(twin) })), calls = [], unknown = [];
         for (const twin of twins) {
           if (twin.address === null) continue;
           const signature = signatureFor(text, twin.name);
@@ -580,7 +583,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
     const objects = Object.fromEntries(linked.map(each => [`__twin_unit${each.n}.o`, each.object]));
     const built = await compile([...kit.flags, '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs', `-Wl,--global-base=${layout.base}`, '-Wl,-z,stack-size=1048576',
       ...(layout.memory ? [`-Wl,--initial-memory=${layout.memory}`] : []),
-      ...[CODE, '__stack_pointer', ...calls.map(({ call }) => call)].map(name => `-Wl,--export=${name}`), ...KIT_NAMES.map(name => `-Wl,--export-if-defined=${name}`),
+      ...[CODE, '__stack_pointer', ...calls.map(({ call }) => call)].map(name => `-Wl,--export=${name}`), ...[...KIT_NAMES, ...kitNames].map(name => `-Wl,--export-if-defined=${name}`),
       '__twin_code.c', ...Object.keys(objects), ...Object.keys(kit.objects)], { '__twin_code.c': Buffer.from(code), ...objects, ...kit.objects }, 'twins.wasm');
     if (built.error) return { error: built.error };
     // a function's address as the original keeps it, odd for Thumb on the Game Boy Advance

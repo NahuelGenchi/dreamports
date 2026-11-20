@@ -63,6 +63,9 @@ int vu_ready(int unit);
 void vu_start(int unit, uint32_t address);
 /** Where the program last stopped, for MSCNT to go on from. */
 uint32_t vu_stopped_at(int unit);
+/** A unit's registers as 158 words the function check gives and reads (vu.c): with `set` the words are put in the
+ *  unit, and without it read from it. Either way it gives where the words are. */
+uint32_t *vu_registers(int unit, int set);
 
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);
@@ -88,6 +91,15 @@ void cdvd_power(void);
 void cdvd_ticks(uint32_t ticks);
 uint32_t cdvd_disc_type(void);
 void ps2_console_date(uint32_t parts[6]);
+uint32_t ps2_console_seconds(void);
+void ps2_date_of(uint32_t seconds, uint32_t parts[6]);
+/** The memory cards' server (mc.c): set up as the console starts, the IOP's ticks passing, how many times a call has
+ *  changed a card, and the cards as the bytes the page keeps and the proof tools compare. */
+void mc_power(void);
+void mc_ticks(uint32_t ticks);
+int mc_serve(uint32_t number, uint8_t *arguments, uint32_t arguments_size, uint8_t *returned, uint32_t returned_size);
+uint32_t mc_changes(void);
+const uint8_t *mc_bytes(uint32_t *size);
 /** The IOP's interrupt lines the kit keeps: the sound chip's, then the two sound DMA channels' ended transfers. */
 uint32_t iop_lines(void);
 /** The sound chip (spu2.c): a register written or read, at its IOP address, a DMA transfer to or from a core, giving
