@@ -7,12 +7,12 @@ struct Box { int a, b, c, d; };
 // where the console keeps them, as the made-up cartridge places them: no file defines them
 extern int gKept, gOther, gInner, gDone;
 extern int gOut[4];
-extern int gMore, gFirst, gSecond, gThrough, gSeen, gSeed, gLocal, gPass, gWrap;
+extern int gMore, gFirst, gSecond, gThrough, gSeen, gSeed, gLocal, gPass, gWrap, gHanded;
 // memory the console has far from where a Dreamport keeps it, as a save's flash is
 extern char gFar[];
 // what each of the later functions left on the stack, as Look finds it
 struct Left { int word[6]; };
-extern int gThroughLeft[6], gFarLeft[6], gLocalLeft[6], gPassLeft[6];
+extern int gThroughLeft[6], gFarLeft[6], gLocalLeft[6], gPassLeft[6], gHandLeft[6];
 
 void Inner(void);
 void Push(void);
@@ -110,7 +110,14 @@ void Look(int *out) {
   Take(&left, out);
 }
 
-/** Main, 0x08000580: Keep, then Read, at the same depth, and then each of the rest, with two addresses kept across
+/** Hand, 0x08000700: the twin of a routine the cartridge has in assembly (routines.s), whose frame isn't the one the
+ *  console's compiler gives this C. */
+void Hand(int *out) {
+  Inner();
+  *out = 7;
+}
+
+/** Main, 0x08000740: Keep, then Read, at the same depth, and then each of the rest, with two addresses kept across
  *  them all. */
 void Main(void) {
   int *done = &gDone;
@@ -126,6 +133,8 @@ void Main(void) {
   Look(gLocalLeft);
   Wrap();
   Look(gPassLeft);
+  Hand(&gHanded);
+  Look(gHandLeft);
   *done = 1;
   *more = 1;
 }

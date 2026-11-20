@@ -36,6 +36,18 @@ test('the choices GNU\'s assembler made, which the original\'s bytes hold', () =
   assert.deepEqual(halfwords('\tmov\tr0, #0\n\tldr\tr1, .L1+0x4\n\tbx\tlr\n\t.align\t2, 0\n.L1:\n\t.word\t0x1\n\t.word\t0x2'), ['2000', '4902', '4770', '0000', '0001', '0000', '0002', '0000']);
 });
 
+test('the newer way of writing Thumb, as a decompilation writes a routine, comes out as GNU\'s assembler made it', () => {
+  // flags set by an s, numbers with no # and names given one, a value kept at the pool, adr, stm with !, and a low
+  // register moved to another as a shift by nothing
+  const made = assemble('\t.syntax unified\n\t.equ off, 4\n\tadds r3, 1\n\tmovs r0, 0\n\tmovs r1, r2\n\tlsls r0, 2\n\tmuls r2, r1\n\tstr r1, [sp, 0x14]\n\tldr r3, [r0, off]\n\tsub sp, off * 6\n\tstm r5!, {r0}\n\tldr r1, =0x4000000 + 6\n\tadr r2, there\n\tbx r2\n\t.pool\n\t.arm\nthere:\n\tmov r0, r1, asr 9\n\tbx lr\n');
+  const halves = [...made.sections['.text'].bytes.toString('hex').match(/..../g)].map(pair => pair.slice(2) + pair.slice(0, 2));
+  assert.deepEqual(halves.slice(0, 14), ['3301', '2000', '0011', '0080', '434a', '9105', '6843', 'b086', 'c501', '4901', 'a201', '4710', '0006', '0400']);
+  // ARM code takes its place and is said to be left out
+  assert.deepEqual(made.unassembled.map(({ at, bytes }) => [at, bytes]), [[28, 4], [32, 4]]);
+  assert.equal(made.symbols.get('there').at, 28);
+  assert.throws(() => assemble('\t.syntax unified\n\tmov r0, r1\n'), /written movs/);
+});
+
 test('a function knows its length, and a line the assembler can\'t read is named', () => {
   const made = assemble('\t.type\t f,function\n\t.thumb_func\nf:\n\tbx\tlr\n.Lfe1:\n\t.size\t f,.Lfe1-f\n\t.align\t2, 0\n\t.comm\tvalue, 4\n');
   assert.equal(made.sizes.get('f'), 2);
