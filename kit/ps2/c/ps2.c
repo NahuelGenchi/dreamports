@@ -31,20 +31,36 @@ static void heard(void) {
   }
 }
 
+// the game's start is over: the console's time runs on to its first V-blank
+static int starting;
+static void started(void) {
+  ps2_clock_to_vblank();
+  heard();
+}
+
 /** Starts the game. */
 EXPORT("dp_start") void dp_start(void) {
   ps2_clock_power();
   gs_power();
   iop_bios_power();
   pad_power();
+  cdvd_power();
   spu2_list_start();
   game_start();
-  ps2_clock_to_vblank();
-  heard();
+  // a game whose start waits for its disc goes on with it in the page's next call
+  starting = kit_frame_paused();
+  if (!starting) started();
 }
 /** Runs one frame with the buttons in `buttons` held, a bit each in kit/consoles.js's order (console.h). A frame the
  *  game paused partway through, as it waited for its disc (kit_pause), goes on with the same draw list. */
 EXPORT("dp_step") void dp_step(uint32_t buttons) {
+  // a start that paused for the disc goes on first, as game_step runs the same code under kit_run, and then the frame
+  if (starting) {
+    game_step(buttons);
+    if (kit_frame_paused()) return;
+    starting = 0;
+    started();
+  }
   if (!kit_frame_paused()) {
     gs_list_start();
     spu2_list_start();
