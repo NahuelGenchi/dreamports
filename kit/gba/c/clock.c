@@ -130,8 +130,23 @@ static struct timer {
   int64_t last, when;
 } timers[4];
 
-static struct fifo { int written, read, left, dma; } fifos[2];
-static uint16_t soundcnt_high, soundcnt_x;
+// each FIFO as the emulator keeps it (its GBAAudioFIFO): eight words in a ring, which a word written when all eight are
+// taken writes over, so it reads as nearly empty again, the word it plays from, a byte at a time, and how many of its
+// bytes are left
+static struct fifo { int written, read, left, dma; uint32_t words[8], sample; } fifos[2];
+// the game's own copy of the registers (gba_clock_registers)
+static const volatile uint16_t *register_file;
+// what's told of each sample a FIFO plays from a timer's overflow on (gba_clock_on_fifo)
+static void (*on_fifo)(int which, uint64_t when, int value);
+void gba_clock_on_fifo(void (*latch)(int which, uint64_t when, int value)) { on_fifo = latch; }
+static uint16_t soundcnt_high, soundcnt_x, soundbias = 0x200;
+// The emulator's mix (its sampleEvent and lastSample): every 1024 cycles it takes the steps of the 1024 before, 4 of
+// 256 cycles at the bias's rate of 65536 a second, from `step_start` on, and a FIFO's sample goes to the steps the
+// time to the next of those says (GBAAudioSampleFIFO). The emulator schedules its next from the time it ran at, less
+// how late, so an interrupt taken earlier in the same turn, which moves that time on by 2, moves it on for good; the
+// clock keeps it on its 1024 cycles, as the interrupts it takes aren't the emulator's in every turn of a frame yet
+// (kit/gba/c/README.md, The console's own sound engine).
+static int64_t step_when, step_start;
 
 // The interrupts, on the emulator's rules (its GBARaiseIRQ, GBATestIRQ and _triggerIRQ, and ARMRaiseIRQ; mgba-emu/mgba
 // 26b7884b, 0.10.5): one that's raised sets its bit of IF, and with a bit of IF that IE has too, the processor is asked
@@ -198,7 +213,30 @@ static void dma_schedule(int n) {
   dma_update();
 }
 
-static void fifo_written(int which) { fifos[which].written = (fifos[which].written + 1) & 7; }
+static void fifo_written(int which, uint32_t word) {
+  struct fifo *f = &fifos[which];
+  f->words[f->written] = word;
+  f->written = (f->written + 1) & 7;
+}
+
+#ifndef GBA_CLOCK_DATA
+// the word a DMA reads at `at`: the console's memory, where the same-memory build keeps it, with its mirrors, or the
+// player's copy in the cartridge, and elsewhere what the DMA read last, as the emulator's DMA keeps it
+static uint32_t dma_read_last;
+static uint32_t data32(uint32_t at) {
+  at &= ~3u;
+  if (at >> 24 == 2) return dma_read_last = *(const volatile uint32_t *)(uintptr_t)(0x02000000u | (at & 0x3FFFF));
+  if (at >> 24 == 3) return dma_read_last = *(const volatile uint32_t *)(uintptr_t)(0x03000000u | (at & 0x7FFF));
+  if (at >= 0x08000000u && at < 0x0E000000u && (at & 0x01FFFFFF) + 4 <= kit_copy_size) {
+    uint32_t o = at & 0x01FFFFFF;
+    return dma_read_last = (uint32_t)(kit_copy[o] | kit_copy[o + 1] << 8 | kit_copy[o + 2] << 16 | (uint32_t)kit_copy[o + 3] << 24);
+  }
+  return dma_read_last;
+}
+#else
+uint32_t GBA_CLOCK_DATA(uint32_t at);
+#define data32 GBA_CLOCK_DATA
+#endif
 
 // one unit of a DMA: a first one's waits, then sequential ones'
 static void dma_unit(int n) {
@@ -210,8 +248,8 @@ static void dma_unit(int n) {
   else time += width == 4 ? wait.s32[from] + wait.s32[to] : wait.s16[from] + wait.s16[to];
   d->when += time;
   blocked = 1;
-  if ((d->next_dest & ~3u) == 0x040000A0) fifo_written(0);
-  if ((d->next_dest & ~3u) == 0x040000A4) fifo_written(1);
+  if ((d->next_dest & ~3u) == 0x040000A0) fifo_written(0, data32(d->next_source));
+  if ((d->next_dest & ~3u) == 0x040000A4) fifo_written(1, data32(d->next_source));
   int source_step = d->next_source >= 0x08000000 && d->next_source < 0x0E000000 && ((d->control >> 7) & 3) < 3
     ? (int)width : STEP[(d->control >> 7) & 3] * (int)width;
   if (d->next_source) d->next_source += (uint32_t)source_step;
@@ -262,10 +300,21 @@ static void fifo_sample(int which, int64_t late) {
     }
   }
   if (!f->left && size) {
+    f->sample = f->words[f->read];
     f->left = 4;
     f->read = (f->read + 1) & 7;
   }
-  if (f->left) f->left--;
+  // the byte it plays from now on: the emulator puts it in the steps of the mix's 1024 cycles from the one the time to
+  // its next says, rounded up, and in none when that's less than a step's worth, as when it runs in the few cycles
+  // just before that time
+  int res = soundbias >> 14, bits = 2 << res, shift = 9 - res;
+  int64_t until = (step_when - NOW - 1 + (1 << shift)) >> shift;
+  if (until > bits) until = bits;
+  if (on_fifo && until > 0) on_fifo(which, (uint64_t)(step_start + (bits - until) * (0x200 >> res)), (int8_t)(f->sample & 0xFF));
+  if (f->left) {
+    f->sample >>= 8;
+    f->left--;
+  }
 }
 
 static void timer_overflows(int n, int64_t late) {
@@ -284,6 +333,7 @@ static int64_t next_event(void) {
   for (int i = 0; i < 4; i++)
     if (timers[i].enabled && !timers[i].counts_up && timers[i].when < best) best = timers[i].when;
   if (dma_event >= 0 && dma_event < best) best = dma_event;
+  if (step_when < best) best = step_when;
   if (video.when < best) best = video.when;
   if (irq.when < best) best = irq.when;
   return best;
@@ -308,6 +358,10 @@ static void tick(int64_t by) {
       when = dma_event;
       which = 4;
     }
+    if (step_when <= master && step_when <= when) {
+      when = step_when;
+      which = 7;
+    }
     if (video.when <= master && video.when <= when) {
       when = video.when;
       which = 5;
@@ -321,6 +375,9 @@ static void tick(int64_t by) {
     if (which == 4) {
       dma_event = -1;
       dma_due();
+    } else if (which == 7) {
+      step_start += 1024;
+      step_when += 1024;
     } else if (which == 5 && video.hblank) {
       // a line's H-blank starts, with its interrupt if DISPSTAT asks for it, 6 cycles on; a line of the picture is
       // drawn now, as the emulator draws it
@@ -439,8 +496,9 @@ void gba_clock_write16(uint32_t address, uint16_t value) {
     if (value & 0x8000) fifos[1].written = fifos[1].read = 0;
   }
   if (at == 0x84) soundcnt_x = value;
-  if (at == 0xA0) fifo_written(0);
-  if (at == 0xA4) fifo_written(1);
+  if (at == 0x88) soundbias = value;
+  // a word written by the processor, as the emulator writes a halfword of it with the other half its copy holds
+  if (at == 0xA0 || at == 0xA4) fifo_written(at == 0xA4, value | (uint32_t)(register_file ? register_file[(at + 2) >> 1] : 0) << 16);
   cycles = kept;
 }
 
@@ -691,8 +749,11 @@ void gba_clock_start(void) {
   memset(dma, 0, sizeof dma);
   memset(timers, 0, sizeof timers);
   for (int i = 0; i < 4; i++) timers[i].when = INT64_MAX;
-  fifos[0] = (struct fifo){ 0, 0, 0, 1 };
-  fifos[1] = (struct fifo){ 0, 0, 0, 2 };
+  soundbias = 0x200;
+  step_when = 0;
+  step_start = -1024;
+  fifos[0] = (struct fifo){ 0, 0, 0, 1, { 0 }, 0 };
+  fifos[1] = (struct fifo){ 0, 0, 0, 2, { 0 }, 0 };
   master = cycles = 0;
   memset(&irq, 0, sizeof irq);
   irq.when = INT64_MAX;
