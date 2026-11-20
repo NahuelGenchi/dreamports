@@ -178,9 +178,9 @@ jobs:
       - run: npm run test:ps2-memories
       # disc reads, memory cards, what the tools learn as a game plays and the console's memories for prove
       - run: npm run test:ps2-disc
-      - run: npm run test:ps2-cards
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
+      - run: npm run test:ps2-cards
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
