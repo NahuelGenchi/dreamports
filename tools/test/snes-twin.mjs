@@ -7,7 +7,8 @@
 // is changed at a time, and the check has to find each: a difference instead of a sum, a byte too many, a value one
 // along, the wrong register of the picture, the work memory's port written twice in the wrong place, a data bank left
 // out, a contract that doesn't say the mode its function leaves, a case of a switch, a twin that never comes back, and
-// one that calls what nothing built is. Last, the same twins through the tool everyone runs, npm run dp -- twin.
+// one that calls what nothing built is. Last, the same twins through the tool everyone runs, npm run dp -- twin, and
+// match, which says why it has nothing to build them with.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -123,6 +124,8 @@ try {
   check(run.status === 3 && /Differs  sub_008060 sum: call \d+, sub_008060 with A=/.test(run.out), `a twin that differs ends it with 3: ${run.out.trim().split('\n').find(line => /Differs/.test(line))}`);
   run = dp('twin', VERSION, '--memories');
   check(run.status === 1 && /--memories isn't there yet on the Super Nintendo/.test(run.out), 'what the Super Nintendo\'s check can\'t do yet is said');
+  run = dp('match', VERSION);
+  check(run.status === 1 && /a Super Nintendo game was written by hand in its processor's own language/.test(run.out) && /npm run dp -- twin/.test(run.out), 'match says a Super Nintendo game has no compiler to give its bytes back, and what proves its functions');
 } finally {
   tidy();
   if (copies) writeFileSync(COPIES, copies);
