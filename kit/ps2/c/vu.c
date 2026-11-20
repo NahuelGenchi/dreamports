@@ -124,8 +124,8 @@ static uint32_t sum(int op, uint32_t acc, uint32_t a, uint32_t b, uint32_t *flag
   case OP_ADD: return fpu_add(a, b, flags);
   case OP_SUB: return fpu_add(a, b ^ 0x80000000, flags);
   case OP_MUL: return fpu_mul(a, b, flags);
-  case OP_MADD: return fpu_add(acc, fpu_mul(a, b, flags), flags);
-  default: return fpu_add(acc, fpu_mul(a, b, flags) ^ 0x80000000, flags);
+  case OP_MADD: return fpu_mul_add(acc, a, b, 0, flags);
+  default: return fpu_mul_add(acc, a, b, 1, flags);
   }
 }
 
