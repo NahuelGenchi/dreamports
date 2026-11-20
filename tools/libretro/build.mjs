@@ -32,9 +32,16 @@ export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
 // one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
 const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
   ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
-// a core with a patch of the project's own has the patch's hash in its name too, and one CMake builds the hash of what it's
-// built with, so a build without either is never used
-const builtWith = core => core.patch || core.cmake ? `-${createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '').digest('hex').slice(0, 8)}` : '';
+// a core with a patch of the project's own has the patch's hash in its name too, with the hash of each of the project's
+// files that's built into it (`copies`, as the PlayStation 2's sound chip is the kit's), and one CMake builds the hash of
+// what it's built with, so a build without any of them is never used
+const copiesOf = core => Object.entries(core.copies ?? {});
+const builtWith = core => {
+  if (!core.patch && !core.cmake) return '';
+  const hash = createHash('sha1').update(core.patch ? readFileSync(join(REPO, core.patch)) : '').update(core.cmake ? JSON.stringify(cmakeSettings(core)) : '');
+  for (const [from] of copiesOf(core)) hash.update(readFileSync(join(REPO, from)));
+  return `-${hash.digest('hex').slice(0, 8)}`;
+};
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
@@ -76,6 +83,11 @@ export function fetchSource({ core, name }) {
     for (const [, added] of readFileSync(join(REPO, core.patch), 'utf8').matchAll(/^diff --git a\/(\S+) b\/\S+\nnew file mode/gm)) rmSync(join(source, added), { force: true });
     // many of an emulator's files end their lines as Windows does, and the patch, like every text file here, as Linux does
     run(`Patching ${name}'s emulator`, 'git', ['apply', '--ignore-whitespace', join(REPO, core.patch)], source);
+  }
+  // the project's own files that are built into the emulator, beside what the patch adds
+  for (const [from, to] of copiesOf(core)) {
+    mkdirSync(dirname(join(source, to)), { recursive: true });
+    copyFileSync(join(REPO, from), join(source, to));
   }
   return source;
 }
