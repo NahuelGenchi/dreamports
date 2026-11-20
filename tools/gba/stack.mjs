@@ -6,6 +6,22 @@
 // with the kit's stack calls added: each such function's start and return, each call's return address and registers,
 // and its stack locals at the console's own addresses. Nothing comes from the game: what the C can't give is a gap,
 // and each is listed.
+//
+// Four rules say more than a register's own arithmetic does, each only where it's certain:
+// - A call through a pointer, which the compiler writes as `bl _call_via_rN`, comes back to the instruction after
+//   it like any call, with its registers as known, and the function it reaches enters as any does.
+// - A value that is a pointer in the C (a name's address, a pointer parameter, a pointer local) goes on the stack
+//   as gba_stack_address gives it, so a game that keeps some of the console's memory elsewhere says where the
+//   console has it.
+// - A register holds a local where the compiler's debugging records keep that local in it, the C assigns the local
+//   in one place only and never takes its address, the local is used at the call or after it, so it's alive there,
+//   and every instruction that can have written the register last before the call is on that assignment's lines,
+//   with the call on another line. A local of one or two bytes is none of them: agbcc's debugging records give no
+//   register for it.
+// - A function that isn't proven by the same bytes but starts as the original's does (`match` keeps which, in
+//   proofs.json's "starts") saves what the original's saves, so its pushes are written, and the registers it doesn't
+//   save reach the functions it calls as its caller left them. Its own registers, its locals and where its calls go
+//   back to are left out, as the code after its start isn't proven.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -92,12 +108,51 @@ function calleeName(call) {
 // the line `offset` is on in `text`
 const lineOf = (text, offset) => text.slice(0, offset).split('\n').length;
 
+// whether a declaration's type is a pointer in C, an array among them, as a pointer is what its name gives
+const isPointer = decl => /(\*|\])\s*(const|volatile|restrict|\s)*$|\(\*/.test(decl?.type?.desugaredQualType ?? decl?.type?.qualType ?? '');
+const bare = node => {
+  while (node && (node.kind === 'ParenExpr' || node.kind === 'ImplicitCastExpr')) node = kids(node)[0];
+  return node;
+};
+
+// The locals of a function's body that a register can be taken to hold: for each register the debugging records keep
+// a four-byte local in, the local's name, whether it's a pointer, the lines of the one place the C assigns it, the
+// stretch of the file where its name is the local, from its declaration to the end of its block, and where it's used.
+function heldLocals(body, info, text, file) {
+  const held = new Map(), all = [...everything(body)];
+  for (const { name, reg, bytes } of info.registers ?? []) {
+    if (bytes !== 4 || info.registers.filter(r => r.name === name).length !== 1 || info.params.some(p => p.name === name)) continue;
+    const decls = all.filter(node => node.kind === 'VarDecl' && node.name === name);
+    if (decls.length !== 1) continue;
+    const decl = decls[0];
+    const declared = all.find(node => node.kind === 'DeclStmt' && kids(node).includes(decl));
+    const block = all.find(node => node.kind === 'CompoundStmt' && kids(node).includes(declared));
+    if (!declared?.written || declared.written.file !== file || !block?.written || block.written.file !== file) continue;
+    const isIt = node => bare(node)?.kind === 'DeclRefExpr' && bare(node).referencedDecl?.id === decl.id;
+    // every place that can change it: its declaration's own value, an assignment, and anything that takes its address
+    const places = kids(decl).length ? [all.find(node => node.kind === 'DeclStmt' && kids(node).includes(decl))] : [];
+    let certain = true;
+    for (const node of all) {
+      if (node.kind === 'BinaryOperator' && node.opcode === '=' && isIt(kids(node)[0])) places.push(node);
+      else if (node.kind === 'CompoundAssignOperator' && isIt(kids(node)[0])) certain = false;
+      else if (node.kind === 'UnaryOperator' && ['++', '--', '&'].includes(node.opcode) && isIt(kids(node)[0])) certain = false;
+    }
+    const at = places[0]?.written;
+    // an assignment that ends in a macro's use counts where the use's closing bracket was found
+    if (!certain || places.length !== 1 || !at || at.file !== file || (at.endsInMacro && !at.closed)) continue;
+    if (!held.has(reg)) held.set(reg, []);
+    const uses = all.filter(node => node.kind === 'DeclRefExpr' && node.referencedDecl?.id === decl.id).map(ref => ref.written?.begin ?? ref.name_at?.offset).filter(at => at !== undefined);
+    held.get(reg).push({ name, pointer: isPointer(decl), from: lineOf(text, at.begin), to: lineOf(text, at.end), scope: { begin: declared.written.end, end: block.written.end }, uses });
+  }
+  return held;
+}
+
 /**
  * `text`, a game's C file at `file`, with the console's stack: for each function `map` has and `matched` holds, its
  * start and return, its calls' return addresses and registers, and its stack locals at the console's addresses.
  * `addressOf(name)` is where the original has a function, odd in Thumb code, or null. Gives { text, gaps }.
  */
-export function withStack({ file, text, tree, map, matched, addressOf }) {
+export function withStack({ file, text, tree, map, matched, addressOf, starts = new Set(), without = new Set() }) {
   placed(tree);
   // a use of a function-like macro ends at its closing bracket, where clang names only the macro
   for (const node of everything(tree)) {
@@ -111,16 +166,19 @@ export function withStack({ file, text, tree, map, matched, addressOf }) {
       else if (text[at] === ')' && --depth === 0) break;
     }
     w.end = at + 1;
+    w.closed = true;
   }
   const edits = [], gaps = [], header = ['#include "stack.h"'];
-  const value = (v, where) => {
+  // a pointer of the C's goes on the stack as the console's address of what it points to
+  const pointer = code => (without.has('pointers') ? code : `gba_stack_address(${code})`);
+  const value = (v, where, pointers = new Set()) => {
     if (v.const !== undefined) return hex(v.const);
     if (v.symbol !== undefined) {
       const add = v.add ? ` + ${hex(v.add)}` : '';
       const code = addressOf(v.symbol);
-      return code !== null ? `(${hex(code)}${add})` : `((uint32_t)(uintptr_t)&${v.symbol}${add})`;
+      return code !== null ? `(${hex(code)}${add})` : pointer(`((uint32_t)(uintptr_t)&${v.symbol}${add})`);
     }
-    if (v.param !== undefined) return `((uint32_t)(uintptr_t)(${v.param}))`;
+    if (v.param !== undefined) return pointers.has(v.param) ? pointer(`((uint32_t)(uintptr_t)(${v.param}))`) : `((uint32_t)(uintptr_t)(${v.param}))`;
     if (v.sp !== undefined) return `(gba_stack_sp() + ${hex(v.sp)})`;
     gaps.push(`${where}: ${v.unknown ?? 'a value the C doesn\'t give'}`);
     return null;
@@ -134,15 +192,23 @@ export function withStack({ file, text, tree, map, matched, addressOf }) {
     // its start: the pushes and the frame, and a variable whose end is the function's return. One not proven by the
     // same bytes takes its frame's room, as the console's compiler lays out its C, so the frames below it are in
     // their places, and nothing more: its pushes are gaps, and its calls say nothing
-    const proven = matched.has(fn.name);
+    const proven = matched.has(fn.name), started = !proven && starts.has(fn.name) && !without.has('starts');
     const pushes = info.pushes.map(p => `{ ${REGISTER[p.reg]}, ${p.slot} }`).join(', ');
     header.push(`static const gba_push gba_pushes_${fn.name}[] = { ${pushes || '{ 0, 0 }'} };`);
-    header.push(`static const gba_frame gba_frame_${fn.name} = { ${info.pushes.length}, gba_pushes_${fn.name}, ${info.frame}, ${proven ? 0 : 1} };`);
+    header.push(`static const gba_frame gba_frame_${fn.name} = { ${info.pushes.length}, gba_pushes_${fn.name}, ${info.frame}, ${proven ? 'GBA_STACK_PROVEN' : started ? 'GBA_STACK_START_PROVEN' : 'GBA_STACK_UNPROVEN'} };`);
     edits.push({ at: body.place.begin + 1, cut: 0, put: ` uint32_t gba_stack_in_ __attribute__((cleanup(gba_stack_leave))) = gba_stack_enter(&gba_frame_${fn.name});` });
+    if (started) {
+      gaps.push(`${fn.name}: proven only at its start, so its ${info.pushes.length} pushes are kept, and its own registers, its locals and where its calls go back to are left out`);
+      continue;
+    }
     if (!proven) {
       gaps.push(`${fn.name}: not proven by the same bytes, so its frame takes its room and its ${info.pushes.length} pushes and its locals are left out`);
       continue;
     }
+    const pointers = new Set(kids(fn).filter(node => node.kind === 'ParmVarDecl' && isPointer(node)).map(node => node.name));
+    const held = without.has('locals') ? new Map() : heldLocals(body, info, text, file);
+    // the calls through a pointer, each by its line, to tell one from another
+    const through = [...everything(body)].filter(node => node.kind === 'CallExpr' && calleeName(node) === null);
     // its stack locals, kept where the console keeps them, with every use of each there
     const moved = new Map();
     for (const decl of everything(body)) {
@@ -173,26 +239,41 @@ export function withStack({ file, text, tree, map, matched, addressOf }) {
     }
     // its calls: each found among the original's by its line and the function it calls
     for (const call of everything(body)) {
-      if (call.kind !== 'CallExpr' || !call.place) continue;
+      if (call.kind !== 'CallExpr') continue;
+      // a call that starts with a macro's use, as one through a pointer a macro names, is where that use is written
+      if (!call.place && call.written && call.written.file === file && !call.written.endsInMacro) call.place = { file, begin: call.written.begin, end: call.written.end };
+      if (!call.place) continue;
       const name = calleeName(call), line = lineOf(text, call.place.begin);
+      // one through a pointer is the original's `bl _call_via_rN` on its line
+      const pointed = name === null;
+      if (pointed && without.has('through')) continue;
       const sites = info.calls.filter(c => c.callee === name && c.line === line);
-      if (!name || !info.calls.some(c => c.callee === name)) continue;
+      if (!pointed && !info.calls.some(c => c.callee === name)) continue;
+      const called = pointed ? 'a function through a pointer' : name;
       // a call whose arguments a macro wrote has no place in the file to take them from
       if (kids(call).some(part => !part.written || part.written.file !== file)) {
-        gaps.push(`${fn.name} line ${line}: its call of ${name} is written by a macro`);
+        gaps.push(`${fn.name} line ${line}: its call of ${called} is written by a macro`);
         continue;
       }
-      if (sites.length !== 1) {
-        gaps.push(`${fn.name} line ${line}: ${sites.length ? 'more than one call of' : 'no call found of'} ${name}`);
+      if (sites.length !== 1 || (pointed && through.filter(other => other.place && lineOf(text, other.place.begin) === line).length !== 1)) {
+        gaps.push(`${fn.name} line ${line}: ${sites.length ? 'more than one call of' : 'no call found of'} ${called}`);
         continue;
       }
       const site = sites[0], hooks = [`gba_stack_call(${hex((address & ~1) + site.returnOffset + 1)});`];
       for (const [reg, v] of Object.entries(site.regs ?? {})) {
-        const c = value(v, `${fn.name} line ${line}, ${reg} at its call of ${name}`);
+        // a register the arithmetic can't follow may still be a local's own
+        const writers = site.writers?.[reg] ?? [{ entry: true }];
+        const local = v.unknown !== undefined && v.caller === undefined
+          ? (held.get(reg) ?? []).filter(l => call.place.begin >= l.scope.begin && call.place.end <= l.scope.end && (line < l.from || line > l.to)
+            && l.uses.some(at => at >= call.place.begin) && writers.every(w => !w.entry && w.line >= l.from && w.line <= l.to && (!w.file || w.file.split('/').pop() === file.split('/').pop())))
+          : [];
+        const c = local.length === 1
+          ? (local[0].pointer ? pointer(`((uint32_t)(uintptr_t)(${local[0].name}))`) : `((uint32_t)(${local[0].name}))`)
+          : value(v, `${fn.name} line ${line}, ${reg} at its call of ${called}`, pointers);
         hooks.push(c === null ? `gba_stack_unknown(${REGISTER[reg]});` : `gba_stack_reg(${REGISTER[reg]}, ${c});`);
       }
       for (const store of (info.stores ?? []).filter(s => s.line === line)) {
-        const c = value(store.value, `${fn.name} line ${line}, its store at frame ${store.fbreg}`);
+        const c = value(store.value, `${fn.name} line ${line}, its store at frame ${store.fbreg}`, pointers);
         if (c !== null) hooks.push(`gba_stack_store(${store.fbreg}, ${c}, ${store.bytes});`);
       }
       edits.push({ call, hooks: hooks.join(' ') });
@@ -250,7 +331,8 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   mkdirSync(out, { recursive: true });
   for (const file of own) {
     const defined = (twinsOf.get(file) ?? []).filter(t => t.address !== null);
-    const matched = new Set(defined.filter(t => bytes.has(t.address.toString(16).toUpperCase().padStart(8, '0'))).map(t => t.name));
+    const keyOf = t => t.address.toString(16).toUpperCase().padStart(8, '0');
+    const matched = new Set(defined.filter(t => bytes.has(keyOf(t))).map(t => t.name));
     if (!defined.length) {
       sources.push(file);
       continue;
@@ -263,7 +345,13 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
     }
     const text = readFileSync(file, 'utf8');
     const tree = await syntaxOf(file, repo, args, filesTree);
-    const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf });
+    // a function that isn't proven but starts as the original's does: `match` found its first bytes the same, as
+    // many as its start is long, or its first instruction where it has no start, with no word loaded from beside it
+    const starts = new Set(defined.filter(t => {
+      const start = map.functions[t.name]?.start, same = proofs.starts?.get(keyOf(t))?.bytes ?? 0;
+      return !matched.has(t.name) && start && !start.loads && same >= Math.max(start.bytes, 2);
+    }).map(t => t.name));
+    const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf, starts });
     const copy = join(out, basename(file));
     writeFileSync(copy, `${made.header}\n#line 1 "${basename(file)}"\n${made.text}`);
     sources.push(copy);
