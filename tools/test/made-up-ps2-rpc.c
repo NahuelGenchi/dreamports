@@ -28,8 +28,21 @@ static void send(uint32_t at, uint32_t count, uint32_t commands) {
   set_word(at + (count - 1) * 16 + 4, commands);
   sif_set_dma(transfers(at), count);
 }
+// The EE's time to the end of the emulator's slice, a wait that reaches the V-blank going on in the next frame, as the
+// program's own does
+static void slice(void) {
+  uint64_t before = ps2_ee_time();
+  ps2_time_to_slice();
+  if (ps2_ee_time() == before) kit_wait_frame();
+}
+// The IOP's reply waited for, as the emulator runs the program's wait: what the IOP answers at once is there as the
+// system call that sent it ends, and a reply that comes later comes at a slice's end by an interrupt, after which the
+// emulator's EE, which it takes to be idle in the program's loop, sits the next slice out
 static void wait_for_reply(void) {
-  while (word(@REPLY@ + 8) != 0x80000008) ps2_time_to_slice();
+  int slices = 0;
+  ps2_time_pass(1);
+  for (; word(@REPLY@ + 8) != 0x80000008; slices++) slice();
+  if (slices) slice();
   set_word(@REPLY@ + 8, 0);
   sif_set_dchain(1);
 }

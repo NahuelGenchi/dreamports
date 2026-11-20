@@ -35,8 +35,9 @@
 // function of whichever program holds, at its address, the word that ran, the program the disc boots first, so code
 // loaded over other code at the same address counts as itself. A vector unit's pair counts for the program whose
 // upload puts it at that place in the unit's memory, as the MPG command before it says, and holds that word. A module of
-// the IOP's is loaded wherever the IOP has room, which the tools don't follow yet: its instructions count, and stay
-// unplayed. Its content is the disc: a cell is a sector, 2048 bytes of the disc's data, counted once the game has read
+// the IOP's is loaded wherever the IOP has room, and the emulator says where it put each, and which, as it loads it: an
+// instruction of the IOP counts for the function of the module loaded there at that moment, whatever its word, as the
+// loader changes the words that hold an address. Its content is the disc: a cell is a sector, 2048 bytes of the disc's data, counted once the game has read
 // it in a frame that matched, and a game's unreachable.json names sectors, not addresses, under "content".
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
@@ -221,9 +222,11 @@ export function nesInstructionsOf(codeMap, copy) {
  * Finds the function an instruction that ran is in, for a code map: `find(address, code, thumb)` gives
  * [the function's place in the code map, the offset in it] or null. An address in the work RAM is a copy of the
  * cartridge's code, when the cartridge has those bytes there (`cartridge(address, count)` reads them), or else in a
- * function the game makes there, when the bytes `made` has for it (place in the code map → bytes) are those.
+ * function the game makes there, when the bytes `made` has for it (place in the code map → bytes) are those. On the
+ * PlayStation 2, `find(address, code, processor, frame)`, with `loads` each module the IOP loaded in the run, as the
+ * program that plays the original says them ({ frame, base, end, hash }).
  */
-export function finderOf(codeMap, cartridge, made) {
+export function finderOf(codeMap, cartridge, made, loads = []) {
   const own = [], inMemory = [];
   codeMap.functions.forEach((f, index) => (f.bytes ? inMemory : own).push({ ...f, index }));
   const within = (list, address) => list.filter(f => address >= f.address && address < f.address + f.size);
@@ -242,14 +245,24 @@ export function finderOf(codeMap, cartridge, made) {
   // a PlayStation 2 address is in its processor's own memory: the EE's code counts where a program of the disc holds
   // what ran, and a vector unit's where the program an upload put there does (ps2/ledger.mjs)
   if (isPs2(codeMap)) {
-    const programs = new Map(), units = [];
+    const programs = new Map(), units = [], inModules = new Map();
     codeMap.functions.forEach((f, index) => {
       const { kind, bytes, vuAddress } = cartridge.code(f);
       if (kind === 'vu' && vuAddress !== null) units.push({ index, address: vuAddress, size: f.size, bytes });
-      if (kind !== 'ee') return;
-      if (!programs.has(f.program ?? '')) programs.set(f.program ?? '', []);
-      programs.get(f.program ?? '').push({ index, address: f.address, size: f.size, bytes });
+      const into = kind === 'ee' ? programs : kind === 'iop' ? inModules : null;
+      if (!into) return;
+      if (!into.has(f.program ?? '')) into.set(f.program ?? '', []);
+      into.get(f.program ?? '').push({ index, address: f.address, size: f.size, bytes });
     });
+    for (const list of inModules.values()) list.sort((a, b) => a.address - b.address);
+    // each module the IOP loaded, the last first: where its bytes are, from which frame, and how far its functions'
+    // addresses are from where they run
+    const known = cartridge.modules?.() ?? new Map();
+    // one the code map doesn't have is still there, over whatever was loaded at its place before
+    const placed = loads.map(load => {
+      const { program, textAt = 0, load: from = 0 } = known.get(load.hash) ?? {};
+      return { frame: load.frame, base: load.base, end: load.end, shift: load.base + textAt - from, list: inModules.get(program) ?? [] };
+    }).reverse();
     // the program the disc boots first, then the others
     const lists = [...programs].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))).map(([, list]) => list.sort((a, b) => a.address - b.address));
     const word = (bytes, at) => (at + 4 <= bytes.length ? (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0 : null);
@@ -263,12 +276,16 @@ export function finderOf(codeMap, cartridge, made) {
       }
       return null;
     };
-    return (address, code, processor) => {
+    return (address, code, processor, frame = Infinity) => {
       if (processor === 0) {
         for (const list of lists) {
           const f = holding(list, address);
           if (f && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
         }
+      } else if (processor === 1) {
+        const module = placed.find(each => address >= each.base && address < each.end && each.frame <= frame);
+        const f = module && holding(module.list, address - module.shift);
+        if (f) return [f.index, address - module.shift - f.address];
       } else if (processor >= 2) {
         for (const f of units) if (address >= f.address && address < f.address + f.size && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
       }
@@ -304,10 +321,24 @@ export function playedIn(records, matched, layout, find) {
     const from = records[i + 3], to = Math.min(records[i + 4], matched.length - 1);
     if (from > to || before[to + 1] === before[from]) continue;
     // a Game Boy Advance address has its lowest bit set for Thumb code, and a PlayStation 2 record says its processor
-    const found = layout.unit === 1 ? find(records[i]) : layout.unit === 4 ? find(records[i], records[i + 1], records[i + 2] >>> 8) : find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
+    const found = layout.unit === 1 ? find(records[i]) : layout.unit === 4 ? find(records[i], records[i + 1], records[i + 2] >>> 8, from) : find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
     if (found) put(set, (layout.first[found[0]] + Math.floor(found[1] / layout.unit)) * 3 + (records[i + 2] & 0xFF));
   }
   return set;
+}
+
+/**
+ * How many places ran, in any frame, that are in no function of the code map, on a console whose records say what ran
+ * wherever it ran, as the PlayStation 2's do: each instruction once, whatever frames it ran in. `find` is finderOf's.
+ * It's what the code map is missing, with the system's own code, which is no part of the game.
+ */
+export function outsideIn(records, find) {
+  const seen = new Set();
+  for (let i = 0; i + 5 <= records.length; i += 5) {
+    if ((records[i + 2] & 0xFF) !== RAN || find(records[i], records[i + 1], records[i + 2] >>> 8, records[i + 3])) continue;
+    seen.add(`${records[i + 2] >>> 8} ${records[i]} ${records[i + 1]}`);
+  }
+  return seen.size;
 }
 
 /** The cartridge's data used in a recording's matching frames, as a set of cells: `records` as the original's program
