@@ -295,7 +295,7 @@ void rising_thing(uint8_t object);
 /** sub_04_B707, kind $0C: a lift over the second stage's water (platform.c); $F8E9, kind $13: a crow of the water (enemies.c). */
 void lift(uint8_t object);
 /** sub_04_B45B, kind $0A: a bat of the third stage's cave (cave.c). */
-void bat(uint8_t object);
+void bat(uint8_t object, uint8_t y);
 /** sub_04_B56F, kind $0B: the cave's shooter in the ground (cave.c); $F461, kind $2A: its shot (enemies.c). */
 void cave_shooter(uint8_t object);
 void cave_shot(uint8_t object, uint8_t y);

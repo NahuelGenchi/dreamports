@@ -887,7 +887,7 @@ wait objects_task(void) {
         case 0x06: devil(object); break;
         case 0x07: window_thing(object); break;
         case 0x08: big_man(object); break;
-        case 0x0A: bat(object); break;
+        case 0x0A: bat(object, y); break;
         case 0x0B: cave_shooter(object); break;
         case 0x21: waiting_enemy(object, y); break;
         case 0x2A: cave_shot(object, y); break;
