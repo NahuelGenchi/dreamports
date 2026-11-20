@@ -17,6 +17,9 @@
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
 //   'g' register        which register the calls after it give back, as a hand-written routine's twin says it
 //                       gives what it gives (twin.mjs, #1710): r0 at first. Answers 0.
+//   'h' count [value]   what r4 and up hold as the calls after it start, as a hand-written routine's twin says it takes
+//                       them (twin.mjs, #1728), each an argument the check can change like the first four; with a count
+//                       of 0, as at first, they hold what the console's state does. Answers 0.
 //   'a' follow          whether the calls after it follow a read or write where no halfword or word starts, as the
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
@@ -49,7 +52,7 @@
 //                       and values written to the work memory as a frame starts, in the order of their frames. Each
 //                       time the processor reaches a function of 'w', it counts, and at its 1st, 3rd, 9th time and so
 //                       on, by threes, it answers a memory of play: which function, the frame, how many times it
-//                       had started, what r0 to r3 and the stack held, and the image as it was just then. After the
+//                       had started, what r0 to r7 and the stack held, and the image as it was just then. After the
 //                       last frame it answers 0xFFFFFFFF and how many frames it played. The save memory is as the
 //                       plays before left it, so the check plays each recording in a program of its own.
 //
@@ -393,6 +396,8 @@ static void touched(uint32_t address, int bytes, int write) {
 static int followUnaligned;
 // the register a call gives back in, as a hand-written routine's twin says (#1710)
 static int givesIn;
+// what r4 and up hold as a call starts, when a hand-written routine's twin says it takes them (#1728)
+static uint32_t high[4], highCount;
 static void aligned(uint32_t address, uint32_t bytes) {
 	if (watching && !followUnaligned && (address & (bytes - 1)) && !left) {
 		left = 1;
@@ -549,6 +554,7 @@ static void call(void* state) {
 	cpu->cpsr.t = thumb;
 	cpu->executionMode = thumb ? MODE_THUMB : MODE_ARM;
 	for (int i = 0; i < 4; i++) cpu->gprs[i] = r[i];
+	for (uint32_t i = 0; i < highCount; i++) cpu->gprs[4 + i] = high[i];
 	biosTop = biosLow = (uint32_t) cpu->bankedRegisters[BANK_SUPERVISOR][0] & ~3u;
 	inBios = 0;
 	cpu->gprs[ARM_SP] = top;
@@ -559,9 +565,10 @@ static void call(void* state) {
 
 	hardware = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
 	stackLow = top; stackHigh = top + 4 * onStack;
-	// the first four arguments come from the call, the rest from nowhere the check can change
+	// the first four arguments come from the call, and r4 and up when the twin says it takes them; the rest from nowhere
+	// the check can change
 	memset(from, 0, sizeof from);
-	for (uint32_t i = 0; i < 4; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
+	for (uint32_t i = 0; i < 4 + highCount; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
 	aimCount = 0;
 	lastReadKept = 0;
 	watching = 1;
@@ -755,7 +762,7 @@ static void play(void) {
 				if (which && ++started[which - 1] == nextTime[which - 1]) {
 					nextTime[which - 1] *= 3;
 					out32(which - 1); out32(frame); out32(started[which - 1]);
-					for (int r = 0; r < 4; r++) out32((uint32_t) cpu->gprs[r]);
+					for (int r = 0; r < 8; r++) out32((uint32_t) cpu->gprs[r]);
 					out32((uint32_t) cpu->gprs[ARM_SP]);
 					takeImage(after);
 					out(after, IMAGE);
@@ -833,6 +840,15 @@ int main(int argc, char** argv) {
 			answer();
 		} else if (command == 'g') {
 			givesIn = (int) (in32() & 15);
+			out32(0);
+			answer();
+		} else if (command == 'h') {
+			uint32_t count = in32(), value;
+			highCount = 0;
+			for (uint32_t i = 0; i < count; i++) {
+				value = in32();
+				if (i < 4) high[highCount++] = value;
+			}
 			out32(0);
 			answer();
 		} else if (command == 'c') {

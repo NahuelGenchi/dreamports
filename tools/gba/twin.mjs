@@ -212,9 +212,9 @@ class Original {
         await this.take(4);
         return;
       }
-      const head = await this.take(28);
-      const [frame, time, r0, r1, r2, r3, stack] = Array.from({ length: 7 }, (_, i) => head.readUInt32LE(i * 4));
-      each({ which, frame, time, registers: [r0, r1, r2, r3], stack, image: await this.take(IMAGE) });
+      const head = await this.take(44);
+      const [frame, time, ...rest] = Array.from({ length: 11 }, (_, i) => head.readUInt32LE(i * 4));
+      each({ which, frame, time, registers: rest.slice(0, 8), stack: rest[8], image: await this.take(IMAGE) });
     }
   }
 
@@ -228,7 +228,7 @@ class Original {
    *  values it read, the numbers it loaded, the `pairs` of values it compared, each stretch of the image it changed,
    *  and, of the `span` bytes the function is long, each instruction that `ran`, with the ways it went on. `spare` is
    *  what the registers no argument fills hold, 0 unless given. */
-  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false, gives = 0 }) {
+  async call({ address, span = 0, args, changes, limit, spare = [], unaligned = false, gives = 0, takes = 4 }) {
     // a hand-written routine gives back in the register its twin's comment names (#1710)
     if (gives !== (this.gives ?? 0)) {
       this.ask('g', [gives]);
@@ -241,7 +241,14 @@ class Original {
       await this.take(4);
       this.unaligned = Boolean(unaligned);
     }
-    const registers = [0, 1, 2, 3].map(i => args[i] ?? spare[i] ?? 0), onStack = args.slice(4);
+    // a hand-written routine that takes r4 and up has them set as the call starts, and nothing on the stack (#1728)
+    const high = takes > 4 ? args.slice(4, takes).map(value => value ?? 0) : [];
+    if (high.length || this.high) {
+      this.ask('h', [high.length, ...high]);
+      await this.take(4);
+      this.high = high.length > 0;
+    }
+    const registers = [0, 1, 2, 3].map(i => args[i] ?? spare[i] ?? 0), onStack = takes > 4 ? [] : args.slice(4);
     this.ask('c', [address, span, ...registers, limit, onStack.length, ...onStack, changes.length, ...changes.flat()]);
     const head = await this.take(36);
     const [ended, gave, steps, hardware, leftFor, readCount, numberCount, pairCount, runCount] = Array.from({ length: 9 }, (_, i) => head.readUInt32LE(i * 4));
@@ -497,7 +504,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
           // a hand-written routine's twin that says how it takes and gives in registers is called with the four of
           // them, and gives back what its comment's C works out from them (#1710)
           if (twin.registers && !wrap) {
-            calls.push({ ...twin, params: [0, 1, 2, 3].map(() => ({ bits: 32, signed: false, pointer: true })), returns: { bits: 32, signed: false }, call: `${CALL}${n}_${twin.name}` });
+            calls.push({ ...twin, params: Array.from({ length: twin.registers.takes }, () => ({ bits: 32, signed: false, pointer: true })), returns: twin.registers.gives === null ? null : { bits: 32, signed: false }, call: `${CALL}${n}_${twin.name}` });
             continue;
           }
           const signature = signatureFor(text, twin.name);
@@ -512,7 +519,10 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
           // each named for its file too, as two files can each have a function of their own with one name
           for (const { name: twin, params, returns, call, registers } of calls) {
             if (registers && !wrap) {
-              lines.push(`unsigned ${call}(unsigned r0, unsigned r1, unsigned r2, unsigned r3) { (void)r0; (void)r1; (void)r2; (void)r3; return (unsigned)(${registers.expression}); }`);
+              // the registers it takes, r0 to r3 or more, and what its C gives back, or nothing (#1728)
+              const names = Array.from({ length: registers.takes }, (_, i) => `r${i}`);
+              const body = registers.gives === null ? `${registers.expression}; return 0;` : `return (unsigned)(${registers.expression});`;
+              lines.push(`unsigned ${call}(${names.map(r => `unsigned ${r}`).join(', ')}) { ${names.map(r => `(void)${r};`).join(' ')} ${body} }`);
               continue;
             }
             if (wrap) {
@@ -884,7 +894,8 @@ export async function compareCalls({ original, twins, start, functions, options,
       // as the witness was, with the one value changed
     } else if (from?.own) {
       const one = args.length ? choose.below(args.length) : 0, fresh = args[one];
-      args = f.params.map((_, i) => from.arg(i) >>> 0);
+      // a hand-written routine's registers above r3 as play had them, and not words of its stack (#1728)
+      args = f.params.map((_, i) => (f.registers && i >= 4 ? from.register(i) : from.arg(i)) >>> 0);
       if (!asPlayed && args.length && !choose.below(4)) args[one] = fresh;
     } else if (f.good.length && args.length && choose.below(10) < 3) {
       const one = choose.below(args.length), fresh = args[one];
@@ -921,7 +932,7 @@ export async function compareCalls({ original, twins, start, functions, options,
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
-    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0 });
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0, takes: f.registers?.takes ?? 4 });
     if (theirs.hardware) f.status = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
