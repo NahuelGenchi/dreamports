@@ -4,6 +4,7 @@
 // every function, and can't be done in the middle of a sum. It's in .dreamports/ps2/programs/, by the copy's SHA-1,
 // and never in the repository.
 
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
@@ -39,3 +40,18 @@ export function programReader(elf) {
 export function keptProgram(sha1) {
   return existsSync(fileOf(sha1)) ? programReader(readFileSync(fileOf(sha1))) : null;
 }
+
+// a function outside that program, by its code map's key: a module's or a vector unit's, kept by itself
+const pieceOf = (sha1, key) => join(FOLDER, sha1, `${createHash('sha1').update(key).digest('hex').slice(0, 16)}.bin`);
+
+/** Keeps the bytes of the function whose key is `key`, of the copy whose SHA-1 is `sha1`, as the disc has them: a
+ *  function of another program than the one it boots, or a vector unit's program, which the tool that checked it read. */
+export function keepPiece(sha1, key, bytes) {
+  const file = pieceOf(sha1, key);
+  if (existsSync(file) && readFileSync(file).equals(bytes)) return;
+  mkdirSync(join(FOLDER, sha1), { recursive: true });
+  writeFileSync(file, bytes);
+}
+
+/** The bytes kept of the function whose key is `key`, or null when no tool has read it on this computer yet. */
+export const keptPiece = (sha1, key) => (existsSync(pieceOf(sha1, key)) ? readFileSync(pieceOf(sha1, key)) : null);

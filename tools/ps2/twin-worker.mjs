@@ -8,14 +8,16 @@
 //   { types: name, count }
 //                       asks the module's function of that name for the compiler's word on `count` types of a twin,
 //                       its arguments' and then what it gives back (twin.mjs, wrapOf). Answers { types }.
-//   { call: name, args, changes, chunks, skip }
+//   { call: name, args, changes, chunks, skip, unit }
 //                       puts the image back with `changes`, each [address, bytes, value], calls the function with
 //                       `args`, each as 64 bits, and compares what it left with the image the original left, the image with `changes`
 //                       and the original's `chunks` laid over it, but in the `skip` stretches of the image, each
 //                       [from, to]. Answers { gave, differs }, what it gave back and the first place that differs,
 //                       { at, ours, theirs } or null, or { stopped: why } when it stopped: on its own, because it
 //                       called something nothing built is the twin of ('unbuilt', with which as `unbuilt`), or because
-//                       it called through a pointer a function of another kind ('mismatch').
+//                       it called through a pointer a function of another kind ('mismatch'). With `unit`,
+//                       { number, words }, the vector unit's registers are those words as the call starts, as the
+//                       kit's vu_registers takes them, and it answers what the call left them as too, `unit`.
 //
 // Besides the image there's a stretch where the table sends every address the console has nothing at, `nowhere`, which
 // a twin must leave as it was given, empty, as the original would have stopped had it gone there. The module marks each
@@ -121,6 +123,14 @@ parentPort.on('message', message => {
   }
   for (const chunk of message.chunks) laid.push([chunk.at, chunk.at + chunk.bytes.length, chunk.bytes]);
   touched = laid.map(([from, to]) => [from, to]);
+  // a vector unit's registers, as the kit keeps them for a twin
+  const registersAt = set => exports.vu_registers(message.unit.number, set) >>> 0;
+  if (message.unit && exports.vu_registers) {
+    const at = registersAt(0);
+    views();
+    message.unit.words.forEach((word, n) => view.setUint32(at + n * 4, word, true));
+    registersAt(1);
+  }
   let gave;
   try {
     gave = BigInt.asUintN(64, exports[message.call](...message.args.map(value => BigInt.asUintN(64, BigInt(value)))));
@@ -151,6 +161,12 @@ parentPort.on('message', message => {
     }
     differs = firstDifference(memory.subarray(from, to), theirs, from);
   }
-  parentPort.postMessage({ gave, differs });
+  let unit = null;
+  if (message.unit && exports.vu_registers) {
+    const at = registersAt(0);
+    views();
+    unit = Array.from(message.unit.words, (_, n) => view.getUint32(at + n * 4, true));
+  }
+  parentPort.postMessage({ gave, differs, unit });
 });
 parentPort.postMessage({ ready: true });
