@@ -4,7 +4,9 @@
 // made-up cartridge of the function check's test (made-up-snes.mjs), so no game's copy is needed, in a game folder of
 // its own that it removes after: `rom` knows the copy, `codemap` follows its code from its vectors, and then from
 // where play sent the processor, which finds the function only a pointer made as it runs leads to, in the mode it ran
-// in. And the emulator plays the same, picture and sound, whether it tells of its instructions or not.
+// in, and `read` prints it. And the emulator plays the same, picture and sound, whether it tells of its instructions
+// or not. A second made-up cartridge gives the sound processor a program, as games do, and `read --spc` prints it
+// from the sound processor's memory, as Snes9x says it holds it.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,7 +17,7 @@ import { readCodeMap } from '../lib/proof-files.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { modeFromBits } from '../snes/65816.mjs';
-import { madeUpCartridge } from './made-up-snes.mjs';
+import { madeUpCartridge, madeUpSoundCartridge, SOUND_AT, SOUND_PROGRAM } from './made-up-snes.mjs';
 
 const GAME = 'test-real-snes';
 const WORK = join(LOCAL, 'test-real-snes');
@@ -33,7 +35,7 @@ const dp = (...args) => {
 const lastLine = ({ out }) => out.trim().split('\n').at(-1);
 const untouched = () => spawnSync('git', ['status', '--porcelain'], { cwd: REPO, encoding: 'utf8' }).stdout;
 const tidy = () => {
-  for (const path of [gameFolder(GAME), WORK, join(LOCAL, 'results', GAME)]) rmSync(path, { recursive: true, force: true });
+  for (const path of [gameFolder(GAME), WORK, join(LOCAL, 'results', GAME), join(LOCAL, 'read', GAME)]) rmSync(path, { recursive: true, force: true });
 };
 
 const dirtyBefore = untouched();
@@ -78,6 +80,19 @@ try {
   check(run.status === 0 && hidden?.mode === 'a8i8' && hidden.size === 6 && /Found by playing: 1 function/.test(run.out),
     `with a recording, it follows the code from where play went, and finds hidden, with A, X and Y of 8 bits: ${run.out.split('\n').find(line => line.startsWith('Found by playing'))}`);
   check(readFileSync(join(proofFolder(GAME), 'code-map.json'), 'utf8').includes(`"${at('hidden').toString(16).toUpperCase().padStart(8, '0')}": "a8i8"`), 'the code map keeps the mode hidden starts in');
+
+  console.log('What read prints');
+  run = dp('read', GAME, 'sub_00810E');
+  check(run.status === 0 && run.out.includes('$00:810E  A9 12       LDA #$12') && run.out.includes('as the code map says'), 'read prints hidden\'s instructions at the lengths its mode, from play, gives them');
+  const sound = madeUpSoundCartridge(), soundCopy = join(WORK, 'sound.sfc');
+  writeFileSync(soundCopy, sound.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'DREAMPORTS SOUND', sha1: createHash('sha1').update(sound.rom).digest('hex') }, null, 2)}\n`);
+  dp('rom', soundCopy);
+  run = dp('codemap', GAME);
+  run = dp('read', GAME, SOUND_AT.toString(16).padStart(4, '0'), '--spc', '--frame', '30', '--bytes', String(SOUND_PROGRAM.length));
+  const spc = ['MOV A,#$12', 'MOV $F4,A', 'MOV X,#$34', 'CALL $040B', 'BRA $0409', 'INC A', 'RET'];
+  check(run.status === 0 && spc.every(line => run.out.includes(line)) && run.out.includes('$0400  E8 12     MOV A,#$12'),
+    `read --spc prints the program the second cartridge gave the sound processor, through the console's start-up protocol, where it runs: ${lastLine(run).slice(0, 80)}`);
 } finally {
   tidy();
   if (keptCopies) writeFileSync(COPIES, keptCopies);

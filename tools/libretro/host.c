@@ -786,8 +786,12 @@ int main(int argc, char** argv) {
 		fprintf(err, "The core keeps no sound lists, which this game's sound is proven by.\n");
 		return 2;
 	}
-	heldOpen(dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_memory_card"));
-	if (startsOpen(dlsym(library, "dreamports_registers"), dlsym(library, "dreamports_memory"), dlsym(library, "dreamports_starts_layout"))) {
+	// where the core keeps the console's memories: Play!'s name, or a name that starts as libretro's own, as Snes9x lets
+	// out only those (snes9x.patch)
+	const uint8_t* (*memories)(uint32_t, uint32_t, uint32_t) = dlsym(library, "dreamports_memory");
+	if (!memories) memories = dlsym(library, "retro_dreamports_memory");
+	heldOpen(memories, dlsym(library, "dreamports_memory_card"));
+	if (startsOpen(dlsym(library, "dreamports_registers"), memories, dlsym(library, "dreamports_starts_layout"))) {
 		// a core that tells of each instruction it's about to run, as the PlayStation's does with the tools' patch
 		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
 		if (watchPc) watchPc(startsReached);
