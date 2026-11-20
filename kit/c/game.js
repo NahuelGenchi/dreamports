@@ -145,7 +145,7 @@ export async function loadGame(url, bytes, { console: id, save = null, query, di
   const { game } = await openGame(url, bytes, { save, disc, ...(query === undefined ? {} : { query }) });
   const sound = createSound(game, machine.sound, machine.frame[0] / machine.frame[1]);
   const sectors = disc && discOf(game, disc);
-  // the console's memory, on a console whose kit says where a game keeps it, for the proof tools (kit/ps2/c/memory.c):
+  // the console's memory, on a console whose kit says where a game keeps it, for the proof tools (kit/ps2/c/ps2.c):
   // the bytes there now, or null where the game keeps none of them
   if (globalThis.dreamportsProof && game.dp_console_memory) {
     dreamportsProof.memory = (address, bytes, memory = 0) => {

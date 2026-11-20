@@ -16,7 +16,6 @@ Like the rest of the kits it's under [GPL-3.0-or-later](../LICENSE), and nothing
 | `gs-kit.h` | What the GS's files share |
 | `gif.c` | The GIF: packets, as a game or a vector unit program builds them, turned into the GS's register writes |
 | `ee.c` | The EE's float sums, each cut towards zero, with its division and square root |
-| `memory.c` | Where a game keeps each stretch of the console's memory, the EE's, the IOP's or the sound chip's, which it says with `ps2_console_memory`, for `prove` to compare with the original's after every frame ([the same-memory build](../../../tools/README.md#the-same-memory-build)) |
 | `vu.c` | The vector units' sums, four floats at a time, on the fields an instruction names |
 | `iop.c` | The IOP's memory and its hardware as a module's loads and stores reach it, the sound chip's DMA channels, and the console's time, which says when the sound chip mixes |
 | `spu2.c` | The SPU2, both cores as the console's emulator mixes them, and each frame's sound list |

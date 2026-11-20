@@ -84,6 +84,29 @@ EXPORT("dp_sound_heard_count") uint32_t dp_sound_heard_count(void) {
   spu2_heard(&pairs);
   return pairs;
 }
+// The console's memory, for the proof tools to compare with the original's after every frame (tools/lib/memory.mjs): a
+// game that keeps its memory where the console keeps it, as one whose every function is a twin does, says where each
+// stretch of it is, and the page reads them back by the console's own addresses (kit/c/game.js). The kit keeps none of
+// it for a game that says nothing.
+#define MEMORIES 32
+static struct { uint32_t memory, address, size; uint8_t *at; } memories[MEMORIES];
+static int memory_count;
+void ps2_console_memory(uint32_t memory, uint32_t address, uint32_t size, void *at) {
+  if (memory_count == MEMORIES) return;
+  memories[memory_count].memory = memory;
+  memories[memory_count].address = address;
+  memories[memory_count].size = size;
+  memories[memory_count].at = at;
+  memory_count++;
+}
+/** Where `bytes` from `address` of one of the console's memories are, or 0 when the game keeps none of them there. */
+EXPORT("dp_console_memory") uint8_t *dp_console_memory(uint32_t memory, uint32_t address, uint32_t bytes) {
+  for (int i = 0; i < memory_count; i++) {
+    if (memories[i].memory == memory && address >= memories[i].address && (uint64_t) address + bytes <= (uint64_t) memories[i].address + memories[i].size) return memories[i].at + (address - memories[i].address);
+  }
+  return 0;
+}
+
 /** The draw list of the last frame run: its hash, and how many things were written. */
 EXPORT("dp_draw_list") uint32_t dp_draw_list(void) { return frame_hash; }
 EXPORT("dp_draw_list_count") uint32_t dp_draw_list_count(void) { return frame_count; }
