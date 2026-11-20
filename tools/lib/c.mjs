@@ -45,6 +45,8 @@ const OWN = {
     // that reads a value through a pointer of another type or through address 0; and, as twins keep every value where
     // the console does, the colours, the video memory and the sprites' list at the console's addresses (gba.h)
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-DGBA_CONSOLE_ADDRESSES'],
+    // and in the function check, a game's own table of twins leaves an address with no twin to the check (twinsHeader)
+    checkFlags: ['-DDP_TWIN_CHECK'],
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
@@ -122,7 +124,7 @@ export function cKit(id) {
   const disc = CONSOLES[id].disc ? [base('disc.c')] : [];
   if (own && !own.header) {
     const sources = [base('kit.c'), base('pause.c'), base('libc.c'), ...disc, ...own.sources.map(name => join(own.folder, name))];
-    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [] };
+    return { id, own: true, folders: [C_BASE, own.folder, ...(own.includes ?? []).map(name => join(own.folder, name))], trees: (own.trees ?? []).map(name => join(own.folder, name)), sources, native: [...sources.filter(f => !f.endsWith('libc.c')), join(own.folder, 'native.c')], twinFlags: own.twinFlags ?? [], checkFlags: own.checkFlags ?? [] };
   }
   // console.h, written where the tools keep what they make, once it says something new
   const made = join(LOCAL, 'c', id);
@@ -507,6 +509,13 @@ void *kit_twin(uint32_t address);
       if (((const volatile uint8_t *)(uintptr_t)at)[i] != ((const volatile uint8_t *)(uintptr_t)from)[i]) return 0; \\
     return 1; \\
   }
+#ifdef DP_TWIN_CHECK
+/** In the function check, an address with no twin is the check's to name, as one a twin can't follow (gba/twin.mjs). */
+void *__twin_no_code(uint32_t address);
+#define TWIN_NONE(address) return __twin_no_code(address);
+#else
+#define TWIN_NONE(address) __builtin_trap();
+#endif
 /** Defines kit_twin: write it once, in a file that declares every twin. A small number is a function of the module's
  *  own, as C keeps its pointers. An address with no twin, where the game copied one of the cartridge's functions, is
  *  that function's twin, as the console runs the copy as it would the original. */
@@ -517,7 +526,7 @@ void *kit_twin(uint32_t address);
     switch (address) { TWINS(TWIN_CASE) } \\
     TWIN_CODE(TWIN_COPY) \\
     if (address < 0x02000000u) return (void *)(uintptr_t)address; \\
-    __builtin_trap(); \\
+    TWIN_NONE(address) \\
   }
 #define TWIN_CASE(name) case ADDRESS_##name: return (void *)name;
 #define TWIN_COPY(name, from, size) if (kit_twin_copy_of(address & ~1u, from, size)) return (void *)name;
