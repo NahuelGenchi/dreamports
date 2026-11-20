@@ -37,6 +37,13 @@ void gs_image(const void *data, uint32_t length);
 void gs_read_image(void *data, uint32_t length);
 /** Writes half of a privileged register: the 32 bits at `address`, the low half at the register's own or the high 4 on. */
 void gs_screen(uint32_t address, uint32_t value);
+/** Reads half of a privileged register the console lets the EE read: CSR, IMR or SIGLBLID, the low half at the
+ *  register's own address or the high 4 on. CSR has SIGNAL, FINISH, HSINT and VSINT as the GS left them, FIELD and its
+ *  revision. */
+uint32_t gs_screen_read(uint32_t address);
+/** The function the GS's interrupt calls, as a game's handler for INTC_GS does on the console, or NULL for none: once
+ *  SIGNAL or FINISH is written, or a V-blank starts, each with its bit set in CSR and not masked in IMR. */
+void gs_on_interrupt(void (*handler)(void));
 /** Paints the page's picture with what the screen shows of the framebuffer, at the console's size. For game_draw. */
 void gs_show(void);
 
@@ -60,6 +67,13 @@ float ee_from_int(int32_t value);
 float ee_div(float a, float b);
 /** The square root of a float taken without its sign, cut the same way. */
 float ee_sqrt(float value);
+
+// The console's memory, for a game that keeps it where the console does, for the proof tools to compare after every
+// frame (ps2.c): `memory` is PS2_EE, PS2_IOP or PS2_SPU2, `address` where the stretch starts in that memory, as the
+// console's own addresses go (main memory from 0, the scratchpad at 0x70000000, vector unit 1's data at 0x1100C000),
+// `size` its bytes, and `at` where the game keeps them.
+enum { PS2_EE, PS2_IOP, PS2_SPU2 };
+void ps2_console_memory(uint32_t memory, uint32_t address, uint32_t size, void *at);
 
 // The vector units' sums, for a program on one written again in C. A vector is four floats, x, y, z and w, or the same
 // bits as whole numbers. `dest` names the fields an instruction writes, as its bits do: VU_X | VU_Y, VU_XYZW.
