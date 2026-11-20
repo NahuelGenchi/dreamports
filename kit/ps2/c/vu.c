@@ -263,10 +263,15 @@ static uint32_t efu(const struct unit *u, uint32_t op, uint32_t index, uint64_t 
   return u->p;
 }
 
+// told of each packet as it's sent, the unit's data memory and where in it the packet starts: nothing in a game, and
+// the function check's own in its build of a twin, which compares what a program in C sends with its original's
+__attribute__((weak)) void vu_kicked(const uint8_t *memory, uint32_t size, uint32_t at) { (void)memory, (void)size, (void)at; }
+
 static void kick(struct unit *u) {
   if (!u->kick_pending) return;
   u->kick_pending = 0;
   uint32_t at = (u->kick_at & 0x3FF) * 16, size = u->data_size;
+  vu_kicked(u->data, size, at);
   at += gif_path_packet(1, u->data, size, at, size);
   // a packet that runs past the end of the memory goes on from its start
   if (at == size && gif_active_path() == 1) gif_path_packet(1, u->data, size, 0, size);
@@ -539,9 +544,21 @@ static int step(struct unit *u, int number) {
   return pair(u, number, lower_op, upper_op);
 }
 
+static vu_c_program program_at(int number, uint32_t address);
+
 void vu_start(int number, uint32_t address) {
   struct unit *u = &units[number];
   u->pc = address & (u->code_size - 1);
+  // a program the game wrote again in C runs in place of the unit's own, and says where it stopped
+  vu_c_program in_c = program_at(number, u->pc);
+  if (in_c) {
+    land(u, UINT64_MAX);
+    u->running = 1;
+    u->stopped_at = in_c() & (u->code_size - 1);
+    u->pc = u->stopped_at;
+    u->running = 0;
+    return;
+  }
   u->running = 1, u->branching = 0;
   for (int k = 0; k < 4; k++) u->changes[k] = (struct changed){ 0, 0, 0, 1 };
   int ending = 0;
@@ -658,10 +675,131 @@ void vu_itof(vu_vector *ft, const vu_vector *fs, int bits, int dest) {
   EACH(dest) ft->f[i] = bits ? plain(OP_MUL, 0, of_bits(fpu_from_int(fs->i[i])), of_bits((uint32_t)(127 - bits) << 23)) : of_bits(fpu_from_int(fs->i[i]));
 }
 
+// ---- A unit's program written again in C, which the kit runs in place of the unit's own ----
+// The C works on the unit's own registers and memory, an instruction a line, and each sum sets the unit's flags as
+// its instruction does. A program in C has no pipeline: what a line does is there for the next, as everything a
+// unit's program did is there once it has ended, which is all a program in C has to leave the same.
+
+vu_vector *vu_vf(int number, int reg) {
+  struct unit *u = &units[number & 1];
+  // VF0 reads as its constant, whatever was last written there
+  u->vf[0] = (vu_vector){ .u = { 0, 0, 0, 0x3F800000 } };
+  return &u->vf[reg & 31];
+}
+vu_vector *vu_acc(int number) { return &units[number & 1].acc; }
+uint32_t vu_vi(int number, int reg) { return vi(&units[number & 1], reg); }
+void vu_set_vi(int number, int reg, uint32_t value) { set_vi(&units[number & 1], reg, value); }
+uint32_t *vu_q(int number) { return &units[number & 1].q; }
+uint32_t *vu_p(int number) { return &units[number & 1].p; }
+uint32_t *vu_i(int number) { return &units[number & 1].i; }
+uint32_t *vu_r(int number) { return &units[number & 1].r; }
+uint32_t vu_status(int number) { return units[number & 1].status; }
+uint32_t vu_mac(int number) { return units[number & 1].mac; }
+uint32_t vu_clip_flags(int number) { return units[number & 1].clip; }
+
+// a sum's flags, there at once: the MAC flag, and the status flag's four with their sticky bits
+static void flags_now(struct unit *u, uint32_t mac) {
+  uint32_t zsuo = (mac & 0x000F ? ST_Z : 0) | (mac & 0x00F0 ? ST_S : 0) | (mac & 0x0F00 ? ST_U : 0) | (mac & 0xF000 ? ST_O : 0);
+  u->mac = mac;
+  u->status = (u->status & 0xFF0) | zsuo | zsuo << 6;
+}
+// a result written to a register of the unit's, or to its accumulator: VF0 keeps its constant
+static void write_now(struct unit *u, vu_vector *fd, const vu_vector *result, int dest) {
+  if (fd == &u->vf[0]) return;
+  EACH(dest) fd->u[i] = result->u[i];
+}
+static const int sums[5] = { OP_ADD, OP_SUB, OP_MUL, OP_MADD, OP_MSUB };
+
+void vu_sum(int number, int op, vu_vector *fd, const vu_vector *fs, const vu_vector *ft, int dest) {
+  struct unit *u = &units[number & 1];
+  uint32_t mac = 0;
+  vu_vector result = { .u = { 0, 0, 0, 0 } };
+  EACH(dest) {
+    uint32_t flags = 0;
+    result.u[i] = sum(sums[op % 5], u->acc.u[i], fs->u[i], ft->u[i], &flags);
+    mac |= lane_flags(result.u[i], flags, i);
+  }
+  flags_now(u, mac);
+  write_now(u, fd, &result, dest);
+}
+
+void vu_sum_with(int number, int op, vu_vector *fd, const vu_vector *fs, uint32_t with, int dest) {
+  vu_vector all = { .u = { with, with, with, with } };
+  vu_sum(number, op, fd, fs, &all, dest);
+}
+
+void vu_outer(int number, vu_vector *fd, const vu_vector *fs, const vu_vector *ft) {
+  struct unit *u = &units[number & 1];
+  // OPMULA to the accumulator, and OPMSUB from it to a register: x, y and z, the w field's flags clear
+  int to_acc = fd == &u->acc;
+  uint32_t mac = 0;
+  vu_vector result = u->acc;
+  for (int f = 0; f < 3; f++) {
+    uint32_t flags = 0, a = fs->u[(f + 1) % 3], b = ft->u[(f + 2) % 3];
+    result.u[f] = to_acc ? fpu_mul(a, b, &flags) : sum(OP_MSUB, u->acc.u[f], a, b, &flags);
+    mac |= lane_flags(result.u[f], flags, f);
+  }
+  flags_now(u, mac);
+  write_now(u, fd, &result, VU_XYZ);
+}
+
+void vu_clip(int number, const vu_vector *fs, const vu_vector *ft) {
+  struct unit *u = &units[number & 1];
+  u->clip_issued = ((u->clip_issued << 6) | fpu_clip(fs->u[X], fs->u[Y], fs->u[Z], ft->u[W])) & 0xFFFFFF;
+  u->clip = u->clip_issued;
+}
+
+// Q, and the status flag's D and I with their sticky bits
+static void divided(struct unit *u, uint32_t value, uint32_t flags) {
+  uint32_t set = (flags & FLAG_D ? ST_D : 0) | (flags & FLAG_I ? ST_I : 0);
+  u->q = value;
+  u->status = (u->status & ~(uint32_t)(ST_I | ST_D)) | set | set << 6;
+}
+void vu_div(int number, uint32_t a, uint32_t b) {
+  uint32_t flags = 0, value = fpu_div(a, b, &flags);
+  divided(&units[number & 1], value, flags);
+}
+void vu_sqrt(int number, uint32_t b) {
+  uint32_t flags = 0, value = fpu_sqrt(b, &flags);
+  divided(&units[number & 1], value, flags);
+}
+void vu_rsqrt(int number, uint32_t a, uint32_t b) {
+  uint32_t flags = 0, value = fpu_rsqrt(a, b, &flags);
+  divided(&units[number & 1], value, flags);
+}
+
+void vu1_kick(uint32_t at) {
+  struct unit *u = &units[1];
+  u->kick_at = at / 16, u->kick_pending = 1;
+  kick(u);
+}
+uint32_t vu1_xtop(void) { return vif1_top() & 0x3FF; }
+uint32_t vu_xitop(int number) { return vif_itop(number & 1) & (number & 1 ? 0x3FF : 0xFF); }
+
+// the programs in C a game gave for places in a unit's code memory
+#define PROGRAMS 64
+struct in_c { uint32_t address; vu_c_program program; };
+static struct in_c programs[2][PROGRAMS];
+static int program_count[2];
+void vu_program(int number, uint32_t address, vu_c_program program) {
+  number &= 1, address &= units[number].code_size - 1;
+  for (int k = 0; k < program_count[number]; k++) {
+    if (programs[number][k].address == address) {
+      programs[number][k].program = program;
+      return;
+    }
+  }
+  if (program_count[number] < PROGRAMS) programs[number][program_count[number]++] = (struct in_c){ address, program };
+}
+static vu_c_program program_at(int number, uint32_t address) {
+  for (int k = 0; k < program_count[number]; k++) if (programs[number][k].address == address && programs[number][k].program) return programs[number][k].program;
+  return 0;
+}
+
 // ---- For the function check: a unit's registers, given and read whole ----
 // The words are in the order the check's own side has them (tools/ps2/original.mjs, VU_REGISTERS): VF0 to VF31, four
 // words each, the accumulator, VI0 to VI15, a word each, Q, I, P and R, the status, MAC and clip flags, a word the
-// kit has nothing for, and TOP and ITOP, which are the VIF's and stay as they are here.
+// kit has nothing for, and TOP and ITOP, which are the VIF's.
 uint32_t *vu_registers(int number, int set) {
   static uint32_t words[158];
   struct unit *u = &units[number & 1];
@@ -676,6 +814,7 @@ uint32_t *vu_registers(int number, int set) {
     u->status = words[152];
     u->mac = words[153];
     u->clip = u->clip_issued = words[154];
+    vif_tops(number & 1, words[156], words[157]);
   } else {
     for (int r = 0; r < 32; r++) for (int f = 0; f < 4; f++) words[r * 4 + f] = vf(u, r, f);
     for (int f = 0; f < 4; f++) words[128 + f] = u->acc.u[f];
@@ -688,6 +827,8 @@ uint32_t *vu_registers(int number, int set) {
     words[153] = u->mac;
     words[154] = u->clip;
     words[155] = 0;
+    words[156] = number & 1 ? vif1_top() : 0;
+    words[157] = vif_itop(number & 1);
   }
   return words;
 }
