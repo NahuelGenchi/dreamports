@@ -86,11 +86,13 @@ export async function builtLibrary(library, compiler) {
 
 /**
  * Where the program `exe`, a PS-X EXE, has a library's functions, of those in `files`, a variant's: { functions, values,
- * missing, problems }, `functions` and `values` Maps of each name to its address, as a version's libraries.json gives
- * them, `missing` each function not found, { name, why }, and `problems` where two of them say two places for one name.
- * `built` is what builtLibrary made of it, or null without a compiler, and `codeMap` the game's. A function is taken
- * only where one function of the code map has the library's size and its instructions, or its hash, and where every
- * address its places give agrees with the others.
+ * missing, problems, unmatched }, `functions` and `values` Maps of each name to its address, as a version's
+ * libraries.json gives them, `missing` each function not found, { name, why }, `problems` where two of them say two
+ * places for one name, and `unmatched` the functions placed by another's call or their file's order alone, whose
+ * instructions aren't the library's as its compiler builds them: `match` then says what differs. `built` is what builtLibrary made of it, or
+ * null without a compiler, and `codeMap` the game's. A function is taken where one function of the code map has the
+ * library's size and its instructions, or its hash, where a call of one taken says, or where its file's order puts it,
+ * and every address its places give agrees with the others.
  */
 export function findLibrary({ library, files, built, exe, codeMap }) {
   const { load, text } = exeOf(exe), gp = gpOf(exe);
@@ -123,28 +125,38 @@ export function findLibrary({ library, files, built, exe, codeMap }) {
     else candidates.set(f.name, { twin: f.hash ? null : twin, at: found.map(each => each.address) });
   }
 
-  // first every function with one place it can be, then those another one's calls name
+  // first every function with one place it can be, then those another one's calls name, then those its file's order
+  // puts, until nothing more is found
   const functions = new Map(), values = new Map(), problems = [];
+  const names = new Set(wanted.map(f => f.name)), sizedAt = new Map(starts.map(each => [each.address, each.size]));
+  let changed = false;
   const give = (name, address, from) => {
-    const map = candidates.has(name) ? functions : values, had = map.get(name);
-    if (had === undefined) map.set(name, address >>> 0);
-    else if (had !== address >>> 0) problems.push(`${name} is at 0x${had.toString(16).toUpperCase()} by one function and 0x${(address >>> 0).toString(16).toUpperCase()} by ${from}`);
+    const map = names.has(name) ? functions : values, had = map.get(name);
+    if (had === undefined) {
+      map.set(name, address >>> 0);
+      changed ||= map === functions;
+    } else if (had !== address >>> 0) problems.push(`${name} is at 0x${had.toString(16).toUpperCase()} by one function and 0x${(address >>> 0).toString(16).toUpperCase()} by ${from}`);
   };
   for (const [name, { at }] of candidates) if (at.length === 1) functions.set(name, at[0]);
-  for (let more = true; more;) {
-    more = false;
-    for (const [name, { twin }] of candidates) {
+  do {
+    changed = false;
+    // what each function placed calls and reads, as the copy's bits there say: every place of one found by its
+    // instructions, and of one placed otherwise, only where the copy's instruction is the twin's but for its address
+    for (const f of wanted) {
+      const twin = f.hash ? null : built?.functions.get(`${f.file}\n${f.name}`), name = f.name;
       if (!functions.has(name) || !twin) continue;
-      const address = functions.get(name), halves = new Map();
+      const address = functions.get(name), halves = new Map(), found = candidates.has(name);
       for (const place of twin.places) {
-        if (place.own) continue;
+        if (place.own || place.at + 4 > f.size) continue;
         const where = address + place.at, word = wordAt(where), low = ((word & 0xFFFF) ^ 0x8000) - 0x8000, key = `${place.name}+${place.addend}`;
+        const mask = KEPT[place.kind] ?? 0;
+        if (!found && ((twin.bytes.readUInt32LE(place.at) & mask) >>> 0) !== ((word & mask) >>> 0)) continue;
         if (place.kind === 'jump26') {
           const target = ((((where + 4) & 0xF0000000) | ((word & 0x3FFFFFF) << 2)) - place.addend) >>> 0;
           const named = candidates.get(place.name);
           if (named && !functions.has(place.name) && named.at.includes(target)) {
             functions.set(place.name, target);
-            more = true;
+            changed = true;
           } else give(place.name, target, name);
         } else if (place.kind === 'hi16') halves.set(key, (word & 0xFFFF) << 16);
         else if (place.kind === 'lo16' && halves.has(key)) give(place.name, halves.get(key) + low - place.addend, name);
@@ -152,11 +164,28 @@ export function findLibrary({ library, files, built, exe, codeMap }) {
         else if (place.kind === 'word32') give(place.name, word - place.addend, name);
       }
     }
-  }
+    // a library's file is linked whole, its functions one after another in the order library.json lists them, so one
+    // nothing else places sits where the one before it in its file ends, or where the one after it starts, when the
+    // code map has a function of its size there and, for one found by its instructions, it's one of those places
+    for (const file of files) {
+      const own = wanted.filter(f => f.file === file);
+      own.forEach((f, i) => {
+        if (functions.has(f.name)) return;
+        const before = own[i - 1], after = own[i + 1];
+        const at = before && functions.has(before.name) ? functions.get(before.name) + before.size : after && functions.has(after.name) ? functions.get(after.name) - f.size : null;
+        if (at === null || sizedAt.get(at) !== f.size || (candidates.has(f.name) && !candidates.get(f.name).at.includes(at))) return;
+        functions.set(f.name, at);
+        changed = true;
+      });
+    }
+  } while (changed);
+  const left = missing.filter(each => !functions.has(each.name));
   for (const [name, { at }] of candidates) {
-    if (!functions.has(name)) missing.push({ name, why: `${at.length} functions of the code map are the same, and nothing says which` });
+    if (!functions.has(name)) left.push({ name, why: `${at.length} functions of the code map are the same, and nothing says which` });
   }
-  return { functions, values, missing, problems };
+  // those whose instructions aren't the library's as built, placed by another's call or their file's order alone
+  const unmatched = new Set([...functions.keys()].filter(name => !candidates.has(name)));
+  return { functions, values, missing: left, problems, unmatched };
 }
 
 /** What builds a library on the PlayStation: its compiler from its library.json, checked, or null for none. */
