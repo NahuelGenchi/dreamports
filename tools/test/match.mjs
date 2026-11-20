@@ -12,7 +12,7 @@ import { LOCAL } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { assemble } from '../gba/thumb.mjs';
-import { addressFinder, matchFile, runIn } from '../gba/match.mjs';
+import { addressFinder, matchFile, runIn, throughOf } from '../gba/match.mjs';
 
 const HERE = fileURLToPath(new URL('./match/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'match-test');
@@ -132,6 +132,11 @@ check(named.StepFor?.same === true && named.StepFor.run?.length === 2 && named.S
 writeFileSync(join(changed, 'program.c'), source.replace(stepFor, `$10x08000400 to 0x08000410$2`));
 const gap = byName(await matching(join(changed, 'program.c'), twoOf));
 check(gap.StepFor?.run === null && gap.StepFor.mapped === false, 'and a run that isn\'t one of the code map\'s is compared with nothing');
+// a shared library's twin names no address, so it names its run by its length, dp:run, which match takes (#1727)
+writeFileSync(join(changed, 'program.c'), source.replace(stepFor, `$1dp:run ${whole}$2`));
+const library = { ...twoOf, given: new Map(Object.entries(FUNCTIONS)), runEnd: (address, bytes) => throughOf({ address, runBytes: bytes }, halves) };
+const byLength = byName(await matching(join(changed, 'program.c'), library));
+check(byLength.StepFor?.same === true && byLength.StepFor.run?.length === 2 && byLength.StepFor.bytes === whole, `a shared library's twin that names its run by its length, dp:run ${whole}, is the same as both together`);
 
 // C the compiler won't take
 writeFileSync(join(changed, 'program.c'), `${source}\nvoid Broken(void) { return 1 +; }\n`);

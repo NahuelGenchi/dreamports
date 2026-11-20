@@ -55,7 +55,7 @@ import { readCopy } from './gba/header.mjs';
 import { READER, withBuildTools } from './gba/build.mjs';
 import { ensureOriginal } from './gba/original.mjs';
 import { buildCompilers, isCompilerBuilt } from './gba/agbcc.mjs';
-import { addressFinder, compilerAt, matchFile, readCompiler, runIn } from './gba/match.mjs';
+import { addressFinder, compilerAt, matchFile, readCompiler, runIn, throughOf } from './gba/match.mjs';
 import { readAddresses, versionTwins } from './lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText, originalMarks, stateOf } from './lib/proofs.mjs';
 import { rebuildOf } from './lib/rebuild.mjs';
@@ -196,6 +196,8 @@ export async function run(args) {
       work: join(LOCAL, 'match', game, library ? join('lib', ...library.id.split('/'), basename(file, '.c')) : inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
       sizeOf: address => sizes.get(address) ?? null,
       runOf: (address, through) => runIn(codeMap.functions, address, through),
+      // a shared library's twin names its run by its length, dp:run, as it names no address (#1727)
+      runEnd: (address, bytes) => throughOf({ address, runBytes: bytes }, codeMap.functions),
     });
     if (result.error) {
       // all of what the compiler said for the file asked for, and for one of many the line that says what's wrong
