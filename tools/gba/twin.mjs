@@ -13,7 +13,8 @@
 // What a function is given decides which of its paths run, so the check learns as it goes. The program that calls
 // the original says which values each call read from memory and which numbers it compared with or loaded, and the
 // calls after it change those values, mostly to those numbers and the ones beside them, so a `>` written as `>=`
-// meets the one value that tells them apart.
+// meets the one value that tells them apart. A call that follows a pointer the version's C says points to a struct,
+// where the memory has none, is made again with one made up, laid out as the C has it (twin-shapes.mjs).
 //
 // Every call starts from the memory the original has a few hundred frames after power-on, unless the check is given
 // memories of play (twin-memories.mjs, --memories): the console's memory as it was each time a function started in
@@ -47,9 +48,10 @@ import { build, CALLER, isBuilt, isCallerBuilt } from './build.mjs';
 import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
-import { addressFinder, runIn, throughOf, twinsIn } from './match.mjs';
+import { addressFinder, compilerAt, readCompiler, runIn, throughOf, twinsIn } from './match.mjs';
 import { addressAt, CARTRIDGE, IMAGE, inImage } from './twin-memory.mjs';
 import { hasMemories, memoriesKey, openMemories, takeMemories } from './twin-memories.mjs';
+import { shapesOf, typesOfFile } from './twin-shapes.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // the names the check adds to a module: what calls a twin, what finds the twin of an address, and what's called for an
@@ -99,6 +101,9 @@ const ORIGIN_BYTES = 4 * (2 + 2 * 6), AIM_BYTES = 16 + 2 * ORIGIN_BYTES;
 // after how many calls compared, and every how many, a function's branch ways no call took are worked out to aim
 // calls at; how many calls to keep as witnesses to each; and how many aimed calls each gets before it's left
 const AIM_AFTER = 10, AIM_EVERY = 50, WITNESSES = 8, AIM_TRIES = 48;
+// how many structs, one through another, a call is made again with, each time it leaves through a pointer to one, and
+// how many times it's made again with another for each
+const MADE_UP = 3, MADE_AGAIN = 8;
 // the fewest calls of a function a proof by the same memory is made of
 export const KEPT_FROM = 1000;
 // how often the memory goes back to how the original left it: after this many calls, or this many in a row that
@@ -774,6 +779,10 @@ export function sourceFor(held, bytes, now, steps, wanted, other, seen = []) {
   // a word the game itself kept there in a memory of play, as a pointer to one of its own things, which no number
   // near another is: a pointer compared with 0 is then used (#1709)
   for (const value of seen) if (value !== held && wanted(throughSteps(read(value), steps))) return value >>> 0;
+  // through a mask, a flag among others, as in a byte or a halfword: one bit changed
+  if (steps.some(([kind]) => kind === 5)) {
+    for (let bit = 0; bit < 32; bit++) if (wanted(throughSteps(read((held ^ 2 ** bit) >>> 0), steps))) return (held ^ 2 ** bit) >>> 0;
+  }
   // a word through numbers added and turnings round: what comes out is the value, turned round or not, and a number
   if (steps.some(([kind]) => kind !== 1 && kind !== 6)) return null;
   let sign = 1, added = 0;
@@ -837,6 +846,12 @@ const write = (image, where, bytes, value) => {
   else if (bytes === 2) image.writeUInt16LE(value & 0xFFFF, where);
   else image.writeUInt32LE(value >>> 0, where);
 };
+// a copy of an image with changes made, as [address, bytes, value]
+const withChanges = (image, changes) => {
+  const changed = Buffer.from(image);
+  for (const [address, bytes, value] of changes) if (inImage(address) >= 0) write(changed, inImage(address), bytes, value);
+  return changed;
+};
 
 /**
  * Calls each function of `functions` in the original and its twin until `calls` calls of it were compared, each
@@ -849,19 +864,25 @@ const write = (image, where, bytes, value) => {
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
  * With `stacked`, twins built with the console's stack each start it where the original's call starts (#1740).
+ * With `shapes`, as twin-shapes.mjs's shapesOf makes them from the version's types, a call that left through a
+ * pointer the C says points to a struct, where the memory has none, is made again at once with one made up there, a
+ * few times, each with another.
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null, stacked = false }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null, stacked = false, shapes = null }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0, impossible: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0, impossible: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, madeUp: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
   let since = 0, lost = 0;
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
   let owner = null, based = null, from = null, top = 0;
+  // a call to make again at once from the memory it started from, with a struct made up for the pointer it left
+  // through, the version's C saying it points to one (twin-shapes.mjs), and the same again with another struct
+  let again = null, repeat = null;
   // where the original's calls start on the stack, for twins built with the console's stack, which start there too
   let sp = stacked ? (await original.about()).stack : 0;
   const onTop = async address => {
@@ -873,7 +894,13 @@ export async function compareCalls({ original, twins, start, functions, options,
     if (!open.length) break;
     let f;
     from = null;
-    if (!memories) {
+    let retry = (again ?? repeat) && open.includes((again ?? repeat).f) ? again ?? repeat : null;
+    again = repeat = null;
+    const made = retry ? shapes.makeUp(retry.slot, { image: withChanges(retry.start, retry.base), avoid: retry.avoid, choose, code }) : null;
+    if (!made) retry = null;
+    if (retry?.tries + 1 < MADE_AGAIN) repeat = { ...retry, tries: retry.tries + 1 };
+    if (retry) f = retry.f;
+    else if (!memories) {
       if (since >= FRESH_EVERY || lost >= FRESH_AFTER) {
         mirror = Buffer.from(start);
         await original.set(mirror);
@@ -899,7 +926,9 @@ export async function compareCalls({ original, twins, start, functions, options,
     f.tried++;
     since++;
     // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
-    const aim = changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose, address => memories?.heldAt?.(address) ?? []) : null;
+    // or the call before it again, with a struct made up for it
+    const aim = retry ? { args: retry.args, changed: [...retry.base, ...made], witness: retry }
+      : changing && options.aim !== false && f.aim.branches.length && !choose.below(3) ? aimed(f, choose, address => memories?.heldAt?.(address) ?? []) : null;
     if (aim) {
       mirror = Buffer.from(aim.witness.start);
       await original.set(mirror);
@@ -909,7 +938,8 @@ export async function compareCalls({ original, twins, start, functions, options,
       based = aim.witness.based;
       from = null;
       since = FRESH_EVERY;
-      f.aimedCalls++;
+      if (retry) f.madeUp++;
+      else f.aimedCalls++;
     }
     const spare = aim ? aim.witness.spare : from?.own ? [0, 1, 2, 3].map(i => from.arg(i) >>> 0) : [];
     // what it's given: made up, or what an earlier call that could be compared was given, as it is or with one changed,
@@ -1025,6 +1055,15 @@ export async function compareCalls({ original, twins, start, functions, options,
       else {
         f.aside.left++;
         f.leftFor ??= theirs.leftFor;
+        // through a pointer the version's C says points to a struct, where the memory has none: at once again, with
+        // one made up there, the same for the original and the twin
+        const slot = shapes && changing && (retry?.depth ?? 0) < MADE_UP ? shapes.leftThrough({ reads: theirs.reads, image: expected, leftFor: theirs.leftFor }) : null;
+        if (slot) {
+          again = {
+            f, start: startedFrom, args, base: changed.filter(([address]) => address !== slot.address), slot, top, spare, based,
+            avoid: new Set(theirs.reads.map(([address]) => address & ~3)), depth: (retry?.depth ?? 0) + 1, tries: 0,
+          };
+        }
       }
       aside();
       continue;
@@ -1158,7 +1197,7 @@ export function outcome(f, { calls, seconds }) {
   if (f.result?.kind === 'gives') return { kind: 'differs', line: `the twin gives back nothing, while the original gives back what its callers use: the call at ${at(f.result.call)} reads r0 after it.` };
   if (f.result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, f.result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (f.result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, f.result)}: the original came back and the twin stopped (${f.result.why}).${hardware}` };
-  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls${f.aimedCalls ? `, ${count(f.aimedCalls)} of them aimed at a branch way no call had taken` : ''}` };
+  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls${f.aimedCalls ? `, ${count(f.aimedCalls)} of them aimed at a branch way no call had taken` : ''}${f.madeUp ? `, ${count(f.madeUp)} given a struct made up where a pointer led to none` : ''}` };
   // what kept the rest from being compared, the most common first
   const why = Object.entries({
     unbuilt: `the twin calls ${f.unbuilt}, which nothing built is the twin of`,
@@ -1258,11 +1297,13 @@ export function givesBackUsed(bytes, functions) {
  *   memories: memories of play for the calls to start from, as openMemories gives them, or none
  *   givesBack(address): the address of a call to the original's function there whose caller uses what it gives back,
  *     as givesBackUsed answers, or null: a twin that gives back nothing differs from such a function
+ *   typesOf(file): the file's types as the console's compiler lays them out (twin-shapes.mjs typesOfFile), for calls
+ *     that leave through a pointer to a struct the memory has none of to be made again with one made up, or none
  *   options: as DEFAULTS
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, typesOf = null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
@@ -1286,7 +1327,10 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
     }
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers, stacked: build.stacked === true });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000), stacked: build.stacked === true });
+      // the file's types as the console's compiler lays them out, for structs made up where a pointer leads to none
+      const types = typesOf ? await typesOf(file) : null;
+      const shapes = types && !types.error ? shapesOf(types, addressOf) : null;
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000), stacked: build.stacked === true, shapes });
     } finally {
       runner.stop();
     }
@@ -1402,6 +1446,17 @@ export async function twin(game, options = {}) {
   // what the original's reads
   const stacked = original.console === 'gba' ? await stackedCopies(folder) : null;
   const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])], stacked });
+  // each file's types, as the console's compiler lays them out, for a struct made up where a pointer of the C leads to
+  // none (twin-shapes.mjs): the file built as match builds it, with agbcc's debugging records, when the game names it
+  const compiler = original.compiler ? readCompiler(original, `games/${base}/proof/original.json`) : null;
+  const typesOf = compiler ? file => {
+    const inside = !relative(folder, file).startsWith('..');
+    const first = twinsOf.get(file)?.find(t => t.address !== null)?.address ?? CARTRIDGE;
+    return typesOfFile({
+      file, root: inside ? folder : dirname(file), includes: inside ? [dirname(file), join(folder, 'src')] : [dirname(file)],
+      compiler: compilerAt(compiler, first), work: join(LOCAL, 'twin', 'types', ...game.split('/'), basename(file, '.c')),
+    });
+  } : null;
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs), each function's paths with the pieces
   // it goes on into by a BL used as a long jump, which the code map keeps as functions of their own
@@ -1415,7 +1470,7 @@ export async function twin(game, options = {}) {
     for (const file of chosen) {
       const result = await checkFile({
         original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories,
-        sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack,
+        sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack, typesOf,
         runOf: twin => {
           const through = throughOf(twin, codeMap.functions);
           return through === null ? null : runIn(codeMap.functions, twin.address, through);

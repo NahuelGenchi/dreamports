@@ -3,6 +3,9 @@
 // (thumb.mjs) places byte by byte, and the DWARF 2 records beside it, written as .byte and .ascii lines, which say
 // where each parameter and local lives and which line of the source each instruction comes from.
 //
+// The same records give the types the file's C has, as the console's compiler lays them out (typesOf), which the
+// function check makes a struct up from where a pointer leads to none (twin-shapes.mjs).
+//
 // A value is only what the C gives as compiled: a number, a name's address, a parameter as it arrived, an address in
 // the function's own frame, or simple arithmetic of those. Anything else, such as a load from memory or two paths that
 // bring different values, is unknown, with the reason, and never guessed.
@@ -17,8 +20,8 @@ const CONDITIONAL = /^b(eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le)$/;
 const LOADS = { ldr: [4, false], ldrh: [2, false], ldrb: [1, false], ldrsh: [2, true], ldsh: [2, true], ldrsb: [1, true], ldsb: [1, true] };
 const STORES = { str: 4, strh: 2, strb: 1 };
 // DWARF 2's numbers for the records and fields read here.
-const TAG = { array: 0x01, formal: 0x05, block: 0x0b, pointer: 0x0f, structure: 0x13, typedef: 0x16, union: 0x17, subrange: 0x21, base: 0x24, constType: 0x26, subprogram: 0x2e, variable: 0x34, volatileType: 0x35 };
-const AT = { location: 0x02, name: 0x03, byteSize: 0x0b, lowPc: 0x11, lowerBound: 0x22, upperBound: 0x2f, encoding: 0x3e, frameBase: 0x40, type: 0x49 };
+const TAG = { array: 0x01, enumeration: 0x04, formal: 0x05, block: 0x0b, member: 0x0d, pointer: 0x0f, structure: 0x13, subroutineType: 0x15, typedef: 0x16, union: 0x17, subrange: 0x21, base: 0x24, constType: 0x26, subprogram: 0x2e, variable: 0x34, volatileType: 0x35 };
+const AT = { location: 0x02, name: 0x03, byteSize: 0x0b, bitSize: 0x0d, lowPc: 0x11, lowerBound: 0x22, upperBound: 0x2f, dataMemberLocation: 0x38, declaration: 0x3c, encoding: 0x3e, frameBase: 0x40, type: 0x49 };
 
 /**
  * The stack map of `assemblyText`, agbcc's assembly of a C file built with -g:
@@ -47,26 +50,7 @@ const AT = { location: 0x02, name: 0x03, byteSize: 0x0b, lowPc: 0x11, lowerBound
  * base) or { unknown: why }; an unknown that is a register the function's caller left gives `caller` too.
  */
 export function stackMap(assemblyText) {
-  // The code goes to the tools' assembler with the debugging sections left out, line for line, and those sections are
-  // read here as bytes, as they would be assembled.
-  const code = [], codeLines = [], debugLines = new Map();
-  let section = '.text';
-  // with \r\n at each line's end from agbcc built for Windows, as the tools' assembler reads it
-  assemblyText.split(/\r?\n/).forEach((raw, k) => {
-    const { labels, rest } = labelsOf(uncomment(raw));
-    const directive = /^(\.\w+)\s*(.*)$/.exec(rest);
-    const name = directive?.[1].toLowerCase();
-    if (name === '.text' || name === '.data' || name === '.bss') section = name;
-    else if (name === '.section') section = operands(directive[2])[0];
-    if (section.startsWith('.debug')) {
-      code.push('');
-      if (!debugLines.has(section)) debugLines.set(section, []);
-      debugLines.get(section).push({ labels, rest });
-    } else {
-      code.push(raw);
-      codeLines.push({ n: k + 1, labels, rest });
-    }
-  });
+  const { code, codeLines, debugLines } = splitSections(assemblyText);
   const made = assemble(code.join('\n'));
   // Where each line of the code went: its section and the offset of its first byte.
   const where = new Map();
@@ -99,6 +83,111 @@ export function stackMap(assemblyText) {
   const functions = {};
   for (const fn of readFunctions(codeLines, made, where)) functions[fn.name] = mapFunction(fn, made, words, described.get(fn.name), rowAt);
   return { functions, lines: rows };
+}
+
+// The assembly's lines apart: the code's, for the tools' assembler, with each line of the debugging sections left
+// empty, so the code keeps its line numbers, and the debugging sections' own, by section, read here as bytes, as they
+// would be assembled.
+function splitSections(assemblyText) {
+  const code = [], codeLines = [], debugLines = new Map();
+  let section = '.text';
+  // with \r\n at each line's end from agbcc built for Windows, as the tools' assembler reads it
+  assemblyText.split(/\r?\n/).forEach((raw, k) => {
+    const { labels, rest } = labelsOf(uncomment(raw));
+    const directive = /^(\.\w+)\s*(.*)$/.exec(rest);
+    const name = directive?.[1].toLowerCase();
+    if (name === '.text' || name === '.data' || name === '.bss') section = name;
+    else if (name === '.section') section = operands(directive[2])[0];
+    if (section.startsWith('.debug')) {
+      code.push('');
+      if (!debugLines.has(section)) debugLines.set(section, []);
+      debugLines.get(section).push({ labels, rest });
+    } else {
+      code.push(raw);
+      codeLines.push({ n: k + 1, labels, rest });
+    }
+  });
+  return { code, codeLines, debugLines };
+}
+
+/**
+ * The types of agbcc's assembly of a C file built with -g, as the console's compiler lays them out, from its DWARF 2
+ * records: { values, structs }. `values` has each value the file defines or declares, by its name, with its type, and
+ * `structs` each struct or union the file has whole, by its name. A type is { kind: 'base', size, signed }, { kind:
+ * 'enum', size }, { kind: 'pointer', to } (`to` null for void), { kind: 'struct' or 'union', name, size, fields },
+ * each field { name, offset, type, bits } (`bits` for a bit-field, whose storage alone is said), { kind: 'array', of,
+ * count } (`count` null where the C doesn't say) or { kind: 'function' }. Typedefs, const and volatile are seen
+ * through, and a struct the file only names has its size null.
+ */
+export function typesOf(assemblyText) {
+  const debug = new Map([...splitSections(assemblyText).debugLines].map(([name, lines]) => [name, sectionBytes(lines)]));
+  const info = debug.get('.debug_info');
+  const values = new Map(), structs = new Map();
+  for (const { dies, root } of readUnits(debug)) {
+    const made = new Map();
+    const typeOf = die => {
+      if (!die) return null;
+      if (made.has(die.at)) return made.get(die.at);
+      const named = () => dies.get(die.attrs.get(AT.type)?.ref);
+      const size = die.attrs.get(AT.byteSize);
+      let type = null;
+      if (die.tag === TAG.typedef || die.tag === TAG.constType || die.tag === TAG.volatileType) {
+        made.set(die.at, null);
+        type = typeOf(named());
+      } else if (die.tag === TAG.base) {
+        const encoding = die.attrs.get(AT.encoding);
+        type = { kind: 'base', size, signed: encoding === 5 || encoding === 6 };
+      } else if (die.tag === TAG.enumeration) type = { kind: 'enum', size };
+      else if (die.tag === TAG.subroutineType) type = { kind: 'function' };
+      else if (die.tag === TAG.pointer) {
+        // made before what it points to, which can point back
+        type = { kind: 'pointer', to: null };
+        made.set(die.at, type);
+        type.to = typeOf(named());
+      } else if (die.tag === TAG.structure || die.tag === TAG.union) {
+        const name = die.attrs.get(AT.name);
+        type = { kind: die.tag === TAG.union ? 'union' : 'struct', name: typeof name === 'string' ? name : null, size: typeof size === 'number' && !die.attrs.get(AT.declaration) ? size : null, fields: [] };
+        made.set(die.at, type);
+        for (const member of die.children.filter(child => child.tag === TAG.member)) {
+          const offset = memberOffset(info, member.attrs.get(AT.dataMemberLocation));
+          if (offset === null) continue;
+          type.fields.push({ name: member.attrs.get(AT.name) ?? null, offset, type: typeOf(dies.get(member.attrs.get(AT.type)?.ref)), ...(member.attrs.has(AT.bitSize) ? { bits: member.attrs.get(AT.bitSize), size: member.attrs.get(AT.byteSize) ?? null } : {}) });
+        }
+        if (type.name && type.size !== null) structs.set(type.name, type);
+      } else if (die.tag === TAG.array) {
+        let count = 1;
+        for (const sub of die.children.filter(child => child.tag === TAG.subrange)) {
+          const upper = sub.attrs.get(AT.upperBound), lower = sub.attrs.get(AT.lowerBound) ?? 0;
+          count = count !== null && typeof upper === 'number' && upper < 0x7FFFFFFF ? count * (upper - lower + 1) : null;
+        }
+        type = { kind: 'array', of: null, count };
+        made.set(die.at, type);
+        type.of = typeOf(named());
+      }
+      made.set(die.at, type);
+      return type;
+    };
+    for (const unit of root.children) {
+      for (const die of unit.children) {
+        const name = die.attrs.get(AT.name);
+        if (die.tag !== TAG.variable || typeof name !== 'string') continue;
+        let type = typeOf(dies.get(die.attrs.get(AT.type)?.ref));
+        // agbcc writes a declared array of no length, `[]`, as one of one: it holds as many as the C doesn't say
+        if (type?.kind === 'array' && type.count === 1 && die.attrs.get(AT.declaration)) type = { ...type, count: null };
+        // a definition says more than a declaration, as of how many an array holds
+        if (type && (!values.has(name) || (type.kind === 'array' && type.count !== null))) values.set(name, type);
+      }
+    }
+  }
+  return { values, structs };
+}
+
+// Where a member of a struct is, from its location: DWARF 2's DW_OP_plus_uconst, or a number.
+function memberOffset(section, value) {
+  if (typeof value === 'number') return value;
+  if (!value || value.block === undefined || !value.size) return null;
+  const r = reader(section, value.block);
+  return r.u8() === 0x23 ? r.uleb() : null;
 }
 
 // --- reading the assembly's text
@@ -384,12 +473,12 @@ function locationOf(section, value) {
   return { expression: section.bytes.slice(value.block, value.block + value.size) };
 }
 
-// Each function DWARF describes, by name: its parameters, its locals in the frame, its frame base and whether it
-// returns a struct through memory.
-function readInfo(debug) {
-  const functions = new Map();
+// Each unit of .debug_info as a tree of its records: { dies, root }, `dies` each record by where it starts, as a
+// reference names it, and `root` the records at the unit's top, each { at, tag, attrs, children }.
+function readUnits(debug) {
+  const units = [];
   const info = debug.get('.debug_info'), abbrevs = debug.get('.debug_abbrev');
-  if (!info || !abbrevs) return functions;
+  if (!info || !abbrevs) return units;
   const r = reader(info);
   while (r.at + 11 <= info.bytes.length) {
     const unit = r.at, length = r.u32();
@@ -417,7 +506,17 @@ function readInfo(debug) {
       if (kind.children) open.push(die);
     }
     r.at = end;
+    units.push({ dies, root });
+  }
+  return units;
+}
 
+// Each function DWARF describes, by name: its parameters, its locals in the frame, its frame base and whether it
+// returns a struct through memory.
+function readInfo(debug) {
+  const functions = new Map();
+  const info = debug.get('.debug_info');
+  for (const { dies, root } of readUnits(debug)) {
     const typeOf = die => {
       const ref = die?.attrs.get(AT.type)?.ref;
       return ref === undefined ? null : dies.get(ref) ?? null;
