@@ -26,6 +26,12 @@
 void gpu_power(void);
 /** Puts the sound chip as the console's BIOS leaves it when it starts a game, with nothing heard yet. */
 void spu_power(void);
+// The CD's own sound, which the drive gives the sound chip as each sector comes, at processor cycle `cycle` (sound.c):
+// a sector of XA sound, decoded, a sector of a track of audio, and the volumes the drive mixes them with.
+struct xa_decode;
+void spu_cd_xa(struct xa_decode *xa, uint32_t cycle, int is_start);
+int spu_cd_audio(short *samples, int bytes, uint32_t cycle);
+void spu_cd_volume(uint8_t left_to_left, uint8_t left_to_right, uint8_t right_to_left, uint8_t right_to_right, uint32_t cycle);
 // The clock (clock.c): the events the kit's chips set for a later cycle, one of each kind at a time, as PCSX ReARMed's
 // libpcsxcore/psxevents.h has them, and in its order, which is the order two due at the same cycle run in.
 enum { CLOCK_SIO, CLOCK_CD, CLOCK_CD_READ, CLOCK_CD_DMA, CLOCK_COUNTERS, CLOCK_LINE0, CLOCK_CD_LID, CLOCK_EVENTS };
@@ -33,6 +39,8 @@ enum { CLOCK_SIO, CLOCK_CD, CLOCK_CD_READ, CLOCK_CD_DMA, CLOCK_COUNTERS, CLOCK_L
 void clock_power(void);
 /** The processor's cycles since power, as the kit counts them. */
 uint32_t clock_now(void);
+/** The cycle the frame started at, its V-blank, or a frame before the first V-blank before it. */
+uint32_t clock_frame_start(void);
 /** Sets event `which` to run `run` `after` cycles from now, in place of any it had. */
 void clock_event(int which, uint32_t after, void (*run)(void));
 /** The same, at cycle `at`, which runs it as soon as it can if that has gone. */

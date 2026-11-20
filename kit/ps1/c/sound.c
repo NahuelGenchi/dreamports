@@ -6,7 +6,9 @@
 //
 // The chip keeps time by the processor's clock, 768 of its cycles to a sample, 44,100 samples a second. A Dreamport
 // has no clock of its own, so the kit counts the chip's from the samples the page has heard: what a game writes lands
-// where the sound it's heard so far ends, as an original's writes do when it makes them as its frame starts.
+// where the sound it's heard so far ends, as an original's writes do when it makes them as its frame starts. The CD's
+// own sound, which the drive gives the chip partway through a frame, lands as far on from there as it came into the
+// frame (spu_cd_xa).
 
 #include "ps1-kit.h"
 #include <assert.h>
@@ -111,6 +113,16 @@ void spu_dma_write(const uint16_t *halves, int count) {
 }
 
 void spu_dma_read(uint16_t *halves, int count) { SPUreadDMAMem(halves, count, now); }
+
+// The CD's own sound, which the drive gives the chip as each sector comes, partway through a frame: the chip's time for
+// it is where the frame's sound starts and as many cycles on as the sector came into the frame, so the chip mixes on to
+// there first, as the emulator's does to the sector's cycle (cd.c)
+static uint32_t heard_at(uint32_t cycle) { return now + (cycle - clock_frame_start()); }
+void spu_cd_xa(struct xa_decode *xa, uint32_t cycle, int is_start) { SPUplayADPCMchannel(xa, heard_at(cycle), is_start); }
+int spu_cd_audio(short *samples, int bytes, uint32_t cycle) { return SPUplayCDDAchannel(samples, bytes, heard_at(cycle), 0); }
+void spu_cd_volume(uint8_t left_to_left, uint8_t left_to_right, uint8_t right_to_left, uint8_t right_to_right, uint32_t cycle) {
+  SPUsetCDvol(left_to_left, left_to_right, right_to_left, right_to_right, heard_at(cycle));
+}
 
 void spu_sound(float *left, float *right, int count) {
   now += (uint32_t)count * 768;

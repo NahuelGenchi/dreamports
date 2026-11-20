@@ -18,7 +18,11 @@
 // of the test's own, a BIN and its .cue (madeUpCdDisc), gives the CD drive a script of commands, one or two a frame,
 // and logs and draws every interrupt and answer, each sector's first bytes taken one at a time and the sum of its words
 // moved by DMA: its Dreamport in C (ps1-kit/cd.c), reading the same disc, has to be the same in all 300 frames, and be
-// found where its first sector shows when it reads from one sector on, or at single speed. Then a build that says the
+// found where its first sector shows when it reads from one sector on, or at single speed. A seventh (the same program,
+// with cdSoundScript) boots from a disc with an XA file of 8 channels, each its own tones, and a track of audio
+// (madeUpCdSoundDisc): it streams two of the channels, swaps left and right with the drive's volumes and back, and plays
+// the track with its reports, muted and heard again. Its Dreamport has to sound the same in all 300 frames, and be found
+// by its sound streaming another channel, swapping two frames late, and muting two frames late. Then a build that says the
 // kit's ps1.c never waits, as psx_gpu and dfsound don't, is refused, with the way one of its functions waits.
 
 import { spawnSync } from 'node:child_process';
@@ -28,7 +32,7 @@ import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { buildWasm, cKit } from '../lib/c.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { CD, CLOCK, GPU, PAD, SOUND, cdScript, cdTime, drawList, madeUpCdDisc, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
+import { CD, CD_SOUND, CLOCK, GPU, PAD, SOUND, cdScript, cdSoundScript, cdTime, drawList, madeUpCdDisc, madeUpCdSoundDisc, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
 
 const GAME = 'test-ps1-kit', VERSION = `${GAME}/c`;
 const DRAWING = 'test-ps1-kit-draw', DRAWN = `${DRAWING}/c`;
@@ -36,6 +40,7 @@ const SOUNDING = 'test-ps1-kit-sound', SOUNDED = `${SOUNDING}/c`;
 const PADDING = 'test-ps1-kit-pad', PADDED = `${PADDING}/c`;
 const TIMING = 'test-ps1-kit-clock', TIMED = `${TIMING}/c`;
 const READING = 'test-ps1-kit-cd', READ = `${READING}/c`;
+const LISTENING = 'test-ps1-kit-cd-sound', HEARD = `${LISTENING}/c`;
 const WORK = join(LOCAL, 'test-ps1-kit');
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -58,7 +63,7 @@ const tracked = () => spawnSync('git', ['status', '--porcelain', '--untracked-fi
 
 function tidy() {
   const kept = existsSync(MEDIA) ? readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file)) : [];
-  for (const game of [GAME, DRAWING, SOUNDING, PADDING, TIMING, READING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
+  for (const game of [GAME, DRAWING, SOUNDING, PADDING, TIMING, READING, LISTENING]) for (const path of [gameFolder(game), join(LOCAL, 'results', game), join(LOCAL, 'captures', game), join(REPO, '.github', 'readme', 'progress', `${game}.svg`)]) rmSync(path, { recursive: true, force: true });
   for (const path of [WORK, ...kept]) rmSync(path, { recursive: true, force: true });
 }
 
@@ -131,14 +136,19 @@ function writeClock(target = CLOCK.TARGET_0) {
   writeFileSync(join(gameFolder(TIMED), 'src', 'main.c'), code);
 }
 
-// the CD program's Dreamport in C, with its script and numbers, and the parameters of the command its script gives at
-// frame `frame`, if it's given, put as `parameters` instead
-function writeCd({ frame = -1, parameters = [] } = {}) {
-  const hex = value => `0x${value.toString(16).toUpperCase()}`, script = cdScript();
-  for (let at = 0; at < script.length; at += 8) if ((script[at] | script[at + 1] << 8) === frame) script.splice(at + 4, parameters.length, ...parameters);
+// the CD program's Dreamport in C, in `version`, with its script, `script`, and numbers; the parameters of what its
+// script gives at frame `frame`, if it's given, put as `parameters` instead, or what it gives there put at frame `to`
+function writeCd({ version = READ, script = cdScript(), frame = -1, parameters = [], to = null } = {}) {
+  const hex = value => `0x${value.toString(16).toUpperCase()}`;
+  script = [...script];
+  for (let at = 0; at < script.length; at += 8) {
+    if ((script[at] | script[at + 1] << 8) !== frame) continue;
+    script.splice(at + 4, parameters.length, ...parameters);
+    if (to !== null) [script[at], script[at + 1]] = [to & 0xFF, to >> 8];
+  }
   const code = readFileSync(join(REPO, 'tools', 'test', 'ps1-kit', 'cd.c'), 'utf8').replace('@SCRIPT@', script.map(hex).join(', '))
     .replace(/@([A-Z_]+)@/g, (_, key) => hex(CD[key]));
-  writeFileSync(join(gameFolder(READ), 'src', 'main.c'), code);
+  writeFileSync(join(gameFolder(version), 'src', 'main.c'), code);
 }
 
 async function main() {
@@ -226,6 +236,26 @@ async function main() {
     run = dp('prove', READ, 'still');
     check(run.status !== 0 && report(READ).firstDifference?.frame === 16, `reading at single speed, it differs at frame 16 too, where the first sector hasn't come yet: ${JSON.stringify(report(READ).firstDifference)}`);
 
+    console.log('The CD\'s own sound: XA sound streamed, and a track of audio played:');
+    await makeGame(LISTENING, HEARD, await madeUpCdSoundDisc(LISTENING), 'Test PlayStation CD Sound (World)');
+    const listen = (changes = {}) => {
+      writeCd({ version: HEARD, script: cdSoundScript(), ...changes });
+      const ran = dp('prove', HEARD, 'still');
+      return { ran, found: report(HEARD) };
+    };
+    let sound = listen();
+    if (sound.ran.status !== 0) console.log(sound.ran.out.split('\n').slice(-15).join('\n'));
+    check(sound.ran.status === 0 && sound.found.frames === FRAMES && !sound.found.firstDifference && sound.found.sound?.heard, `all ${FRAMES} frames the same as the emulator's, pictures and sound, and sound heard: ${sound.ran.out.trim().split('\n').at(-1)}`);
+    // each a sound that differs where it starts, as `prove` hears it: a channel of the XA file's of other tones, the
+    // drive's volumes that swap left and right two frames late, and the track of audio muted two frames late, as
+    // `prove` takes a sound one frame early or late as the same
+    sound = listen({ frame: 2, parameters: [0x01, 0x01] });
+    check(sound.ran.status !== 0 && sound.found.sound?.firstDifference?.frame === 7, `streaming XA channel 1 instead of 0, its sound differs where the stream starts: ${JSON.stringify(sound.found.sound?.firstDifference)}`);
+    sound = listen({ frame: 60, to: 62 });
+    check(sound.ran.status !== 0 && sound.found.sound?.firstDifference?.frame === 59, `swapping left and right two frames late, its sound differs where the swap is heard: ${JSON.stringify(sound.found.sound?.firstDifference)}`);
+    sound = listen({ frame: 150, to: 152 });
+    check(sound.ran.status !== 0 && sound.found.sound?.firstDifference?.frame === 151, `muting the track of audio two frames late, its sound differs there: ${JSON.stringify(sound.found.sound?.firstDifference)}`);
+
     console.log('What the kit says never waits, checked:');
     // ps1.c runs the game's frames, which wait, so a kit that said it never waits can't be built
     const kit = cKit('ps1'), sources = [join(gameFolder(READ), 'src', 'main.c'), ...kit.sources];
@@ -247,7 +277,7 @@ async function main() {
     console.log(`\n${failures.length} failed.`);
     process.exit(1);
   }
-  console.log('\nThe PlayStation\'s kit draws, sounds, reads its pads and its CD and keeps the console\'s time as the console does, every frame.');
+  console.log('\nThe PlayStation\'s kit draws, sounds, reads its pads and its CD, hears the CD\'s own sound and keeps the console\'s time as the console does, every frame.');
 }
 
 main().catch(error => {
