@@ -14,8 +14,8 @@
 // its proof/addresses.json gives, or the one in its label, as D_00123450.
 //
 // A call is made as Sony's compiler for the EE makes one: integer arguments in a0 to a3 and then t0 to t3, floats in f12
-// to f19, a 32-bit value spread to 64 bits by its sign, as the processor keeps one, and the upper half of each of the
-// 128-bit registers left as anything; sp, ra and gp, the register the program reaches its small values through, as the
+// to f19, any past those on the stack from where sp points, eight bytes apart, a 32-bit value spread to 64 bits by its
+// sign, as the processor keeps one, and the upper half of each of the 128-bit registers left as anything; sp, ra and gp, the register the program reaches its small values through, as the
 // program has them; and any value in every other register, so a function that reads one it wasn't given differs. A
 // function gives back what its C says in v0, all 64 bits of it, or a float in f0, and keeps s0 to s7, gp, sp, fp and
 // f20 to f31 for its caller. The original's own saves on the stack, below where the call starts it, aren't compared, as
@@ -38,17 +38,20 @@ import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
-import { asksForProofs } from '../lib/proofs.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { openBuild } from '../gba/twin.mjs';
 import { findFunctions, ps2Program } from './functions.mjs';
+import { keepProgram } from './original-program.mjs';
 import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // what openBuild names the function a call through a pointer meets when nothing built is the twin of its address
 const NO_CODE = '__twin_no_code';
+// what the function that says a twin's types is called, after the twin's own call
+const TYPES = '__types';
 const IMAGE = KINDS.ee.image;
 // where the module keeps what the console has nothing at, the table it folds by, the map of pages a call wrote, and its
 // own values and stack: from 0x03000000, which no address of the console's folds to, and its memory to 64 MB, past
@@ -87,6 +90,8 @@ export const DEFAULTS = {
   seconds: 2,        // how long a twin may take over one call
   limit: 1000000,    // how many instructions the original may run in one call
 };
+// how many calls a proof by the same memory is over, at the least
+const KEPT_FROM = 1000;
 // how many calls may be made for each one that has to be compared
 const TRIES = 4;
 // where a call's stack starts, near the top of the console's memory, where it comes back to, an address in the
@@ -126,6 +131,7 @@ export function chooser(seed) {
     /** An argument of a type, { bits, signed, pointer, float }: a number, or a BigInt for 64 bits. */
     value(type, pointers) {
       if (type.pointer) return place(pointers);
+      if (type.boolean) return below(2);
       if (type.float) return [() => FLOAT_EDGES[below(FLOAT_EDGES.length)], next, () => (0x3E000000 + below(0x2000000)) >>> 0][below(3)]() >>> 0;
       if (type.bits === 64) return BigInt.asUintN(64, (BigInt(type.signed && below(2) ? -1 : 0) << 32n) | BigInt(number())) ^ (below(3) ? 0n : BigInt(next()) << 32n);
       const value = number();
@@ -140,36 +146,25 @@ export function chooser(seed) {
   };
 }
 
-/** What a function of a file of C takes and gives back, as the EE's calls carry it: { params, returns }, each type
- *  { bits, signed, pointer, float }, returns null for nothing, or null when the file has no function of that name. A
- *  struct taken or given as it is, which no register carries, is { struct: true }. */
+/** What a function of a file of C takes and gives back, as its C writes it: { params, returns }, each { pointer: true }
+ *  for what's written as a pointer, an array or a function, and { written } for any other type, by its name, which
+ *  only the compiler can say the size and kind of (wrapOf, typeOf); `returns` is null for nothing. null when the file
+ *  has no function of that name. */
 export function signatureOf(text, name) {
   const code = text.replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, comment => comment.replace(/[^\n]/g, ' '));
   const found = new RegExp(`(?:^|[;}\\n])([^;{}()=#]*)\\b${name}\\s*\\(((?:[^(){};]|\\([^(){};]*\\))*)\\)\\s*\\{`).exec(code);
   if (!found) return null;
-  const typeOf = written => {
-    const type = written.replace(/\b(const|volatile|register|static|inline|extern)\b/g, ' ').replace(/\s+/g, ' ').trim();
-    if (type.includes('*') || type.includes('[') || type.includes('(')) return { bits: 32, signed: false, pointer: true };
-    if (/^(struct|union)\b/.test(type)) return { struct: true };
-    if (/^float\b|^f32\b/.test(type)) return { bits: 32, float: true };
-    if (/^double\b|^f64\b|__int128|\bu128\b|\bs128\b/.test(type)) return { struct: true };
-    if (/^(unsigned long long|u64|uint64_t)\b|^unsigned long long int\b/.test(type)) return { bits: 64, signed: false };
-    if (/^((signed )?long long( int)?|s64|int64_t)\b/.test(type)) return { bits: 64, signed: true };
-    if (/^(u8|uint8_t|unsigned char|bool)\b/.test(type)) return { bits: 8, signed: false };
-    if (/^(s8|int8_t|signed char|char)\b/.test(type)) return { bits: 8, signed: true };
-    if (/^(u16|uint16_t|unsigned short( int)?)\b/.test(type)) return { bits: 16, signed: false };
-    if (/^(s16|int16_t|(signed )?short( int)?)\b/.test(type)) return { bits: 16, signed: true };
-    if (/^(u32|uint32_t|unsigned|unsigned int|unsigned long)\b/.test(type)) return { bits: 32, signed: false };
-    if (/^(s32|int32_t|int|long|signed|signed int|signed long)\b/.test(type)) return { bits: 32, signed: true };
-    // a name the C gives a type of its own, which the check can't see into
-    return { struct: true };
+  const written = type => {
+    const plain = type.replace(/\b(const|volatile|register|static|inline|extern)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    return /[*[(]/.test(plain) ? { pointer: true } : { written: plain };
   };
   const params = [];
   let depth = 0, each = '';
   for (const c of `${found[2]},`) {
     if (c === ',' && !depth) {
-      const written = each.trim();
-      if (written && written !== 'void') params.push(typeOf(written.replace(/\b[A-Za-z_]\w*\s*$/, word => (/^(char|short|int|long|unsigned|signed|void|float|double)\s*$/.test(word) ? word : ''))));
+      const param = each.trim();
+      // without its name, the last word, unless that word is the type's own
+      if (param && param !== 'void') params.push(written(/[*[(]/.test(param) ? param : param.replace(/\b[A-Za-z_]\w*\s*$/, word => (/^(char|short|int|long|unsigned|signed|float|double)\s*$/.test(word) ? word : ''))));
       each = '';
       continue;
     }
@@ -178,19 +173,39 @@ export function signatureOf(text, name) {
     each += c;
   }
   const gives = found[1].replace(/\b(static|inline|extern)\b/g, ' ').trim();
-  return { params, returns: /^void$/.test(gives) ? null : typeOf(gives) };
+  return { params, returns: /^void$/.test(gives) ? null : written(gives) };
 }
 
-/** The line of C the check calls a twin by: each argument and what comes back as whole words, a float as its bits and
- *  64 bits as one number. A twin that takes or gives a struct as it is gets a line the compiler refuses, which openBuild
- *  takes as one it can't call. */
+// what the compiler says of a type by its name, as a number: its size, its class as __builtin_classify_type gives
+// it, shifted 8, and whether it's a signed number narrower than a word, shifted 16
+const codeOf = type => (type.pointer ? '0x504u' : `((unsigned)sizeof(${type.written}) | (unsigned)__builtin_classify_type(*(${type.written} *)0) << 8 | (unsigned)(__builtin_types_compatible_p(${type.written}, signed char) || __builtin_types_compatible_p(${type.written}, char) || __builtin_types_compatible_p(${type.written}, short)) << 16)`);
+
+/** The line of C the check calls a twin by, and learns its types from. Each argument and what comes back cross as 64
+ *  bits, and the bytes of each are laid into a value of its own type, so a float crosses as its bits and a number as
+ *  itself, whatever the C calls the type. Beside it a function gives the compiler's word on each type, the arguments'
+ *  and then what comes back, which typeOf reads. A type the C never completes gets a line the compiler refuses, which
+ *  openBuild takes as a twin it can't call. */
 export function wrapOf({ name, params, returns, call }) {
-  const word = type => (type?.struct ? 'struct __twin_none' : type?.bits === 64 ? 'unsigned long long' : 'unsigned');
-  const taken = params.map((type, i) => `${word(type)} a${i}`).join(', ') || 'void';
-  const passed = params.map((type, i) => (type.float ? `({ union { unsigned u; float f; } v = { a${i} }; v.f; })` : `a${i}`)).join(', ');
-  if (!returns) return `unsigned ${call}(${taken}) { ${name}(${passed}); return 0; }`;
-  if (returns.float) return `unsigned ${call}(${taken}) { union { float f; unsigned u; } v = { ${name}(${passed}) }; return v.u; }`;
-  return `${word(returns)} ${call}(${taken}) { return (${word(returns)})${name}(${passed}); }`;
+  const taken = params.map((_, i) => `unsigned long long a${i}`).join(', ') || 'void';
+  const passed = params.map((type, i) => (type.pointer ? `(void *)(unsigned)a${i}` : `({ ${type.written} v; __builtin_memcpy(&v, &a${i}, sizeof v < 8 ? sizeof v : 8); v; })`)).join(', ');
+  const body = !returns ? `${name}(${passed}); return 0;`
+    : returns.pointer ? `return (unsigned)${name}(${passed});`
+      : `${returns.written} v = ${name}(${passed}); unsigned long long out = 0; __builtin_memcpy(&out, &v, sizeof v < 8 ? sizeof v : 8); return out;`;
+  const types = [...params, ...(returns ? [returns] : [])];
+  return `unsigned long long ${call}(${taken}) { ${body} } __attribute__((export_name("${call}${TYPES}"))) unsigned ${call}${TYPES}(unsigned k) { static const unsigned types[] = { ${[...types.map(codeOf), '0'].join(', ')} }; return k < ${types.length} ? types[k] : 0; }`;
+}
+
+/** A type as the EE's calls carry it, { bits, signed, pointer, float, boolean }, from the compiler's word on it
+ *  (wrapOf): a whole number, an enum or a pointer in a register, a float in the FPU's, and a double as its 64 bits in
+ *  a whole register, as the EE has no doubles of its own. null for what no register carries: a struct or a union as it
+ *  is, and anything longer than 64 bits. */
+export function typeOf(code) {
+  const bytes = code & 0xFF, kind = (code >>> 8) & 0xFF, signed = Boolean(code >>> 16 & 1);
+  if (kind === 5) return { bits: 32, signed: false, pointer: true };
+  if (kind === 8) return bytes === 4 ? { bits: 32, float: true } : bytes === 8 ? { bits: 64, signed: false } : null;
+  if (kind === 4) return { bits: 8, signed: false, boolean: true };
+  if ((kind === 1 || kind === 2 || kind === 3) && [1, 2, 4, 8].includes(bytes)) return { bits: bytes * 8, signed };
+  return null;
 }
 
 /** The register the program reaches its small values through, gp: as its start sets it, with LUI and ADDIU or ORI. */
@@ -293,6 +308,11 @@ class Runner {
     else await this.ask({ set: image });
   }
 
+  /** The compiler's word on each of a twin's types, its arguments' and then what it gives back (wrapOf). */
+  async types(name, count) {
+    return (await this.ask({ types: `${name}${TYPES}`, count })).types;
+  }
+
   /** A twin's call: { gave, differs }, { stopped }, or { never: true } when it was still going after its seconds. */
   async call(name, args, changes, chunks, skip) {
     let timer;
@@ -323,11 +343,14 @@ const spread = value => [value >>> 0, value & 0x80000000 ? 0xFFFFFFFF : 0];
  */
 async function checkFunction({ f, original, runner, gp, options, choose }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
-  const integers = f.params.filter(type => !type.float), floats = f.params.filter(type => type.float);
-  if (integers.length > 8 || floats.length > 8) return { compared: 0, aside: { arguments: 1 }, ran, result: null };
-  // the original's own saves below its stack, which a twin keeps in its own
-  const skip = [[inImage(STACK - SAVES), inImage(STACK)]];
-  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK) && !(address >= f.code.from && address < f.code.to);
+  // where each argument goes: the first eight whole numbers and the first eight floats in registers, and the rest on
+  // the stack from where sp points, a slot of eight bytes each, in the order they're written
+  let integers = 0, floats = 0, slots = 0;
+  const places = f.params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
+  // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
+  // call is given and may change
+  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 8 * slots]];
+  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK + 8 * slots) && !(address >= f.code.from && address < f.code.to);
   let compared = 0, number = 0;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
@@ -354,11 +377,15 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
     gpr(28, ...spread(gp));
     registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
     // the arguments, as the caller puts them: whole numbers in a0 to a3 and t0 to t3, floats in f12 on
-    let integer = 0, float = 0;
     f.params.forEach((type, k) => {
-      if (type.float) registers[EE_REGISTERS.fpr + 12 + float++] = args[k];
-      else if (type.bits === 64) gpr(4 + integer++, Number(args[k] & 0xFFFFFFFFn), Number(args[k] >> 32n));
-      else gpr(4 + integer++, ...spread(args[k]));
+      const place = places[k], low = Number(BigInt(args[k]) & 0xFFFFFFFFn), high = Number(BigInt(args[k]) >> 32n);
+      if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
+      else if (place.register !== undefined) gpr(4 + place.register, ...(type.bits === 64 ? [low, high] : spread(low)));
+      else {
+        // on the stack a caller stores a word, and the other half of the slot too for 64 bits
+        changes.push([STACK + 8 * place.slot, 4, low]);
+        if (type.bits === 64) changes.push([STACK + 8 * place.slot + 4, 4, high]);
+      }
     });
     registers[EE_REGISTERS.fcsr] = 0x01000001;
     for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
@@ -402,11 +429,13 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
       continue;
     }
     if (twin.stopped) return { compared, aside, ran, result: { kind: 'stopped', why: twin.stopped, ...call } };
-    // what the original gave back: a float in f0, 64 bits in v0, or a 32-bit value spread to 64 bits by its sign
+    // what the original gave back: a float in f0, or v0, all 64 bits of it, which hold a narrower value spread by its
+    // sign, as the processor keeps a 32-bit one, or by its type's
     if (f.returns) {
-      const theirs = f.returns.float ? BigInt(left[EE_REGISTERS.fpr] >>> 0) : doubleOf(left, 8);
-      const ours = f.returns.float ? BigInt(twin.gave) : f.returns.bits === 64 ? BigInt.asUintN(64, BigInt(twin.gave)) : BigInt.asUintN(64, BigInt.asIntN(32, BigInt(twin.gave)));
-      if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(f.returns.float) }, ...call } };
+      const gave = BigInt.asUintN(64, BigInt(twin.gave)), { bits, float, signed } = f.returns;
+      const theirs = float ? BigInt(left[EE_REGISTERS.fpr] >>> 0) : doubleOf(left, 8);
+      const ours = float ? gave & 0xFFFFFFFFn : BigInt.asUintN(64, bits === 32 || signed ? BigInt.asIntN(bits, gave) : BigInt.asUintN(bits, gave));
+      if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(float) }, ...call } };
     }
     if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(twin.differs.at), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
     compared++;
@@ -439,7 +468,6 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   if (compared >= calls) return { kind: 'same', line: `${count(compared)} calls` };
   // what kept the rest from being compared, the most common first
   const why = Object.entries({
-    arguments: 'it takes more arguments than registers carry, which the check doesn\'t place on the stack yet',
     kernel: `the original ${aside.kernelText}, which a twin asks the kit for`,
     elsewhere: `the original ${aside.elsewhereText}`,
     exception: `the original ${aside.exceptionText}`,
@@ -450,11 +478,12 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     kept: `the original changed ${aside.keptText}, which a function keeps for its caller`,
     unbuilt: `the twin calls ${aside.unbuiltText}, which nothing built is the twin of`,
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
-  }).filter(([key]) => aside[key]).sort(([a], [b]) => aside[b] - aside[a]).map(([key, text]) => `${text}${key === 'arguments' ? '' : ` (${count(aside[key])} calls)`}`).join(', and ');
+  }).filter(([key]) => aside[key]).sort(([a], [b]) => aside[b] - aside[a]).map(([key, text]) => `${text} (${count(aside[key])} calls)`).join(', and ');
   if (!compared) return { kind: 'unchecked', line: `no call could be compared: ${why}.` };
   return { kind: 'few', line: `only ${count(compared)} of ${count(calls)} calls could be compared, all the same: ${why}.` };
 }
 
+const NO_REGISTER = 'it takes or gives something no register carries, a struct or a union as it is, or more than 64 bits';
 const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came back', stopped: 'Stopped', few: 'Too few calls', unchecked: 'Not checked' };
 
 /** The twins of a version, ready to be built for the check a file at a time (../gba/twin.mjs). */
@@ -479,7 +508,7 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
       if (twin.address === null && only === null) functions.push({ name: twin.name, address: null, line: twin.line });
       continue;
     }
-    if (linked.unit.unknown.includes(twin.name)) functions.push({ name: twin.name, address: twin.address, kind: 'unchecked', line: 'it takes or gives something no register carries, as a struct as it is, a double or 128 bits' });
+    if (linked.unit.unknown.includes(twin.name)) functions.push({ name: twin.name, address: twin.address, kind: 'unchecked', line: 'it takes or gives a type its file never completes, so the check can\'t call it' });
   }
   const runner = new Runner(foldAddresses(linked.module, { table: TABLE, written: WRITTEN }), all.seconds);
   try {
@@ -493,7 +522,13 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: 'no function of the code map starts there' });
         continue;
       }
-      const f = { ...call, size, code: { from: call.address, to: call.address + size } };
+      // what each argument and what comes back is, as the compiler has it
+      const types = (await runner.types(call.call, call.params.length + (call.returns ? 1 : 0))).map(typeOf);
+      if (types.includes(null)) {
+        functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: NO_REGISTER });
+        continue;
+      }
+      const f = { ...call, params: types.slice(0, call.params.length), returns: call.returns ? types.at(-1) : null, size, code: { from: call.address, to: call.address + size } };
       const checked = await checkFunction({ f, original, runner, gp, options: all, choose });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(elf, f), f.address, checked.ran, ruledOut);
@@ -522,6 +557,8 @@ export async function twin(asked, options = {}, log = console.log) {
   if (!copy) throw new Error(`twin calls the functions of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
   const elf = await ps2Program(copy.path);
+  // kept for the proofs, which read the original's functions as they go
+  keepProgram(original.sha1, elf);
 
   const { folder, shifts, files, twinsOf, twins, named, givenOf } = versionTwins(game, all.addresses ?? null);
   // a value is the game's, at the address its proof/addresses.json gives, a twin's, or the one in its label
@@ -546,7 +583,7 @@ export async function twin(asked, options = {}, log = console.log) {
   const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const { ways: ruledOut } = readUnreachable(game);
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
-  let proven = 0;
+  const proven = [], differing = [];
   const caller = new Original(await buildCaller(log), 'ee');
   try {
     for (const file of chosen) {
@@ -571,7 +608,8 @@ export async function twin(asked, options = {}, log = console.log) {
           continue;
         }
         totals[f.kind]++;
-        if (f.whole) proven++;
+        if (f.whole) proven.push({ key: hex(f.address), calls: f.compared });
+        else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
         if (f.kind === 'same' && f.left.length) log(`    Its calls left out ${count(f.left.length)} of its ${count(f.total)} instructions and branch ways, such as ${f.left.slice(0, 3).map(([address, how]) => `${at(address)} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
       }
@@ -583,7 +621,12 @@ export async function twin(asked, options = {}, log = console.log) {
   if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
-  if (totals.same) log(`${count(proven)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
-  if (asksForProofs(game)) log('Nothing was kept as proven: a PlayStation 2 version\'s proofs aren\'t kept in its proofs.json yet (#1591).');
+  if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  // a proof is found with the game's own names, and over enough calls to be worth the name
+  if (asksForProofs(game)) {
+    if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
+    else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+    else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
+  }
   return totals.differs || totals.never || totals.stopped ? 3 : 0;
 }

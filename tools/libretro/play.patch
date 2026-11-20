@@ -20,6 +20,9 @@ modulation, a voice's step bent by what the voice before it gave, on the voices 
 everything a core gives, core 0's output coming into core 1 under core 1's; and the effect volume, EVOL, on what the
 reverb gives. The kit does the same (kit/ps2/c/spu2.c), so the two still match sample for sample.
 
+A picture the console reads back from the GS is in its memory before it goes on: the libretro front has no GS thread, so
+Play! didn't wait for the read, and what a program read back changed from one run to the next (#1590).
+
 When the environment's DP_DRAW_DUMP names a file, the whole list goes there too, from the first V-blank on, a picture's
 bytes left out, for the tools to count what a game's lists hold (tools/lib/draw-lists.mjs).
 
@@ -92,7 +95,18 @@ index 57e58ba..bd6316f 100644
  
  #ifdef _DEBUG
  	m_transferCount++;
-@@ -672,9 +688,20 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
+@@ -649,7 +665,9 @@ void CGSHandler::FeedImageData(const void* data, uint32 length)
+ void CGSHandler::ReadImageData(void* data, uint32 length)
+ {
+ 	assert(m_writeBufferProcessIndex == m_writeBufferSize);
+ 	SubmitWriteBuffer();
+-	SendGSCall([this, data, length]() { ReadImageDataImpl(data, length); }, true);
++	// a picture read back is in the console's memory before the console goes on, even with the GS's calls served by
++	// the frontend, where nothing waited and the next transfer could take the memory before the read had filled it
++	SendGSCall([this, data, length]() { ReadImageDataImpl(data, length); }, true, true);
+ }
+ 
+@@ -672,9 +690,20 @@ void CGSHandler::ProcessWriteBuffer(const CGsPacketMetadata* metadata)
  		    });
  	}
  #endif
@@ -113,7 +127,7 @@ index 57e58ba..bd6316f 100644
  		switch(write.first)
  		{
  		case GS_REG_SIGNAL:
-@@ -2213,6 +2240,21 @@ void CGSHandler::ProcessSingleFrame()
+@@ -2213,6 +2242,21 @@ void CGSHandler::ProcessSingleFrame()
  	m_flipped = false;
  }
  
