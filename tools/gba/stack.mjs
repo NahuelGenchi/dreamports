@@ -327,57 +327,51 @@ function macroArguments(text, open) {
 // when there's no way, or the instructions every way passes, in their order, and those only some ways do.
 function ways(routine, leave, target, stops) {
   const instrs = routine.instrs;
+  // from `from`, within `within`, never through `without`: whether a way reaches the target, or comes back to `back`
+  const walk = (from, within, { without = -1, back = -1 } = {}) => {
+    const seen = new Set(), queue = from.filter(i => i !== without && within(i));
+    while (queue.length) {
+      const i = queue.shift();
+      if (i === back) return true;
+      if (seen.has(i)) continue;
+      seen.add(i);
+      if (i === target) {
+        if (back < 0) return true;
+        continue;
+      }
+      if (stops.has(i)) continue;
+      queue.push(...instrs[i].next.filter(j => j !== without && within(j)));
+    }
+    return false;
+  };
+  // what a way from `leave` reaches, and of that, what reaches the target
   const reached = new Set(), queue = [...leave];
   while (queue.length) {
     const i = queue.shift();
     if (reached.has(i)) continue;
     reached.add(i);
-    if (i === target || (stops.has(i) && i !== target)) continue;
-    queue.push(...instrs[i].next);
+    if (i !== target && !stops.has(i)) queue.push(...instrs[i].next);
   }
   if (!reached.has(target)) return null;
-  // those from which the target can be reached, within what was reached
-  const back = new Set([target]);
+  const on = new Set([target]);
   for (let grew = true; grew;) {
     grew = false;
-    for (const i of reached) if (!back.has(i) && !(stops.has(i) && i !== target) && instrs[i].next.some(j => back.has(j))) { back.add(i); grew = true; }
+    for (const i of reached) if (!on.has(i) && !stops.has(i) && instrs[i].next.some(j => on.has(j))) { on.add(i); grew = true; }
   }
-  const on = [...reached].filter(i => back.has(i));
-  const reaches = (without, from = leave) => {
-    const seen = new Set(), queue = from.filter(i => i !== without && on.includes(i));
-    while (queue.length) {
-      const i = queue.shift();
-      if (seen.has(i)) continue;
-      seen.add(i);
-      if (i === target) return true;
-      queue.push(...instrs[i].next.filter(j => j !== without && on.includes(j)));
-    }
-    return false;
-  };
+  const within = i => on.has(i);
   // an instruction every way passes is one without which the target can't be reached
-  const every = on.filter(i => i !== target && !reaches(i));
-  const some = on.filter(i => i !== target && !every.includes(i));
-  // each in the order a way passes them, and whether it can run more than once
+  const every = [...on].filter(i => i !== target && !walk(leave, within, { without: i }));
+  const some = [...on].filter(i => i !== target && !every.includes(i));
+  // those every way passes, in the order a way passes them
   const order = [];
-  let at = leave.find(i => on.includes(i));
   const seen = new Set();
-  while (at !== undefined && at !== target && !seen.has(at)) {
+  for (let at = leave.find(within); at !== undefined && at !== target && !seen.has(at); at = instrs[at].next.find(j => within(j) && walk([j], within))) {
     seen.add(at);
     if (every.includes(at)) order.push(at);
-    at = instrs[at].next.find(j => on.includes(j) && (j === target || reaches(-1, [j])));
   }
-  const again = i => {
-    const seen2 = new Set(), queue2 = instrs[i].next.filter(j => on.includes(j));
-    while (queue2.length) {
-      const j = queue2.shift();
-      if (j === i) return true;
-      if (seen2.has(j) || j === target) continue;
-      seen2.add(j);
-      queue2.push(...instrs[j].next.filter(k => on.includes(k)));
-    }
-    return false;
-  };
-  return { every: order.length === every.length ? order : every, some, again };
+  // whether an instruction can run again before the target
+  const again = i => walk(instrs[i].next, within, { back: i });
+  return { every: order.length === every.length ? order : every.sort((a, b) => a - b), some, again };
 }
 
 /**
