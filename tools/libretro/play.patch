@@ -3158,7 +3158,7 @@ index 71aed53..be44279 100644
  }
  
 diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
-index 4ef7854..83b2279 100644
+index 4ef7854..d67f2c4 100644
 --- a/Source/iop/Iop_McServ.cpp
 +++ b/Source/iop/Iop_McServ.cpp
 @@ -18,6 +18,8 @@
@@ -3170,50 +3170,57 @@ index 4ef7854..83b2279 100644
  
  using namespace Iop;
  
-@@ -204,6 +206,32 @@ void CMcServ::Invoke(CMIPS& context, unsigned int functionId)
+@@ -204,6 +206,43 @@ void CMcServ::Invoke(CMIPS& context, unsigned int functionId)
  	}
  }
  
-+//Dreamports: when each entry of a memory card last changed by the console's clock, as its file's own time is the
-+//computer's: by its path, the computer's time it was seen with and the console's. What's there as the game starts the
-+//cards is from the clock's start
-+static std::map<std::string, std::pair<fs::file_time_type, time_t>> g_dreamportsStamps;
++//Dreamports: when each entry of a memory card last changed, by the console's clock and by the call that changed it,
++//never by the computer's own file times, which don't tell two changes apart on every computer: a Mac's can stand
++//still across several of the console's frames. An entry no call has changed is from the clock's start. A file made,
++//emptied or written is stamped then, a fast write when the file is next flushed or closed, a folder when something
++//is made, deleted or renamed in it, and what is renamed with everything in it.
++static std::map<std::string, time_t> g_dreamportsStamps;
++static std::string g_dreamportsOpen[5];
++static bool g_dreamportsUnflushed[5];
 +
-+static void DreamportsStamp(const fs::path& card, time_t now)
++static std::string DreamportsKey(const fs::path& path)
 +{
-+	std::error_code error;
-+	if(!fs::exists(card, error)) return;
-+	auto stamp = [now](const fs::path& path) {
-+		std::error_code error;
-+		auto hostTime = fs::last_write_time(path, error);
-+		if(error) return;
-+		auto found = g_dreamportsStamps.find(path.generic_string());
-+		if(found == g_dreamportsStamps.end() || found->second.first != hostTime) g_dreamportsStamps[path.generic_string()] = {hostTime, now};
-+	};
-+	stamp(card);
-+	for(const auto& element : fs::recursive_directory_iterator(card, error)) stamp(element.path());
++	return fs::absolute(path).lexically_normal().generic_string();
++}
++
++static void DreamportsStamp(const fs::path& path)
++{
++	g_dreamportsStamps[DreamportsKey(path)] = Dreamports::ConsoleTime();
++}
++
++static void DreamportsStampHandle(uint32 handle)
++{
++	if(handle < 5 && !g_dreamportsOpen[handle].empty()) g_dreamportsStamps[g_dreamportsOpen[handle]] = Dreamports::ConsoleTime();
++}
++
++static void DreamportsFlushed(uint32 handle)
++{
++	if(handle >= 5 || !g_dreamportsUnflushed[handle]) return;
++	g_dreamportsUnflushed[handle] = false;
++	DreamportsStampHandle(handle);
 +}
 +
 +static time_t DreamportsStampOf(const fs::path& path)
 +{
-+	auto found = g_dreamportsStamps.find(path.generic_string());
-+	return found == g_dreamportsStamps.end() ? Dreamports::CLOCK_START : found->second.second;
++	auto found = g_dreamportsStamps.find(DreamportsKey(path));
++	return found == g_dreamportsStamps.end() ? Dreamports::CLOCK_START : found->second;
 +}
 +
  bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
  {
  	bool isDirectCall = (method & CMD_FLAG_DIRECT) != 0;
-@@ -285,6 +313,33 @@ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret,
+@@ -285,6 +324,28 @@ bool CMcServ::Invoke(uint32 method, uint32* args, uint32 argsSize, uint32* ret,
  		return true;
  	}
  
-+	//Dreamports: what a call changed of a card is stamped with the console's clock, and the tools are told
++	//Dreamports: the tools are told of a call that can change a card
 +	switch(method)
 +	{
-+	case 0xFE:
-+	case 0x70:
-+		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::CLOCK_START);
-+		break;
 +	case CMD_ID_OPEN:
 +	case 0x71:
 +	case CMD_ID_CLOSE:
@@ -3227,7 +3234,6 @@ index 4ef7854..83b2279 100644
 +	case CMD_ID_DELETE:
 +	case 0x79:
 +	case 0x1B:
-+		for(const auto& preference : m_mcPathPreference) DreamportsStamp(CAppConfig::GetInstance().GetPreferencePath(preference), Dreamports::ConsoleTime());
 +		Dreamports::g_memoryCardChanges++;
 +		break;
 +	default:
@@ -3237,7 +3243,102 @@ index 4ef7854..83b2279 100644
  	if(!isDirectCall)
  	{
  		// Delay all commands a bit (except ReadFast, which has a different mecanism)
-@@ -1276,7 +1331,11 @@ unsigned int CMcServ::CPathFinder::Read(ENTRY* entry, unsigned int size)
+@@ -466,6 +527,8 @@ void CMcServ::Open(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, u
+ 			{
+ 				fs::create_directory(filePath);
+ 				result = 0;
++				DreamportsStamp(filePath);
++				DreamportsStamp(filePath.parent_path());
+ 			}
+ 		}
+ 		catch(...)
+@@ -484,6 +547,8 @@ void CMcServ::Open(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, u
+ 				try
+ 				{
+ 					Framework::CreateOutputStdStream(filePath.native());
++					DreamportsStamp(filePath);
++					DreamportsStamp(filePath.parent_path());
+ 				}
+ 				catch(...)
+ 				{
+@@ -500,6 +565,7 @@ void CMcServ::Open(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, u
+ 			{
+ 				//Create file (discard contents) if it exists
+ 				Framework::CreateOutputStdStream(filePath.native());
++				DreamportsStamp(filePath);
+ 			}
+ 		}
+ 
+@@ -515,6 +581,8 @@ void CMcServ::Open(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, u
+ 			}
+ 			m_files[handle] = std::move(file);
+ 			ret[0] = handle;
++			g_dreamportsOpen[handle] = DreamportsKey(filePath);
++			g_dreamportsUnflushed[handle] = false;
+ 		}
+ 		catch(...)
+ 		{
+@@ -539,6 +607,7 @@ void CMcServ::Close(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+ 		return;
+ 	}
+ 
++	DreamportsFlushed(cmd->handle);
+ 	file->Clear();
+ 
+ 	ret[0] = 0;
+@@ -649,6 +718,11 @@ void CMcServ::Write(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+ 
+ 	//Force flushing for games that read after write without seeking or flushing
+ 	file->Flush();
++	if(cmd->origin + cmd->size != 0)
++	{
++		g_dreamportsUnflushed[cmd->handle] = false;
++		DreamportsStampHandle(cmd->handle);
++	}
+ }
+ 
+ void CMcServ::Flush(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
+@@ -666,6 +740,7 @@ void CMcServ::Flush(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+ 	}
+ 
+ 	file->Flush();
++	DreamportsFlushed(cmd->handle);
+ 
+ 	ret[0] = 0;
+ }
+@@ -844,6 +919,15 @@ void CMcServ::SetFileInfo(uint32* args, uint32 argsSize, uint32* ret, uint32 ret
+ 				}
+ 
+ 				fs::rename(filePath1, filePath2);
++				{
++					std::error_code error;
++					DreamportsStamp(filePath2);
++					if(fs::is_directory(filePath2, error))
++					{
++						for(const auto& moved : fs::recursive_directory_iterator(filePath2, error)) DreamportsStamp(moved.path());
++					}
++					DreamportsStamp(filePath2.parent_path());
++				}
+ 			}
+ 			catch(...)
+ 			{
+@@ -882,6 +966,7 @@ void CMcServ::Delete(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+ 		{
+ 			fs::remove(filePath);
+ 			ret[0] = 0;
++			DreamportsStamp(filePath.parent_path());
+ 		}
+ 		else
+ 		{
+@@ -1008,6 +1093,7 @@ void CMcServ::WriteFast(uint32* args, uint32 argsSize, uint32* ret, uint32 retSi
+ 
+ 	result += static_cast<uint32>(file->Write(dst, cmd->size));
+ 	ret[0] = result;
++	if(cmd->size != 0 && cmd->handle < 5) g_dreamportsUnflushed[cmd->handle] = true;
+ }
+ 
+ void CMcServ::Init(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
+@@ -1276,7 +1362,11 @@ unsigned int CMcServ::CPathFinder::Read(ENTRY* entry, unsigned int size)
  void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
  {
  	bool found = false;
@@ -3250,7 +3351,7 @@ index 4ef7854..83b2279 100644
  	{
  		const auto& relativePath(element.path());
  		std::string relativePathString(relativePath.generic_string());
-@@ -1308,8 +1367,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+@@ -1308,8 +1398,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
  
  			//Fill in modification date info
  			{
