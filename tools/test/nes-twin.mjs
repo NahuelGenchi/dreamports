@@ -117,6 +117,12 @@ console.log('One line changed at a time:');
   check(!run.of.peek.same && changed.memory > 0 && changed.memory < CALLS && changed.bytes[0]?.[0] === 0x34 && others(run, 'peek'), `a twin that doesn't write what its original's own call pushes, which the original then reads, is found (${CALLS - changed.memory} of ${CALLS} calls)`);
   const fixed = tried('fixed-stack', [['void peek(uint8_t place, uint8_t s) {', 'void peek(uint8_t place, uint8_t s) {\n  s = 0xDE;']]);
   check(!fixed.of.peek.same && others(fixed, 'peek'), 'and so is one that takes the stack to be where it starts in a call whose contract doesn\'t name S');
+  const stray = tried('stray-push', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s - 1)] = 0x55;']]);
+  check(stray.of.peek.same, 'a twin may leave anything where the call\'s own frames were, as the next call pushes there');
+  const below = tried('below-frames', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s - 2)] = 0x55;']]);
+  check(!below.of.peek.same, 'but not below the lowest its stack went');
+  const above = tried('above-stack', [['  RAM[0x34] = RAM[0x100 | place];', '  RAM[0x34] = RAM[0x100 | place];\n  RAM[0x100 | (uint8_t)(s + 3)] = 0x55;']]);
+  check(!above.of.peek.same, 'but not above it, where the stack of its callers is');
   const returned = tried('return-read', [['peek(X, S)', 'peek(X, S) if X == (uint8_t)(S + 2)']]);
   check(returned.of.peek.same && returned.of.peek.changed.calls === CALLS, 'and a call that reads the address its caller left above S reads the same on both sides');
 }
