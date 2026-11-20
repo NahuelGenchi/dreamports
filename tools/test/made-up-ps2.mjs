@@ -231,6 +231,8 @@ export const VU1_TAG = [CORNERS.length | 0x8000, (1 << 14 | 0xC << 15 | 2 << 28)
 // what goes to vector unit 1 each frame, through its interface: the program, the matrix, the tag, the corners, and the word to run
 const VIF_NOP = 0, unpack = (at, count) => (0x6C << 24 | count << 16 | at) >>> 0;
 const microcode = onVu1();
+/** The program vector unit 1 runs, its pairs as 32-bit words, the lower of each first, as it's put at the start of the unit's code memory. */
+export const VU1_PROGRAM = microcode;
 const MATRIX = [[1, 0, 0, DEPTH_ACROSS], [0, 1, 0, 0], [0, 0, 1, 0], [MIDDLE[0], MIDDLE[1], 0, 1]];
 const beforeMatrix = [VIF_NOP, (0x4A << 24 | microcode.length / 2 << 16) >>> 0, ...microcode, 0x01000404, unpack(0, 4)];
 const VIF_PACKET = (() => {

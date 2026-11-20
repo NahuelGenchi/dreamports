@@ -27,6 +27,17 @@
 // instructions are comes from the function finder, which knows the tables its code jumps with from its code. Its
 // data isn't followed yet, so an NES game's file has no "cells" and no "content", and its gameplay proven stays its
 // parts' share: prove keeps this file's total out of its progress.json until the data is followed (prove.mjs).
+//
+// On the PlayStation 2 a place is four bytes, an instruction of the EE or the IOP, or half a pair of a vector unit's.
+// Play! says what ran a block at a time (libretro/ran-ps2.h), each record with its processor in the second byte of its
+// third word, and the code map lists every piece of code on the disc (ps2/functions.mjs): the program it boots, its
+// other EE programs, its modules for the IOP and its vector unit programs. An instruction of the EE counts for the
+// function of whichever program holds, at its address, the word that ran, the program the disc boots first, so code
+// loaded over other code at the same address counts as itself. A vector unit's pair counts for the program whose
+// upload puts it at that place in the unit's memory, as the MPG command before it says, and holds that word. A module of
+// the IOP's is loaded wherever the IOP has room, which the tools don't follow yet: its instructions count, and stay
+// unplayed. Its content is the disc: a cell is a sector, 2048 bytes of the disc's data, counted once the game has read
+// it in a frame that matched, and a game's unreachable.json names sectors, not addresses, under "content".
 
 import { deflateRawSync, inflateRawSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -35,6 +46,7 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
+import { SECTOR, loadedCopy, mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
 
 export const RAN = 0, TAKEN = 1, NOT_TAKEN = 2;
@@ -54,18 +66,33 @@ const unpack = (text, bytes) => {
 
 // a code map knows its console (lib/proof-files.mjs), and one made by hand, with none, is a Game Boy Advance's
 const isNes = codeMap => codeMap.console === 'nes';
+const isPs2 = codeMap => codeMap.console === 'ps2';
 
 /** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven. */
 export const followsContent = codeMap => !isNes(codeMap);
 
-/** How many cells of data a code map's cartridge has, or none on a console whose data isn't followed. */
-export const cellsOf = (codeMap, cartridge) => (followsContent(codeMap) ? Math.ceil(cartridge(CARTRIDGE, 0x02000000).length / CELL) : 0);
+// the cells of the cartridge's or disc's data, and those that hold anything: { count, holds }
+function cellsHeld(codeMap, cartridge) {
+  if (isPs2(codeMap)) {
+    const disc = cartridge.disc ? loadedCopy(cartridge.disc).cells : null;
+    return disc ? { count: disc.sectors, holds: disc.holds } : { count: 0, holds: new Uint8Array(0) };
+  }
+  const rom = cartridge(CARTRIDGE, 0x02000000);
+  return { count: Math.ceil(rom.length / CELL), holds: contentCells(codeMap, rom) };
+}
+
+/** How many cells of data a code map's cartridge has, or none on a console whose data isn't followed. On the
+ *  PlayStation 2, how many sectors its disc has, or none for a copy that's a program alone. */
+export const cellsOf = (codeMap, cartridge) => (!followsContent(codeMap) ? 0 : isPs2(codeMap) ? cellsHeld(codeMap, cartridge).count : Math.ceil(cartridge(CARTRIDGE, 0x02000000).length / CELL));
+
+/** Where a cell is, as a game's unreachable.json names it: a cartridge's address, or on the PlayStation 2 the sector. */
+export const cellAddress = (codeMap, cell) => (isPs2(codeMap) ? cell : CARTRIDGE + cell * CELL);
 
 /** Where each of the code map's functions has its places: { first, places, bytes, unit }, `first[i]` the place of
  *  function i's first two bytes, `bytes` how long a set of all of them is, and `unit` how many bytes a place is: two,
  *  or one on the NES. */
 export function layoutOf(codeMap) {
-  const unit = isNes(codeMap) ? 1 : 2;
+  const unit = isNes(codeMap) ? 1 : isPs2(codeMap) ? 4 : 2;
   const first = new Uint32Array(codeMap.functions.length + 1);
   codeMap.functions.forEach((f, i) => { first[i + 1] = first[i] + Math.ceil(f.size / unit); });
   const places = first[codeMap.functions.length];
@@ -207,6 +234,42 @@ export function finderOf(codeMap, cartridge, made) {
   };
   // an NES address is a place in the program, and its code runs from nowhere else that counts
   if (isNes(codeMap)) return address => inCartridge(address);
+  // a PlayStation 2 address is in its processor's own memory: the EE's code counts where a program of the disc holds
+  // what ran, and a vector unit's where the program an upload put there does (ps2/ledger.mjs)
+  if (isPs2(codeMap)) {
+    const programs = new Map(), units = [];
+    codeMap.functions.forEach((f, index) => {
+      const { kind, bytes, vuAddress } = cartridge.code(f);
+      if (kind === 'vu' && vuAddress !== null) units.push({ index, address: vuAddress, size: f.size, bytes });
+      if (kind !== 'ee') return;
+      if (!programs.has(f.program ?? '')) programs.set(f.program ?? '', []);
+      programs.get(f.program ?? '').push({ index, address: f.address, size: f.size, bytes });
+    });
+    // the program the disc boots first, then the others
+    const lists = [...programs].sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))).map(([, list]) => list.sort((a, b) => a.address - b.address));
+    const word = (bytes, at) => (at + 4 <= bytes.length ? (bytes[at] | bytes[at + 1] << 8 | bytes[at + 2] << 16 | bytes[at + 3] << 24) >>> 0 : null);
+    const holding = (list, address) => {
+      let low = 0, high = list.length - 1;
+      while (low <= high) {
+        const middle = (low + high) >> 1, f = list[middle];
+        if (address < f.address) high = middle - 1;
+        else if (address >= f.address + f.size) low = middle + 1;
+        else return f;
+      }
+      return null;
+    };
+    return (address, code, processor) => {
+      if (processor === 0) {
+        for (const list of lists) {
+          const f = holding(list, address);
+          if (f && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
+        }
+      } else if (processor >= 2) {
+        for (const f of units) if (address >= f.address && address < f.address + f.size && word(f.bytes, address - f.address) === code) return [f.index, address - f.address];
+      }
+      return null;
+    };
+  }
   const same = (bytes, at, code, thumb) => bytes && at + (thumb ? 2 : 4) <= bytes.length
     && (bytes[at] | bytes[at + 1] << 8) === (code & 0xFFFF) && (thumb || (bytes[at + 2] | bytes[at + 3] << 8) === code >>> 16);
   return (address, code, thumb) => {
@@ -235,9 +298,9 @@ export function playedIn(records, matched, layout, find) {
   for (let i = 0; i + 5 <= records.length; i += 5) {
     const from = records[i + 3], to = Math.min(records[i + 4], matched.length - 1);
     if (from > to || before[to + 1] === before[from]) continue;
-    // a Game Boy Advance address has its lowest bit set for Thumb code
-    const found = layout.unit === 1 ? find(records[i]) : find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
-    if (found) put(set, (layout.first[found[0]] + Math.floor(found[1] / layout.unit)) * 3 + records[i + 2]);
+    // a Game Boy Advance address has its lowest bit set for Thumb code, and a PlayStation 2 record says its processor
+    const found = layout.unit === 1 ? find(records[i]) : layout.unit === 4 ? find(records[i], records[i + 1], records[i + 2] >>> 8) : find(records[i] & ~1, records[i + 1], (records[i] & 1) === 1);
+    if (found) put(set, (layout.first[found[0]] + Math.floor(found[1] / layout.unit)) * 3 + (records[i + 2] & 0xFF));
   }
   return set;
 }
@@ -323,6 +386,34 @@ export function provenUnits(game, codeMap) {
 }
 
 /**
+ * What's left to play of a PlayStation 2 version's EE code, in the program its disc boots, for a search for it
+ * (libretro/ran-ps2.h, DP_UNPLAYED): for
+ * each thing, the instruction's address plus what it is, 0 an instruction that never ran in a matching frame, 1 a
+ * branch never taken and 2 one never not taken, a way the game's unreachable.json rules out left out. Where the
+ * Game Boy Advance's search is given what's been played and counts the rest of the cartridge, a PlayStation 2's
+ * memory holds other code than the program's, so its search is given what to look for.
+ */
+export function unplayedUnits(game, codeMap) {
+  const layout = layoutOf(codeMap), played = readPlayed(game), same = played.places === layout.places;
+  const ran = new Uint8Array(layout.bytes), code = unpack(same ? played.code : null, layout.bytes), units = [];
+  const { ways: ruledOut } = readUnreachable(game);
+  for (const text of Object.values(same ? played.recordings ?? {} : {})) {
+    const set = unpack(text, layout.bytes);
+    for (let i = 0; i < set.length; i++) ran[i] |= set[i];
+  }
+  codeMap.functions.forEach((f, index) => {
+    if (f.program || f.vu || f.bytes) return;
+    for (let place = layout.first[index]; place < layout.first[index + 1]; place++) {
+      const at = f.address + (place - layout.first[index]) * layout.unit;
+      if (has(code, place * 3 + INSTRUCTION) && !has(ran, place * 3 + RAN)) units.push((at | RAN) >>> 0);
+      if (!has(code, place * 3 + BRANCH)) continue;
+      for (const way of [TAKEN, NOT_TAKEN]) if (!has(ran, place * 3 + way) && ruledOut.get(at) !== way) units.push((at | way) >>> 0);
+    }
+  });
+  return Uint32Array.from(units);
+}
+
+/**
  * What a version's played.json leaves untouched, for people and for tasks: { functions, content }. `functions` has, for
  * each function of the code map with something unplayed, { key, address, size, total, played, never, ways }: its
  * instructions and branch ways, how many were played, whether it never ran at all, and `ways`, the addresses of the
@@ -356,20 +447,24 @@ export function untouchedOf(game, codeMap, cartridge = null) {
     if (done < total) functions.push({ key: f.key, address: f.address, size: f.size, total, played: done, never: done === 0, ways });
   });
   if (!cartridge || !followsContent(codeMap)) return { functions, content: [] };
-  // the cartridge's data never used, cell by cell, joined into stretches
-  const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), read = new Uint8Array(holds.length), content = [];
+  // the cartridge's data never used, cell by cell, joined into stretches: on the PlayStation 2 the disc's sectors never
+  // read, with those that hold one value throughout, which don't count, as `plain`, so every sector is accounted for
+  const { count, holds } = cellsHeld(codeMap, cartridge), read = new Uint8Array(Math.ceil(count / 8)), content = [], plain = [];
   for (const text of Object.values(same ? played.content ?? {} : {})) {
-    const set = unpack(text, holds.length);
+    const set = unpack(text, read.length);
     for (let i = 0; i < set.length; i++) read[i] |= set[i];
   }
-  for (let cell = 0; cell < holds.length * 8; cell++) {
-    if (!has(holds, cell) || has(read, cell)) continue;
-    const from = CARTRIDGE + cell * CELL, last = content.at(-1);
-    if (last && last[1] + 1 === from) last[1] = from + CELL - 1;
-    else content.push([from, from + CELL - 1]);
+  const ps2 = isPs2(codeMap), span = ps2 ? 1 : CELL;
+  for (let cell = 0; cell < count; cell++) {
+    if (has(read, cell) || (!ps2 && !has(holds, cell))) continue;
+    const into = has(holds, cell) ? content : plain, from = cellAddress(codeMap, cell), last = into.at(-1);
+    if (last && last[1] + 1 === from) last[1] = from + span - 1;
+    else into.push([from, from + span - 1]);
   }
-  content.sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]) || a[0] - b[0]);
-  return { functions, content };
+  const longest = (a, b) => (b[1] - b[0]) - (a[1] - a[0]) || a[0] - b[0];
+  content.sort(longest);
+  plain.sort(longest);
+  return { functions, content, ...(ps2 ? { plain, sectors: count, sectorBytes: SECTOR } : {}) };
 }
 
 /**
@@ -508,14 +603,16 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   const known = unpack(sameMap ? before.code : null, layout.bytes), code = new Uint8Array(layout.bytes);
   let total = 0, played = 0;
-  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : null;
+  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : null, ps2 = isPs2(codeMap);
   codeMap.functions.forEach((f, index) => {
     const first = layout.first[index], places = layout.first[index + 1] - first;
-    const bytes = f.bytes ? made.get(index) : cartridge(f.address, f.size);
+    // a PlayStation 2 function's bytes are its own program's, a module's or a vector unit's among them (ps2/ledger.mjs)
+    const own = ps2 ? cartridge.code(f) : null;
+    const bytes = own ? own.bytes : f.bytes ? made.get(index) : cartridge(f.address, f.size);
     if (bytes) {
       const seeds = [];
       for (let place = 0; place < places; place++) if (has(ran, (first + place) * 3 + RAN)) seeds.push(place * unit);
-      const { instructions, branches } = nesCode ? nesCode(f) : instructionsOf(bytes, seeds);
+      const { instructions, branches } = nesCode ? nesCode(f) : own?.kind === 'vu' ? vuInstructionsOf(bytes, seeds) : own ? mipsInstructionsOf(bytes, seeds, new Map(), f.address) : instructionsOf(bytes, seeds);
       for (const at of instructions) put(code, (first + Math.floor(at / unit)) * 3 + INSTRUCTION);
       for (const at of branches) put(code, (first + Math.floor(at / unit)) * 3 + BRANCH);
     } else {
@@ -547,7 +644,7 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
     return { percent, total, played, content: null };
   }
   // the cartridge's data: the cells that count, and those some recording used in its matching frames
-  const rom = cartridge(CARTRIDGE, 0x02000000), holds = contentCells(codeMap, rom), cellBytes = holds.length;
+  const { holds } = cellsHeld(codeMap, cartridge), cellBytes = holds.length;
   const content = {};
   for (const name of [...all].sort()) {
     if (used.has(name)) content[name] = pack(used.get(name));
@@ -561,7 +658,7 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   for (let cell = 0; cell < cellBytes * 8; cell++) {
     if (!has(holds, cell)) continue;
-    if (!has(read, cell) && within(unreachable.content, CARTRIDGE + cell * CELL)) continue;
+    if (!has(read, cell) && within(unreachable.content, cellAddress(codeMap, cell))) continue;
     cellsTotal++;
     if (has(read, cell)) cellsRead++;
   }
