@@ -57,14 +57,12 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
  * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
- * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a PlayStation 2
- * vector unit's program (ps2/functions.mjs), which `twin` doesn't call yet: it's in no task, and still counts as not
- * proven. A function of another program of the disc, a module for its second processor or another for the EE, has
- * its proof by `twin` (ps2/twin.mjs).
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. A PlayStation 2 function of another
+ * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
+ * have their proof by `twin` (ps2/twin.mjs).
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
-  if (f.vu) return 'elsewhere';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }
@@ -244,8 +242,7 @@ export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
-      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
-        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s a vector unit\'s program, which no proof reaches yet' : 'no twin yet',
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',

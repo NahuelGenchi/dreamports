@@ -39,6 +39,8 @@ uint32_t vif_receive(int unit, uint32_t address, uint32_t qwc, int tag);
 /** What a program on vector unit 1 reads with XTOP, and on either with XITOP. */
 uint32_t vif1_top(void);
 uint32_t vif_itop(int unit);
+/** TOP and ITOP as the function check gives them to a unit's program (vu.c, vu_registers). */
+void vif_tops(int unit, uint32_t top, uint32_t itop);
 
 /** The GIF (gif.c): one packet, or as many as there are, from `memory` of `size` bytes, from `at` to `end`, on `path`
  *  (1 for vector unit 1's XGKICK, 2 for the VIF's DIRECT, 3 for its own DMA channel). Each gives how many bytes it took,
@@ -66,6 +68,8 @@ uint32_t vu_stopped_at(int unit);
 /** A unit's registers as 158 words the function check gives and reads (vu.c): with `set` the words are put in the
  *  unit, and without it read from it. Either way it gives where the words are. */
 uint32_t *vu_registers(int unit, int set);
+/** Told of each packet XGKICK sends, for the function check to keep (vu.c): the check's build has its own. */
+void vu_kicked(const uint8_t *memory, uint32_t size, uint32_t at);
 
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);
