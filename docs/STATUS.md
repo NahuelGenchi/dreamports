@@ -31,7 +31,7 @@ Some code is in many games of a console without any of them having written it: t
 
 <!-- The proof tools draw these maps from the kit's shared libraries: npm run dp -- readme. -->
 
-![Game Boy Advance: 0% of its known shared code proven, 0 of 7,044 bytes and 0 of 95 functions, in 1 library, taken by 0 games.](../.github/readme/progress/shared.gba.svg)
+![Game Boy Advance: 0% of its known shared code proven, 0 of 7,418 bytes and 0 of 118 functions, in 4 libraries, taken by 0 games.](../.github/readme/progress/shared.gba.svg)
 
 ![PlayStation: 0% of its known shared code proven, 0 of 107,444 bytes and 0 of 522 functions, in 10 libraries, taken by 0 games.](../.github/readme/progress/shared.ps1.svg)
 

@@ -1,7 +1,9 @@
 // When things happen within a frame on the Super Nintendo, as Snes9x times them, the reference the proof tools run the
 // original on: in the main clock's cycles from a line's start, 1364 to a line, 262 lines to a frame, its lines shown
-// from line 1 to 224 and V-blank from line 225. This file alone holds those numbers; the picture unit (ppu.c) draws its
-// lines at the times it gives, and the game's interrupt handler, game_irq, runs at the line and dot its timers say.
+// from line 1 to 224, or to 239 with overscan, and V-blank from the line after. Every other frame Snes9x makes line 240
+// a dot short, or when the frame is interlaced gives it a 263rd line instead. This file alone holds those numbers; the
+// picture unit (ppu.c) draws its lines at the times it gives, and the game's interrupt handler, game_irq, runs at the
+// line and dot its timers say.
 //
 // A game's step, its handler for the interrupt at V-blank, NMI, runs as V-blank starts, at line 225. Its handler for the
 // timers' interrupt, IRQ, runs where $4200's bits 4 and 5 and the timers at $4207 to $420A put it: at a dot of every
@@ -49,6 +51,7 @@ void timing_at(int line, int cycle) {
 }
 
 int timing_line(void) { return now_line; }
+int timing_cycle(void) { return now_cycle; }
 
 void timing_run(int line, int from, int to) {
   for (;;) {
@@ -64,11 +67,11 @@ void timing_run(int line, int from, int to) {
   timing_at(line, to);
 }
 
-void timing_nmi(void) { timing_at(VBLANK, NMI_AT); }
+void timing_nmi(void) { timing_at(ppu_vblank_line(), NMI_AT); }
 
 void timing_vblank(void) {
-  timing_at(VBLANK, 0);
-  for (int line = VBLANK; line < LINES; line++) timing_run(line, 0, LINE_CYCLES);
+  timing_at(ppu_vblank_line(), 0);
+  for (int line = ppu_vblank_line(); line < LINES + ppu_long_frame(); line++) timing_run(line, 0, LINE_CYCLES);
 }
 
 void timing_line_run(int line, void (*draw)(int row), void (*hdma_init)(void), void (*hdma)(void)) {
@@ -81,10 +84,18 @@ void timing_line_run(int line, void (*draw)(int row), void (*hdma_init)(void), v
   timing_run(line, HDMA_LINE, LINE_CYCLES);
 }
 
+uint32_t timing_step(int from, int to, int again) {
+  if (again) return (uint32_t)((to - from) * LINE_CYCLES);
+  // V-blank's lines to the frame's end, line 240 among them, and the next frame's up to its V-blank
+  int lines = LINES + ppu_long_frame() - from + to;
+  return (uint32_t)(lines * LINE_CYCLES - (ppu_short_line() ? DOT : 0));
+}
+
 uint8_t timing_4212(void) {
-  // auto-joypad's reading for the first three lines of V-blank, H-blank, and V-blank
-  uint8_t value = now_line >= VBLANK && now_line < VBLANK + 3 ? 1 : 0;
+  // auto-joypad's reading for the first three lines of V-blank, H-blank, and V-blank, from the frame's lines as they are
+  int vblank = ppu_lines() + SNES_FIRST_LINE;
+  uint8_t value = now_line >= vblank && now_line < vblank + 3 ? 1 : 0;
   if (now_cycle < HBLANK_END || now_cycle >= HBLANK_START) value |= 0x40;
-  if (now_line >= VBLANK) value |= 0x80;
+  if (now_line >= vblank) value |= 0x80;
   return value;
 }

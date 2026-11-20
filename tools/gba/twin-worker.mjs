@@ -1,8 +1,8 @@
 // Runs the twins for the function check (twin.mjs), in a thread of its own: a twin that never comes back can't be
 // stopped from inside, so the check stops the whole thread and starts another. It holds the module the twins were
-// built to, with the console's memory at the console's addresses and the contributor's copy where the cartridge is.
-// Twins built on the kit keep the video memory, the colours and the sprites where the kit does, so that is where those
-// parts of the image go and come from, and the kit is told the copy is the cartridge. It is told what to do in messages:
+// built to, with the console's memory at the console's addresses, the kit's colours, video memory and sprites among it,
+// and the contributor's copy where the cartridge is. The kit is told the copy is the cartridge. It is told what to do
+// in messages:
 //
 //   { set: image }                        puts the image, the console's five memories one after another (call.c), in
 //                                         the module's memory. Answers { done: true }.
@@ -41,8 +41,6 @@ function fresh() {
 const rom = readFileSync(workerData.copy);
 if (CARTRIDGE + rom.length > memory.length) throw new Error('The twins\' memory doesn\'t reach the end of the cartridge.');
 memory.set(rom, CARTRIDGE);
-// each memory of the image where this module has it: the kit's own, for the ones the kit keeps
-const regions = REGIONS.map(region => ({ ...region, address: exports[region.kit]?.value ?? region.address }));
 // the kit's copy of the game is the cartridge, for a twin that reads its data through the kit
 if (exports.kit_copy && exports.kit_copy_size) {
   view.setUint32(exports.kit_copy.value, CARTRIDGE, true);
@@ -52,25 +50,32 @@ if (exports.kit_copy && exports.kit_copy_size) {
 const stack = exports.__stack_pointer?.value;
 // The module's own values, as they were before any call: what the kit keeps, such as its registers, and what the
 // version's hardware keeps, such as a DMA channel's state. The original's hardware is as it was before each call, so
-// these are put back before each call too, all but the memories of the image, which the check gives.
+// these are put back before each call too. The memories of the image, which the check gives, are all below them.
 const own = exports.__data_end ? { from: exports.__global_base?.value ?? 0, to: exports.__data_end.value } : null;
 const before = own && memory.slice(own.from, own.to);
-const inOwn = regions.filter(({ address, bytes }) => own && address >= own.from && address + bytes <= own.to);
+if (own && REGIONS.some(({ address, bytes }) => address + bytes > own.from)) throw new Error('The twins\' own values start inside the console\'s memory.');
 // A version that keeps the console's registers itself, as a same-memory version does in its console_io, is given the
 // original's as each call starts, as the original's own are as they were before each call (#1527). The kit's display
 // registers are the kit's, and stay as the module starts them.
 const registers = exports.console_io && workerData.registers ? new Uint8Array(workerData.registers) : null;
 function putBack() {
-  if (own) {
-    const images = inOwn.map(({ address, bytes }) => memory.slice(address, address + bytes));
-    memory.set(before, own.from);
-    inOwn.forEach(({ address }, i) => memory.set(images[i], address));
-  }
+  if (own) memory.set(before, own.from);
   if (registers) memory.set(registers, exports.console_io.value);
 }
 
+// A version built with the console's stack keeps its twins' locals and pushes there (kit/gba/c/stack.c): each call
+// starts the stack where the original's call starts, and what the twins left on it is put back after it, as far down
+// as they went, as the program that calls the original puts back what the original's call left there (call.c)
+const STACK_ROOM = 0x2000;
+const stacked = workerData.stacked && exports.gba_stack_begin && exports.gba_stack_lowest;
+function stackPutBack(sp, saved) {
+  fresh();
+  const low = exports.gba_stack_lowest() >>> 0;
+  if (low < sp && low >= sp - STACK_ROOM) memory.set(saved.subarray(low - (sp - STACK_ROOM)), low);
+}
+
 function give(image) {
-  for (const { at, address, bytes } of regions) memory.set(image.subarray(at, at + bytes), address);
+  for (const { at, address, bytes } of REGIONS) memory.set(image.subarray(at, at + bytes), address);
 }
 
 parentPort.on('message', message => {
@@ -88,18 +93,19 @@ parentPort.on('message', message => {
       if (registers && where - 0x04000000 + 2 <= registers.length) view.setUint16(exports.console_io.value + where - 0x04000000, value, true);
       continue;
     }
-    // a value of the palette, the video memory or the sprites' list goes where the kit keeps that memory
-    const region = REGIONS.findIndex(r => where >= r.address && where < r.address + r.bytes);
-    const address = region < 0 ? where : regions[region].address + where - REGIONS[region].address;
-    if (bytes === 1) view.setUint8(address, value);
-    else if (bytes === 2) view.setUint16(address, value, true);
-    else view.setUint32(address, value, true);
+    if (bytes === 1) view.setUint8(where, value);
+    else if (bytes === 2) view.setUint16(where, value, true);
+    else view.setUint32(where, value, true);
   }
+  const sp = stacked && message.sp ? message.sp >>> 0 : 0;
+  const saved = sp ? memory.slice(sp - STACK_ROOM, sp) : null;
+  if (sp) exports.gba_stack_begin(sp);
   let gave;
   try {
     gave = exports[message.call](...message.args) >>> 0;
   } catch (error) {
     if (stack !== undefined) exports.__stack_pointer.value = stack;
+    if (sp) stackPutBack(sp, saved);
     // WebAssembly stops a call through a pointer to a function that takes or gives something else, where the console
     // just runs it: that says nothing of the twin, only that the check gave it such a pointer
     if (error instanceof Unbuilt) parentPort.postMessage({ stopped: 'unbuilt', unbuilt: error.message });
@@ -107,9 +113,10 @@ parentPort.on('message', message => {
     else parentPort.postMessage({ stopped: String(error.message ?? error) });
     return;
   }
+  if (sp) stackPutBack(sp, saved);
   fresh();
   const image = new Uint8Array(IMAGE);
-  for (const { at, address, bytes } of regions) image.set(memory.subarray(address, address + bytes), at);
+  for (const { at, address, bytes } of REGIONS) image.set(memory.subarray(address, address + bytes), at);
   parentPort.postMessage({ gave, image }, [image.buffer]);
 });
 parentPort.postMessage({ ready: true });

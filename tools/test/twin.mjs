@@ -158,6 +158,7 @@ try {
   check(shifted.by.Await?.kind === 'unchecked' && /a DMA the console's clock started wrote memory/.test(shifted.by.Await.line), `and a call in which a DMA the V-blank started writes memory is set aside, as a twin has no clock: ${shifted.by.Await?.line ?? shifted.error}`);
   check(shifted.by.Fetch?.kind !== 'same' && /left for 0x00000100, where a twin can't follow/.test(shifted.by.Fetch?.line ?? ''), `and so is one whose DMA copies from the BIOS, which a DMA can't read: ${shifted.by.Fetch?.line ?? shifted.error}`);
   check(shifted.by.Ready?.kind === 'same' && shifted.by.Ready.whole === true, `a call reads the line count and the V-blank as it started, as a twin with no clock does, and some calls start outside the V-blank, so every path is taken: ${shifted.by.Ready?.line ?? shifted.error}`);
+  check(shifted.by.Picture?.kind === 'same' && shifted.by.Picture.whole === true, `and one that adds 228 to a line of the picture takes that way too, as a call outside the V-blank starts on one: ${shifted.by.Picture?.line ?? shifted.error}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
@@ -274,6 +275,20 @@ try {
   const named = program(['#include "program.h"', '#include "program.h"\n#include "twins.h"'], ['which & 1 ? Step : Skip', 'which & 1 ? TWIN_ADDRESS(Step) : TWIN_ADDRESS(Skip)'], ['if (gHandler) gHandler();', 'if (gHandler) TWIN(gHandler)();']);
   const written = await checking(named, {}, { includes: [join(named, '..'), headers] });
   check(sameBut(written, []), `a twin that names functions by their addresses with twins.h, and calls through its table, leaves the same memory${written.error ? `: ${written.error}` : ''}`);
+  // a game of twins has its own table in one of its files, and in the check an address it has no twin of is the
+  // check's to set aside as one a twin can't follow, rather than the table's to stop the game on: here the table leaves
+  // out Skip, which Run is then handed
+  const header = readFileSync(join(headers, 'twins.h'), 'utf8'), partial = join(work, 'twins-partial'), stopping = join(work, 'twins-stopping');
+  for (const folder of [partial, stopping]) mkdirSync(folder, { recursive: true });
+  const leftOut = header.replace(/TWIN_OF\(Skip\) ?/, '');
+  check(leftOut !== header, 'a table can leave out Skip');
+  writeFileSync(join(partial, 'twins.h'), leftOut);
+  writeFileSync(join(stopping, 'twins.h'), leftOut.replace('#define TWIN_NONE(address) return __twin_no_code(address);', '#define TWIN_NONE(address) __builtin_trap();'));
+  const tabled = program(['#include "program.h"', '#include "program.h"\n#include "twins.h"'], ['which & 1 ? Step : Skip', 'which & 1 ? TWIN_ADDRESS(Step) : TWIN_ADDRESS(Skip)'], ['if (gHandler) gHandler();\n}', 'if (gHandler) TWIN(gHandler)();\n}\n\nTWIN_TABLE']);
+  const own = await checking(tabled, {}, { includes: [join(tabled, '..'), partial] });
+  check(sameBut(own, []), `and so does one whose file has the game's own table, with no twin for an address Run is handed${own.error ? `: ${own.error}` : `: ${own.by.Run?.line}`}`);
+  const stopped = await checking(tabled, {}, { includes: [join(tabled, '..'), stopping] });
+  check(stopped.by.Run?.kind === 'stopped' && /unreachable/.test(stopped.by.Run.line), `where a table that stops there stops the twin: ${stopped.by.Run?.line ?? stopped.error}`);
 
   console.log('A twin that never comes back:');
   const began = Date.now();

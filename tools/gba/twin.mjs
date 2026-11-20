@@ -36,7 +36,7 @@ import { LOCAL, REPO } from '../lib/paths.mjs';
 import { hex, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
 import { originalPlay } from '../lib/recording.mjs';
 import { copyWith } from '../lib/copies.mjs';
-import { cKit, keptObject, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
+import { cKit, keptObject, SAME_FLAGS, stackedCopies, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { NOT_TAKEN, TAKEN, WENT_ELSEWHERE, WENT_ON, instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
@@ -48,7 +48,7 @@ import { looksLikeArm, withLongJumps } from './functions.mjs';
 import { readCopy } from './header.mjs';
 import { KEY } from './original.mjs';
 import { addressFinder, runIn, throughOf, twinsIn } from './match.mjs';
-import { addressAt, CARTRIDGE, IMAGE, inImage, REGIONS } from './twin-memory.mjs';
+import { addressAt, CARTRIDGE, IMAGE, inImage } from './twin-memory.mjs';
 import { hasMemories, memoriesKey, openMemories, takeMemories } from './twin-memories.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
@@ -65,14 +65,16 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 // where the compiler finds the kit's folders and any other folder outside the C's own, beside the C: the compiler
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
-// what of the kit the thread that runs the twins reaches by name: its video memory, colours and sprites, and the copy
-// and where the module's own values are, which the kit's and the version's hardware are among (twin-worker.mjs)
-const KIT_NAMES = [...REGIONS.filter(region => region.kit).map(region => region.kit), 'kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io'];
+// what of the kit the thread that runs the twins reaches by name: the copy, and where the module's own values are,
+// which the kit's and the version's hardware are among, and the console's stack's start for a call and how far down
+// it went (twin-worker.mjs). Its video memory, colours and sprites are where the console has them, as the check builds
+// it (cKit's twinFlags)
+const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io', 'gba_stack_begin', 'gba_stack_lowest'];
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
-// the display's status, and its bit that says the display is in the V-blank
-const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1;
+// the display's status, and its bit that says the display is in the V-blank, and the line count
+const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1, VCOUNT = 0x04000006;
 // whether some code keeps a word beside it, where words start
 const holdsWord = (bytes, word) => {
   for (let at = 0; at + 4 <= bytes.length; at += 4) if (bytes.readUInt32LE(at) === word) return true;
@@ -305,13 +307,13 @@ export async function openOriginal(copy, frames) {
 // The twins: a thread that runs the module (twin-worker.mjs), stopped and started again when a twin doesn't come back.
 
 class Twins {
-  constructor({ module, copy, seconds, registers = null }) {
-    Object.assign(this, { module, copy, seconds, registers, worker: null, waiting: null });
+  constructor({ module, copy, seconds, registers = null, stacked = false }) {
+    Object.assign(this, { module, copy, seconds, registers, stacked, worker: null, waiting: null });
   }
 
   async start(image) {
     this.stop();
-    this.worker = new Worker(WORKER, { workerData: { module: this.module, copy: this.copy, noCode: NO_CODE, registers: this.registers } });
+    this.worker = new Worker(WORKER, { workerData: { module: this.module, copy: this.copy, noCode: NO_CODE, registers: this.registers, stacked: this.stacked } });
     this.worker.on('message', message => this.waiting?.(message));
     this.worker.on('error', error => this.waiting?.({ broken: String(error.message ?? error) }));
     const ready = await new Promise(done => { this.waiting = done; });
@@ -338,8 +340,8 @@ class Twins {
 
   /** One call of a twin: { gave, image }, { stopped, unbuilt } or { never: true }, after which the thread has gone
    *  and `start` makes another. */
-  async call(name, args, changes) {
-    const answer = await this.said({ call: name, args, changes }, this.seconds);
+  async call(name, args, changes, sp = 0) {
+    const answer = await this.said({ call: name, args, changes, sp }, this.seconds);
     if (answer.never) this.stop();
     return answer;
   }
@@ -479,9 +481,12 @@ const GBA_LAYOUT = { base: OWN_BASE, memory: null, code: address => address | 1 
  *     check's own to build beside the twins, as what keeps the packets a PlayStation 2 vector unit's program sends
  *   givenOf(file): for a file of a shared library the version takes, where the copy has each of its twins, as
  *     twinsIn takes it, or null (../lib/twins.mjs)
- * Answers { unit(file), link({ file, only, addressOf }) }.
+ *   stacked: for a version built with the console's stack, the copy of each file its build takes, with the stack's
+ *     calls in (../lib/c.mjs stackedCopies), built in the file's place, so a twin keeps its locals and its pushes where
+ *     the console does, or null
+ * Answers { unit(file), link({ file, only, addressOf }), stacked }.
  */
-export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null, placed: placedAt = twin => twin.address, kitNames = [], more = '' }) {
+export function openBuild({ root, includes = [root], files = [], console: id = 'gba', shifts = [], givenOf = () => null, layout = GBA_LAYOUT, signature: signatureFor = signatureOf, wrap = null, placed: placedAt = twin => twin.address, kitNames = [], more = '', stacked = null }) {
   const inRoot = path => relative(root, path).split(sep).join('/') || '.';
   const inside = folder => !inRoot(folder).startsWith('..') && !isAbsolute(inRoot(folder));
   const source = treeOf(root), elsewhere = {}, placed = new Map();
@@ -494,7 +499,8 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
     }
     return placed.get(folder);
   };
-  const given = includes.map(folder => (inside(folder) ? inRoot(folder) : elsewhereOf(folder)));
+  // a stacked copy is built away from its file, so it includes from the file's own folder too
+  const given = [...new Set([...includes, ...(stacked ? [...stacked.keys()].map(dirname) : [])])].map(folder => (inside(folder) ? inRoot(folder) : elsewhereOf(folder)));
   const placeOf = file => (inside(dirname(file)) ? inRoot(file) : `${elsewhereOf(dirname(file))}/${basename(file)}`);
   const units = new Map();
   let everyOther = null;
@@ -525,7 +531,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
         for (const { name, address } of twins) if (address !== null && !cases.some(([other]) => other === address)) cases.push([address, name]);
         const name = `__twin_unit${n}.c`;
         const build = () => {
-          const lines = [`#include "${placeOf(file)}"`];
+          const lines = [`#include "${placeOf(stacked?.get(file) ?? file)}"`];
           // each named for its file too, as two files can each have a function of their own with one name
           for (const each of calls) {
             const { name: twin, params, returns, call, registers } = each;
@@ -633,7 +639,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       }),
     };
   };
-  return { unit, link };
+  return { unit, link, stacked: stacked !== null };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -842,8 +848,9 @@ const write = (image, where, bytes, value) => {
  * when the function started in a recording, with the arguments and the stack it had, half of them just as it was and
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
  * is. A function that never started in play starts from power-on memory or from another function's, one or the other.
+ * With `stacked`, twins built with the console's stack each start it where the original's call starts (#1740).
  */
-export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null }) {
+export async function compareCalls({ original, twins, start, functions, options, choose, memories = null, bytesOf = null, ruledOut = new Map(), status = null, stacked = false }) {
   const { calls, limit, changes: changing } = options;
   let mirror = Buffer.from(start);
   await twins.start(mirror);
@@ -855,6 +862,12 @@ export async function compareCalls({ original, twins, start, functions, options,
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
   let owner = null, based = null, from = null, top = 0;
+  // where the original's calls start on the stack, for twins built with the console's stack, which start there too
+  let sp = stacked ? (await original.about()).stack : 0;
+  const onTop = async address => {
+    await original.top(top = address);
+    if (stacked) sp = (await original.about()).stack;
+  };
   for (;;) {
     const open = functions.filter(f => !f.result && f.compared < calls && f.tried < calls * TRIES && !(f.tried >= HOPELESS && !f.compared));
     if (!open.length) break;
@@ -877,7 +890,7 @@ export async function compareCalls({ original, twins, start, functions, options,
         mirror = Buffer.from(from ? from.image() : start);
         await original.set(mirror);
         await twins.set(mirror);
-        if ((from?.top ?? 0) !== top) await original.top(top = from?.top ?? 0);
+        if ((from?.top ?? 0) !== top) await onTop(from?.top ?? 0);
         owner = f;
         based = from;
         since = lost = 0;
@@ -891,7 +904,7 @@ export async function compareCalls({ original, twins, start, functions, options,
       mirror = Buffer.from(aim.witness.start);
       await original.set(mirror);
       await twins.set(mirror);
-      if (aim.witness.top !== top) await original.top(top = aim.witness.top);
+      if (aim.witness.top !== top) await onTop(aim.witness.top);
       owner = null;
       based = aim.witness.based;
       from = null;
@@ -942,7 +955,12 @@ export async function compareCalls({ original, twins, start, functions, options,
     // a function that may read whether the display is in the V-blank, as it keeps the status's address beside its
     // code or a call of it used the hardware, now and then started the other way: in a call the display's status stays
     // as it started, the clock a twin doesn't have stopped on both sides (#1569)
-    if (!aim && changing && !asPlayed && status !== null && f.status && !choose.below(4)) changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
+    // A function that keeps the line count's address beside its code starts such a call on a line of the picture,
+    // as the console's display is outside the V-blank then (#1729)
+    if (!aim && changing && !asPlayed && status !== null && (f.status || f.line) && !choose.below(4)) {
+      changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
+      if (f.line && !((status ^ DISPSTAT_VBLANK) & DISPSTAT_VBLANK)) changed.push([VCOUNT, 2, choose.below(160)]);
+    }
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
@@ -1020,7 +1038,7 @@ export async function compareCalls({ original, twins, start, functions, options,
       continue;
     }
     for (const run of theirs.runs) run.bytes.copy(expected, run.at);
-    const ours = await twins.call(f.call, args, changed);
+    const ours = await twins.call(f.call, args, changed, sp);
     const call = { number: f.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
     if (ours.never) {
       f.result = { kind: 'never', ...call };
@@ -1262,10 +1280,13 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   if (functions.length) {
     const registers = await original.registers();
     // a function whose code keeps the display status's address beside it reads whether the display is in the V-blank
-    for (const f of functions) f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
-    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers });
+    for (const f of functions) {
+      f.status = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), DISPSTAT);
+      f.line = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), VCOUNT);
+    }
+    const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers, stacked: build.stacked === true });
     try {
-      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000) });
+      await compareCalls({ original, twins: runner, start, functions, options: all, choose: chooser(seed), memories, bytesOf: (address, size) => cartridge(address, size), ruledOut, status: registers.readUInt16LE(DISPSTAT - 0x04000000), stacked: build.stacked === true });
     } finally {
       runner.stop();
     }
@@ -1376,7 +1397,11 @@ export async function twin(game, options = {}) {
   const opened = await openOriginal(copy.path, all.frames);
   // the game's own folders, then the build's twins.h for a game that includes it, on the kit of the game's console
   const header = await twinsFolder(folder);
-  const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
+  // a version built with the console's stack has its twins checked as it builds them, each from its copy with the
+  // stack's calls in, so a twin's locals are where the original's are, and what it reads there that it never set is
+  // what the original's reads
+  const stacked = original.console === 'gba' ? await stackedCopies(folder) : null;
+  const build = openBuild({ root: folder, files, shifts, givenOf, console: original.console, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])], stacked });
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   // what goes in the version's proofs, when it keeps them (../lib/proofs.mjs), each function's paths with the pieces
   // it goes on into by a BL used as a long jump, which the code map keeps as functions of their own

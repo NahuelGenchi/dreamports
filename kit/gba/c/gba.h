@@ -38,10 +38,20 @@ enum {
 
 // The video hardware: VRAM, the colours (the backgrounds' 256, then the sprites'), OAM and the display registers,
 // by halfword (gba_io[REG_BLDCNT >> 1]). Write a register with gba_write, which keeps only what the register keeps
-// and restarts a rotating layer from a new reference point; the arrays can be written as they are.
+// and restarts a rotating layer from a new reference point; the arrays can be written as they are. A build that keeps
+// the console's memory at the console's addresses, as a game of twins and the function check do, defines
+// GBA_CONSOLE_ADDRESSES: the first three are then where the console has them, at GBA_VRAM, GBA_PALETTE and GBA_OAM, so
+// a pointer to one that a game keeps or makes up means what it means on the console, and the game calls
+// gba_console_memory() before anything reads them.
+#ifdef GBA_CONSOLE_ADDRESSES
+#define gba_vram (*(uint8_t (*)[0x18000])GBA_VRAM)
+#define gba_pal (*(uint16_t (*)[512])GBA_PALETTE)
+#define gba_oam (*(uint16_t (*)[512])GBA_OAM)
+#else
 extern uint8_t gba_vram[0x18000];
 extern uint16_t gba_pal[512];
 extern uint16_t gba_oam[512];
+#endif
 extern uint16_t gba_io[GBA_IO_HALFWORDS];
 
 /** Writes a 16-bit display register, as the CPU or a DMA does. */
@@ -95,15 +105,19 @@ int gba_sqrt(uint32_t n);
 int gba_arctan2(int x, int y);
 
 // The console's memory at the console's own addresses (memory.c), for a game whose every function is a twin of one of
-// the original's (docs/STANDARD.md): its work memory, and its cartridge.
+// the original's (docs/STANDARD.md): its work memory, its colours, video memory and sprites' list, and its cartridge.
 #define GBA_EWRAM 0x02000000u
 #define GBA_EWRAM_BYTES 0x40000u
 #define GBA_IWRAM 0x03000000u
 #define GBA_IWRAM_BYTES 0x8000u
+#define GBA_PALETTE 0x05000000u
+#define GBA_VRAM 0x06000000u
+#define GBA_OAM 0x07000000u
 #define GBA_CARTRIDGE 0x08000000u
-/** Makes the console's work memory real at its addresses, zeroed: 256 KB from 0x02000000 and 32 KB from 0x03000000.
- *  With `cartridge`, the player's copy is at 0x08000000 too, and gba_rom is that address from then on. Call it first
- *  thing in game_start, before anything asks for memory. Only as WebAssembly. */
+/** Makes the console's work memory real at its addresses, zeroed: 256 KB from 0x02000000 and 32 KB from 0x03000000,
+ *  and, built with GBA_CONSOLE_ADDRESSES, the colours, video memory and sprites' list from 0x05000000, 0x06000000
+ *  and 0x07000000. With `cartridge`, the player's copy is at 0x08000000 too, and gba_rom is that address from then on.
+ *  Call it first thing in game_start, before anything asks for memory. Only as WebAssembly. */
 void gba_console_memory(int cartridge);
 /** Writes one byte to video memory at byte `at`, as the console does: video memory takes 16 bits at a time, so the byte
  *  lands in both halves of its halfword, and one written among the sprites' tiles is lost. */
