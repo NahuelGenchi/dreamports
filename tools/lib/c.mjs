@@ -297,7 +297,7 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
   const compileArgs = [...WASM_FLAGS.filter(flag => flag !== '-nostdlib'), ...FLAGS, ...flags.filter(flag => !flag.startsWith('-Wl,')), ...folders.flatMap(folder => ['-I', inRepo(folder)])];
   const objects = {}, own = [];
   // the functions the kit's sources that never wait define, as many times as each name is defined there
-  const never = new Map(), waitless = neverWait.map(source => resolve(source));
+  const never = new Map(), neverFrom = new Map(), waitless = neverWait.map(source => resolve(source));
   for (const source of sources) {
     if (!ofKit(source)) {
       own.push(inRepo(source));
@@ -315,7 +315,12 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
     });
     if (built.error) throw new Error(`The C didn't build to WebAssembly:\n${built.error}`);
     objects[`${Object.keys(objects).length}.o`] = built.made;
-    if (waitless.includes(resolve(source))) for (const name of definedFunctions(built.made)) never.set(name, (never.get(name) ?? 0) + 1);
+    if (waitless.includes(resolve(source))) {
+      for (const name of definedFunctions(built.made)) {
+        never.set(name, (never.get(name) ?? 0) + 1);
+        neverFrom.set(name, inRepo(source));
+      }
+    }
   }
   const link = [...args.slice(0, args.length - sources.length), ...own, ...Object.keys(objects).map(object => `__kit_objects/${object}`)];
   try {
@@ -332,8 +337,15 @@ async function build(sources, out, { folders, flags = [], addressOf = null, code
     // the pass finds the functions by their names, which the linker drops, so the module is linked again with them
     const named = addressOf ? linked : (await runClang(link.filter(arg => arg !== '-Wl,--strip-all'), { ...files, __kit_objects: objects }, { stdout: stderr, stderr }))[name];
     // a name defined anywhere else too, in the game's own C, isn't left out, as that function may wait
-    const counts = functionNames(named);
-    module = await withWaits(named, [...never].filter(([each, times]) => counts.get(each) === times).map(([each]) => each));
+    const graph = callGraph(named), counts = functionNames(graph);
+    const leftOut = [...never].filter(([each, times]) => counts.get(each) === times).map(([each]) => each);
+    // and what the kit says never waits mustn't reach a wait, through anything it calls: if it did, the pass would leave
+    // it as it is, and a wait under it would break the game's stack
+    const waiting = waitingAfterAll(graph, leftOut);
+    if (waiting) {
+      throw new Error(`The C didn't build to WebAssembly: ${neverFrom.get(waiting.name)} is among the kit's sources that never wait (neverWait in tools/lib/c.mjs), but its ${waiting.name} can wait: ${waiting.way.join(' → ')}.`);
+    }
+    module = await withWaits(named, leftOut);
   } else if (waits) {
     module = await withWaits(linked);
   }
@@ -411,12 +423,14 @@ function definedFunctions(object) {
   return names;
 }
 
-// how many functions of a module have each name, from its name section
-function functionNames(module) {
-  const counts = new Map(), sections = WebAssembly.Module.customSections(new WebAssembly.Module(module), 'name');
-  if (!sections.length) return counts;
-  const bytes = new Uint8Array(sections[0]);
-  let at = 0;
+// A module's functions as their calls join them: each function's name, from its name section, the functions it calls,
+// and the types it calls through a pointer, which can be any function of the table of that type; the table's
+// functions by type; and which functions are the imports a wait ends a frame with (kit/c/pause.c's
+// asyncify.start_unwind). Every instruction is read, so a call can't be missed: one this doesn't know stops the build.
+function callGraph(module) {
+  const bytes = new Uint8Array(module), types = [], imports = [], kinds = [], calls = [], through = [], table = new Map();
+  const names = new Map();
+  let at = 8;
   const number = () => {
     let value = 0, shift = 0, byte;
     do {
@@ -426,19 +440,156 @@ function functionNames(module) {
     } while (byte & 0x80);
     return value;
   };
-  while (at < bytes.length) {
-    const kind = bytes[at++], end = number() + at;
-    if (kind === 1) {
-      for (let count = number(); count > 0; count--) {
+  const text = () => {
+    const length = number();
+    at += length;
+    return Buffer.from(bytes.subarray(at - length, at)).toString('utf8');
+  };
+  const limits = () => { if (bytes[at++] & 1) number(); number(); };
+  // a constant expression, to its end, giving the function a ref.func names
+  const constant = () => {
+    let refers = null;
+    for (;;) {
+      const op = bytes[at++];
+      if (op === 0x0B) return refers;
+      if (op === 0xD2) refers = number();
+      else if (op === 0x44) at += 8;
+      else if (op === 0x43) at += 4;
+      else if (op === 0xD0) at++;
+      else number();
+    }
+  };
+  // a function's code: what it calls, and the types it calls through a pointer
+  const code = (end, called, typed) => {
+    const count = number();
+    for (let i = 0; i < count; i++) number(), at++;
+    while (at < end) {
+      const op = bytes[at++];
+      if (op === 0x02 || op === 0x03 || op === 0x04) {
+        if (bytes[at] === 0x40 || (bytes[at] >= 0x6F && bytes[at] <= 0x7F)) at++;
+        else number();
+      } else if (op === 0x0C || op === 0x0D || (op >= 0x20 && op <= 0x26) || op === 0xD2) {
         number();
-        const length = number(), name = Buffer.from(bytes.subarray(at, at + length)).toString('utf8');
-        at += length;
-        counts.set(name, (counts.get(name) ?? 0) + 1);
+      } else if (op === 0x0E) {
+        for (let n = number() + 1; n > 0; n--) number();
+      } else if (op === 0x10 || op === 0x12) {
+        called.add(number());
+      } else if (op === 0x11 || op === 0x13) {
+        typed.add(types[number()]);
+        number();
+      } else if (op === 0x1C) {
+        at += number();
+      } else if (op >= 0x28 && op <= 0x3E) {
+        number(), number();
+      } else if (op === 0x3F || op === 0x40 || op === 0xD0) {
+        at++;
+      } else if (op === 0x41 || op === 0x42) {
+        number();
+      } else if (op === 0x43) {
+        at += 4;
+      } else if (op === 0x44) {
+        at += 8;
+      } else if (op === 0xFC) {
+        const sub = number();
+        if (sub === 8) number(), at++;
+        else if (sub === 9 || sub === 13 || (sub >= 15 && sub <= 17)) number();
+        else if (sub === 10 || sub === 12 || sub === 14) number(), number();
+        else if (sub === 11) at++;
+        else if (sub > 7) throw new Error(`the module has an instruction the wait check can't read (0xFC ${sub})`);
+      } else if (!(op <= 0x01 || op === 0x05 || op === 0x0B || op === 0x0F || op === 0x1A || op === 0x1B || op === 0xD1 || (op >= 0x45 && op <= 0xC4))) {
+        throw new Error(`the module has an instruction the wait check can't read (0x${op.toString(16)})`);
+      }
+    }
+  };
+  while (at < bytes.length) {
+    const id = bytes[at++], size = number(), end = at + size;
+    if (id === 1) {
+      for (let n = number(); n > 0; n--) {
+        at++;
+        const params = [];
+        for (let p = number(); p > 0; p--) params.push(bytes[at++]);
+        const results = [];
+        for (let r = number(); r > 0; r--) results.push(bytes[at++]);
+        types.push(`${params.join(',')}>${results.join(',')}`);
+      }
+    } else if (id === 2) {
+      for (let n = number(); n > 0; n--) {
+        const from = text(), field = text(), kind = bytes[at++];
+        if (kind === 0) {
+          kinds.push(types[number()]);
+          imports.push(`${from}.${field}`);
+        } else if (kind === 1) {
+          at++;
+          limits();
+        } else if (kind === 2) {
+          limits();
+        } else {
+          at += 2;
+        }
+      }
+    } else if (id === 3) {
+      for (let n = number(); n > 0; n--) kinds.push(types[number()]);
+    } else if (id === 9) {
+      for (let n = number(); n > 0; n--) {
+        const flags = number(), functions = [];
+        if (flags & 2 && !(flags & 1)) number();
+        if (!(flags & 1)) constant();
+        if (flags & 3) at++;
+        for (let e = number(); e > 0; e--) functions.push(flags & 4 ? constant() : number());
+        for (const each of functions) if (each !== null) (table.get(kinds[each]) ?? table.set(kinds[each], new Set()).get(kinds[each])).add(each);
+      }
+    } else if (id === 10) {
+      for (let n = number(), index = imports.length; n > 0; n--, index++) {
+        const body = number() + at, called = new Set(), typed = new Set();
+        code(body, called, typed);
+        calls[index] = called;
+        through[index] = typed;
+        at = body;
+      }
+    } else if (id === 0 && text() === 'name') {
+      while (at < end) {
+        const kind = bytes[at++], part = number() + at;
+        if (kind === 1) for (let n = number(); n > 0; n--) names.set(number(), text());
+        at = part;
       }
     }
     at = end;
   }
+  for (let i = 0; i < imports.length; i++) names.set(i, imports[i]);
+  const waits = new Set(imports.flatMap((each, i) => (each === 'asyncify.start_unwind' ? [i] : [])));
+  return { names, waits, callees: index => [...(calls[index] ?? []), ...[...(through[index] ?? [])].flatMap(type => [...(table.get(type) ?? [])])] };
+}
+
+// how many functions of a module have each name
+function functionNames(graph) {
+  const counts = new Map();
+  for (const name of graph.names.values()) counts.set(name, (counts.get(name) ?? 0) + 1);
   return counts;
+}
+
+// Of the functions named `never`, the first that can reach a wait after all, through what it calls directly or through
+// a pointer to any function of the table of that pointer's type, and the way it gets there, by name; or null.
+function waitingAfterAll(graph, never) {
+  const asked = new Set(never);
+  for (const [index, name] of graph.names) {
+    if (!asked.has(name)) continue;
+    const from = new Map([[index, null]]), queue = [index];
+    while (queue.length) {
+      const at = queue.shift();
+      if (graph.waits.has(at)) {
+        const way = [];
+        for (let step = at; step !== null; step = from.get(step)) way.unshift(graph.names.get(step) ?? `function ${step}`);
+        return { name, way };
+      }
+      for (const next of graph.callees(at)) {
+        if (!from.has(next)) {
+          from.set(next, at);
+          queue.push(next);
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /** A module whose C calls kit_wait_frame, after the pass that makes the wait work: Binaryen's Asyncify, which gives

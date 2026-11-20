@@ -18,13 +18,15 @@
 // of the test's own, a BIN and its .cue (madeUpCdDisc), gives the CD drive a script of commands, one or two a frame,
 // and logs and draws every interrupt and answer, each sector's first bytes taken one at a time and the sum of its words
 // moved by DMA: its Dreamport in C (ps1-kit/cd.c), reading the same disc, has to be the same in all 300 frames, and be
-// found where its first sector shows when it reads from one sector on, or at single speed.
+// found where its first sector shows when it reads from one sector on, or at single speed. Then a build that says the
+// kit's ps1.c never waits, as psx_gpu and dfsound don't, is refused, with the way one of its functions waits.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
+import { buildWasm, cKit } from '../lib/c.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { CD, CLOCK, GPU, PAD, SOUND, cdScript, cdTime, drawList, madeUpCdDisc, madeUpClockExe, madeUpDrawExe, madeUpGpuExe, madeUpPadExe, madeUpSoundExe, padRecording, soundList } from './made-up-ps1.mjs';
 
@@ -223,6 +225,17 @@ async function main() {
     writeCd({ frame: 12, parameters: [0x00] });
     run = dp('prove', READ, 'still');
     check(run.status !== 0 && report(READ).firstDifference?.frame === 16, `reading at single speed, it differs at frame 16 too, where the first sector hasn't come yet: ${JSON.stringify(report(READ).firstDifference)}`);
+
+    console.log('What the kit says never waits, checked:');
+    // ps1.c runs the game's frames, which wait, so a kit that said it never waits can't be built
+    const kit = cKit('ps1'), sources = [join(gameFolder(READ), 'src', 'main.c'), ...kit.sources];
+    let refused = null;
+    try {
+      await buildWasm(sources, join(WORK, 'never-waits.wasm'), { ...kit, neverWait: [...kit.neverWait, join(REPO, 'kit', 'ps1', 'c', 'ps1.c')] });
+    } catch (error) {
+      refused = error.message;
+    }
+    check(/kit\/ps1\/c\/ps1\.c is among the kit's sources that never wait/.test(refused) && /→ asyncify\.start_unwind\.$/.test(refused), `with ps1.c said to never wait, the build is refused, with the way one of its functions waits: ${refused}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
