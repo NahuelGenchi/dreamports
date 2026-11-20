@@ -24,6 +24,10 @@ static void hblank(int y) {
   if (colours) gba_update_colors();
 }
 
+// whether the scene is drawn a line at a time, as a game on the console's clock draws it, with each line's writes made
+// after it by the game rather than by an H-blank
+static int by_lines;
+
 /** Draws the scene at `scene` into `out`, and returns how many bytes it took. */
 uint32_t draw_scene(const uint8_t *scene, uint32_t *out) {
   const uint8_t *p = scene;
@@ -43,7 +47,15 @@ uint32_t draw_scene(const uint8_t *scene, uint32_t *out) {
   p += 4;
   gba_underlay = has_underlay ? (const uint32_t *)p : 0;
   if (has_underlay) p += SCREEN_W * SCREEN_H * 4;
-  gba_on_hblank(hblank);
+  if (by_lines) {
+    gba_on_hblank(0);
+    for (int y = 0; y < SCREEN_H; y++) {
+      gba_draw_lines_to(y, out);
+      hblank(y);
+    }
+  } else {
+    gba_on_hblank(hblank);
+  }
   gba_draw_frame(out);
   return (uint32_t)(p - scene);
 }
@@ -52,7 +64,8 @@ uint32_t draw_scene(const uint8_t *scene, uint32_t *out) {
 static uint8_t input[8 << 20];
 static uint32_t output[SCREEN_W * SCREEN_H];
 __attribute__((export_name("input"))) uint8_t *scene_input(void) { return input; }
-__attribute__((export_name("draw"))) uint32_t *scene_draw(void) { draw_scene(input, output); return output; }
+__attribute__((export_name("draw"))) uint32_t *scene_draw(void) { by_lines = 0; draw_scene(input, output); return output; }
+__attribute__((export_name("drawLines"))) uint32_t *scene_draw_lines(void) { by_lines = 1; draw_scene(input, output); return output; }
 // the kit's video needs none of these, but its header names them
 void game_start(void) {}
 void game_step(uint16_t keys) { (void)keys; }

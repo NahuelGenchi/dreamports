@@ -1,7 +1,9 @@
 // npm run test:ps2-twin-programs: tries the PlayStation 2's function check on the programs a disc has beside the one it
 // boots (../ps2/twin.mjs, ../ps2/twin-iop.mjs), with a made-up disc and nobody's copy of any game: the made-up program
-// of ps2-twin/program.mjs as the one it boots, and beside it a module for the IOP and a second program for the EE
-// (ps2-twin/module.mjs), with their twins in C (ps2-twin/module.c, ps2-twin/other.c), each named by its code map's key.
+// of ps2-twin/program.mjs as the one it boots, and beside it a module for the IOP, a second program for the EE and a
+// file of data with three programs for vector unit 1 (ps2-twin/module.mjs), with their twins in C (ps2-twin/module.c,
+// ps2-twin/other.c, ps2-twin/unit.c), each named by its code map's key. A unit's program is written again in C on the
+// kit's unit, and one of them is started the way the kit starts a program in C for a game.
 // The module is loaded as the console's loader loads one, its addresses moved, and its calls made as the IOP's compiler
 // makes them. Every twin has to leave the same memory as its original, but the one whose original calls another
 // module, which says so. Then one line of the twins is changed at a time, and the check has to find each. Last, their
@@ -19,7 +21,7 @@ import { groupsOf } from '../lib/proofs.mjs';
 import { readCodeMap } from '../lib/proof-files.mjs';
 import { LOAD, loadModule } from '../ps2/twin-iop.mjs';
 import { madeUpElf } from './ps2-twin/program.mjs';
-import { madeUpModule, madeUpOther, COUNTER, LIBRARY, ASKED } from './ps2-twin/module.mjs';
+import { madeUpModule, madeUpOther, madeUpUnit, COUNTER, LIBRARY, ASKED } from './ps2-twin/module.mjs';
 import { isoOf } from './made-up-ps2-disc.mjs';
 
 const here = name => fileURLToPath(new URL(`./ps2-twin/${name}`, import.meta.url));
@@ -42,8 +44,8 @@ const line = (run, word) => run.out.trim().split('\n').find(each => each.include
 
 rmSync(work, { recursive: true, force: true });
 mkdirSync(work, { recursive: true });
-const boot = madeUpElf(), module = madeUpModule(), other = madeUpOther();
-const texts = { 'game.c': readFileSync(here('game.c'), 'utf8'), 'module.c': readFileSync(here('module.c'), 'utf8'), 'other.c': readFileSync(here('other.c'), 'utf8') };
+const boot = madeUpElf(), module = madeUpModule(), other = madeUpOther(), unit = madeUpUnit();
+const texts = { 'game.c': readFileSync(here('game.c'), 'utf8'), 'module.c': readFileSync(here('module.c'), 'utf8'), 'other.c': readFileSync(here('other.c'), 'utf8'), 'unit.c': readFileSync(here('unit.c'), 'utf8') };
 const key = (address, program) => `${address.toString(16).toUpperCase().padStart(8, '0')}@${program}`;
 
 console.log('The module, as the check loads it:');
@@ -67,7 +69,7 @@ tidy();
 try {
   const disc = isoOf({
     'SYSTEM.CNF': Buffer.from('BOOT2 = cdrom0:\\MADE_UP.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n'),
-    'MADE_UP.ELF': boot.elf, 'MADE_UP.IRX': module.irx, 'OTHER.ELF': other.elf,
+    'MADE_UP.ELF': boot.elf, 'MADE_UP.IRX': module.irx, 'OTHER.ELF': other.elf, 'DATA/UNIT.BIN': unit.bytes,
   });
   const copy = join(work, 'made-up.iso');
   writeFileSync(copy, disc);
@@ -96,7 +98,8 @@ try {
   check(run.status === 0 && sames.length === 9, `the module's twins leave the same memory as their originals (${sames.join(', ')}): ${last(run)}`);
   check(/Not checked  0x000000B4@MADE_UP\.IRX ask: no call could be compared: the original called function 12 of sysclib, another module/.test(run.out), `a function that calls another module says so: ${line(run, ' ask')}`);
   check(/The same memory  0x00300000@OTHER\.ELF other_sum,/.test(run.out), `the second EE program's twin is checked against its own program: ${line(run, 'other_sum')}`);
-  check(/27 of 30 functions left the same memory/.test(run.out) && (run.out.match(/The same memory/g) ?? []).length === 27, `beside the boot program's, in one run: ${line(run, 'functions left the same memory')}`);
+  for (const program of unit.programs) check(new RegExp(`The same memory  0x${program.at.toString(16).toUpperCase().padStart(8, '0')}@DATA/UNIT\\.BIN~vu ${program.name}, 200 calls`).test(run.out), `a vector unit program's twin in C leaves the same registers, flags, memory and packets, and stops where it does: ${line(run, ` ${program.name}`).trim()}`);
+  check(/30 of 33 functions left the same memory/.test(run.out) && (run.out.match(/The same memory/g) ?? []).length === 30, `beside the boot program's, in one run: ${line(run, 'functions left the same memory')}`);
   check(!run.out.split('\n').some(each => /No address/.test(each) && [...module.functions.map(f => f.name), 'other_sum'].some(name => each.includes(` ${name},`))), 'and no twin named by a key is said to have no address');
 
   run = dp('twin', VERSION, '78@MADE_UP.IRX', '--calls', '200');
@@ -122,6 +125,14 @@ try {
   await broken('module.c', '0xBF900000', '0xBF900002', 'voice', 'an SPU2 register two bytes off', /the SPU2's registers/);
   await broken('module.c', 'return a + 2;', 'return a + 3;', 'two', 'a function reached only through the table');
   await broken('other.c', 'a + b + D_00300040', 'a + b', 'other_sum', 'the second program\'s own value left out');
+  await broken('unit.c', 'vu_sum(1, VU_ADD, vu_vf(1, 2), vu_vf(1, 1), vu_vf(1, 1), VU_XYZW);', 'vu_add(vu_vf(1, 2), vu_vf(1, 1), vu_vf(1, 1), VU_XYZW);', 'doubler', 'a sum on the unit that leaves its flags as they were', /in vector unit 1's (status|MAC) flag/);
+  await broken('unit.c', 'data[1] = *vu_vf(1, 2);', 'data[3] = *vu_vf(1, 2);', 'doubler', 'a store a vector along in the unit\'s memory', /in vector unit 1's data memory/);
+  await broken('unit.c', 'vu1_kick(vu_vi(1, 1) * 16);', 'vu1_kick(vu_vi(1, 1) * 16 + 16);', 'doubler', 'a packet sent from a quadword along', /packet 1 starts at/);
+  await broken('unit.c', 'vu1_kick(vu_vi(1, 1) * 16);', '', 'doubler', 'a packet never sent', /the twin sent the GS 0 packets and the original 1/);
+  await broken('unit.c', 'data[1] = *vu_vf(1, 2);\n  vu_set_vi(1, 1, 2);\n  vu1_kick(vu_vi(1, 1) * 16);', 'vu_set_vi(1, 1, 2);\n  vu1_kick(vu_vi(1, 1) * 16);\n  data[1] = *vu_vf(1, 2);', 'doubler', 'a packet sent before the store that it holds', /of packet 1 the twin sent the GS/);
+  await broken('unit.c', 'return 48;', 'return 40;', 'doubler', 'a program said to stop a pair early', /the twin says the program stops at/);
+  await broken('unit.c', 'vu_vi(1, 1) != 0', 'vu_vi(1, 1) != 1', 'counter', 'a count that stops one short', /in vector unit 1's VI1/);
+  await broken('unit.c', 'vu_program(1, 0x200, counted);', '', 'started', 'a program started with no C given to the kit for its place, which runs the unit\'s empty code memory', /in vector unit 1's/);
 
   console.log('\nTheir proofs and tasks:');
   run = dp('proofs', VERSION, '--start');
@@ -131,6 +142,10 @@ try {
   check(new RegExp(`"${key(0, 'MADE_UP.IRX')}"`).test(readFileSync(join(proofFolder(VERSION), 'proofs.json'), 'utf8')), 'by its key');
   run = dp('twin', VERSION, 'other_sum', '--calls', '1000');
   check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out), 'and the second program\'s');
+  run = dp('twin', VERSION, 'doubler', '--calls', '1000');
+  check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out) && readFileSync(join(proofFolder(VERSION), 'proofs.json'), 'utf8').includes(`"${unit.programs[0].at.toString(16).toUpperCase().padStart(8, '0')}@DATA/UNIT.BIN~vu"`), `and a vector unit program's, every pair of it run, by its key: ${last(run)}`);
+  run = dp('twin', VERSION, `${unit.programs[1].at.toString(16)}@DATA/UNIT.BIN~vu`, '--calls', '1000');
+  check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out), `one whose branch went both ways, named by its key: ${last(run)}`);
   run = dp('proofs', VERSION, '--check');
   check(run.status === 0, `their proofs hold, the original's side read from what twin kept of each: ${last(run)}`);
   write('module.c', texts['module.c'].replace('return a + b + c;', 'return c + b + a;'));
@@ -138,8 +153,9 @@ try {
   write('module.c');
   check(run.status !== 0 && /add3/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${line(run, 'add3')}`);
   const groups = groupsOf(codeMap);
-  const mixed = groups.filter(group => new Set(group.functions.map(f => f.program ?? '')).size > 1);
+  const mixed = groups.filter(group => new Set(group.functions.map(f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`)).size > 1);
   const inTasks = module.functions.filter(f => groups.some(group => group.functions.some(each => each.key === key(f.address, 'MADE_UP.IRX'))));
+  check(groups.some(group => group.functions.every(f => f.vu) && group.functions.length === unit.programs.length), 'the vector unit programs are a task of their own');
   check(!mixed.length && inTasks.length === module.functions.length, `the module's functions are in tasks, and no task mixes two programs (${groups.map(group => group.name).join('; ')})`);
 } finally {
   tidy();
