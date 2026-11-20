@@ -18,8 +18,9 @@ void gpu_gp1(uint32_t word);
 uint32_t gpu_status(void);
 /** Paints the page's picture with the part of video memory the GPU shows, at its size. For game_draw. */
 void gpu_show(void);
-/** The GPU's video memory: 1024 by 512 pixels of 16 bits, a colour of 5 bits each of red, green and blue, red lowest. */
-extern uint16_t gpu_vram[512][1024];
+/** The GPU's video memory: 512 rows of 1024 pixels of 16 bits, a colour of 5 bits each of red, green and blue, red
+ *  lowest, as gpu_vram[y][x]. */
+extern uint16_t (*const gpu_vram)[1024];
 
 // What a game defines, as on every console (kit/c/README.md).
 void game_start(void);

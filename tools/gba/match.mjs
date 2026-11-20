@@ -96,16 +96,6 @@ export function throughIn(text, shifts = [], console = 'gba') {
   return null;
 }
 
-/** The last function of the run a twin is the twin of, among the code map's `functions`, or null for a twin of one
- *  function: as its comment names it, `0x08001AA4 to 0x0800258E`, or for a twin that gives its routine's length,
- *  `dp:run 16`, the function that ends where the routine does. */
-export function throughOf(twin, functions) {
-  if (twin.through !== undefined && twin.through !== null) return twin.through;
-  if (!twin.runBytes || twin.address === null || twin.address === undefined) return null;
-  const end = twin.address + twin.runBytes;
-  return functions.find(f => !f.bytes && f.address > twin.address && f.address + f.size === end)?.address ?? null;
-}
-
 /** What a twin's comment says of how its original takes and gives in registers, `dp:registers r3 = <C>`: { gives,
  *  expression, text, takes }, the register it gives back in, the C over r0 to r7 that works out what it gives, the
  *  words as written, and how many registers from r0 the call takes, 4 or up to r7 when the C names one (#1728); or
@@ -117,6 +107,16 @@ export function registersIn(text) {
   if (!found || (found[1] !== undefined && Number(found[1]) > 12) || !found[2]) return null;
   const takes = Math.max(3, ...[...found[2].matchAll(/\br([0-7])\b/g)].map(named => Number(named[1]))) + 1;
   return { gives: found[1] === undefined ? null : Number(found[1]), expression: found[2], text: found[0].replace(/\s*\*\/\s*$/, '').trim(), takes };
+}
+
+/** The last function of the run a twin is the twin of, among the code map's `functions`, or null for a twin of one
+ *  function: as its comment names it, `0x08001AA4 to 0x0800258E`, or for a twin that gives its routine's length,
+ *  `dp:run 16`, the function that ends where the routine does. */
+export function throughOf(twin, functions) {
+  if (twin.through !== undefined && twin.through !== null) return twin.through;
+  if (!twin.runBytes || twin.address === null || twin.address === undefined) return null;
+  const end = twin.address + twin.runBytes;
+  return functions.find(f => !f.bytes && f.address > twin.address && f.address + f.size === end)?.address ?? null;
 }
 
 // A twin of a function at an address code uses as the base of others, as a Game Boy Advance cartridge's first
@@ -262,13 +262,13 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)
       const unaligned = /\bdp:unaligned\b/.test(above.join('\n'));
+      // dp:registers and C in the comment: how a hand-written routine takes and gives in registers no C function
+      // uses, as `r3 = chk_adr_r2((const void *)r2) ? r3 : 0`, which the function check works out and compares (#1710)
+      const registers = registersIn(above.join('\n'));
       // dp:run and a number of bytes in the comment: a twin of the original's routine of that length from its start,
       // which the code map may hold as several functions, as a shared library's twin, which names no address, says it
       // (throughOf)
       const runBytes = Number(/\bdp:run\s+(\d+)\b/.exec(above.join('\n'))?.[1] ?? 0);
-      // dp:registers and C in the comment: how a hand-written routine takes and gives in registers no C function
-      // uses, as `r3 = chk_adr_r2((const void *)r2) ? r3 : 0`, which the function check works out and compares (#1710)
-      const registers = registersIn(above.join('\n'));
       twins.push({ name, address, ...(keyed ? { keyed } : {}), ...(through === null || keyed ? {} : { through }), ...(runBytes ? { runBytes } : {}), ...(unaligned ? { unaligned } : {}), ...(registers ? { registers } : {}), line: text.slice(0, start + m.index).split('\n').length, own: /\bstatic\b/.test(code.slice(start, start + m.index)), code: '' });
       open = { twin: twins.at(-1), from: first };
       piece(from, first);

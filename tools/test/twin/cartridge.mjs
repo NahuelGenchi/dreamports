@@ -40,6 +40,10 @@ export const TURN_LENGTH = 16;
 // map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
 export const TWICE = { Twice: 0x08000A80 };
 export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x08000A84, size: 24 }];
+// a function that goes through a list of pointers to structs, empty in the memory it's called from, and the list, its
+// count and the total it adds to, in a file of their own (through.c)
+export const THROUGH = { Tally: 0x08000E00 };
+NAMED.set('gShapes', 0x030000A0).set('gShapeCount', 0x030000B0).set('gTotal', 0x030000B4);
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -64,15 +68,6 @@ export function withTurn(rom) {
   return turned;
 }
 
-export function withTwice(rom) {
-  const twice = Buffer.from(rom);
-  // add r2, pc, #0 and bx r2: on into the ARM code after it
-  twice.writeUInt32LE(0x4710A200, TWICE.Twice - CARTRIDGE);
-  // ldr r1, [pc, #12], ldr r2, [r1, #4], lsl r2, r2, #1, str r2, [r1, #8], bx lr, and gFrame
-  [0xE59F100C, 0xE5912004, 0xE1A02082, 0xE5812008, 0xE12FFF1E, NAMED.get('gFrame')].forEach((word, i) => twice.writeUInt32LE(word, TWICE.Twice + 4 - CARTRIDGE + 4 * i));
-  return twice;
-}
-
 // a routine written by hand that takes an address in r2 and gives back in r3, as no C function does, and one that
 // takes a place in gBall in r4 and a byte in r5 and gives nothing back (withPeek, peek.c)
 export const PEEK = { Peek: 0x08000A40, Spill: 0x08000A48 };
@@ -87,6 +82,15 @@ export function withPeek(rom) {
   [0x4802, 0x2107, 0x4021, 0x5445, 0x4770, 0x0000].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Spill - CARTRIDGE + 2 * i));
   peeked.writeUInt32LE(NAMED.get('gBall'), PEEK.Spill - CARTRIDGE + 12);
   return peeked;
+}
+
+export function withTwice(rom) {
+  const twice = Buffer.from(rom);
+  // add r2, pc, #0 and bx r2: on into the ARM code after it
+  twice.writeUInt32LE(0x4710A200, TWICE.Twice - CARTRIDGE);
+  // ldr r1, [pc, #12], ldr r2, [r1, #4], lsl r2, r2, #1, str r2, [r1, #8], bx lr, and gFrame
+  [0xE59F100C, 0xE5912004, 0xE1A02082, 0xE5812008, 0xE12FFF1E, NAMED.get('gFrame')].forEach((word, i) => twice.writeUInt32LE(word, TWICE.Twice + 4 - CARTRIDGE + 4 * i));
+  return twice;
 }
 
 export function withVideo(rom, assembly) {
@@ -136,6 +140,13 @@ export function withAimed(rom, assembly) {
   const aimed = Buffer.from(rom);
   place(aimed, assembly, AIMED);
   return aimed;
+}
+
+// The same cartridge with the function of twin/through.c, which goes through a list of pointers to structs.
+export function withThrough(rom, assembly) {
+  const through = Buffer.from(rom);
+  place(through, assembly, THROUGH);
+  return through;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of

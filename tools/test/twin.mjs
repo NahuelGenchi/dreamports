@@ -8,7 +8,9 @@
 // that never comes back, stopped and not hung; and a twin that calls
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
-// memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked.
+// memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked. A function
+// that goes through a list of pointers to structs, empty in the memory it's called from, has its paths taken only
+// once the check makes a struct up where a pointer leads to none, laid out as agbcc's debugging records of its C say.
 //
 // Then the cartridge is given a game to play (twin/play.c), and the check memories of that play (--memories): a
 // function that reads what only play makes isn't checked from the memory of power-on and is from its own memories, a
@@ -17,7 +19,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
@@ -25,8 +27,9 @@ import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
 import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
+import { typesOfFile } from '../gba/twin-shapes.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PLAYED, REGISTER, PEEK, PEEK_LENGTH, SPILL_LENGTH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -84,8 +87,14 @@ const rare = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
+// and a function that goes through a list of pointers to structs, from a file of its own
+const listed = await matchFile({
+  file: join(HERE, 'through.c'), compiler, work: join(work, 'built', 'through'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!listed.error, `the function that goes through a list of pointers builds with ${compiler.name}${listed.error ? `: ${listed.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withTwice(withPeek(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))));
+writeFileSync(copy, withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -108,7 +117,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
+const lengths = new Map([...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -175,21 +184,6 @@ try {
   const aside = await checking(join(unmarked, 'turn.c'), {}, arm);
   check(aside.by.Turn?.kind !== 'same' && /where a twin can't follow/.test(aside.by.Turn?.line ?? ''), `and without the mark its calls are set aside, as before: ${aside.by.Turn?.line ?? aside.error}`);
 
-  console.log('A routine the code map holds as two functions, a Thumb start and the ARM code it goes on into:');
-  const isArm = armIn(readFileSync(copy));
-  check(!isArm(TWICE.Twice) && isArm(TWICE_PIECES[1].address) && isArm(TURN.Turn), 'its Thumb start is called as Thumb, though the words after it look like ARM, and its ARM part is ARM');
-  const pieces = {
-    isArm, sizeOf: address => TWICE_PIECES.find(piece => piece.address === address)?.size ?? sizeOf(address),
-    runOf: twin => (throughOf(twin, TWICE_PIECES) === null ? null : runIn(TWICE_PIECES, twin.address, throughOf(twin, TWICE_PIECES))),
-  };
-  const twice = await checking(join(HERE, 'twice.c'), {}, pieces);
-  check(twice.by.Twice?.kind === 'same' && twice.by.Twice.whole === true && twice.by.Twice.run?.join() === TWICE_PIECES.map(piece => piece.address).join(), `a twin that says how long the routine is, dp:run, leaves the same memory, its calls took every path of both, each read as the code it is, and it's the twin of both${twice.by.Twice?.kind === 'same' ? `: ${twice.by.Twice.line}` : `: ${twice.by.Twice?.line ?? twice.error}`}`);
-  const longer = join(work, `changed-${++variants}`);
-  cpSync(HERE, longer, { recursive: true });
-  writeFileSync(join(longer, 'twice.c'), readFileSync(join(HERE, 'twice.c'), 'utf8').replace('dp:run 28', 'dp:run 30'));
-  const unended = await checking(join(longer, 'twice.c'), {}, pieces);
-  check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
-
   console.log('A routine that takes and gives in registers no C function uses:');
   const peek = { sizeOf: address => (address === PEEK.Peek ? PEEK_LENGTH : address === PEEK.Spill ? SPILL_LENGTH : sizeOf(address)) };
   const peeked = await checking(join(HERE, 'peek.c'), {}, peek);
@@ -207,6 +201,21 @@ try {
   check(peeked.by.Spill?.kind === 'same' && peeked.by.Spill.compared === CALLS && peeked.by.Spill.whole === true, `one whose comment says it takes r4 and r5 and gives nothing back leaves the same memory${peeked.by.Spill?.kind === 'same' ? '' : `: ${peeked.by.Spill?.line ?? peeked.error}`}`);
   const fromR0 = await checking(reworded(', dp:registers Spill(r4, r5)', ''), {}, peek);
   check(fromR0.by.Spill?.kind !== 'same' && fromR0.by.Spill?.kind !== undefined, `and without it, it's called from r0 and r1 and isn't the same: ${fromR0.by.Spill?.line ?? fromR0.error}`);
+
+  console.log('A routine the code map holds as two functions, a Thumb start and the ARM code it goes on into:');
+  const isArm = armIn(readFileSync(copy));
+  check(!isArm(TWICE.Twice) && isArm(TWICE_PIECES[1].address) && isArm(TURN.Turn), 'its Thumb start is called as Thumb, though the words after it look like ARM, and its ARM part is ARM');
+  const pieces = {
+    isArm, sizeOf: address => TWICE_PIECES.find(piece => piece.address === address)?.size ?? sizeOf(address),
+    runOf: twin => (throughOf(twin, TWICE_PIECES) === null ? null : runIn(TWICE_PIECES, twin.address, throughOf(twin, TWICE_PIECES))),
+  };
+  const twice = await checking(join(HERE, 'twice.c'), {}, pieces);
+  check(twice.by.Twice?.kind === 'same' && twice.by.Twice.whole === true && twice.by.Twice.run?.join() === TWICE_PIECES.map(piece => piece.address).join(), `a twin that says how long the routine is, dp:run, leaves the same memory, its calls took every path of both, each read as the code it is, and it's the twin of both${twice.by.Twice?.kind === 'same' ? `: ${twice.by.Twice.line}` : `: ${twice.by.Twice?.line ?? twice.error}`}`);
+  const longer = join(work, `changed-${++variants}`);
+  cpSync(HERE, longer, { recursive: true });
+  writeFileSync(join(longer, 'twice.c'), readFileSync(join(HERE, 'twice.c'), 'utf8').replace('dp:run 28', 'dp:run 30'));
+  const unended = await checking(join(longer, 'twice.c'), {}, pieces);
+  check(unended.by.Twice?.run === undefined, `one whose length ends in the middle of a function is the twin of its first alone: ${unended.by.Twice?.line ?? unended.error}`);
 
   console.log('A byte read from video memory:');
   const looked = await checking(join(HERE, 'video.c'));
@@ -254,6 +263,28 @@ try {
   check(missed.by.Unlock?.kind === 'same', `a twin wrong on that branch alone isn't found without aiming: ${missed.by.Unlock?.line ?? missed.error}`);
   const hit = await checking(join(nearly, 'aim.c'));
   check(hit.by.Unlock?.kind === 'differs' && /at 0x0300010[67], in the work memory/.test(hit.by.Unlock.line), `and is found by an aimed call: ${hit.by.Unlock?.line ?? hit.error}`);
+  // a flag of a word, read and masked: aimed at, only its bit changes too
+  const wide = sourceFor(0x00000001, 4, 0, [[5, 0x10000], [3, 15]], value => value > 1, 1);
+  check(wide === 0x00010001, `a word's flag aimed at changes only its own bit: 0x${wide?.toString(16)}`);
+
+  console.log('A list of pointers to structs, empty in the memory it\'s called from:');
+  // the file's types as the console's compiler lays them out, from its debugging records
+  const typesOf = file => typesOfFile({ file, root: dirname(file), includes: [dirname(file)], compiler, work: join(work, 'types', `${variants}-${basename(file, '.c')}`) });
+  const types = await typesOf(join(HERE, 'through.c'));
+  const shape = types.values?.get('gShapes');
+  check(shape?.kind === 'array' && shape.count === null && shape.of?.to?.size === 8 && shape.of.to.fields.find(field => field.name === 'size')?.offset === 4 && shape.of.to.fields.find(field => field.name === 'size').type.to?.size === 4,
+    'agbcc\'s debugging records say the list holds pointers to structs of 8 bytes, as many as the C doesn\'t say, each with a pointer to a struct of 4 at 4');
+  const blind = await checking(join(HERE, 'through.c'));
+  check(blind.by.Tally?.kind === 'same' && blind.by.Tally.whole === false && /left out/.test(blind.by.Tally.line), `without the C's types, a call that follows a pointer the list holds leaves for the BIOS, and its paths are left out: ${blind.by.Tally?.line ?? blind.error}`);
+  const typed = await checking(join(HERE, 'through.c'), {}, { typesOf });
+  check(typed.by.Tally?.kind === 'same' && typed.by.Tally.whole === true && /given a struct made up/.test(typed.by.Tally.line), `with them, such a call is made again with a struct made up where it points, and the calls take every path: ${typed.by.Tally?.line ?? typed.error}`);
+  const past = join(work, `changed-${++variants}`);
+  cpSync(HERE, past, { recursive: true });
+  writeFileSync(join(past, 'through.c'), readFileSync(join(HERE, 'through.c'), 'utf8').replace('if (shape->kind == 3)', 'if (shape->kind >= 3)'));
+  const unseen = await checking(join(past, 'through.c'));
+  check(unseen.by.Tally?.kind === 'same', `a twin wrong only past a struct the memory has none of isn't found without them: ${unseen.by.Tally?.line ?? unseen.error}`);
+  const seen = await checking(join(past, 'through.c'), {}, { typesOf });
+  check(seen.by.Tally?.kind === 'differs' && /at 0x030000B[4-7], in the work memory/.test(seen.by.Tally.line), `and is found with them: ${seen.by.Tally?.line ?? seen.error}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));

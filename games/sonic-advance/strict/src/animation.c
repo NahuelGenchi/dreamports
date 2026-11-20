@@ -56,9 +56,9 @@ s32 UpdateSpriteAnimation(struct Sprite *s) {
 
       if (frame != -1) {
         const struct SpriteTables *sprTables = gRefSpriteTablesFull;
-        s->unkC = (u32)&sprTables->dimensions[s->graphics.anim][frame];
+        s->dimensions = (const struct SpriteDimensions *)&sprTables->dimensions[s->graphics.anim][frame];
       } else {
-        s->unkC = (u32)-1;
+        s->dimensions = (const struct SpriteDimensions *)-1;
       }
     }
     s->animCursor += 2;
