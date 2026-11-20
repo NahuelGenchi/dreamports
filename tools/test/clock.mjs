@@ -39,11 +39,24 @@ mkdirSync(WORK, { recursive: true });
 const { rom } = madeUpGame({ size: 0x80000 });
 [0xE59F0000, 0xE12FFF10, 0x08000000 + MAIN + 1].forEach((word, i) => rom.writeUInt32LE(word, 0xC0 + 4 * i));   // ldr r0, [pc]; bx r0
 const { sections, symbols } = assemble(readFileSync(join(HERE, 'power-on.s'), 'utf8'));
-// the interrupt handler the BIOS jumps to, in ARM code as it comes from there: the same two instructions, to the
-// program's own handler in Thumb, which goes back to the BIOS itself
+// the interrupt handler the BIOS jumps to, in ARM code as it comes from there, as a cartridge's own dispatcher starts:
+// IF read by halfword, an interrupt the program never raises looked for, with a branch its condition never lets go,
+// and IF written with nothing to acknowledge, by halfword; then on to the program's own handler in Thumb, which goes
+// back to the BIOS itself
 const HANDLER = 0xCC, interrupt = symbols.get('interrupt')?.at;
 if (typeof interrupt !== 'number') throw new Error('the program has no handler named interrupt');
-[0xE59F0000, 0xE12FFF10, 0x08000000 + MAIN + interrupt + 1].forEach((word, i) => rom.writeUInt32LE(word, HANDLER + 4 * i));
+[
+  0xE3A03301, // mov r3, #0x04000000
+  0xE2833C02, // add r3, r3, #0x200
+  0xE1D310B2, // ldrh r1, [r3, #2]
+  0xE2110A02, // ands r0, r1, #0x2000: the cartridge's interrupt, which nothing raises
+  0x1AFFFFFE, // bne . (never)
+  0xE3A00000, // mov r0, #0
+  0xE1C300B2, // strh r0, [r3, #2]
+  0xE59F0000, // ldr r0, [pc]
+  0xE12FFF10, // bx r0
+  0x08000000 + MAIN + interrupt + 1,
+].forEach((word, i) => rom.writeUInt32LE(word, HANDLER + 4 * i));
 Buffer.from(sections['.text'].bytes).copy(rom, MAIN);
 const cartridge = join(WORK, 'cartridge.gba');
 writeFileSync(cartridge, rom);

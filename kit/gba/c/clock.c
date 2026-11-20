@@ -811,10 +811,24 @@ static void intr_wait(uint32_t discard, uint32_t flags) {
   bios(bios_block(3, 0) + jump_time(BIOS_CODE, 0));
 }
 
+// What the game wrote to the registers in work it didn't time: no run of it will take those stores, and by its call
+// to the BIOS they're over, so each takes effect as the time stands, in order, as what the register holds. A DMA
+// channel started at once copied in that work, and isn't started again; one waiting for its moment waits for it.
+static void settle(void) {
+  for (int i = 0; i < waiting_count; i++) {
+    uint32_t at = waiting_at[i] & 0x3FE;
+    uint16_t value = waiting_value[i];
+    if (at >= 0xB0 && at < 0xE0 && (at - 0xB0) % 12 == 10 && !(value >> 12 & 3)) value &= (uint16_t)~0x8000;
+    gba_clock_write16(waiting_at[i], value);
+  }
+  waiting_count = 0;
+}
+
 // CpuSet copies or fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs,
 // `index` from 0. Halt, IntrWait and VBlankIntrWait wait for an interrupt, the game's handler run from inside them.
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
   if ((number != 0x0B && number != 0x02 && number != 0x04 && number != 0x05) || !running) return -1;
+  settle();
   int off = irq.off;
   swi_enter(pc, off);
   if (number == 0x02) {
@@ -1107,8 +1121,27 @@ void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t
       uint32_t address = ((op >> 16) & 15) == 15 ? pc + 8 + ((op & 0x00800000) ? 1 : -1) * (op & 0xFFF) : (k < count ? at[k++] : 0);
       a[0] = (gba_access){ address, (uint32_t)bytes, (uint32_t)writes, 0 };
       n = 1;
+    } else if ((op & 0x0E000090) == 0x00000090 && (op & 0x60)) {
+      // a halfword's or a signed byte's load or store: strh, ldrh, ldrsb, ldrsh, its offset immediate or a register's
+      int writes = !(op & 0x00100000), bytes = (op & 0x60) == 0x40 ? 1 : 2;
+      uint32_t offset = (op >> 4 & 0xF0) | (op & 0xF);
+      uint32_t address = ((op >> 16) & 15) == 15 && (op & 0x00400000) ? pc + 8 + ((op & 0x00800000) ? 1 : -1) * offset
+                                                                         : (k < count ? at[k++] : 0);
+      a[0] = (gba_access){ address, (uint32_t)bytes, (uint32_t)writes, 0 };
+      n = 1;
     }
-    gba_clock_arm(pc, op, pc == to ? next : pc + 4, 0, 0, a, n);
+    // a branch whose condition fails goes on to the next instruction, and takes the time of any that doesn't run
+    uint32_t after = pc == to ? next : pc + 4;
+    if ((op & 0x0E000000) == 0x0A000000 && (op >> 28) != 14 && after == pc + 4) op = 0xE1A00000;
+    // a store to the registers takes what the game wrote there as it runs, WAITCNT's within the instruction, as in
+    // Thumb code
+    int registers = n && a[0].writes && (a[0].address >> 24) == 4;
+    if (registers) {
+      int waitcnt = take_written(a[0].address, a[0].bytes, 1);
+      if (waitcnt >= 0) a[0].value = (uint32_t)waitcnt;
+    }
+    gba_clock_arm(pc, op, after, 0, 0, a, n);
+    if (registers) take_written(a[0].address, a[0].bytes, 0);
     if (frame_ended) ended++;
   }
   while (ended-- > 0)
