@@ -5,7 +5,7 @@
 //
 // And the console's time as the emulator keeps it, which says when the sound chip mixes each block of its samples. The
 // emulator runs the console in slices of 4,800 of the EE's clock ticks, the IOP 600 of its own in each, and at the top
-// of each slice mixes 45 samples when their time has come, then starts the V-blank when its time has come. A frame of
+// of each slice mixes 48 samples when their time has come, then starts the V-blank when its time has come. A frame of
 // the tools runs from one V-blank's start to the next, so it mixes 16 or 17 blocks, and what the IOP writes to the chip
 // as the frame starts comes before the frame's first block. The IOP's DMA to the sound chip goes on every 10,000 of its
 // ticks once a transfer has started, and the SIF's packets reach the EE as the EE's ticks pass (sif.c). A game's IOP
@@ -125,9 +125,9 @@ void ps2_clock_power(void) {
   uint32_t frame = EE_HZ / (CONSOLE_CLOCK / CONSOLE_FRAME_TICKS);
   on_screen = (int32_t)(frame * 9 / 10);
   in_blank = (int32_t)(frame / 10);
-  // the EE's ticks between two blocks of 45 samples at 44,100 a second, with 32 bits after the point, worked out as
-  // the emulator does
-  spu_total = (int64_t)((((uint64_t)EE_HZ) << 32) / 44100) * 45;
+  // the EE's ticks between two blocks of 48 samples at the chip's 48,000 a second, a thousandth of a second, with 32
+  // bits after the point, worked out as the emulator does
+  spu_total = (int64_t)((((uint64_t)EE_HZ) << 32) / 48000) * 48;
   spu_ticks = spu_total;
   vblank_ticks = on_screen;
   in_vblank = at_vblank = 0;

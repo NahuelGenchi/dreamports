@@ -168,3 +168,31 @@ export function madeUpOther() {
   const sections = [{ name: '.text', type: 1, flags: 6, address: OTHER, bytes: text }, { name: '.data', type: 1, flags: 3, address: values, bytes: data }];
   return { elf: elfOf({ type: 2, entry: OTHER, flags: 0x20924001, sections }), labels: { other_sum: OTHER, values }, size: words.length * 4 };
 }
+
+/**
+ * A file of data with two programs for vector unit 1 in it, each after the VIF's MPG command, as a game keeps the ones
+ * it uploads: { bytes, programs }, each program { name, at, size, unit }: where its first pair is in the file, how
+ * long it is, and where the unit keeps it. A pair is its lower word and then its upper.
+ *   doubler  LQ vf1, 0(vi0); ADD vf2, vf1, vf1; SQ vf2, 1(vi0); IADDIU vi1, vi0, 2; XGKICK vi1, with the E bit; NOP
+ *   counter  IADDIU vi1, vi0, 3; then ISUBIU vi1, vi1, 1 and, a pair on, IBNE vi1, vi0 back to it; NOP with the E bit
+ *   started  the same again at another place, whose twin has the kit start it as it does for a game
+ * each filled to eight pairs with pairs that do nothing, past its end, as the finder takes an upload in a file of
+ * data for one only from eight.
+ */
+export function madeUpUnit() {
+  const L = 0x8000033C, U = 0x000002FF, E = 0x40000000;
+  const listed = [
+    ['doubler', 0x000, [[0x01E10000, U], [L, 0x01E108A8], [0x03E01001, U], [0x10010002, U], [0x80000EFC, E | U], [L, U], [L, U], [L, U]]],
+    ['counter', 0x100, [[0x10010003, U], [0x12010801, U], [L, U], [0x52000FFD, U], [L, U], [L, E | U], [L, U], [L, U]]],
+    ['started', 0x200, [[0x10010003, U], [0x12010801, U], [L, U], [0x52000FFD, U], [L, U], [L, E | U], [L, U], [L, U]]],
+  ];
+  const parts = [], programs = [];
+  let at = 0;
+  for (const [name, unit, pairs] of listed) {
+    // the VIF's NOP and its MPG command, with how many pairs and where they go, then the pairs
+    parts.push(wordsOf([0, (0x4A << 24 | pairs.length << 16 | unit / 8) >>> 0, ...pairs.flat()]));
+    programs.push({ name, at: at + 8, size: pairs.length * 8, unit });
+    at += 8 + pairs.length * 8;
+  }
+  return { bytes: Buffer.concat(parts), programs };
+}
