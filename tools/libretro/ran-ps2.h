@@ -21,6 +21,11 @@
 // whichever way the game read it: three 32-bit words a record, the sector, and the first and last frame of a stretch of
 // frames it was read in.
 //
+// DP_MODULES, when it's set, names a file for each module the IOP loads, which it puts wherever it has room: four
+// 32-bit words, the frame, where the module's bytes start in the IOP's memory and where they end, and the FNV-1a hash of
+// its bytes as its file holds them, the one stretch it loads, which says which module it is (ps2/ledger.mjs). What ran
+// there before starts anew.
+//
 // DP_WHY, as the Game Boy Advance's program reads it (../gba/original.c): two files, the addresses of the EE's
 // conditional branches asked about, a 32-bit word each, and where to write what each went by, each time it ran. Every
 // instruction of the EE then tells the tools what the registers hold before it runs, and each register's value is
@@ -39,6 +44,11 @@
 #define DP_LIBRETRO_RAN_PS2_H
 
 static void* readAll(const char* path, size_t* size);
+
+struct dpBlock;
+// the core's dreamports_watch: what to tell of a block that ran, of an instruction about to, of a sector read and of a
+// module the IOP loaded
+typedef void (*ps2Watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t), void (*)(uint32_t, uint32_t, uint32_t));
 
 struct dpBlock {
 	uint32_t processor, begin, count, step, branch;
@@ -60,6 +70,7 @@ struct ps2Place { uint32_t record; uint32_t function; uint8_t inside; };
 static struct {
 	struct ps2Place* places[PS2_PROCESSORS];   // for each word, or each pair on a vector unit, of each processor's code
 	FILE* contentFile;
+	FILE* modulesFile;
 	int32_t* sectorLast;   // for each sector, the last frame it was read in, plus one, and when its stretch began
 	uint32_t* sectorStart;
 	size_t sectors;
@@ -147,6 +158,19 @@ static void ps2SectorRead(uint32_t sector) {
 		ps2.sectorStart[sector] = (uint32_t) ran.frame;
 	}
 	ps2.sectorLast[sector] = now;
+}
+
+// the IOP has loaded a module: where, and which, and the code that was there is gone
+static void ps2ModuleLoaded(uint32_t base, uint32_t end, uint32_t hash) {
+	if (ps2.places[PS2_IOP]) {
+		for (uint32_t at = base & ~3u; at < end; at += 4) {
+			uint32_t index = ps2Index(PS2_IOP, at);
+			if (index != UINT32_MAX) ps2.places[PS2_IOP][index].record = 0;
+		}
+	}
+	if (!ps2.modulesFile) return;
+	uint32_t record[4] = { (uint32_t) ran.frame, base & PS2_CODE_MASK[PS2_IOP], end & PS2_CODE_MASK[PS2_IOP], hash };
+	fwrite(record, 4, 4, ps2.modulesFile);
 }
 
 // What a branch went by, for DP_WHY: where each register's value came from, and what SLT and its kin compared
@@ -387,7 +411,7 @@ static void ps2SearchRan(struct dpBlock* block, uint32_t taken) {
 }
 
 /** Starts the search's count, before the game loads, with the core's `watch`. Whether anything was asked for. */
-static int ps2SearchOpen(void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t))) {
+static int ps2SearchOpen(ps2Watch watch) {
 	const char* unplayed = getenv("DP_UNPLAYED");
 	const char* target = getenv("DP_TARGET");
 	unsigned address, what;
@@ -405,18 +429,22 @@ static int ps2SearchOpen(void (*watch)(void (*)(struct dpBlock*, uint32_t), void
 		}
 		free(list);
 	} else return 0;
-	watch(ps2SearchRan, NULL, NULL);
+	watch(ps2SearchRan, NULL, NULL, NULL);
 	return 1;
 }
 
+static void startsBlockRan(uint32_t begin, uint32_t count);   // starts.h
+
 static void ps2Ran(struct dpBlock* block, uint32_t taken) {
 	if (ps2.whyWatching && block->branch) ps2WhyWent(block, taken ? TAKEN : NOT_TAKEN);
+	// a function's start as play reaches it, for the function check's memories of play (starts.h)
+	if (block->processor == PS2_EE) startsBlockRan(block->begin, block->count);
 	ps2BlockRan(block, taken);
 }
 
 /** Starts it, before the game loads: `watch` is the core's dreamports_watch. The functions of FUNCTIONS go to their
  *  places, each processor's own (ran.h has read them). */
-static void ps2Open(void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(struct dpBlock*, uint32_t, const void*), void (*)(uint32_t)), const uint32_t* functions) {
+static void ps2Open(ps2Watch watch, const uint32_t* functions) {
 	for (size_t i = 0; i < ran.functionCount; i++) {
 		uint32_t address = functions[i * 6], size = functions[i * 6 + 1], marks = functions[i * 6 + 3], processor = marks >> 8 & 0xFF;
 		if (processor >= PS2_PROCESSORS || !size) continue;
@@ -433,11 +461,14 @@ static void ps2Open(void (*watch)(void (*)(struct dpBlock*, uint32_t), void (*)(
 	}
 	const char* content = getenv("DP_CONTENT");
 	if (content && !(ps2.contentFile = fopen(content, "wb"))) ranCant(content);
+	const char* modules = getenv("DP_MODULES");
+	if (modules && !(ps2.modulesFile = fopen(modules, "wb"))) ranCant(modules);
 	if (getenv("DP_WHY")) ps2WhyOpen(getenv("DP_WHY"));
-	watch(ps2Ran, ps2.whyWatching ? ps2WhyStep : NULL, ps2.contentFile ? ps2SectorRead : NULL);
+	watch(ps2Ran, ps2.whyWatching ? ps2WhyStep : NULL, ps2.contentFile ? ps2SectorRead : NULL, ps2ModuleLoaded);
 }
 
 static void ps2Close(void) {
+	if (ps2.modulesFile) fclose(ps2.modulesFile);
 	if (ps2.contentFile) {
 		for (size_t sector = 0; sector < ps2.sectors; sector++) {
 			if (!ps2.sectorLast[sector]) continue;

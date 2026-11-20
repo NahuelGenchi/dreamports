@@ -1,10 +1,16 @@
-// The EE's float sums (ps2.h), which the vector units share: each worked out exactly, then cut towards zero to a float,
-// whatever way the computer or WebAssembly rounds, which is to the nearest. The console has no floats tinier than the
-// smallest ordinary one, so those count as zero going in and coming out. This is how the console's emulator does them
-// (Play!, with its sums cut towards zero and its tiny floats flushed), which is what a Dreamport is proven against.
-// Sums that overflow aren't done the console's way yet.
+// The EE's FPU (ps2.h): its instructions on the console's float rules (floats.c), with its flags kept in ee_fcsr as the
+// console keeps them in its FCSR. A sum that can overflow or underflow sets or clears those two flags, and a division or
+// a square root the division and invalid flags, each with the sticky flag that stays until the game clears it. ABS, NEG,
+// MAX and MIN clear overflow and underflow, and a compare sets the condition bit and nothing else.
 
-#include "ps2.h"
+#include "ps2-kit.h"
+
+#define SIGN 0x80000000u
+#define OU (EE_FCSR_O | EE_FCSR_U)
+#define DI (EE_FCSR_D | EE_FCSR_I)
+
+uint32_t ee_fcsr;
+float ee_acc;
 
 static uint32_t bits_of(float value) {
   uint32_t bits;
@@ -17,63 +23,65 @@ static float of_bits(uint32_t bits) {
   return value;
 }
 
-// a float tinier than the smallest ordinary one is zero, with its sign
-static float flushed(float value) {
-  uint32_t bits = bits_of(value);
-  return bits & 0x7F800000 ? value : of_bits(bits & 0x80000000);
-}
-
-// `sum` and `left` together are an exact result, `left` far smaller: the float it's cut to. `sum` rounds to a float, and
-// what that left out, with `left`, says which side of the result the float is on
-static float cut(double sum, double left) {
-  float rounded = (float)sum;
-  double out = sum - (double)rounded;
-  if (out == 0) out = left;
-  if (out == 0 || rounded == 0) return flushed(rounded);
-  // further from zero than the result: the next float in
-  return flushed((rounded > 0) == (out < 0) ? of_bits(bits_of(rounded) - 1) : rounded);
+// a result with the flags of one kind it raised, overflow and underflow or division and invalid: those are cleared,
+// then set with their sticky flags
+static float flagged(uint32_t result, uint32_t flags, uint32_t kind) {
+  ee_fcsr &= ~kind;
+  if (kind == OU) ee_fcsr |= (flags & FLAG_O ? EE_FCSR_O | EE_FCSR_SO : 0) | (flags & FLAG_U ? EE_FCSR_U | EE_FCSR_SU : 0);
+  else ee_fcsr |= (flags & FLAG_D ? EE_FCSR_D | EE_FCSR_SD : 0) | (flags & FLAG_I ? EE_FCSR_I | EE_FCSR_SI : 0);
+  return of_bits(result);
 }
 
 float ee_add(float a, float b) {
-  // two floats' sum doesn't always fit a double, and what's lost is found exactly (Knuth's two-sum)
-  double x = flushed(a), y = flushed(b), sum = x + y, part = sum - x;
-  return cut(sum, (x - (sum - part)) + (y - part));
+  uint32_t flags = 0, result = fpu_add(bits_of(a), bits_of(b), &flags);
+  return flagged(result, flags, OU);
 }
-float ee_sub(float a, float b) { return ee_add(a, -b); }
-// two floats' product always fits a double
-float ee_mul(float a, float b) { return cut((double)flushed(a) * (double)flushed(b), 0); }
-
+float ee_sub(float a, float b) { return ee_add(a, of_bits(bits_of(b) ^ SIGN)); }
+float ee_mul(float a, float b) {
+  uint32_t flags = 0, result = fpu_mul(bits_of(a), bits_of(b), &flags);
+  return flagged(result, flags, OU);
+}
 float ee_div(float a, float b) {
-  double x = flushed(a), y = flushed(b);
-  // nothing divides by zero here: the units give their largest float, which a game's code asks for by name
-  if (y == 0) return of_bits(0x7F7FFFFF | ((bits_of(a) ^ bits_of(b)) & 0x80000000));
-  float rounded = (float)(x / y);
-  if (rounded == 0) return flushed(rounded);
-  // what's left of a once the float's share of it is taken away, which is exact, says which side of the result it is on
-  double left = x - (double)rounded * y;
-  int beyond = left != 0 && ((left > 0) == (y > 0)) != (rounded > 0);
-  return flushed(beyond ? of_bits(bits_of(rounded) - 1) : rounded);
+  uint32_t flags = 0, result = fpu_div(bits_of(a), bits_of(b), &flags);
+  return flagged(result, flags, DI);
 }
-
-// the square root of a float, or of what it is without its sign, as the units take it: found a bit at a time in whole
-// numbers, so it's cut and never rounded
 float ee_sqrt(float value) {
-  uint32_t bits = bits_of(flushed(value)) & 0x7FFFFFFF;
-  if (bits == 0 || bits >= 0x7F800000) return of_bits(bits);
-  int32_t exponent = (int32_t)(bits >> 23) - 127;
-  uint64_t mantissa = (bits & 0x7FFFFF) | 0x800000;
-  if (exponent & 1) { mantissa <<= 1; exponent--; }
-  // the whole root of the mantissa with 23 more bits, which is the root's own 24
-  uint64_t square = mantissa << 23, root = 0;
-  for (uint64_t bit = 1ull << 23; bit; bit >>= 1) if ((root | bit) * (root | bit) <= square) root |= bit;
-  return of_bits((uint32_t)(exponent / 2 + 127) << 23 | ((uint32_t)root & 0x7FFFFF));
+  uint32_t flags = 0, result = fpu_sqrt(bits_of(value), &flags);
+  return flagged(result, flags, DI);
+}
+float ee_rsqrt(float a, float b) {
+  uint32_t flags = 0, result = fpu_rsqrt(bits_of(a), bits_of(b), &flags);
+  return flagged(result, flags, DI);
 }
 
-// a float too large for a whole number gives the largest there is, as the console does
-int32_t ee_to_int(float value) {
-  if (value >= 2147483648.0f) return INT32_MAX;
-  if (value <= -2147483648.0f) return INT32_MIN;
-  return (int32_t)value;
+// the accumulator's: ADDA, SUBA and MULA set it, MADD and MSUB give it plus or minus a product, and MADDA and MSUBA
+// set it to that
+float ee_adda(float a, float b) { return ee_acc = ee_add(a, b); }
+float ee_suba(float a, float b) { return ee_acc = ee_sub(a, b); }
+float ee_mula(float a, float b) { return ee_acc = ee_mul(a, b); }
+static float multiply_add(float a, float b, uint32_t negate) {
+  uint32_t flags = 0, product = fpu_mul(bits_of(a), bits_of(b), &flags) ^ negate;
+  uint32_t result = fpu_add(bits_of(ee_acc), product, &flags);
+  return flagged(result, flags, OU);
 }
-// a whole number too long for a float is cut to one
-float ee_from_int(int32_t value) { return cut((double)value, 0); }
+float ee_madd(float a, float b) { return multiply_add(a, b, 0); }
+float ee_msub(float a, float b) { return multiply_add(a, b, SIGN); }
+float ee_madda(float a, float b) { return ee_acc = multiply_add(a, b, 0); }
+float ee_msuba(float a, float b) { return ee_acc = multiply_add(a, b, SIGN); }
+
+float ee_abs(float value) { return flagged(bits_of(value) & ~SIGN, 0, OU); }
+float ee_neg(float value) { return flagged(bits_of(value) ^ SIGN, 0, OU); }
+float ee_max(float a, float b) { return flagged(fpu_order(bits_of(a)) >= fpu_order(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
+float ee_min(float a, float b) { return flagged(fpu_order(bits_of(a)) <= fpu_order(bits_of(b)) ? bits_of(a) : bits_of(b), 0, OU); }
+
+static int condition(int value) {
+  ee_fcsr = value ? ee_fcsr | EE_FCSR_C : ee_fcsr & ~EE_FCSR_C;
+  return value;
+}
+int ee_c_f(void) { return condition(0); }
+int ee_c_eq(float a, float b) { return condition(fpu_order(bits_of(a)) == fpu_order(bits_of(b))); }
+int ee_c_lt(float a, float b) { return condition(fpu_order(bits_of(a)) < fpu_order(bits_of(b))); }
+int ee_c_le(float a, float b) { return condition(fpu_order(bits_of(a)) <= fpu_order(bits_of(b))); }
+
+int32_t ee_to_int(float value) { return fpu_to_int(bits_of(value)); }
+float ee_from_int(int32_t value) { return of_bits(fpu_from_int(value)); }

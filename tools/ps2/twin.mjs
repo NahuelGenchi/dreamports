@@ -21,6 +21,15 @@
 // f20 to f31 for its caller. The original's own saves on the stack, below where the call starts it, aren't compared, as
 // a twin keeps those in its own stack.
 //
+// Every call starts from the program as the console loads it, unless the check is given memories of play
+// (twin-memories.mjs, --memories): the console's memory as it was each time a function started in play, with the
+// registers it started with, so a function is called with what the game really gave it.
+//
+// A twin can name a function outside the program the disc boots by its code map's key, as 0x00000120@SOUND.IRX: a
+// module for the IOP (twin-iop.mjs) or another program for the EE, each checked in a build of its own, as its
+// addresses are its own. And the EE's code works on vector unit 0 in macro mode, so every call gives the twin the
+// unit's registers through the kit and compares what each side left in them.
+//
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
 // call read, and later calls change a few of those values, mostly to numbers at the edges of what a value holds, and give
 // pointers it read as arguments, but never a word that points back into the function's own code, which is a switch's
@@ -28,12 +37,16 @@
 // instructions ran and which way each branch went, and a function counts as proven only when every instruction ran and
 // each branch went both ways (../lib/played.mjs).
 
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
-import { gameFolder, REPO } from '../lib/paths.mjs';
-import { hex, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
+import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
+import { functionKey, hex, inBootProgram, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
+import { originalPlay } from '../lib/recording.mjs';
+import { consoleOf } from '../consoles.mjs';
+import { libretroReference } from '../libretro/reference.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
@@ -43,9 +56,12 @@ import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { openBuild } from '../gba/twin.mjs';
-import { findFunctions, ps2Program } from './functions.mjs';
-import { keepProgram } from './original-program.mjs';
-import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU } from './original.mjs';
+import { keyIn } from '../gba/match.mjs';
+import { findFunctions, findModuleFunctions, programOf as discProgram, ps2Program } from './functions.mjs';
+import { keepPiece, keepProgram, programReader } from './original-program.mjs';
+import { iopMachine, LOAD, loadModule } from './twin-iop.mjs';
+import { hasMemories, memoriesKey, openMemories, startsIn, takeMemories } from './twin-memories.mjs';
+import { addressAt, buildCaller, CAME_BACK, EE_REGISTERS, ELSEWHERE, endText, EXCEPTION, inImage, KERNEL, KINDS, MISALIGNED, Original, OUT_OF_STEPS, REGISTERS, SYSCALL, VU, VU_REGISTERS } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // what openBuild names the function a call through a pointer meets when nothing built is the twin of its address
@@ -111,8 +127,9 @@ const at = address => `0x${hex(address >>> 0)}`;
 // a place in the console's memory, its 32 MB or its scratchpad, that a pointer can point at
 const inMemory = value => { const place = inImage(value >>> 0); return place >= 0 && (place < 0x02000000 || (place >= 0x02200000 && place < 0x02204000)); };
 
-/** What makes up arguments and values, the same from the same seed. */
-export function chooser(seed) {
+/** What makes up arguments and values, the same from the same seed. `free(below)` gives a place in memory nothing is
+ *  at, for a processor whose memory isn't the EE's. */
+export function chooser(seed, free = null) {
   let state = (seed >>> 0) || 1;
   const next = () => {
     state = (state + 0x6D2B79F5) >>> 0;
@@ -124,8 +141,10 @@ export function chooser(seed) {
   const below = n => next() % n;
   // a number at an edge, a small one, or any
   const number = () => [() => EDGES[below(EDGES.length)], () => below(256), next][below(3)]() >>> 0;
-  // a place in the console's memory, above where a program loads and below its stack, or one a call read
-  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : (0x01000000 + below(0x3C0000) * 4) >>> 0);
+  // a place in the console's memory, above where a program loads and below its stack, or one a call read: mostly where
+  // a quadword starts, as the EE's compiler lines up what it makes, and now and then only a doubleword or a word, as a
+  // place inside something is
+  const place = pointers => (pointers.length && below(2) ? pointers[below(pointers.length)] : free ? free(below) : (0x01000000 + below(0xF0000) * 16 + [0, 0, 0, 0, 8, 4][below(6)]) >>> 0);
   return {
     next, below,
     /** An argument of a type, { bits, signed, pointer, float }: a number, or a BigInt for 64 bits. */
@@ -250,8 +269,11 @@ export function isConditional(word) {
 }
 
 /** Each instruction of a function and, of those, the conditional branches, as offsets in it, for waysLeft. */
-export function instructionsOf(elf, f) {
-  const { wordAt } = programOf(elf), instructions = new Set(), branches = new Set();
+export const instructionsOf = (elf, f) => instructionsIn(programOf(elf).wordAt, f);
+
+/** The same, of a program whose words `wordAt(address)` gives, or null where it has none. */
+export function instructionsIn(wordAt, f) {
+  const instructions = new Set(), branches = new Set();
   for (let offset = 0; offset < f.size; offset += 4) {
     const word = wordAt(f.address + offset);
     if (word === null) continue;
@@ -276,14 +298,16 @@ export function imageOf(elf) {
 
 // The thread that runs the twins of one module, started again when a twin doesn't come back in time.
 class Runner {
-  constructor(module, seconds) {
+  constructor(module, seconds, { table = foldTable(), image = IMAGE } = {}) {
     this.module = module;
     this.seconds = seconds;
+    this.table = table;
+    this.size = image;
     this.image = null;
   }
 
   async start() {
-    this.worker = new Worker(WORKER, { workerData: { module: this.module, table: foldTable(), tableAt: TABLE, written: WRITTEN, nowhere: NOWHERE, image: IMAGE, noCode: NO_CODE } });
+    this.worker = new Worker(WORKER, { workerData: { module: this.module, table: this.table, tableAt: TABLE, written: WRITTEN, nowhere: NOWHERE, image: this.size, noCode: NO_CODE } });
     this.waiting = null;
     this.worker.on('message', message => this.waiting?.(message));
     this.worker.on('error', error => this.waiting?.({ stopped: String(error.message ?? error) }));
@@ -314,10 +338,10 @@ class Runner {
   }
 
   /** A twin's call: { gave, differs }, { stopped }, or { never: true } when it was still going after its seconds. */
-  async call(name, args, changes, chunks, skip) {
+  async call(name, args, changes, chunks, skip, unit = null) {
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => resolve({ never: true }), this.seconds * 1000); });
-    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip }), late]);
+    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip, unit }), late]);
     clearTimeout(timer);
     if (answer.never) {
       await this.worker.terminate();
@@ -337,87 +361,164 @@ const doubleOf = (words, at) => (BigInt(words[at + 1] >>> 0) << 32n) | BigInt(wo
 const spread = value => [value >>> 0, value & 0x80000000 ? 0xFFFFFFFF : 0];
 
 /**
+ * The EE as the check calls its functions: how Sony's compiler for it makes a call, and what a function keeps. The IOP
+ * is another (twin-iop.mjs). Each says its `kind` (original.mjs), how many `words` its registers are, where a call's
+ * `stack` starts and where it comes `back` to, and:
+ *   places(params)  where each argument goes, and `room`, the bytes above sp a caller gives the function
+ *   start(registers, gp)  the registers a call always starts with, among the others' any values
+ *   give(registers, changes, sp, place, type, value)  an argument put where a caller puts it
+ *   played(registers, image, sp, place, type)  an argument read back from where play's caller put it
+ *   kept(left, registers)  the name of a register the function should have kept and didn't, or undefined
+ *   theirs(left, type) and ours(gave, type)  what the original and the twin gave back, to compare
+ *   inMemory(value)  whether a value is a place a pointer can point at
+ */
+export const EE = {
+  kind: 'ee', words: EE_REGISTERS.words, stack: STACK, back: BACK,
+  // the first eight whole numbers and the first eight floats in registers, and the rest on the stack from where sp
+  // points, a slot of eight bytes each, in the order they're written
+  places(params) {
+    let integers = 0, floats = 0, slots = 0;
+    const places = params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
+    return { places, room: 8 * slots };
+  },
+  start(registers, gp) {
+    const gpr = (n, low, high = 0) => { registers[n * 4] = low >>> 0; registers[n * 4 + 1] = high >>> 0; registers[n * 4 + 2] = registers[n * 4 + 3] = 0; };
+    registers[0] = registers[1] = registers[2] = registers[3] = 0;
+    gpr(29, STACK);
+    gpr(31, BACK);
+    gpr(28, ...spread(gp));
+    registers[EE_REGISTERS.fcsr] = 0x01000001;
+    for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
+  },
+  // whole numbers in a0 to a3 and t0 to t3, floats in f12 on
+  give(registers, changes, sp, place, type, value) {
+    const low = Number(BigInt(value) & 0xFFFFFFFFn), high = Number(BigInt(value) >> 32n);
+    if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
+    else if (place.register !== undefined) [registers[(4 + place.register) * 4], registers[(4 + place.register) * 4 + 1]] = type.bits === 64 ? [low, high] : spread(low);
+    else {
+      // on the stack a caller stores a word, and the other half of the slot too for 64 bits
+      changes.push([sp + 8 * place.slot, 4, low]);
+      if (type.bits === 64) changes.push([sp + 8 * place.slot + 4, 4, high]);
+    }
+  },
+  played(registers, image, sp, place, type) {
+    const at = place.float !== undefined ? EE_REGISTERS.fpr + 12 + place.float : place.register !== undefined ? (4 + place.register) * 4 : null;
+    const words = at !== null ? [registers[at], registers[at + 1]] : [0, 4].map(n => new DataView(image.buffer).getUint32(inImage(sp + 8 * place.slot) + n, true));
+    if (type.bits === 64) return (BigInt(words[1] >>> 0) << 32n) | BigInt(words[0] >>> 0);
+    return type.bits === 32 ? words[0] >>> 0 : (type.signed ? (words[0] << (32 - type.bits)) >> (32 - type.bits) : words[0] & (2 ** type.bits - 1)) >>> 0;
+  },
+  kept(left, registers) {
+    const register = KEPT.find(n => [0, 1, 2, 3].some(w => left[n * 4 + w] >>> 0 !== registers[n * 4 + w] >>> 0));
+    const float = KEPT_FLOATS.find(n => left[EE_REGISTERS.fpr + n] >>> 0 !== registers[EE_REGISTERS.fpr + n] >>> 0);
+    return register !== undefined ? `$${REGISTERS[register]}` : float !== undefined ? `$f${float}` : undefined;
+  },
+  // a float in f0, or v0, all 64 bits of it, which hold a narrower value spread by its sign, as the processor keeps a
+  // 32-bit one, or by its type's
+  theirs: (left, { float }) => (float ? BigInt(left[EE_REGISTERS.fpr] >>> 0) : doubleOf(left, 8)),
+  ours: (gave, { bits, float, signed }) => (float ? gave & 0xFFFFFFFFn : BigInt.asUintN(64, bits === 32 || signed ? BigInt.asIntN(bits, gave) : BigInt.asUintN(bits, gave))),
+  inMemory,
+  typeOf,
+  table: foldTable,
+  // vector unit 0's registers of the EE's, as the kit's vu_registers has a unit's (original.mjs, VU_REGISTERS): VF0
+  // and VI0 as they always read, the whole numbers' 16 bits, and the status flag as the EE reads it, which Play! keeps
+  // as the MAC flags, their sticky bits and the division's
+  unit(registers) {
+    const words = new Array(VU_REGISTERS.words).fill(0), E = EE_REGISTERS, V = VU_REGISTERS;
+    for (let n = 4; n < 128; n++) words[V.vf + n] = registers[E.vf + n] >>> 0;
+    words[V.vf + 3] = 0x3F800000;
+    for (let n = 0; n < 4; n++) words[V.acc + n] = registers[E.acc + n] >>> 0;
+    for (let n = 1; n < 16; n++) words[V.vi + n] = registers[E.vi + n] & 0xFFFF;
+    for (const name of ['q', 'i', 'p', 'r']) words[V[name]] = registers[E[name]] >>> 0;
+    const mac = registers[E.mac] >>> 0, sticky = registers[E.status] >>> 0;
+    words[V.status] = [0x000F, 0x00F0, 0x0F00, 0xF000].reduce((status, lanes, bit) => status | (mac & lanes ? 1 << bit : 0) | (sticky & lanes ? 0x40 << bit : 0), registers[E.divide] >>> 0);
+    words[V.mac] = mac;
+    words[V.clip] = registers[E.clip] >>> 0;
+    return words;
+  },
+};
+
+// a word of a unit's registers by its name, as a line says it
+function unitRegister(k) {
+  const V = VU_REGISTERS, field = 'xyzw'[k & 3];
+  if (k < V.acc) return `VF${k >> 2}.${field}`;
+  if (k < V.vi) return `ACC.${field}`;
+  if (k < V.q) return `VI${k - V.vi}`;
+  return { [V.q]: 'Q', [V.i]: 'I', [V.p]: 'P', [V.r]: 'R', [V.status]: 'status flag', [V.mac]: 'MAC flag', [V.clip]: 'clip flag' }[k] ?? `word ${k}`;
+}
+
+/**
  * Calls one function of the original and its twin until `options.calls` calls were compared, each from the image with
- * a few values changed. `f` is { name, address, size, params, returns, call }. Answers what the check came to:
+ * a few values changed, on `machine`, the EE unless said. `f` is { name, address, size, params, returns, call }. Answers what the check came to:
  * { compared, aside, ran, result }, `result` null while every call compared was the same, or what wasn't.
  */
-async function checkFunction({ f, original, runner, gp, options, choose }) {
+export async function checkFunction({ f, original, runner, gp, options, choose, image, memories = [], machine = EE }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
-  // where each argument goes: the first eight whole numbers and the first eight floats in registers, and the rest on
-  // the stack from where sp points, a slot of eight bytes each, in the order they're written
-  let integers = 0, floats = 0, slots = 0;
-  const places = f.params.map(type => (type.float ? (floats < 8 ? { float: floats++ } : { slot: slots++ }) : integers < 8 ? { register: integers++ } : { slot: slots++ }));
-  // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
-  // call is given and may change
-  const skip = [[inImage(STACK - SAVES), inImage(STACK) + 8 * slots]];
-  const read = address => inImage(address) >= 0 && !(address >= STACK - SAVES && address < STACK + 8 * slots) && !(address >= f.code.from && address < f.code.to);
-  let compared = 0, number = 0;
+  const { places, room } = machine.places(f.params), placed = address => inImage(address, machine.kind);
+  // Where the calls start from: the function's own memories of play, a share of the calls from each, one after
+  // another, or the program as the console loads it for a function with none. A memory's first call is the one play
+  // made, with every register and the stack as they were, and the rest change what it was given.
+  const sources = memories.length ? memories : [null];
+  let compared = 0, number = 0, source = -1, made = 0, from = null;
   while (compared < options.calls && number < options.calls * TRIES) {
     number++;
-    const args = f.params.map(type => choose.value(type, pointers));
+    const turn = Math.floor((number - 1) * sources.length / options.calls) % sources.length;
+    if (turn !== source) {
+      from?.drop();
+      source = turn;
+      from = sources[source];
+      made = 0;
+      // the image only when it's another than the last call started from
+      if (runner.image !== (from?.image ?? image)) {
+        await original.image(from?.image ?? image);
+        await runner.set(from?.image ?? image);
+      }
+    }
+    const asPlayed = from !== null && made++ === 0;
+    // the stack as the call has it: the program's, or play's as the function started
+    const sp = from ? from.registers[29 * 4] >>> 0 : machine.stack;
+    // the original's own saves below its stack, which a twin keeps in its own, and the arguments above it, which the
+    // call is given and may change
+    const skip = [[placed(sp - SAVES), placed(sp) + room]];
+    const read = address => placed(address) >= 0 && !(address >= sp - SAVES && address < sp + room) && !(address >= f.code.from && address < f.code.to);
+    const registers = from ? [...from.registers] : Array.from({ length: machine.words }, () => choose.next());
+    // what play gave the function, read back from where a caller puts it
+    const args = asPlayed ? f.params.map((type, k) => machine.played(registers, from.image, sp, places[k], type)) : f.params.map(type => choose.value(type, pointers));
     const changes = [];
-    if (pool.size && choose.below(2)) {
+    if (!asPlayed && pool.size && choose.below(2)) {
       const places = [...pool];
       for (let k = 1 + choose.below(3); k; k--) {
         const [address, bytes] = places[choose.below(places.length)];
         changes.push([address, bytes, choose.sized(bytes, pointers)]);
       }
     }
-    const registers = Array.from({ length: EE_REGISTERS.words }, () => choose.next());
-    const gpr = (n, low, high = 0) => {
-      registers[n * 4] = low >>> 0;
-      registers[n * 4 + 1] = high >>> 0;
-    };
-    gpr(0, 0);
-    registers[2] = registers[3] = 0;
-    gpr(29, STACK);
-    registers[29 * 4 + 2] = registers[29 * 4 + 3] = 0;
-    gpr(31, BACK);
-    registers[31 * 4 + 2] = registers[31 * 4 + 3] = 0;
-    gpr(28, ...spread(gp));
-    registers[28 * 4 + 2] = registers[28 * 4 + 3] = 0;
-    // the arguments, as the caller puts them: whole numbers in a0 to a3 and t0 to t3, floats in f12 on
-    f.params.forEach((type, k) => {
-      const place = places[k], low = Number(BigInt(args[k]) & 0xFFFFFFFFn), high = Number(BigInt(args[k]) >> 32n);
-      if (place.float !== undefined) registers[EE_REGISTERS.fpr + 12 + place.float] = low;
-      else if (place.register !== undefined) gpr(4 + place.register, ...(type.bits === 64 ? [low, high] : spread(low)));
-      else {
-        // on the stack a caller stores a word, and the other half of the slot too for 64 bits
-        changes.push([STACK + 8 * place.slot, 4, low]);
-        if (type.bits === 64) changes.push([STACK + 8 * place.slot + 4, 4, high]);
-      }
-    });
-    registers[EE_REGISTERS.fcsr] = 0x01000001;
-    for (let n = EE_REGISTERS.status; n <= EE_REGISTERS.divide; n++) registers[n] = 0;
+    if (!from) machine.start(registers, gp);
+    // the arguments, as the caller puts them
+    if (!asPlayed) f.params.forEach((type, k) => machine.give(registers, changes, sp, places[k], type, args[k]));
     const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, registers, changes });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
       if (!read(address) || (bytes === 4 && value >= f.code.from && value < f.code.to)) continue;
       pool.set(address, bytes);
-      if (bytes === 4 && inMemory(value) && pointers.length < 256 && !pointers.includes(value >>> 0)) pointers.push(value >>> 0);
+      if (bytes === 4 && machine.inMemory(value) && pointers.length < 256 && !pointers.includes(value >>> 0)) pointers.push(value >>> 0);
     }
     const reason = answer.end === CAME_BACK ? null
       : answer.end === KERNEL || answer.end === SYSCALL ? 'kernel' : answer.end === ELSEWHERE ? 'elsewhere' : answer.end === EXCEPTION ? 'exception'
         : answer.end === OUT_OF_STEPS ? 'steps' : answer.end === MISALIGNED ? 'misaligned' : answer.end === VU ? 'vu' : 'other';
     if (reason) {
       aside[reason] = (aside[reason] ?? 0) + 1;
-      aside[`${reason}Text`] ??= endText(answer);
-      continue;
-    }
-    if (answer.vu0) {
-      aside.vu0 = (aside.vu0 ?? 0) + 1;
+      aside[`${reason}Text`] ??= machine.endText?.(answer) ?? endText(answer);
       continue;
     }
     const left = answer.registers;
-    const keptRegister = KEPT.find(n => [0, 1, 2, 3].some(w => left[n * 4 + w] >>> 0 !== registers[n * 4 + w] >>> 0));
-    const keptFloat = KEPT_FLOATS.find(n => left[EE_REGISTERS.fpr + n] >>> 0 !== registers[EE_REGISTERS.fpr + n] >>> 0);
-    if (keptRegister !== undefined || keptFloat !== undefined) {
+    const unkept = machine.kept(left, registers);
+    if (unkept !== undefined) {
       aside.kept = (aside.kept ?? 0) + 1;
-      aside.keptText ??= keptRegister !== undefined ? `$${REGISTERS[keptRegister]}` : `$f${keptFloat}`;
+      aside.keptText ??= unkept;
       continue;
     }
-    const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
-    const call = { number, args, changes, hardware: answer.hardware };
+    // vector unit 0's registers, which the EE's code reaches in macro mode, as the call starts
+    const twin = await runner.call(f.call, args, changes, answer.chunks, skip, machine.unit ? { number: 0, words: machine.unit(registers) } : null);
+    const call = { number, args, changes, hardware: answer.hardware, ...(from ? { from: { play: from.play, number: from.number, asPlayed } } : {}) };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
       aside.unbuilt = (aside.unbuilt ?? 0) + 1;
@@ -429,27 +530,31 @@ async function checkFunction({ f, original, runner, gp, options, choose }) {
       continue;
     }
     if (twin.stopped) return { compared, aside, ran, result: { kind: 'stopped', why: twin.stopped, ...call } };
-    // what the original gave back: a float in f0, or v0, all 64 bits of it, which hold a narrower value spread by its
-    // sign, as the processor keeps a 32-bit one, or by its type's
+    // what each gave back
     if (f.returns) {
-      const gave = BigInt.asUintN(64, BigInt(twin.gave)), { bits, float, signed } = f.returns;
-      const theirs = float ? BigInt(left[EE_REGISTERS.fpr] >>> 0) : doubleOf(left, 8);
-      const ours = float ? gave & 0xFFFFFFFFn : BigInt.asUintN(64, bits === 32 || signed ? BigInt.asIntN(bits, gave) : BigInt.asUintN(bits, gave));
-      if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(float) }, ...call } };
+      const theirs = machine.theirs(left, f.returns), ours = machine.ours(BigInt.asUintN(64, BigInt(twin.gave)), f.returns);
+      if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(f.returns.float), digits: f.returns.float || (machine.kind !== 'ee' && f.returns.bits !== 64) ? 8 : 16 }, ...call } };
     }
-    if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(twin.differs.at), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
+    // and what each left in vector unit 0's registers
+    if (machine.unit && twin.unit) {
+      const theirs = machine.unit(left), k = theirs.findIndex((word, n) => word >>> 0 !== twin.unit[n] >>> 0);
+      if (k >= 0) return { compared, aside, ran, result: { kind: 'differs', register: { name: unitRegister(k), ours: twin.unit[k] >>> 0, theirs: theirs[k] >>> 0 }, ...call } };
+    }
+    if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(twin.differs.at, machine.kind), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
   }
+  from?.drop();
   return { compared, aside, ran, result: null };
 }
 
 const argText = value => (typeof value === 'bigint' ? `0x${value.toString(16).toUpperCase().padStart(16, '0')}` : at(value));
 
 /** A call as a line says it: its number, the function with what it was given, and what was changed for it. */
-export function callText(name, { number, args, changes }) {
+export function callText(name, { number, args, changes, from }) {
   const set = changes.length ? `, after ${changes.map(([address, bytes, value]) => `${at(address)} was set to 0x${(value >>> 0).toString(16).toUpperCase().padStart(bytes * 2, '0')}`).join(' and ')}` : '';
-  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}`;
+  const played = from ? `, ${from.asPlayed ? 'as play made it, ' : ''}from the memory of ${from.play} at its start ${count(from.number)}` : '';
+  return `call ${count(number)}, ${name}(${args.map(argText).join(', ')})${set}${played}`;
 }
 
 /** What a function's check came to, as { kind, line }: `kind` is 'same', 'differs', 'never', 'stopped', 'few' or
@@ -458,10 +563,11 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   const byte = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
   const hardware = result?.hardware ? ' The original used the hardware\'s registers in this call, which are compared as memory.' : '';
   if (result?.kind === 'differs') {
-    const word = value => `0x${value.toString(16).toUpperCase().padStart(result.gave.float ? 8 : 16, '0')}`;
+    const word = value => `0x${value.toString(16).toUpperCase().padStart(result.gave.digits, '0')}`;
     const gave = result.gave ? `the twin gave back ${word(result.gave.ours)} and the original ${word(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
     const memory = result.memory ? `at ${at(result.memory.address)}, in ${result.memory.name}, the twin left ${byte(result.memory.ours)} and the original ${byte(result.memory.theirs)}` : null;
-    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, gave].filter(Boolean).join(', and ')}.${hardware}` };
+    const register = result.register ? `in vector unit 0's ${result.register.name} the twin left ${at(result.register.ours)} and the original ${at(result.register.theirs)}` : null;
+    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, register, gave].filter(Boolean).join(', and ')}.${hardware}` };
   }
   if (result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, result)}: the original came back and the twin stopped (${result.why}).` };
@@ -474,7 +580,6 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
     steps: `the original didn't come back within ${count(DEFAULTS.limit)} instructions`,
     misaligned: `the original ${aside.misalignedText}`,
     vu: `the original ${aside.vuText}`,
-    vu0: 'the original left vector unit 0\'s registers changed, which no twin is given yet',
     kept: `the original changed ${aside.keptText}, which a function keeps for its caller`,
     unbuilt: `the twin calls ${aside.unbuiltText}, which nothing built is the twin of`,
     mismatch: 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops',
@@ -487,17 +592,19 @@ const NO_REGISTER = 'it takes or gives something no register carries, a struct o
 const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came back', stopped: 'Stopped', few: 'Too few calls', unchecked: 'Not checked' };
 
 /** The twins of a version, ready to be built for the check a file at a time (../gba/twin.mjs). */
-export function openPs2Build({ root, files, shifts, givenOf, includes }) {
-  return openBuild({ root, files, shifts, givenOf, console: 'ps2', layout: LAYOUT, includes, signature: signatureOf, wrap: wrapOf });
+export function openPs2Build({ root, files, shifts, givenOf, includes, placed, own = LAYOUT.own }) {
+  return openBuild({ root, files, shifts, givenOf, console: 'ps2', layout: { ...LAYOUT, own }, includes, signature: signatureOf, wrap: wrapOf, kitNames: ['vu_registers'], ...(placed ? { placed } : {}) });
 }
 
 /**
- * Checks the twins of one file of C against a PlayStation 2 program, `elf`, its bytes, with `build`, as openPs2Build
- * gives one, `only` the address of the one function to check or null, `addressOf(name)` where the console keeps a
- * value, and `sizeOf(address)` how long the original's function there is. Answers { error }, { missing }, or
- * { functions }, each { name, address, kind, line, compared, whole, left }.
+ * Checks the twins of one file of C against a PlayStation 2 program, `elf`, its bytes, or `program`, { image, gp,
+ * wordAt }, the image its calls start from, its gp and its words by address, on `machine`, the EE unless said, with
+ * `build`, as openPs2Build gives one, `only` the address of the one function to check or null, `addressOf(name)` where the console keeps a
+ * value, `sizeOf(address)` how long the original's function there is, and `memories`, of play, for the calls to start
+ * from, as twin-memories.mjs's openMemories gives them, or none. Answers { error }, { missing }, or { functions }, each
+ * { name, address, kind, line, compared, whole, left }.
  */
-export async function checkFile({ elf, build, file, only = null, addressOf, sizeOf, original, options = {}, ruledOut = new Map(), log = () => {} }) {
+export async function checkFile({ elf = null, program = { image: imageOf(elf), gp: gpOf(elf), wordAt: programOf(elf).wordAt }, machine = EE, build, file, only = null, addressOf, sizeOf, original, options = {}, memories = null, ruledOut = new Map(), log = () => {} }) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   const linked = await build.link({ file, only, addressOf });
   if (linked.error) return { error: linked.error };
@@ -510,12 +617,12 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
     }
     if (linked.unit.unknown.includes(twin.name)) functions.push({ name: twin.name, address: twin.address, kind: 'unchecked', line: 'it takes or gives a type its file never completes, so the check can\'t call it' });
   }
-  const runner = new Runner(foldAddresses(linked.module, { table: TABLE, written: WRITTEN }), all.seconds);
+  const runner = new Runner(foldAddresses(linked.module, { table: TABLE, written: WRITTEN }), all.seconds, { table: machine.table(), image: KINDS[machine.kind].image });
   try {
-    const image = imageOf(elf);
+    const { image, gp } = program;
     await original.image(image);
     await runner.set(image);
-    const choose = chooser(all.seed), gp = gpOf(elf);
+    const choose = chooser(all.seed, machine.free ?? null);
     for (const call of linked.calls) {
       const size = sizeOf(call.address);
       if (!size) {
@@ -523,15 +630,15 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         continue;
       }
       // what each argument and what comes back is, as the compiler has it
-      const types = (await runner.types(call.call, call.params.length + (call.returns ? 1 : 0))).map(typeOf);
+      const types = (await runner.types(call.call, call.params.length + (call.returns ? 1 : 0))).map(machine.typeOf);
       if (types.includes(null)) {
         functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: NO_REGISTER });
         continue;
       }
       const f = { ...call, params: types.slice(0, call.params.length), returns: call.returns ? types.at(-1) : null, size, code: { from: call.address, to: call.address + size } };
-      const checked = await checkFunction({ f, original, runner, gp, options: all, choose });
+      const checked = await checkFunction({ f, original, runner, gp, options: all, choose, image, memories: memories?.of(f.address) ?? [], machine });
       const { kind, line } = outcome(f, checked, all);
-      const { total, left } = waysLeft(instructionsOf(elf, f), f.address, checked.ran, ruledOut);
+      const { total, left } = waysLeft(instructionsIn(program.wordAt, f), f.address, checked.ran, ruledOut);
       functions.push({ name: f.name, address: f.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left, total });
       log(f.name);
     }
@@ -541,12 +648,59 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
   return { functions };
 }
 
+/**
+ * Takes the memories of play for a version's twins, unless the ones kept are from the same copy, functions and
+ * recordings: plays the game's recordings, or those of `names`, in the console's emulator, which tells of each time
+ * the EE reaches one of `addresses`, with its registers and the memory then (../libretro/starts.h), and keeps a few
+ * for each function (twin-memories.mjs). Answers them, as openMemories does.
+ */
+export async function memoriesOfPlay({ game, original, copy, addresses, names = [], folder = join(LOCAL, 'twin', game, 'ps2'), log = console.log }) {
+  const reference = libretroReference(consoleOf('ps2')), keysLate = original.keysAfterVBlank === true;
+  // one console plays them: a recording of several on a link isn't one's play
+  const alone = readRecordings(game, names).filter(recording => !recording.players);
+  if (!alone.length) throw new Error(`games/${versionOf(game).game}/proof/recordings/ has no recording one console plays${names.length ? ' among those named' : ''}, so there's no play to take memories from.`);
+  const plays = alone.map(recording => {
+    const way = originalPlay(recording, { keysLate });
+    const buttons = way.originalHeld.map(list => list.reduce((mask, button) => mask | (reference.KEY[button] ?? 0), 0));
+    if (keysLate) buttons.unshift(0);
+    return { name: recording.name, buttons, sets: way.sets.map(({ frame, address, bytes, value }) => ({ frame, address, bytes, value })) };
+  });
+  const key = memoriesKey({ sha1: original.sha1, addresses, plays: plays.map(({ name, buttons, sets }) => [name, createHash('sha1').update(Buffer.from(Uint32Array.from(buttons).buffer)).digest('hex'), sets]) });
+  const where = inRepo(folder);
+  if (hasMemories(folder, key)) log(`The memories of play in ${where}/ are from these recordings and this copy already.`);
+  else {
+    reference.ensureOriginal(log);
+    const frames = plays.reduce((sum, play) => sum + play.buttons.length, 0);
+    log(`Playing ${plays.length === 1 ? plays[0].name : `${count(plays.length)} recordings`} in the original, ${count(frames)} frames, for the memory each function starts from…`);
+    const began = Date.now(), work = join(LOCAL, 'tmp', `ps2-starts-${process.pid}`);
+    mkdirSync(work, { recursive: true });
+    try {
+      const taken = await takeMemories({
+        addresses, folder, key,
+        plays: plays.map((play, n) => ({
+          name: play.name,
+          // played when its starts are wanted, and its file read a start at a time, as one can hold the console's memory many times over
+          starts: async () => {
+            const watched = join(work, `starts-${n}.bin`);
+            writeFileSync(watched, new Uint8Array(Uint32Array.from(addresses).buffer));
+            await reference.runOriginal({ copy, frames: play.buttons.length, buttons: play.buttons, sets: play.sets, env: { DP_STARTS: watched } });
+            return startsIn(`${watched}.out`);
+          },
+        })),
+      });
+      log(`${count(taken.memories)} memories of ${count(taken.functions)} of the ${count(addresses.length)} functions kept in ${where}/, ${(taken.bytes / 1048576).toFixed(1)} MB, in ${count(Math.round((Date.now() - began) / 1000))} seconds. They come from your copy of the game: never put them in a commit, an issue or a pull request.`);
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  }
+  return openMemories(folder);
+}
+
 /** The function check of a PlayStation 2 game's version in C, as the tool runs it: 0, or 3 when a twin isn't the same. */
 export async function twin(asked, options = {}, log = console.log) {
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
   // a game's name alone means its version in C
   const game = writtenIn(versionOf(asked).language) !== 'c' && existsSync(gameFolder(`${versionOf(asked).game}/c`)) ? `${versionOf(asked).game}/c` : asked;
-  if (all.memories) throw new Error('--memories isn\'t there yet on the PlayStation 2: every call starts from the program as the console loads it.');
   if (all.frames !== undefined) throw new Error('--frames is for a Game Boy Advance game: on the PlayStation 2 every call starts from the program as the console loads it.');
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
@@ -564,63 +718,148 @@ export async function twin(asked, options = {}, log = console.log) {
   // a value is the game's, at the address its proof/addresses.json gives, a twin's, or the one in its label
   const label = /^[A-Za-z][A-Za-z0-9]*_(0[01][0-9A-Fa-f]{6})$/;
   const addressOf = name => named.get(name) ?? (twins.get(name)?.size === 1 ? [...twins.get(name)][0] : null) ?? (label.test(name) ? parseInt(name.slice(-8), 16) : null);
-  let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null;
+  // the twins of functions outside the program the disc boots, each named by its code map's key: a module's for the
+  // IOP, or another program's for the EE
+  const keyed = files.flatMap(file => twinsOf.get(file).filter(t => t.keyed).map(t => ({ ...t.keyed, name: t.name, file })));
+  const modules = [...new Set(keyed.filter(t => !t.vu).map(t => t.program))].sort();
+  let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null, onlyIn = null;
   if (all.function) {
-    only = twins.get(all.function)?.size === 1 ? [...twins.get(all.function)][0]
-      : /^(0x)?[0-9A-Fa-f]{1,8}$/.test(all.function) ? parseInt(all.function.replace(/^0x/, ''), 16)
-        : label.test(all.function) ? parseInt(all.function.slice(-8), 16) : null;
-    if (only === null) throw new Error(`No twin in games/${game}/ is called ${all.function}: name a function by its address, as 0x00123450, its label, or its twin's name.`);
-    chosen = files.filter(file => twinsOf.get(file).some(t => t.address === only));
-    if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the address, as in /** 0x${hex(only)}: what it does */.`);
+    // one of another program's, by its key or its twin's name
+    // with as few digits as it's typed with
+    const typed = /^(?:0x)?([0-9A-Fa-f]{1,8})((?:@[^~]+)?(?:~vu)?)$/.exec(all.function);
+    const asked = typed?.[2] ? keyIn(`0x${typed[1].padStart(8, '0')}${typed[2]}`) : null, byName = keyed.filter(t => t.name === all.function);
+    const other = asked ? keyed.find(t => t.address === asked.address && t.program === asked.program && Boolean(t.vu) === Boolean(asked.vu)) ?? asked : byName.length === 1 ? byName[0] : null;
+    if (other) {
+      if (other.vu) throw new Error(`${all.function} is a vector unit's program, which twin doesn't call yet.`);
+      if (!other.file) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the key, as in /** 0x${functionKey(other)}: what it does */.`);
+      only = other.address;
+      onlyIn = other.program;
+      chosen = [];
+    } else {
+      only = twins.get(all.function)?.size === 1 ? [...twins.get(all.function)][0]
+        : /^(0x)?[0-9A-Fa-f]{1,8}$/.test(all.function) ? parseInt(all.function.replace(/^0x/, ''), 16)
+          : label.test(all.function) ? parseInt(all.function.slice(-8), 16) : null;
+      if (only === null) throw new Error(`No twin in games/${game}/ is called ${all.function}: name a function by its address, as 0x00123450, its label, its twin's name, or its key in another program, as 0x00000120@MODULE.IRX.`);
+      chosen = files.filter(file => twinsOf.get(file).some(t => t.address === only));
+      if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the address, as in /** 0x${hex(only)}: what it does */.`);
+    }
   }
-  if (!chosen.length) {
+  const groups = modules.filter(program => (onlyIn === null ? !all.function : program === onlyIn));
+  if (!chosen.length && !groups.length) {
     log(`games/${game}/ has no twins yet.`);
     return 0;
   }
-  const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
+  // the functions of the program the disc boots: another program's, or a vector unit's, can have the same address
+  const sizes = new Map(codeMap.functions.filter(inBootProgram).map(f => [f.address, f.size]));
   const found = new Map(findFunctions(elf).map(f => [f.address, f.size]));
   const header = await twinsFolder(folder);
-  const build = openPs2Build({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
+  const includes = [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])];
+  const build = openPs2Build({ root: folder, files, shifts, givenOf, includes });
   const { ways: ruledOut } = readUnreachable(game);
+  // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
+  // check of them all
+  const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address).filter(address => address !== null)))].sort((a, b) => a - b);
+  const memories = all.memories && chosen.length ? await memoriesOfPlay({ game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   const proven = [], differing = [];
-  const caller = new Original(await buildCaller(log), 'ee');
-  try {
-    for (const file of chosen) {
-      const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, ruledOut });
-      const where = inRepo(file);
-      if (result.error) {
-        const said = result.error.split('\n');
-        if (chosen.length === 1) log(`${where}\n  Didn't build: ${said.join('\n  ')}`);
-        failed.push(`${where}: ${said.find(line => /error/.test(line)) ?? said[0]}`);
-        continue;
-      }
-      if (result.missing) {
-        log(`${where}\n  Not checked: no address for ${result.missing.join(', ')}`);
-        for (const name of result.missing) unnamed.add(name);
-        continue;
-      }
-      if (!result.functions.length) continue;
-      log(where);
-      for (const f of result.functions) {
-        if (f.address === null) {
-          log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
-          continue;
-        }
-        totals[f.kind]++;
-        if (f.whole) proven.push({ key: hex(f.address), calls: f.compared });
-        else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
-        log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
-        if (f.kind === 'same' && f.left.length) log(`    Its calls left out ${count(f.left.length)} of its ${count(f.total)} instructions and branch ways, such as ${f.left.slice(0, 3).map(([address, how]) => `${at(address)} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
-      }
+  // what a file's check found, said, with each function by `keyOf` its address there
+  const say = (file, result, keyOf = address => ({ key: hex(address), text: at(address) })) => {
+    const where = inRepo(file);
+    if (result.error) {
+      const said = result.error.split('\n');
+      if (chosen.length + groups.length === 1) log(`${where}\n  Didn't build: ${said.join('\n  ')}`);
+      failed.push(`${where}: ${said.find(line => /error/.test(line)) ?? said[0]}`);
+      return;
     }
-  } finally {
-    caller.close();
+    if (result.missing) {
+      log(`${where}\n  Not checked: no address for ${result.missing.join(', ')}`);
+      for (const name of result.missing) unnamed.add(name);
+      return;
+    }
+    if (!result.functions.length) return;
+    log(where);
+    for (const f of result.functions) {
+      if (f.address === null) {
+        log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
+        continue;
+      }
+      const { key, text } = keyOf(f.address);
+      totals[f.kind]++;
+      if (f.whole) proven.push({ key, calls: f.compared });
+      else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(key);
+      log(`  ${LABELS[f.kind]}  ${text} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
+      if (f.kind === 'same' && f.left.length) log(`    Its calls left out ${count(f.left.length)} of its ${count(f.total)} instructions and branch ways, such as ${f.left.slice(0, 3).map(([address, how]) => `${keyOf(address).text.replace(/@.*$/, '')} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
+    }
+  };
+  const program = await buildCaller(log);
+  if (chosen.length) {
+    const caller = new Original(program, 'ee');
+    try {
+      for (const file of chosen) {
+        const result = await checkFile({ elf, build, file, only, addressOf, sizeOf: address => sizes.get(address) ?? found.get(address) ?? null, original: caller, options: all, memories, ruledOut });
+        // a twin named by a key has no address in this program, and is said with its own
+        if (result.functions) result.functions = result.functions.filter(f => f.address !== null || !twinsOf.get(file).find(t => t.name === f.name)?.keyed);
+        say(file, result);
+      }
+    } finally {
+      caller.close();
+    }
+  }
+  // each other program's twins by themselves, as its addresses are its own
+  for (const name of groups) {
+    const bytes = await discProgram(copy.path, name);
+    if (!bytes) {
+      log(`Your copy has no ${name}, which ${count(keyed.filter(t => t.program === name).length)} twins name: npm run dp -- codemap ${base} lists the disc's programs.`);
+      totals.unchecked += keyed.filter(t => t.program === name && !t.vu).length;
+      continue;
+    }
+    // a module for the IOP, loaded where the check loads one, or another program for the EE, where it says it loads
+    const iop = bytes.readUInt16LE(16) === 0xFF80, loaded = iop ? loadModule(bytes) : null, load = iop ? LOAD : 0;
+    const own = keyed.filter(t => t.program === name && !t.vu);
+    const ownSizes = new Map(codeMap.functions.filter(f => f.program === name && !f.vu).map(f => [f.address, f.size]));
+    const ownFound = new Map((iop ? findModuleFunctions(bytes) : findFunctions(bytes)).map(f => [f.address, f.size]));
+    const sizeOf = address => ownSizes.get(address - load) ?? ownFound.get(address - load) ?? null;
+    const ownBuild = openPs2Build({ root: folder, files, shifts, givenOf, includes, ...(iop ? { own: LOAD } : {}), placed: t => (t.keyed && !t.keyed.vu && t.keyed.program === name ? load + t.keyed.address : null) });
+    // a value of the program's is at the address its label gives, from a module's start, or a twin's
+    const ownLabel = iop ? /^[A-Za-z][A-Za-z0-9]*_([0-9A-Fa-f]{8})$/ : label;
+    const ownAddressOf = symbol => {
+      const twin = own.filter(t => t.name === symbol);
+      if (twin.length === 1) return load + twin[0].address;
+      const digits = ownLabel.exec(symbol)?.[1];
+      return digits && (!iop || parseInt(digits, 16) < loaded.size) ? load + parseInt(digits, 16) : null;
+    };
+    const keyOf = address => ({ key: functionKey({ address: address - load, program: name }), text: `0x${hex(address - load)}@${name}` });
+    const read = iop ? null : programReader(bytes);
+    const caller = new Original(program, iop ? 'iop' : 'ee');
+    try {
+      // a module's code is the module: a call through a made-up pointer goes into empty memory, which runs as
+      // instructions that do nothing, all the way round to where the call comes back to
+      if (iop) await caller.code(LOAD, LOAD + loaded.size);
+      for (const file of [...new Set(own.filter(t => only === null || t.address === only).map(t => t.file))]) {
+        const result = await checkFile({
+          ...(iop ? { program: { image: loaded.image, gp: 0, wordAt: address => loaded.wordAt(address - LOAD) }, machine: iopMachine(loaded, NOWHERE) } : { elf: bytes }),
+          build: ownBuild, file, only: only === null ? null : load + only, addressOf: ownAddressOf, sizeOf, original: caller, options: all,
+        });
+        if (result.functions) {
+          result.functions = result.functions.filter(f => f.address !== null);
+          // kept for the proofs, which read the original's functions as they go: as the disc has them, before a
+          // module's addresses are moved
+          for (const f of result.functions.filter(f => sizeOf(f.address))) {
+            const words = Buffer.alloc(sizeOf(f.address));
+            if (iop) for (let n = 0; n + 4 <= words.length; n += 4) words.writeUInt32LE(loaded.wordAt(f.address - LOAD + n) ?? 0, n);
+            keepPiece(original.sha1, keyOf(f.address).key, iop ? words : read(f.address, words.length));
+          }
+        }
+        say(file, result, keyOf);
+      }
+    } finally {
+      caller.close();
+    }
   }
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json, or name it by its label, as D_00123450.`);
-  if (failed.length && chosen.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
+  if (failed.length && chosen.length + groups.length > 1) log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
-  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the program as the console loads it (seed ${all.seed}).`);
+  log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of, and the program as the console loads it for the rest` : 'from the program as the console loads it'} (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven.length)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
   // a proof is found with the game's own names, and over enough calls to be worth the name
   if (asksForProofs(game)) {

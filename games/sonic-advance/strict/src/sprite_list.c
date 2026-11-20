@@ -2,6 +2,7 @@
 // list goes to the console in the V-blank.
 #include "animation.h"
 #include "core.h"
+#include "time.h"
 
 #define SPRITE_FLAG_MASK_ROT_SCALE 0x1F
 #define SPRITE_FLAG_MASK_ROT_SCALE_ENABLE 0x20
@@ -146,10 +147,17 @@ void ProcessOamBuffers(void) {
   struct OamData *dstOam = &gOamBuffer[0];
   u8 i = 0;
   s32 r3;
+#ifndef MATCHING
+  int plain = 0;
+#endif
 
   for (r3 = 0; r3 < 32; r3++) {
     s8 index = gOamMallocOrders_StartIndex[r3];
 
+    TIME(r3 == 0 ? 0x08004894 : 0x080048B2, 0x080048C4, index != -1 ? 0x080048C7 : 0x080048FB, IW);
+#ifndef MATCHING
+    if (index != -1) TIME(0x080048C6, 0x080048CE, 0x080048D1);
+#endif
     while (index != -1) {
       u8 newI;
       u8 *byteArray = gOamMallocCopiedOrder;
@@ -160,7 +168,9 @@ void ProcessOamBuffers(void) {
       newI = i++;
       *byteArray = newI;
       index = gOamMallocBuffer[index].fractional;
+      TIME(0x080048D0, 0x080048F8, index != -1 ? 0x080048D1 : 0x080048FB, DMA3, IW, IW);
     }
+    TIME(0x080048FA, 0x080048FE, r3 + 1 < 32 ? 0x080048B3 : 0x08004901);
   }
 
   if (gFlags & FLAGS_PAUSED) {
@@ -189,15 +199,25 @@ void ProcessOamBuffers(void) {
 #endif
     }
   } else {
+    // (the game not paused is the path timed)
+    TIME(0x08004900, 0x0800490C, 0x0800496D, IW);
+    TIME(0x0800496C, 0x08004974, 0x080049F5);
     gOamFirstPausedIndex = 0;
+#ifndef MATCHING
+    plain = 1;
+#endif
   }
 
   gOamFreeIndex = 0;
+#ifndef MATCHING
+  if (plain && !(gFlags & FLAGS_UPDATE_WITH_CPU_SET)) TIME(0x080049F4, 0x08004A0A, 0x08004A41, IW, IW, IW);
+#endif
   if (gFlags & FLAGS_UPDATE_WITH_CPU_SET) {
     CpuFill32(-1, gOamMallocOrders_StartIndex, sizeof(gOamMallocOrders_StartIndex));
     CpuFill32(-1, gOamMallocOrders_EndIndex, sizeof(gOamMallocOrders_EndIndex));
   } else {
     DMA3_FILL32(-1, gOamMallocOrders_StartIndex, sizeof(gOamMallocOrders_StartIndex));
     DMA3_FILL32(-1, gOamMallocOrders_EndIndex, sizeof(gOamMallocOrders_EndIndex));
+    TIME(0x08004A40, 0x08004A72, BACK, DMA3, DMA3);
   }
 }

@@ -1,4 +1,5 @@
 // The engine's backgrounds.
+#include "time.h"
 #include "background.h"
 #include "animation.h"
 #include "core.h"
@@ -53,7 +54,12 @@ void DrawBackground(struct Background *background) {
 u32 sub_8004010(void) {
   u8 bg;
 
+  // (timed for a background with nothing to clear, and the loop's step on)
   for (bg = 0; bg < 4; bg++) {
+#ifndef MATCHING
+    if (gBgSprites_Unknown2[bg][1] == gBgSprites_Unknown2[bg][3] && gBgSprites_Unknown2[bg][0] == gBgSprites_Unknown2[bg][2])
+      TIME(bg == 0 ? 0x08002F84 : 0x08002F98, 0x08002FC8, 0x080031B7, IW, IW, IW, IW);
+#endif
     if (gBgSprites_Unknown2[bg][1] != gBgSprites_Unknown2[bg][3] || gBgSprites_Unknown2[bg][0] != gBgSprites_Unknown2[bg][2]) {
       u16 cnt = gBgCntRegs[bg];
       u8 *map = (u8 *)VRAM + ((cnt & 0x1F00) << 3);
@@ -91,7 +97,9 @@ u32 sub_8004010(void) {
       }
       DMA3_FILL32(0, gBgSprites_Unknown2[bg], 4);
     }
+    TIME(0x080031B6, bg + 1 < 4 ? 0x080031C0 : 0x080031BE, bg + 1 < 4 ? 0x08002F99 : 0x080031C3);
   }
+  TIME(0x080031C2, 0x080031D2, BACK);
   return 1;
 }
 
@@ -141,8 +149,21 @@ bool32 sa2__sub_80039E4(void) {
   u32 at, row;
   u16 tile;
 
-  if (!(REG_READ16(REG_DISPSTAT) & DISPSTAT_VBLANK)) return FALSE;
-  if (gBgSpritesCount == 0) return TRUE;
+  // (timed up to the first sprite: the display's status looked at at its load's time, and the ways out before it)
+  TIME(0x08002958, 0x08002968, 0x0800296B);
+  if (!(REG_READ16(REG_DISPSTAT) & DISPSTAT_VBLANK)) {
+    TIME(0x0800296A, 0x08002972, 0x08002975, 0x04000004);
+    TIME(0x08002974, 0x08002976, 0x08002E3F);
+    TIME(0x08002E3E, 0x08002E4C, BACK);
+    return FALSE;
+  }
+  TIME(0x0800296A, 0x08002972, 0x0800297D, 0x04000004);
+  if (gBgSpritesCount == 0) {
+    TIME(0x0800297C, 0x08002984, 0x08002E3D, IW);
+    TIME(0x08002E3C, 0x08002E4C, BACK);
+    return TRUE;
+  }
+  TIME(0x0800297C, 0x08002982, 0x08002987, IW);
 
   for (i = 0; i < gBgSpritesCount; i = (u8)(i + 1)) {
     s = (u32)gBgSprites[i];
@@ -481,6 +502,13 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
  *  outside the V-blank, the rest left for the next, and TRUE once the list is empty. */
 bool32 sa2__sub_8002B20(void) {
   u32 gap = 0;   // where a wide background's row goes on, kept from one background to the next as the original keeps it
+  // (timed with nothing waiting: the way out is the function's end, reached by a `bl` the compiler wrote as a long jump)
+  if (gBackgroundsCopyQueueCursor == gBackgroundsCopyQueueIndex) {
+    TIME(0x08001AA4, 0x08001AC6, 0x0800258D, IW, IW);
+    TIME(0x0800258C, 0x0800259C, BACK);
+  } else {
+    TIME(0x08001AA4, 0x08001AC2, 0x08001AC9, IW, IW);
+  }
   while (gBackgroundsCopyQueueCursor != gBackgroundsCopyQueueIndex) {
     struct Background *bg;
     u32 flags, bgId, affine, line, size, xTiles;

@@ -21,28 +21,55 @@ void SoundMain(void)
     u32 maxLines, dmaCounter;
     s8 *pcm;
 
-    if (soundInfo->lockStatus != ID_NUMBER)
+    if (soundInfo->lockStatus != ID_NUMBER) {
+        M4A_TIME(SoundMain, 0x0, 0xC, M4A_BACK, M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
         return;
+    }
+    M4A_TIME(SoundMain, 0x0, 0xA, M4A_AT(SoundMain, 0xE), M4A_REACH(&SOUND_INFO_PTR), M4A_REACH(soundInfo));
     soundInfo->lockStatus = ID_NUMBER + 1;
 
     // the line the mix has to end by, if there's one: as many lines on from this one, the V-blank's counted after 227
     maxLines = soundInfo->maxScanlines;
     if (maxLines != 0) {
-        u32 line = *(vu8 *)REG_ADDR_VCOUNT;
-        if (line < 160)
+        u32 line;
+        M4A_TIME(SoundMain, 0xE, 0x24, M4A_AT(SoundMain, 0x26), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+        line = *(vu8 *)REG_ADDR_VCOUNT;
+        if (line < 160) {
+            M4A_TIME(SoundMain, 0x26, 0x30, M4A_AT(SoundMain, 0x32), 0x04000006);
             line += 228;
+        } else {
+            M4A_TIME(SoundMain, 0x26, 0x2C, M4A_AT(SoundMain, 0x30), 0x04000006);
+            M4A_TIME(SoundMain, 0x30, 0x30, M4A_AT(SoundMain, 0x32));
+        }
         maxLines += line;
+    } else {
+        M4A_TIME(SoundMain, 0xE, 0x24, M4A_AT(SoundMain, 0x32), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
     }
 
-    if (soundInfo->MPlayMainHead != NULL)
+    // each is called through the mixer's `bx r3`, which the cartridge keeps after it
+    if (soundInfo->MPlayMainHead != NULL) {
+        M4A_TIME(SoundMain, 0x32, 0x3E, M4A_AT(SoundMainRAM, 0x39E), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+        M4A_TIME(SoundMainRAM, 0x39E, 0x39E, M4A_REACH(soundInfo->MPlayMainHead));
         soundInfo->MPlayMainHead(soundInfo->musicPlayerHead);
+        M4A_TIME(SoundMain, 0x40, 0x46, M4A_AT(SoundMainRAM, 0x39E), M4A_REACH(soundInfo));
+    } else {
+        M4A_TIME(SoundMain, 0x32, 0x38, M4A_AT(SoundMain, 0x42), M4A_REACH(soundInfo));
+        M4A_TIME(SoundMain, 0x42, 0x46, M4A_AT(SoundMainRAM, 0x39E), M4A_REACH(soundInfo));
+    }
+    M4A_TIME(SoundMainRAM, 0x39E, 0x39E, M4A_REACH(soundInfo->CgbSound));
     soundInfo->CgbSound();
 
     // the part of the buffer this frame's samples go in
     pcm = soundInfo->pcmBuffer;
     dmaCounter = soundInfo->dmaCounter;
-    if (dmaCounter > 1)
+    if (dmaCounter > 1) {
         pcm += soundInfo->samplesPerFrame * (soundInfo->framesPerDmaCycle - (dmaCounter - 1));
+        M4A_TIME(SoundMain, 0x48, 0x68, M4A_AT(SoundMainRAM_Buffer, 0), M4A_REACH(soundInfo), M4A_REACH(soundInfo),
+                 M4A_REACH(soundInfo), soundInfo->samplesPerFrame);
+    } else {
+        M4A_TIME(SoundMain, 0x48, 0x56, M4A_AT(SoundMain, 0x62), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
+        M4A_TIME(SoundMain, 0x62, 0x68, M4A_AT(SoundMainRAM_Buffer, 0));
+    }
 
     SoundMainRAM(soundInfo, dmaCounter, pcm, soundInfo->samplesPerFrame, maxLines);
 }
@@ -77,24 +104,34 @@ void SoundMainRAM(struct SoundMixerState *soundInfo, u32 dmaCounter, s8 *pcm, s3
         // cleared a word at a time, sixteen bytes a turn and at least one turn
         u32 *right = (u32 *)pcm, *left = (u32 *)(pcm + PCM_DMA_BUF_SIZE);
         s32 n;
+        M4A_TIME(SoundMainRAM_Buffer, 0x0, 0x4, M4A_AT(SoundMainRAM_Buffer, 0x60), M4A_REACH(soundInfo));
+        M4A_TIME(SoundMainRAM_Buffer, 0x60, 0x68, M4A_AT(SoundMainRAM_Buffer, samples & 4 ? 0x6A : 0x6E));
         if (samples & 4) {
             *right++ = 0;
             *left++ = 0;
+            M4A_TIME(SoundMainRAM_Buffer, 0x6A, 0x6C, M4A_AT(SoundMainRAM_Buffer, 0x6E), M4A_REACH(right), M4A_REACH(left));
         }
+        M4A_TIME(SoundMainRAM_Buffer, 0x6E, 0x70, M4A_AT(SoundMainRAM_Buffer, samples & 8 ? 0x72 : 0x7A));
         if (samples & 8) {
             *right++ = 0;
             *left++ = 0;
             *right++ = 0;
             *left++ = 0;
+            M4A_TIME(SoundMainRAM_Buffer, 0x72, 0x78, M4A_AT(SoundMainRAM_Buffer, 0x7A), M4A_REACH(right), M4A_REACH(left),
+                     M4A_REACH(right), M4A_REACH(left));
         }
         n = (u32)samples >> 4;
         do {
             right[0] = 0; right[1] = 0; right[2] = 0; right[3] = 0;
             left[0] = 0; left[1] = 0; left[2] = 0; left[3] = 0;
+            M4A_TIME(SoundMainRAM_Buffer, 0x7A, 0x8C, M4A_AT(SoundMainRAM_Buffer, n > 1 ? 0x7A : 0x8E), M4A_REACH(right),
+                     M4A_REACH(left), M4A_REACH(right), M4A_REACH(left), M4A_REACH(right), M4A_REACH(left), M4A_REACH(right),
+                     M4A_REACH(left));
             right += 4;
             left += 4;
         } while (--n > 0);
     }
+    M4A_TIME(SoundMainRAM_Buffer, 0x8E, 0x96, M4A_AT(SoundMainRAM_Buffer, 0x98), M4A_REACH(soundInfo), M4A_REACH(soundInfo));
 
     chan = soundInfo->chans;
     chansLeft = soundInfo->numChans;
@@ -105,17 +142,27 @@ void SoundMainRAM(struct SoundMixerState *soundInfo, u32 dmaCounter, s8 *pcm, s3
         s8 *at, *loopStart = NULL;
 
         // no more channels once the line the mix has to end by is reached
+        M4A_TIME(SoundMainRAM_Buffer, 0x98, 0xA0, M4A_AT(SoundMainRAM_Buffer, maxLines != 0 ? 0xA2 : 0xB8), M4A_REACH(chan));
         if (maxLines != 0) {
             u32 line = *(vu8 *)REG_ADDR_VCOUNT;
-            if (line < 160)
+            if (line < 160) {
+                M4A_TIME(SoundMainRAM_Buffer, 0xA2, 0xAA, M4A_AT(SoundMainRAM_Buffer, 0xAC), 0x04000006);
                 line += 228;
-            if (line >= maxLines)
+            } else {
+                M4A_TIME(SoundMainRAM_Buffer, 0xA2, 0xA8, M4A_AT(SoundMainRAM_Buffer, 0xAC), 0x04000006);
+            }
+            if (line >= maxLines) {
+                M4A_TIME(SoundMainRAM_Buffer, 0xAC, 0xB0, M4A_AT(SoundMainRAM_Buffer, 0x38A));
                 break;
+            }
+            M4A_TIME(SoundMainRAM_Buffer, 0xAC, 0xAE, M4A_AT(SoundMainRAM_Buffer, 0xB8));
         }
 
         status = chan->status;
-        if (!(status & SOUND_CHANNEL_SF_ON))
+        if (!(status & SOUND_CHANNEL_SF_ON)) {
+            M4A_TIME(SoundMainRAM_Buffer, 0xB8, 0xC0, M4A_AT(SoundMainRAM_Buffer, 0x380), M4A_REACH(chan));
             goto next;
+        }
 
         // the envelope's step
         if (status & SOUND_CHANNEL_SF_START) {
@@ -265,7 +312,11 @@ void SoundMainRAM(struct SoundMixerState *soundInfo, u32 dmaCounter, s8 *pcm, s3
         chan->status = 0;
     next:
         chan++;
+        M4A_TIME_WHEN(chansLeft > 1, SoundMainRAM_Buffer, 0x380, 0x388, M4A_AT(SoundMainRAM_Buffer, 0x98));
+        M4A_TIME_WHEN(chansLeft <= 1, SoundMainRAM_Buffer, 0x380, 0x384, M4A_AT(SoundMainRAM_Buffer, 0x38A));
     } while (--chansLeft > 0);
 
+    // back to whoever called SoundMain, whose registers and return it gives back
     soundInfo->lockStatus = ID_NUMBER;
+    M4A_TIME(SoundMainRAM_Buffer, 0x38A, 0x39E, M4A_BACK, M4A_REACH(soundInfo));
 }

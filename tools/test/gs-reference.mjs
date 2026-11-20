@@ -48,7 +48,11 @@ export function readPng(file) {
  *  got with PCSX2's software renderer, and compares each frame's picture: { same, frames, firstDifference, agrees }, the
  *  first difference with its frame, how many pixels differ, and the first one's place and both colours. `agrees` says
  *  whether PCSX2 saved the very same pictures with the fewest of the processor's instructions it can use as with the
- *  most: what it draws the same both ways doesn't depend on the computer, and only that is an exact reference. */
+ *  most: what it draws the same both ways doesn't depend on the computer, and only that is an exact reference. For
+ *  what varies across a shape, where it isn't one, `near` is how many frames have every channel of every pixel within
+ *  one step of PCSX2's, which is as far as PCSX2 is from itself, with `worst` the most any channel differs, `apart` how
+ *  many pixels differ at all and `far` how many by more than a step: a pixel one draws and the other doesn't is far.
+ *  What the kit shows of each frame, its read circuits merged, is left in `work`'s screen.raw, 640 by 448 words a frame. */
 export async function strictCheck(mainC, frames, work, log = console.log) {
   await buildPcsx2(log);
   mkdirSync(work, { recursive: true });
@@ -56,13 +60,13 @@ export async function strictCheck(mainC, frames, work, log = console.log) {
   const wrapped = ['gs_write', 'gs_image', 'gs_screen', 'gs_read_image'].map(name => `-Wl,--wrap=${name}`);
   buildNative([...kit.native.filter(file => !file.endsWith('native.c')), NATIVE, mainC, ...wrapped, '-lm'], program, { folders: kit.folders });
   // one frame more than is compared, as the replay saves a frame's picture at the V-blank after it
-  const run = spawnSync(program, [String(frames + 1), pictures, dump], { encoding: 'utf8' });
+  const run = spawnSync(program, [String(frames + 1), pictures, dump, join(work, 'screen.raw')], { encoding: 'utf8' });
   if (run.status !== 0) throw new Error(`The Dreamport didn't run here: ${(run.stderr || run.stdout).trim()}`);
   const out = join(work, 'pcsx2'), saved = replayGsDump(dump, out), ours = readFileSync(pictures);
   const plainer = join(work, 'pcsx2-sse4'), again = replayGsDump(dump, plainer, { instructions: 'sse4' });
   const agrees = again.length === saved.length && saved.every(name => again.includes(name) && readFileSync(join(out, name)).equals(readFileSync(join(plainer, name))));
   const pictureOf = frame => saved.find(name => /_fr0_/.test(name) && !name.includes('_alpha') && Number(name.match(/_f(\d+)_/)[1]) === frame + 1);
-  let same = 0, firstDifference = null;
+  let same = 0, firstDifference = null, near = 0, worst = 0, apart = 0, far = 0;
   const hex = n => `0x${(n >>> 0).toString(16).toUpperCase().padStart(8, '0')}`;
   for (let frame = 0; frame < frames; frame++) {
     const name = pictureOf(frame);
@@ -71,19 +75,26 @@ export async function strictCheck(mainC, frames, work, log = console.log) {
       continue;
     }
     const colours = readPng(join(out, name)), alpha = readPng(join(out, name.replace('.png', '_alpha.png')));
-    let differ = 0, first = null;
+    let differ = 0, first = null, farHere = 0;
     for (let y = 0; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) {
         const at = (y * colours.width + x) * 4, theirs = x < colours.width && y < colours.height ? (colours.pixels.readUInt32LE(at) & 0xFFFFFF | alpha.pixels[at] << 24) >>> 0 : null;
         const mine = ours.readUInt32LE(((frame * HEIGHT + y) * WIDTH + x) * 4);
         if (mine !== theirs) {
           differ++;
+          // how far apart: the most any of the four channels differs
+          let most = 255;
+          if (theirs !== null) most = Math.max(...[0, 8, 16, 24].map(shift => Math.abs((mine >>> shift & 255) - (theirs >>> shift & 255))));
+          worst = Math.max(worst, most);
+          apart++;
+          if (most > 1) { farHere++; far++; }
           first ??= { x, y, kit: hex(mine), pcsx2: theirs === null ? 'none' : hex(theirs) };
         }
       }
     }
+    if (!farHere) near++;
     if (!differ) same++;
     else firstDifference ??= { frame, pixels: differ, first };
   }
-  return { same, frames, firstDifference, agrees };
+  return { same, near, worst, apart, far, frames, firstDifference, agrees };
 }

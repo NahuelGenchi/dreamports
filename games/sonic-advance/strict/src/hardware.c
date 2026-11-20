@@ -94,7 +94,12 @@ u16 console_read16(u32 at) {
 
 void console_write16(u32 at, u16 value) {
   // the console's time takes what decides it: the DMA channels', the timers', the sound's and WAITCNT
-  if ((at >= 0x80 && at < 0x88) || (at >= 0xB0 && at < 0xE0) || (at >= 0x100 && at < 0x110) || at == 0x204) gba_clock_written(0x04000000u + at, value);
+  // and the interrupts' and the display's status, which decide when it takes one
+  if ((at >= 0x80 && at < 0x88) || (at >= 0xB0 && at < 0xE0) || (at >= 0x100 && at < 0x110) || at == 0x204 || at == IO_DISPSTAT
+      || at == IO_IE || at == IO_IF || at == IO_IME)
+    gba_clock_written(0x04000000u + at, value);
+  // the display's status is the kit's, and the clock's copy keeps what the game wrote, without the bits it reads
+  if (at == IO_DISPSTAT) console_io[IO_DISPSTAT >> 1] = value & ~7;
   if (at < sizeof gba_io) gba_write(at, value);
   else if (at == IO_IF) console_io[IO_IF >> 1] &= ~value;   // a 1 says an interrupt was seen to
   else if (at < sizeof console_io) console_io[at >> 1] = value;
@@ -168,6 +173,9 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 con
   if (!(d->control >> 12 & 3)) dma_run(d);
 }
 
+/** A timer's register written through a pointer to where the console has it: the console's time takes it at its store. */
+void console_timer_wrote(const volatile u16 *at) { gba_clock_written((u32)(uintptr_t)at, *at); }
+
 void console_dma(u32 n, u32 src, u32 dest, u32 control) { dma_start(n, src, NULL, dest, NULL, control); }
 void console_dma_own(u32 n, const void *src, u32 dest, u32 control) { dma_start(n, 0, (const u8 *)src, dest, NULL, control); }
 void console_dma3(u32 src, u32 dest, u32 control) { dma_start(3, src, NULL, dest, NULL, control); }
@@ -182,7 +190,16 @@ void console_store16(u32 at, u16 value) {
   u8 *to = console_at(at & ~1u, 1);
   if (to != NULL) { to[0] = (u8)value; to[1] = (u8)(value >> 8); }
 }
-void console_dma_stop(u32 n) { dma[n & 3].control &= ~(0x3000 | 0x0800 | 0x0200 | 0x8000); }
+/** A channel stopped as the console's library stops one: its timing, its request and its repeat off, then its switch,
+ *  each store as the console's time takes it. */
+void console_dma_stop(u32 n) {
+  struct console_dma *d = &dma[n & 3];
+  u32 at = 0x040000BAu + 12 * (n & 3);
+  d->control &= ~(0x3000 | 0x0800 | 0x0200);
+  gba_clock_written(at, d->control);
+  d->control &= ~0x8000;
+  gba_clock_written(at, d->control);
+}
 
 // the channels waiting for this moment: 1 the V-blank, 2 a line's H-blank
 static void dma_at(u32 timing) {
@@ -198,7 +215,10 @@ void console_vblank_dma3(void) { if ((dma[3].control & 0xB000) == 0x9000) dma_ru
 // from gIntrTable, one after another while any is left and the master switch is on.
 static const u16 intr_order[13] = { 0x00C0, IRQ_VBLANK, IRQ_HBLANK, IRQ_VCOUNT, 0x0008, 0x0010, 0x0020, 0x0100, 0x0200, 0x0400, 0x0800, 0x1000, 0x2000 };
 
+// With the console's time going, its clock raises the display's and the timers' interrupts and takes them where the
+// console does, and the cartridge's code runs from it (console_intr_main): these are for a build without it.
 void console_interrupt(u16 flags) {
+  if (gba_clock_running()) return;
   console_io[IO_IF >> 1] |= flags;
   for (;;) {
     u16 pending = console_io[IO_IE >> 1] & console_io[IO_IF >> 1];
@@ -211,6 +231,30 @@ void console_interrupt(u16 flags) {
     console_handling--;
   }
 }
+
+// The cartridge's interrupt code, IntrMain, as the console runs it from its copy in the fast work memory, where the
+// BIOS jumps: each interrupt in its order looked for among those enabled and raised, three ARM instructions each, up to
+// the first that is, which is acknowledged in IF, and its function from gIntrTable called, which goes back to the BIOS.
+static void console_intr_main(void) {
+  static const u32 reaches_ie = 0x04000200;
+  u16 pending = console_io[IO_IE >> 1] & gba_clock_interrupts(), seen;
+  u32 i, at[2];
+  for (i = 0; i < 12 && !(pending & intr_order[i]); i++) {}
+  gba_clock_run_arm(0x030004B0, i < 12 ? 0x030004D0 + 12 * i : 0x0300055C, 0x03000560, &reaches_ie, 1);
+  seen = pending & intr_order[i];
+  console_io[IO_IF >> 1] &= ~seen;
+  gba_clock_written(0x04000000u + IO_IF, seen);
+  at[0] = 0x04000000u + IO_IF;
+  at[1] = 0x03000470u + 4 * i;
+  gba_clock_run_arm(0x03000560, 0x03000570, (u32)(uintptr_t)gIntrTable[i], at, 2);
+  console_handling++;
+  TWIN(gIntrTable[i])();
+  console_handling--;
+}
+
+// the halfword where the game's interrupt functions say which they saw to, which the BIOS's waits look for
+static u16 console_intr_check(void) { return *(vu16 *)0x03007FF8; }
+static void console_intr_checked(u16 value) { *(vu16 *)0x03007FF8 = value; }
 
 // The V-blank: the line count at its first line, its DMA, then its interrupt as the display's status asks for it.
 static void console_vblank(void) {
@@ -296,6 +340,14 @@ void VBlankIntrWait(void) {
   gba_clock_on_frame_end(console_frame_inside);
   console_timed = 0;
   console_blank_timed = 0;
+  if (gba_clock_running()) {
+    // the stub's swi: the BIOS halts the processor until the V-blank's interrupt has run and said so, the frames that
+    // end meanwhile ending the Dreamport's, and its function run from inside the wait, as the console's time says
+    gba_clock_run(0x0809981C, 0x0809981C, 0x0809981F, NULL, 0);
+    gba_clock_swi(0x0809981E, 5, 0, 0, 0, NULL);
+    console_io[IO_IME >> 1] = 1;
+    return;
+  }
   *(vu16 *)0x03007FF8 &= ~1;
   console_io[IO_IME >> 1] = 1;
   do {
@@ -388,6 +440,8 @@ void console_power_on(void) {
   console_timed = 1;
   gba_clock_on_frame_end(console_frame_end);
   gba_clock_registers(console_io);
+  gba_clock_on_interrupt(0x030004B0, console_intr_main);
+  gba_clock_on_wait(console_intr_check, console_intr_checked);
   console_io[IO_RCNT >> 1] = 0x8000;
   // the display in forced blank, as the BIOS leaves it, until the game first sets it
   gba_io[0] = 0x0080;

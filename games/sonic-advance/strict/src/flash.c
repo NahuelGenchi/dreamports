@@ -65,7 +65,19 @@ u16 ReadFlashId(void) {
 
 /** FlashTimerIntr, 0x08098D80: the timer's interrupt counts a wait down, and says when it has run out. */
 void FlashTimerIntr(void) {
+#ifdef MATCHING
   if (sTimerCount != 0 && --sTimerCount == 0) gFlashTimeoutFlag = 1;
+#else
+  if (sTimerCount == 0) {
+    TIME(0x08098D80, 0x08098D86, 0x08098D9B, IW);
+  } else if (--sTimerCount != 0) {
+    TIME(0x08098D80, 0x08098D92, 0x08098D9B, IW, IW, IW);
+  } else {
+    gFlashTimeoutFlag = 1;
+    TIME(0x08098D80, 0x08098D98, 0x08098D9B, IW, IW, IW, IW);
+  }
+  TIME(0x08098D9A, 0x08098D9A, BIOS_BACK);
+#endif
 }
 
 /** SetFlashTimerIntr, 0x08098DA4: the flash library counts its waits on timer `timerNum`, whose interrupt runs
@@ -117,11 +129,14 @@ void StartFlashTimer(u8 phase) {
   gSavedIme = REG_READ16(REG_IME);
   REG_WRITE16(REG_IME, 0);
   gTimerReg[1] = 0;
+  TIMER_WROTE(&gTimerReg[1]);
   REG_WRITE16(REG_IE, REG_READ16(REG_IE) | (INTR_FLAG_TIMER0 << sTimerNum));
   gFlashTimeoutFlag = 0;
   sTimerCount = *maxTime++;
   *gTimerReg++ = *maxTime++;
+  TIMER_WROTE(gTimerReg - 1);
   *gTimerReg-- = *maxTime++;
+  TIMER_WROTE(gTimerReg + 1);
   REG_WRITE16(REG_IF, INTR_FLAG_TIMER0 << sTimerNum);
   REG_WRITE16(REG_IME, 1);
   TIME(0x08098DDC, 0x08098E5C, BACK, IW, 0x04000208, IW, 0x04000208, IW, 0x04000106, IW, 0x04000200, 0x04000200, IW, ROM, IW, ROM,
@@ -132,7 +147,9 @@ void StartFlashTimer(u8 phase) {
 void StopFlashTimer(void) {
   REG_WRITE16(REG_IME, 0);
   *gTimerReg++ = 0;
+  TIMER_WROTE(gTimerReg - 1);
   *gTimerReg-- = 0;
+  TIMER_WROTE(gTimerReg + 1);
   REG_WRITE16(REG_IE, REG_READ16(REG_IE) & ~(INTR_FLAG_TIMER0 << sTimerNum));
   REG_WRITE16(REG_IME, gSavedIme);
   TIME(0x08098E84, 0x08098EB0, BACK, 0x04000208, IW, 0x04000104, IW, 0x04000106, IW, IW, 0x04000200, 0x04000200, IW, 0x04000208);

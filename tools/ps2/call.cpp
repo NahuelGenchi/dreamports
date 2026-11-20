@@ -29,9 +29,13 @@
 //   'I' image   the memory every call starts from: IMAGE bytes, laid out as the regions below say. Answers 'k'.
 //   'C' call    runs a function from that memory with some of it changed: where it starts, how many bytes long it is,
 //               how many instructions it may run, its registers (REGISTERS words, in the order of struct below), and
-//               the changes, a count and then each one's address, bytes (1, 2 or 4) and value. On the EE and the IOP a
-//               call ends when the processor comes back to where ra pointed as it started; on vector unit 1 at its E
-//               bit. Answers how it ended, the words below, and then the memory every call starts from is as it was.
+//               the changes, a count and then each one's address, bytes (1, 2 or 4) and value, and the addresses to
+//               watch for, a count and then each. On the EE and the IOP a call ends when the processor comes back to
+//               where ra pointed as it started; on vector unit 1 at its E bit. Answers how it ended, the words below,
+//               and then the memory every call starts from is as it was.
+//   'R' range   where the code a call may run is, two words, from and to: a call that goes outside it, but back to
+//               where it came from, ends as one the check can't follow. With none, anywhere the processor has code.
+//               Answers 'k'.
 //   'Q'         ends the program.
 //
 // What a call answers, in words but for the bytes of what ran and of the memory:
@@ -52,7 +56,13 @@
 //               them
 //   kicks       a count, then each packet sent by XGKICK: its address in the data memory, its length in bytes, and
 //               its bytes, on vector unit 1 only
+//   starts      a count, then, for each address watched for, its 1st, 3rd, 9th start and so on by threes, as the
+//               processor reached it: the address, which start it was, how many instructions had run, the registers
+//               as they were, and the image's 4 KB pages written since the start before, a count and then each one's
+//               number and bytes; the first has every page that isn't zeros. It's how a made-up program's play gives
+//               the memories a function really starts from (twin-memories.mjs)
 
+#include <algorithm>
 #include <cfenv>
 #include <csetjmp>
 #include <cstdio>
@@ -77,11 +87,12 @@
 #include "ee/MA_VU.h"
 #include "ee/EeBasicBlock.h"
 #include "ee/VuExecutor.h"
+#include "ee/dreamports/Glue.h"
 #include "ee/VUShared.h"
 
 enum Kind { EE, IOP, VU1 };
 enum { END_BACK, END_STEPS, END_EXCEPTION, END_ELSEWHERE, END_KERNEL, END_MISALIGNED, END_VU, END_SYSCALL };
-enum { CHUNK = 256, MOST_READS = 1024 };
+enum { CHUNK = 256, MOST_READS = 1024, PAGE = 4096 };
 
 // Where each memory of a processor is in the image: its place there, its address as the processor sees it, its size.
 struct Region { uint32 at, address, bytes; bool hardware; };
@@ -133,14 +144,25 @@ static uint32 imageSize;
 static uint8 *base, *image;
 static std::vector<uint8> dirty;
 static jmp_buf out;
-static uint32 ended, detail, steps, hardware, readCount;
+// kept in memory, never in a register: a call ends by jumping out of the middle of it (stop), and what a compiler
+// keeps in a register then goes back to what it was when the call began, as it did on Apple's chip
+static volatile uint32 ended, detail, steps, hardware, readCount;
 static uint32 reads[MOST_READS][3];
 static std::vector<uint8> readBefore;
 static std::vector<uint32> readMarked;
 static uint32 top, itop;
 static std::vector<std::pair<uint32, std::vector<uint8>>> kicks;
 static bool codeWritten;
+// where the code a call may run is, when the check says ('R')
+static uint32 codeFrom = 0, codeTo = 0xFFFFFFFFu;
 static std::vector<uint8> codePages;
+// the image's pages written since the last start kept, and those that aren't zeros as every call starts
+static std::vector<uint8> pageWritten, pageHeld;
+struct Start {
+  uint32 address, number, steps;
+  std::vector<uint32> registers;
+  std::vector<std::pair<uint32, std::vector<uint8>>> pages;
+};
 
 [[noreturn]] static void stop(uint32 how, uint32 what) {
   ended = how;
@@ -183,6 +205,7 @@ static uint32 place(uint32 address, uint32 bytes) {
 
 static void wrote(uint32 at, uint32 bytes) {
   for(uint32 c = at / CHUNK; c <= (at + bytes - 1) / CHUNK; c++) dirty[c] = 1;
+  pageWritten[at / PAGE] = pageWritten[(at + bytes - 1) / PAGE] = 1;
   if(!codePages.empty() && codePages[at >> 12]) codeWritten = true;
 }
 
@@ -395,6 +418,8 @@ int main(int argc, char **argv) {
   dirty.assign(imageSize / CHUNK + 1, 0);
   readBefore.assign(imageSize + 16, 0);
   codePages.assign(imageSize / 0x1000 + 1, 0);
+  pageWritten.assign(imageSize / PAGE + 1, 0);
+  pageHeld.assign(imageSize / PAGE + 1, 0);
 
   // the emulator's processor thread runs with floats cut towards zero and those below normal taken as zero
   fesetround(FE_TOWARDZERO);
@@ -437,8 +462,19 @@ int main(int argc, char **argv) {
     if(command == 'I') {
       readExactly(base, imageSize);
       memcpy(image, base, imageSize);
+      for(uint32 page = 0; page < imageSize / PAGE; page++) {
+        pageHeld[page] = 0;
+        for(uint32 n = 0; n < PAGE && !pageHeld[page]; n += 8) pageHeld[page] = *reinterpret_cast<const uint64 *>(base + page * PAGE + n) != 0;
+      }
       cpu->m_executor->Reset();
       std::fill(codePages.begin(), codePages.end(), 0);
+      putchar('k');
+      fflush(stdout);
+      continue;
+    }
+    if(command == 'R') {
+      codeFrom = word();
+      codeTo = word();
       putchar('k');
       fflush(stdout);
       continue;
@@ -452,6 +488,11 @@ int main(int argc, char **argv) {
     uint32 count = word();
     std::vector<uint32> changes(count * 3);
     if(count) readExactly(changes.data(), count * 12);
+    std::vector<uint32> watch(word());
+    if(!watch.empty()) readExactly(watch.data(), watch.size() * 4);
+    std::vector<Start> starts;
+    std::vector<std::pair<uint32, uint32>> started;
+    std::fill(pageWritten.begin(), pageWritten.end(), 0);
     // how long an instruction is: two words of a pair on a vector unit
     static uint32 unit;
     unit = kind == VU1 ? 8 : 4;
@@ -510,14 +551,68 @@ int main(int argc, char **argv) {
     }
     cpu->m_State.nPC = start;
 
+    // the registers as the processor holds them, as the words a call is given them in
+    auto held = [&](std::vector<uint32> &words) {
+      if(kind == EE) {
+        auto *r = reinterpret_cast<EeRegisters *>(words.data());
+        memcpy(r->gpr, cpu->m_State.nGPR, sizeof r->gpr);
+        memcpy(r->hi, cpu->m_State.nHI, 8);
+        memcpy(r->lo, cpu->m_State.nLO, 8);
+        memcpy(r->hi1, cpu->m_State.nHI1, 8);
+        memcpy(r->lo1, cpu->m_State.nLO1, 8);
+        r->sa = cpu->m_State.nSA;
+        memcpy(r->fpr, cpu->m_State.nCOP1, sizeof r->fpr);
+        r->fpuAccumulator = cpu->m_State.nCOP1A;
+        r->fcsr = cpu->m_State.nFCSR;
+        getVu(*cpu, r->vf, r->acc, r->vi, &r->q);
+      } else if(kind == IOP) {
+        auto *r = reinterpret_cast<IopRegisters *>(words.data());
+        for(int n = 0; n < 32; n++) r->gpr[n] = cpu->m_State.nGPR[n].nV0;
+        r->hi = cpu->m_State.nHI[0];
+        r->lo = cpu->m_State.nLO[0];
+      } else {
+        auto *r = reinterpret_cast<VuRegisters *>(words.data());
+        getVu(*cpu, r->vf, r->acc, r->vi, &r->q);
+        r->top = top;
+        r->itop = itop;
+      }
+    };
+    // a start watched for: its registers, and the pages written since the one before, or every page that holds
+    // anything for the first
+    auto keepStart = [&](uint32 address, uint32 number) {
+      Start kept{address, number, steps, std::vector<uint32>(registerWords), {}};
+      held(kept.registers);
+      // what the processor writes of a unit's data memory goes straight there, so its pages are looked at
+      uint32 own = kind == EE ? 0x02224000 : 0, ownSize = kind == EE ? 0x1000 : kind == VU1 ? 0x4000 : 0;
+      for(uint32 at = own; at < own + ownSize; at += PAGE) if(memcmp(image + at, base + at, PAGE)) pageWritten[at / PAGE] = 1;
+      for(uint32 page = 0; page < imageSize / PAGE; page++) {
+        if(!(pageWritten[page] || (starts.empty() && pageHeld[page]))) continue;
+        kept.pages.push_back({page, std::vector<uint8>(image + page * PAGE, image + (page + 1) * PAGE)});
+        pageWritten[page] = 0;
+      }
+      starts.push_back(std::move(kept));
+    };
+
     if(!setjmp(out)) {
       for(;;) {
         uint32 pc = cpu->m_State.nPC;
         if(kind != VU1 && pc == back) break;
+        for(uint32 address : watch) {
+          if(address != pc) continue;
+          auto found = std::find_if(started.begin(), started.end(), [&](const auto &each) { return each.first == pc; });
+          if(found == started.end()) found = started.insert(started.end(), {pc, 0});
+          uint32 number = ++found->second, power = number;
+          while(power % 3 == 0) power /= 3;
+          if(power == 1) keepStart(pc, number);
+          break;
+        }
         if(steps >= limit) stop(END_STEPS, 0);
         // the code it can run: the console's memory above the kernel's, or the IOP's, or the unit's micro memory
         if(kind == EE && (pc < 0x00080000u || pc >= 0x02000000u)) stop(pc < 0x00080000u ? END_KERNEL : END_ELSEWHERE, pc);
         if(kind == IOP && pc >= 0x00800000u) stop(END_ELSEWHERE, pc);
+        // empty memory is instructions that do nothing, which a call sent there by a made-up pointer would run through
+        // until it met where it comes back to
+        if(pc < codeFrom || pc >= codeTo) stop(END_ELSEWHERE, pc);
         if(kind == VU1 && pc >= 0x4000u) stop(END_ELSEWHERE, pc);
         // a block's quota runs out after one pass, so a block that branches back to its own start, which the emulator
         // runs again inside itself while it has quota left, comes back here each time round as well; what it does is
@@ -585,32 +680,16 @@ int main(int argc, char **argv) {
       }
     }
 
+    // what a vector unit's instructions did that is still on its way, its flags, Q and P, lands first, as it has by
+    // the time the EE reads any of it, or the unit's next program starts (the tools' patch of Play!, Glue.cpp)
+    if(kind != IOP) DpVuLandAll(cpu.get());
+    held(left);
     if(kind == EE) {
-      auto *r = reinterpret_cast<EeRegisters *>(left.data());
+      auto *r = reinterpret_cast<const EeRegisters *>(left.data());
       auto *was = reinterpret_cast<const EeRegisters *>(given.data());
-      memcpy(r->gpr, cpu->m_State.nGPR, sizeof r->gpr);
-      memcpy(r->hi, cpu->m_State.nHI, 8);
-      memcpy(r->lo, cpu->m_State.nLO, 8);
-      memcpy(r->hi1, cpu->m_State.nHI1, 8);
-      memcpy(r->lo1, cpu->m_State.nLO1, 8);
-      r->sa = cpu->m_State.nSA;
-      memcpy(r->fpr, cpu->m_State.nCOP1, sizeof r->fpr);
-      r->fpuAccumulator = cpu->m_State.nCOP1A;
-      r->fcsr = cpu->m_State.nFCSR;
-      getVu(*cpu, r->vf, r->acc, r->vi, &r->q);
       bool integers = false;
       for(int n = 1; n < 16; n++) integers |= (r->vi[n] & 0xFFFF) != (was->vi[n] & 0xFFFF);
       if(integers || memcmp(r->vf[1], was->vf[1], 31 * 16) || memcmp(r->acc, was->acc, 16) || r->q != was->q || r->i != was->i || r->p != was->p || r->r != was->r) flags |= 1;
-    } else if(kind == IOP) {
-      auto *r = reinterpret_cast<IopRegisters *>(left.data());
-      for(int n = 0; n < 32; n++) r->gpr[n] = cpu->m_State.nGPR[n].nV0;
-      r->hi = cpu->m_State.nHI[0];
-      r->lo = cpu->m_State.nLO[0];
-    } else {
-      auto *r = reinterpret_cast<VuRegisters *>(left.data());
-      getVu(*cpu, r->vf, r->acc, r->vi, &r->q);
-      r->top = top;
-      r->itop = itop;
     }
 
     uint32 header[6] = {ended, detail, cpu->m_State.nPC, steps, hardware, flags};
@@ -634,6 +713,18 @@ int main(int argc, char **argv) {
       sayWord(from);
       sayWord(static_cast<uint32>(bytes.size()));
       say(bytes.data(), bytes.size());
+    }
+    sayWord(static_cast<uint32>(starts.size()));
+    for(const auto &kept : starts) {
+      sayWord(kept.address);
+      sayWord(kept.number);
+      sayWord(kept.steps);
+      say(kept.registers.data(), registerWords * 4);
+      sayWord(static_cast<uint32>(kept.pages.size()));
+      for(const auto &[page, bytes] : kept.pages) {
+        sayWord(page);
+        say(bytes.data(), PAGE);
+      }
     }
     fflush(stdout);
   }

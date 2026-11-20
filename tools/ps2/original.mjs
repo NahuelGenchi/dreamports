@@ -16,13 +16,15 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { arch } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
 
 const CALL = fileURLToPath(new URL('./call.cpp', import.meta.url));
 const CHUNK = 256;
+/** How long a page of an image is, as the starts a call is watched for give them. */
+export const PAGE = 4096;
 
 /** Each processor's memories as call.cpp lays them out in its image: their place there, their address as the processor
  *  sees it, their size and their name. The EE's are where a twin's module keeps them too, once folded
@@ -129,7 +131,7 @@ function sourcesOf(source) {
     ...play('MIPS.cpp', 'MIPSArchitecture.cpp', 'MA_MIPSIV.cpp', 'MA_MIPSIV_Templates.cpp', 'MA_MIPSIV_Reflection.cpp', 'MIPSInstructionFactory.cpp',
       'MIPSReflection.cpp', 'MIPSCoprocessor.cpp', 'COP_SCU.cpp', 'COP_SCU_Reflection.cpp', 'COP_FPU.cpp', 'COP_FPU_Reflection.cpp', 'MemoryMap.cpp',
       'MipsJitter.cpp', 'BasicBlock.cpp', 'FpUtils.cpp', 'MIPSAnalysis.cpp', 'MIPSTags.cpp', 'app_shared/Log.cpp'),
-    ...play(...['MA_EE.cpp', 'MA_EE_Reflection.cpp', 'COP_VU.cpp', 'COP_VU_Reflection.cpp', 'VUShared.cpp', 'VUShared_Reflection.cpp', 'FpAddTruncate.cpp',
+    ...play(...['MA_EE.cpp', 'MA_EE_Reflection.cpp', 'COP_VU.cpp', 'COP_VU_Reflection.cpp', 'VUShared.cpp', 'VUShared_Reflection.cpp', 'dreamports/floats.cpp', 'dreamports/Glue.cpp', 'FpAddTruncate.cpp',
       'FpMulTruncate.cpp', 'EeBasicBlock.cpp', 'MA_VU.cpp', 'MA_VU_Lower.cpp', 'MA_VU_Upper.cpp', 'MA_VU_LowerReflection.cpp', 'MA_VU_UpperReflection.cpp',
       'VuBasicBlock.cpp', 'VuExecutor.cpp', 'VuAnalysis.cpp'].map(name => `ee/${name}`)),
     ...codeGen, ...framework,
@@ -165,21 +167,29 @@ function sourceIsAt(source, commit) {
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export async function buildCaller(log = console.log) {
   const { core } = consoleOf('ps2');
-  // built once for this commit of the emulator and these flags, and call.cpp again whenever it changes
-  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(FLAGS.join(' ')).digest('hex').slice(0, 8)}`);
+  // built once for this commit of the emulator, the tools' patch of it and these flags, and call.cpp again whenever it
+  // changes: the patch gives Play!'s processors the console's own rules (../libretro/play.patch), so another patch is
+  // another program
+  const patch = core.patch ? createHash('sha1').update(readFileSync(join(REPO, core.patch))).digest('hex').slice(0, 12) : '';
+  const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(`${FLAGS.join(' ')} ${patch}`).digest('hex').slice(0, 8)}`);
   const program = join(folder, `call${process.platform === 'win32' ? '.exe' : ''}`), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('ps2');
   const objects = join(folder, 'objects');
   let source = join(LOCAL, 'libretro', `${core.built}-source`);
-  if (!sourceIsAt(source, core.commit)) {
+  // the source as this patch leaves it, which the stamp beside it says: what builds the emulator patches it too, and
+  // doesn't say with which
+  const stamped = join(LOCAL, 'libretro', `${core.built}-source.patch`);
+  if (!sourceIsAt(source, core.commit) || !existsSync(stamped) || readFileSync(stamped, 'utf8') !== patch) {
     log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
     source = fetchSource(machine);
+    writeFileSync(stamped, patch);
   }
   const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
   const compiler = process.env.CXX || 'c++';
-  const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash'].flatMap(folder => ['-I', join(source, folder)])];
+  // the last is the filesystem header Play! takes on a Mac, where it doesn't use the compiler's own: it comes with its source
+  const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash', 'deps/Dependencies/ghc_filesystem/include'].flatMap(folder => ['-I', join(source, folder)])];
   const objectOf = file => join(objects, `${basename(file, '.cpp')}.o`);
   const waiting = [...files.filter(file => !existsSync(objectOf(file))).map(file => [file, objectOf(file)]), [CALL, join(folder, 'call.o')]];
   if (waiting.length > 1) log('Building the PlayStation 2\'s processors from Play!\'s source, once…');
@@ -260,18 +270,29 @@ export class Original {
     if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take the image.');
   }
 
+  /** Says where the code a call may run is, from `from` to `to`: a call that goes outside it ends as one that went
+   *  where the check can't follow. Until it's said, anywhere the processor has code. */
+  async code(from, to) {
+    this.child.stdin.write(Buffer.concat([Buffer.from('R'), words([from, to])]));
+    const answer = await this.take(1);
+    if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation 2\'s functions didn\'t take where its code is.');
+  }
+
   /**
    * Runs the function at `address`, `span` bytes long, from the image with `changes`, each [address, bytes, value],
    * and with `registers`, the words of its processor's registers (EE_REGISTERS, IOP_REGISTERS, VU_REGISTERS), ra the
    * address it comes back to. `limit` is how many instructions it may run. Answers { end, detail, pc, steps, hardware,
    * vu0, registers, ran, reads, chunks, kicks }: `ran` a byte for each instruction of the function, 1 ran, 2 went to its
    * target, 4 went on; `reads` each place read, { address, bytes, value }; `chunks` each 256 bytes of the image the
-   * function wrote, { at, bytes }; `kicks` each packet a microprogram sent the GS, { at, bytes }.
+   * function wrote, { at, bytes }; `kicks` each packet a microprogram sent the GS, { at, bytes }. With `watch`, a list
+   * of addresses, also `starts`: for each of them its 1st, 3rd, 9th start and so on as the processor reached it,
+   * { address, number, steps, registers, pages }, `pages` the image's 4 KB pages written since the start before, each
+   * { page, bytes }, and every page that isn't zeros for the first.
    */
-  async call({ address, span, limit = 1000000, registers, changes = [] }) {
+  async call({ address, span, limit = 1000000, registers, changes = [], watch = [] }) {
     const count = WORDS[this.kind];
     if (registers.length !== count) throw new Error(`A call on the ${this.kind} is given ${count} words of registers, and this one ${registers.length}.`);
-    this.child.stdin.write(Buffer.concat([Buffer.from('C'), words([address, span, limit, ...registers, changes.length, ...changes.flat()])]));
+    this.child.stdin.write(Buffer.concat([Buffer.from('C'), words([address, span, limit, ...registers, changes.length, ...changes.flat(), watch.length, ...watch])]));
     const [end, detail, pc, steps, hardware, flags] = await this.words(6);
     const left = await this.words(count);
     const ran = Uint8Array.from(await this.take(Math.floor(span / KINDS[this.kind].step)));
@@ -290,7 +311,20 @@ export class Original {
       const [at, size] = await this.words(2);
       kicks.push({ at, bytes: Uint8Array.from(await this.take(size)) });
     }
-    return { end, detail, pc, steps, hardware, vu0: Boolean(flags & 1), registers: left, ran, reads, chunks, kicks };
+    const [startCount] = await this.words(1);
+    const starts = [];
+    for (let i = 0; i < startCount; i++) {
+      const [at, number, when] = await this.words(3);
+      const held = await this.words(count);
+      const [pageCount] = await this.words(1);
+      const pages = [];
+      for (let k = 0; k < pageCount; k++) {
+        const [page] = await this.words(1);
+        pages.push({ page, bytes: Uint8Array.from(await this.take(PAGE)) });
+      }
+      starts.push({ address: at, number, steps: when, registers: held, pages });
+    }
+    return { end, detail, pc, steps, hardware, vu0: Boolean(flags & 1), registers: left, ran, reads, chunks, kicks, starts };
   }
 
   close() {
