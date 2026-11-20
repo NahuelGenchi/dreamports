@@ -9,7 +9,12 @@
 // 128 sprites over a background, every size $2101 chooses in turn, flips, priorities, more than 32 sprites on a line
 // and more than 34 of their tiles, moves 8 of them through their table's port each frame, and turns $2103's priority
 // rotation on and off, from an even address and an odd one. The modes program goes through modes 0 to 4, with offsets
-// for each column of tiles, 256-colour tiles, direct colours and mosaic, and windows over them. The colour program goes through 16 settings of windows
+// for each column of tiles, 256-colour tiles, direct colours and mosaic, and windows over them. The mode 7 program
+// turns its field a step each frame, through every way outside the field, both flips, mosaic, the second background,
+// direct colours, windows and colour maths, and reads the matrix's product back each frame. The HDMA program runs
+// seven channels at once, through every way a channel reads its table, onto scrolls, brightness, windows, colours,
+// mosaic and the mode. The raster program changes registers partway down the frame from its IRQ handler, by the V
+// timer, the H and V timers and the H timer alone, and reads $4212. The colour program goes through 16 settings of windows
 // and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and below. The
 // music program sends the sound processor a program
 // with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
@@ -22,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { COLOUR, madeUpColourCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODES, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, HDMA, madeUpColourCartridge, madeUpHdmaCartridge, madeUpMode7Cartridge, madeUpRasterCartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, RASTER, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -62,6 +67,33 @@ const PROGRAMS = [
       [[['store16(0x2116, 0x2000);', 'store16(0x2116, 0x2020);']], 'the 256-colour tiles a tile off', 16],
       [[['+ 8 + x));', '+ 8 + x) & 0xFE);']], 'no direct colours', 80],
       [[['+ 1 + x));', '+ 1 + x) + 0x10);']], 'the mosaic a pixel bigger', 128],
+    ],
+  },
+  {
+    name: 'mode7', game: 'test-snes-kit-mode7', title: 'DREAMPORTS MODE 7', cartridge: madeUpMode7Cartridge, data: MODE7, file: 'mode7.c',
+    wrongs: [
+      [[['twice(0x211C, sine);', 'twice(0x211C, (uint16_t)(sine + 1));']], 'the matrix\'s B a step off'],
+      // found where the product first isn't 0, once the sine's top byte is 1
+      [[['snes_write(0x2122, snes_read(0x2134));', 'snes_write(0x2122, snes_read(0x2135));']], 'the product\'s bytes mixed up', 42],
+      [[['snes_write(0x211A, snes_bus(', 'snes_write(0x211A, 0x00 & snes_bus(']], 'the field always wrapped and never flipped', 16],
+    ],
+  },
+  {
+    name: 'hdma', game: 'test-snes-kit-hdma', title: 'DREAMPORTS HDMA', cartridge: madeUpHdmaCartridge, data: HDMA, file: 'hdma.c',
+    wrongs: [
+      [[['channel(0, 0x02, 0x0D,', 'channel(0, 0x02, 0x0F,']], 'the scroll\'s HDMA on BG2 rather than BG1'],
+      [[['channel(1, 0x40,', 'channel(1, 0x00,']], 'the brightness\'s table read as it stands, not through its addresses'],
+      [[['SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0x80);', 'SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0xC0);']], 'the window table\'s first count off'],
+      [[['(((low & 0x20) >> 2) ^ 0x7F)', '(0x7F)']], 'channel 3 never turned off', 32],
+    ],
+  },
+  {
+    name: 'raster', game: 'test-snes-kit-raster', title: 'DREAMPORTS RASTER', cartridge: madeUpRasterCartridge, data: RASTER, file: 'raster.c',
+    wrongs: [
+      [[['  snes_write(0x4209, 0x28);\n  snes_write(0x420A, 0x00);\n  snes_write(0x4200, 0xA1);\n  uint16_t', '  snes_write(0x4209, 0x29);\n  snes_write(0x420A, 0x00);\n  snes_write(0x4200, 0xA1);\n  uint16_t']], 'the first split a line late'],
+      [[['    snes_write(0x2122, (uint8_t)(LINES << 2));\n    snes_write(0x2122, (uint8_t)((LINES >> 1) | SNES_RAM[0x12]));\n', '']], 'the H timer\'s backdrop colours left out'],
+      [[['snes_write(0x210F, (uint8_t)(snes_read(0x4212) & 0xC1));', 'snes_write(0x210F, (uint8_t)(snes_read(0x4212) & 0x80));']], '$4212 read as V-blank alone'],
+      [[['  snes_interrupts(1);\n', '']], 'IRQs never let in'],
     ],
   },
   {

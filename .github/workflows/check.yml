@@ -25,9 +25,9 @@ name: Check
 # Parallel N64 with an eleventh, its RSP's microcodes and every sum of its vector unit among it. A pull request's code
 # runs here, with a token that can only read and no secrets.
 #
-# The tests run in nine jobs side by side, as one after another they came near the 15-minute limit (#1503, #1695,
+# The tests run in ten jobs side by side, as one after another they came near the 15-minute limit (#1503, #1558, #1695,
 # #1742, #1744), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and
-# the first-entry bot read, is the last job, Check, which passes only when all nine have.
+# the first-entry bot read, is the last job, Check, which passes only when all ten have.
 on:
   pull_request:
 
@@ -58,7 +58,6 @@ jobs:
               npm run test:c-kit
               npm run test:consoles
               npm run test:real-console
-              npm run test:ps1-kit
               npm run test:ps1-memories
               npm run test:n64-twin
           # the Super Nintendo: its processor running one function at a time, its emulator saying what ran for the code
@@ -103,6 +102,10 @@ jobs:
               npm run test:ps1-gcc
               npm run test:ps1-match
               npm run test:ps1-libraries
+          # the PlayStation's kit in C, proven against PCSX ReARMed with programs of the project's own; it ran in the
+          # consoles part until its second program took that part past its 15 minutes (#1558)
+          - part: ps1 kit
+            run: npm run test:ps1-kit
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
           # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
           # under one; and a shared library of the project's own, proven in two made-up games at addresses of their own;
