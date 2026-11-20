@@ -10,9 +10,13 @@
 
 #include "ps1-kit.h"
 
-// libpcsxcore/psxcommon.h: the processor's clock; psxcounters.c: a frame of 60 a second, its lines, the first
-// V-blank's line, and the steps of the hsync clock, 2146.31 cycles a line in 12 bits of fraction
-enum { CLOCK = 33868800, FRAME = CLOCK / 60, LINE = CLOCK / 60 / 263, VBLANK_LINE = 240, LINE_STEP = 8791293 };
+// libpcsxcore/psxcommon.h: the processor's clock; psxcounters.c, with its fractional frame rate on, as tools/consoles.mjs
+// sets it: a frame as long as the console's, 263 lines of 3,413 of the GPU's dots at 53,693,175 a second, 59.817 frames
+// a second, its first V-blank's line, and a line as the emulator counts it, a 60th of a second over 263, 2,146 cycles,
+// and 2,146.31 in the steps of its hsync clock, 12 bits of fraction. The console's line is nearer 2,153 cycles, but the
+// kit follows the emulator, as `prove` compares with it.
+#define FRAME ((uint32_t)((uint64_t)CLOCK * 263 * 3413 / 53693175))
+enum { CLOCK = 33868800, LINE = CLOCK / 60 / 263, VBLANK_LINE = 240, LINE_STEP = 8791293 };
 // where the first V-blank comes after power, and every later one, a frame apart (psxcounters.c, scheduleRcntBase)
 #define FIRST_VBLANK ((uint32_t)((uint64_t)VBLANK_LINE * LINE_STEP >> 12))
 

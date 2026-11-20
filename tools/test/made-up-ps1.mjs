@@ -806,8 +806,10 @@ export function padRecording(frames) {
 }
 
 /** What the clock program counts and draws: where its handler keeps each interrupt's count, the root counters' targets,
- *  20 of counter 0's sysclock periods a frame and 4 of counter 2's eighths, and its colours. */
-export const CLOCK = { COUNTS: 0x80100000, SAVED: 0x80100040, TARGET_0: 28224, TARGET_2: 17640, BACKGROUND: 0x102010, BARS: [0xF04040, 0x40F040, 0x4040F0] };
+ *  in cycles for counter 0 and eighths for counter 2, and its colours. The program starts its counters a few cycles
+ *  after power, where its Dreamport starts them at once, so each target puts its interrupts at least 43,000 cycles from
+ *  every V-blank of 300 frames, and each frame counts the same on both. */
+export const CLOCK = { COUNTS: 0x80100000, SAVED: 0x80100040, TARGET_0: 47183, TARGET_2: 35378, BACKGROUND: 0x102010, BARS: [0xF04040, 0x40F040, 0x4040F0] };
 
 /** A program that takes interrupts, as a game does, with a handler of its own where the processor goes for them: it
  *  starts counter 0 counting cycles to its target and counter 2 counting eighths to its, each interrupting there and

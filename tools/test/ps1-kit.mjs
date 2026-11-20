@@ -14,7 +14,7 @@
 // the first button held when it reads the second port, where nothing is held. A fifth (madeUpClockExe) takes
 // interrupts with a handler of its own, from two root counters and the V-blank, and draws how many it has counted: its
 // Dreamport in C (ps1-kit/clock.c) has to be the same in all 300 frames, and be found at once when counter 0's target
-// is 2,000 cycles longer, so it interrupts once less before the first V-blank.
+// is 5,000 cycles longer, so it interrupts once less before the first V-blank.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -184,9 +184,9 @@ async function main() {
     run = dp('prove', TIMED, 'still');
     if (run.status !== 0) console.log(run.out.split('\n').slice(-15).join('\n'));
     check(run.status === 0 && report(TIMED).frames === FRAMES && !report(TIMED).firstDifference, `all ${FRAMES} frames the same as the emulator's: ${run.out.trim().split('\n').at(-1)}`);
-    writeClock(CLOCK.TARGET_0 + 2000);
+    writeClock(CLOCK.TARGET_0 + 5000);
     run = dp('prove', TIMED, 'still');
-    check(run.status !== 0 && report(TIMED).firstDifference?.frame === 0, `with counter 0's target 2,000 cycles longer, it differs at once: ${JSON.stringify(report(TIMED).firstDifference)}`);
+    check(run.status !== 0 && report(TIMED).firstDifference?.frame === 0, `with counter 0's target 5,000 cycles longer, it differs at once: ${JSON.stringify(report(TIMED).firstDifference)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
