@@ -12,8 +12,9 @@ name: Check
 # interpreter and check its twins against them, and npm run test:ps1-gcc, which builds the PlayStation's compiler from
 # GNU's source as WebAssembly and compiles a C file of the project's own with it, and npm run test:ps1-match, which
 # tries match on the PlayStation with a fifth, against a PS-X EXE it lays out itself, and npm run test:ps2-call and
-# test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them. A pull
-# request's code runs here, with a token that
+# test:ps2-twin, which run the functions of a sixth in Play!'s own processors and check its twins against them, and
+# npm run test:snes-call, which runs the functions of a seventh, a Super Nintendo cartridge, in Snes9x's own 65816. A
+# pull request's code runs here, with a token that
 # can only read and no secrets.
 #
 # The tests run in four jobs side by side, as one after another they came near the 15-minute limit (#1503). The check
@@ -40,13 +41,14 @@ jobs:
               npm run check
               npm run build
               npm run test:game
-          # the kits and the consoles' emulators
+          # the kits and the consoles' emulators, and the Super Nintendo's processor running one function at a time
           - part: consoles
             run: |
               npm run test:c-kit
               npm run test:consoles
               npm run test:real-console
               npm run test:ps1-kit
+              npm run test:snes-call
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
