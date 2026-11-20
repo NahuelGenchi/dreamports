@@ -64,7 +64,7 @@ export function versionOf(name) {
 export const versionName = (game, language) => (languageOf(language).folder ? `${game}/${languageOf(language).folder}` : game);
 
 /** A version's name as people read it: 'Sonic Battle Dreamport' for JavaScript, 'Sonic Battle Dreamport in C'. */
-export const versionTitle = (title, language) => (language === 'js' ? title : `${title} in ${LANGUAGES[language].name}`);
+export const versionTitle = (title, language) => (language === 'js' ? title : `${title} in ${languageOf(language).name}`);
 
 /**
  * The languages a game is played in, from those it has a version in (as ['js', 'c']), the default first and

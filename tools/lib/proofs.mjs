@@ -20,6 +20,12 @@
 // itself: once the twin's code changes, or a line of its file outside the functions, or a header of its file, or the
 // code map gives the function other bytes, its line no longer counts, and the tool has to prove it again.
 //
+// A function `match` found different can still start as the original's does: "starts" lists each such one, its key,
+// the two marks, and how many of its first bytes are the same, `["08012D4C", "1f0c…", "9a3e…", 64]`. It's no proof of
+// the function, and nothing counts it as one: it says only that the function's start, where the console's compiler
+// saves registers and takes its frame, is the original's, which the console's stack goes by (gba/stack.mjs). Only
+// `match` writes it, and the list is left out while it's empty.
+//
 // The file is also how a version says it's made this way, a function at a time: with it, the version's tasks are
 // groups of functions from its code map (groupsOf), `find` and `ready` go by each function's proof, and a Dreamport
 // isn't done while a function has none. `npm run dp -- proofs <version> --start` writes an empty one, and a version
@@ -57,14 +63,12 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the game makes in its work memory, and 'start' for a cartridge's start. On the Game Boy Advance that is the jump at
  * the cartridge's first address, which is part of its header, and the code right after the header that it goes to:
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
- * aren't C the console's compiler built. In a Dreamport that work is the kit's. 'elsewhere' is for a PlayStation 2
- * vector unit's program (ps2/functions.mjs), which `twin` doesn't call yet: it's in no task, and still counts as not
- * proven. A function of another program of the disc, a module for its second processor or another for the EE, has
- * its proof by `twin` (ps2/twin.mjs).
+ * aren't C the console's compiler built. In a Dreamport that work is the kit's. A PlayStation 2 function of another
+ * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
+ * have their proof by `twin` (ps2/twin.mjs).
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
-  if (f.vu) return 'elsewhere';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }
@@ -89,7 +93,11 @@ export function parseProofs(found, where = PROOFS) {
   }
   const functions = new Map(lines.map(([key, kind, twin, original, calls]) => [key, { kind, twin, original, ...(calls ? { calls } : {}) }]));
   if (functions.size !== lines.length) throw new Error(`${where} lists a function twice: only npm run dp -- match and npm run dp -- twin write it.`);
-  return { original: found.original, functions };
+  const started = found.starts ?? [];
+  const goodStart = line => Array.isArray(line) && line.length === 4 && /^[0-9A-F]{8}$/.test(line[0]) && MARK.test(line[1]) && MARK.test(line[2]) && Number.isInteger(line[3]) && line[3] > 0;
+  if (!Array.isArray(started) || !started.every(goodStart)) throw new Error(`${where} isn't as npm run dp -- match writes it: only it writes which functions start as the original's do, so take your changes to it back and run it again.`);
+  const starts = new Map(started.map(([key, twin, original, bytes]) => [key, { twin, original, bytes }]));
+  return { original: found.original, functions, ...(starts.size ? { starts } : {}) };
 }
 
 /** A version's proofs as its file has them, or null for a version that keeps none. */
@@ -107,10 +115,12 @@ export function readProofs(version) {
 }
 
 /** A proofs.json's text, a function to a line, in the code map's order. */
-export function formatProofs({ original, functions }) {
+export function formatProofs({ original, functions, starts = new Map() }) {
   const lines = [...functions].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([key, { kind, twin, original: theirs, calls }]) => `    ${JSON.stringify([key, kind, twin, theirs, ...(kind === 'memory' ? [calls] : [])])}`);
-  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(FROM)},\n  "functions": [${lines.length ? `\n${lines.join(',\n')}\n  ` : ''}]\n}\n`;
+  const started = [...starts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, { twin, original: theirs, bytes }]) => `    ${JSON.stringify([key, twin, theirs, bytes])}`);
+  const after = started.length ? `,\n  "starts": [\n${started.join(',\n')}\n  ]` : '';
+  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(FROM)},\n  "functions": [${lines.length ? `\n${lines.join(',\n')}\n  ` : ''}]${after}\n}\n`;
 }
 
 /** Starts a version's proofs, with none in it: from then on it's made a function at a time. Answers whether it wrote
@@ -244,8 +254,7 @@ export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
-      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
-        : state.beyond === 'elsewhere' ? 'no twin yet, and it\'s a vector unit\'s program, which no proof reaches yet' : 'no twin yet',
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',
@@ -263,7 +272,7 @@ export function stateText(state) {
  * { kept, stopped, already, changed }: the keys newly kept, those left out for a stop, those the stronger proof has
  * already, and whether the file was written.
  */
-export function keepProofs(version, { kind, proven = [], failed = [] }) {
+export function keepProofs(version, { kind, proven = [], failed = [], starts = null }) {
   const proofs = readProofs(version);
   if (!proofs) return null;
   const codeMap = readCodeMap(version), original = readOriginal(version);
@@ -272,7 +281,16 @@ export function keepProofs(version, { kind, proven = [], failed = [] }) {
   const { functions, result } = withProofs(proofs.functions, {
     kind, proven, failed, functions: codeMap.functions, marks: twinMarks(version, codeMap), stopped: stoppedFunctions(portMap(version)), mark,
   });
-  const text = formatProofs({ original: original.sha1, functions });
+  // which functions start as the original's do: `match` says so of each one it found different (`starts`, each
+  // { key, bytes }), and one lasts while its twin and the original are as they were and no proof by bytes has it
+  const marks = twinMarks(version, codeMap), byKey = new Map(codeMap.functions.map(f => [f.key, f]));
+  const started = new Map(proofs.starts ?? []);
+  if (kind === 'bytes') for (const key of [...proven.map(f => f.key), ...failed]) started.delete(key);
+  for (const { key, bytes } of starts ?? []) if (bytes > 0 && byKey.has(key) && marks.has(key)) started.set(key, { twin: marks.get(key).mark, original: mark(byKey.get(key)), bytes });
+  for (const [key, line] of started) {
+    if (!byKey.has(key) || marks.get(key)?.mark !== line.twin || mark(byKey.get(key)) !== line.original || functions.get(key)?.kind === 'bytes') started.delete(key);
+  }
+  const text = formatProofs({ original: original.sha1, functions, starts: started });
   const changed = readFileSync(proofsFile(version), 'utf8') !== text;
   if (changed) writeFileSync(proofsFile(version), text);
   return { ...result, changed };
