@@ -60,9 +60,11 @@ void CpuSet(const void *src, void *dest, u32 control);
 // instructions, which they were. M4A_TIME(function, from, to, next, ...) is a twin's TIME with `from` and `to` as
 // offsets in the library's own `function`, M4A_AT(function, offset) an address in it, in Thumb code, and M4A_BACK the
 // way back from a call, wherever it came from. M4A_DIVIDE is a division by the compiler's own library, whose path the
-// numbers decide. Only the paths a game's power-on takes say so, as the clock is for power-on, and a run that writes a
-// register the C writes again later is timed before the later write, as the clock reads what the register holds. The
-// console's compiler sees none of it.
+// numbers decide, and M4A_TIME_WHEN(condition, ...) a run that's only run then. Only the paths a game's power-on takes
+// say so, and the engine's frame with nothing playing and its stop of every player, which a game runs before work
+// that frames end inside, as a save is; the paths that play sound don't yet, so a frame can't end inside them at the
+// console's instruction. A run that writes a register the C writes again later is timed before the later write, as
+// the clock reads what the register holds. The console's compiler sees none of it.
 #if !defined(MATCHING) && defined(__has_include)
 #if __has_include("twins.h") && __has_include("clock.h")
 #include "twins.h"
@@ -72,7 +74,10 @@ void CpuSet(const void *src, void *dest, u32 control);
     && defined(ADDRESS_m4aSoundMode) && defined(ADDRESS_m4aSoundVSyncOff) && defined(ADDRESS_m4aSoundVSyncOn) \
     && defined(ADDRESS_MPlayExtender) && defined(ADDRESS_MPlayOpen) && defined(ADDRESS_Clear64byte) \
     && defined(ADDRESS_SoundMainBTM) && defined(ADDRESS_MPlayJumpTableCopy) && defined(ADDRESS_chk_adr_r2) \
-    && defined(ADDRESS_CpuSet) && defined(ADDRESS___divsi3) && defined(ADDRESS__call_via_r1)
+    && defined(ADDRESS_CpuSet) && defined(ADDRESS___divsi3) && defined(ADDRESS__call_via_r1) \
+    && defined(ADDRESS_m4aSoundMain) && defined(ADDRESS_SoundMain) && defined(ADDRESS_SoundMainRAM) \
+    && defined(ADDRESS_SoundMainRAM_Buffer) && defined(ADDRESS_MP2KPlayerMain) && defined(ADDRESS_CgbSound) \
+    && defined(ADDRESS_m4aMPlayAllStop) && defined(ADDRESS_MPlayStop) && defined(ADDRESS_TrackStop)
 #define M4A_TIMED
 #endif
 #endif
@@ -91,8 +96,15 @@ void CpuSet(const void *src, void *dest, u32 control);
   } while (0)
 #define M4A_DIVIDE(numerator, denominator) \
   gba_clock_divsi3(((uint32_t)ADDRESS___divsi3) & ~1u, (int32_t)(numerator), (int32_t)(denominator), GBA_CLOCK_BACK)
+#define M4A_TIME_WHEN(condition, function, from, to, next, ...) \
+  do {                                                          \
+    if (condition) M4A_TIME(function, from, to, next, ##__VA_ARGS__); \
+  } while (0)
+// a register or a word of memory a run reaches, by where it is
+#define M4A_REACH(pointer) ((uint32_t)(uintptr_t)(pointer))
 #else
 #define M4A_TIME(function, from, to, next, ...)
+#define M4A_TIME_WHEN(condition, function, from, to, next, ...)
 #define M4A_DIVIDE(numerator, denominator)
 #endif
 

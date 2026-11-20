@@ -280,14 +280,26 @@ void MP2KPlayerMain(struct MP2KPlayerState *mplayInfo)
     u32 tempo;
     s32 i;
 
-    if (mplayInfo->lockStatus != ID_NUMBER)
+    if (mplayInfo->lockStatus != ID_NUMBER) {
+        M4A_TIME(MP2KPlayerMain, 0x0, 0x8, M4A_BACK, M4A_REACH(mplayInfo));
         return;
+    }
+    M4A_TIME(MP2KPlayerMain, 0x0, 0x6, M4A_AT(MP2KPlayerMain, 0xA), M4A_REACH(mplayInfo));
     mplayInfo->lockStatus = ID_NUMBER + 1;
-    if (mplayInfo->nextPlayerFunc != NULL)
+    // the next player's step is called through the `bx r3` this one ends with
+    if (mplayInfo->nextPlayerFunc != NULL) {
+        M4A_TIME(MP2KPlayerMain, 0xA, 0x1A, M4A_AT(MP2KPlayerMain, 0x258), M4A_REACH(mplayInfo), M4A_REACH(mplayInfo),
+                 M4A_REACH(mplayInfo));
+        M4A_TIME(MP2KPlayerMain, 0x258, 0x258, M4A_REACH(mplayInfo->nextPlayerFunc));
         mplayInfo->nextPlayerFunc(mplayInfo->nextPlayer);
+    } else {
+        M4A_TIME(MP2KPlayerMain, 0xA, 0x14, M4A_AT(MP2KPlayerMain, 0x1C), M4A_REACH(mplayInfo), M4A_REACH(mplayInfo));
+    }
 
-    if ((s32)mplayInfo->status < 0)
+    if ((s32)mplayInfo->status < 0) {
+        M4A_TIME(MP2KPlayerMain, 0x1C, 0x32, M4A_AT(MP2KPlayerMain, 0x248), M4A_REACH(mplayInfo));
         goto end;
+    }
     soundInfo = SOUND_INFO_PTR;
     FadeOutBody(mplayInfo);
     if ((s32)mplayInfo->status < 0)
@@ -419,23 +431,38 @@ void MP2KPlayerMain(struct MP2KPlayerState *mplayInfo)
 
 end:
     mplayInfo->lockStatus = ID_NUMBER;
+    M4A_TIME(MP2KPlayerMain, 0x248, 0x258, M4A_BACK, M4A_REACH(mplayInfo));
 }
 
 /** Stops a track: each of its channels off, the console's own told to stop, and out of the track. */
 void TrackStop(struct MP2KPlayerState *mplayInfo, struct MP2KTrack *track)
 {
     struct MixerSource *chan;
-    if (!(track->status & MPT_FLG_EXIST))
+    if (!(track->status & MPT_FLG_EXIST)) {
+        M4A_TIME(TrackStop, 0x0, 0xA, M4A_AT(TrackStop, 0x38), M4A_REACH(track));
+        M4A_TIME(TrackStop, 0x38, 0x3C, M4A_BACK);
         return;
+    }
+    M4A_TIME(TrackStop, 0x0, 0xA, M4A_AT(TrackStop, 0xC), M4A_REACH(track));
+    M4A_TIME(TrackStop, 0xC, 0x10, M4A_AT(TrackStop, track->chan != NULL ? 0x12 : 0x36), M4A_REACH(track));
+    M4A_TIME_WHEN(track->chan != NULL, TrackStop, 0x12, 0x12, M4A_AT(TrackStop, 0x14));
     for (chan = track->chan; chan != NULL; chan = chan->next) {
         if (chan->status != 0) {
+            // a channel of the console's own is told to stop through the engine's `bx r3`, which isn't timed
             if (chan->type & TONEDATA_TYPE_CGB)
                 SOUND_INFO_PTR->CgbOscOff(chan->type & TONEDATA_TYPE_CGB);
+            else
+                M4A_TIME(TrackStop, 0x14, 0x20, M4A_AT(TrackStop, 0x2C), M4A_REACH(chan), M4A_REACH(chan));
             chan->status = 0;
+            M4A_TIME(TrackStop, 0x2C, 0x2C, M4A_AT(TrackStop, 0x2E), M4A_REACH(chan));
+        } else {
+            M4A_TIME(TrackStop, 0x14, 0x18, M4A_AT(TrackStop, 0x2E), M4A_REACH(chan));
         }
         chan->track = NULL;
+        M4A_TIME(TrackStop, 0x2E, 0x34, M4A_AT(TrackStop, chan->next != NULL ? 0x14 : 0x36), M4A_REACH(chan), M4A_REACH(chan));
     }
     track->chan = NULL;
+    M4A_TIME(TrackStop, 0x36, 0x3C, M4A_BACK, M4A_REACH(track));
 }
 
 /** A channel's right and left volume, from its velocity and pan and its track's volume. */
