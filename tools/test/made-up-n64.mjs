@@ -10,10 +10,14 @@
 //   fill       writes a1 bytes of a2 from a0, in a loop
 //   lookup     the a0th word of its table of values
 //   twice      sum(a0, a0), through a call, with a stack of its own
-//   wide       a0 in the high half of a 64-bit number and a1 in the low, given back and kept at a2
+//   wide       a0 in the high half of a 64-bit number and a1 added, kept at a2 and given back as the console's
+//              compilers give one, its high word in v0 and its low in v1
 //   likely     1 when a0 is 0 and 2 when it isn't, by a branch whose delay slot runs only when it goes
 //   addf       the sum of the two singles at a0, kept after them
 //   square     the double at a0 squared, kept after it
+//   mulf       the product of two floats, given in $f12 and $f14, in $f0
+//   addd       the sum of two doubles, given in $f12 and $f14, in $f0
+//   bits       a float given after a whole number, which comes in a1, given back as its bits
 //   forever    a loop that never ends
 //   misaligned reads a word where none starts
 //   cartridge  reads the cartridge, at 0xB0000000
@@ -35,6 +39,7 @@ const nop = 0;
 const addu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x21);
 const daddu = (rd, rs, rt) => r(rs, rt, rd, 0, 0x2D);
 const dsll32 = (rd, rt, sa) => r('zero', rt, rd, sa, 0x3C);
+const dsra32 = (rd, rt, sa) => r('zero', rt, rd, sa, 0x3F);
 const addiu = (rt, rs, imm) => i(9, rs, rt, imm);
 const ori = (rt, rs, imm) => i(13, rs, rt, imm);
 const lui = (rt, imm) => i(15, 'zero', rt, imm);
@@ -56,6 +61,8 @@ const sdc1 = (ft, offset, base) => f(0x3D, ft, offset, base);
 const cop1 = (format, ft, fs, fd, fn) => ((17 << 26) | (format << 21) | (ft << 16) | (fs << 11) | (fd << 6) | fn) >>> 0;
 const addS = (fd, fs, ft) => cop1(16, ft, fs, fd, 0);
 const mulD = (fd, fs, ft) => cop1(17, ft, fs, fd, 2);
+const mulS = (fd, fs, ft) => cop1(16, ft, fs, fd, 2);
+const addD = (fd, fs, ft) => cop1(17, ft, fs, fd, 0);
 // what needs to know where things are: a branch to a label, a call, and the two halves of an address
 const branch = op => (rs, rt, label) => ({ at: (labels, pc) => i(op, rs, rt, (labels[label] - pc - 4) >> 2) });
 const beq = branch(4), beql = branch(0x14);
@@ -83,10 +90,13 @@ const PROGRAM = [
   here('fill_done'), jr('ra'), nop,
   here('lookup'), hi('t0', 'values'), lo('t0', 't0', 'values'), sll('t1', 'a0', 2), addu('t0', 't0', 't1'), lw('v0', 0, 't0'), jr('ra'), nop,
   here('twice'), addiu('sp', 'sp', -24), sw('ra', 16, 'sp'), jal('sum'), addu('a1', 'a0', 'zero'), lw('ra', 16, 'sp'), jr('ra'), addiu('sp', 'sp', 24),
-  here('wide'), dsll32('v0', 'a0', 0), daddu('v0', 'v0', 'a1'), jr('ra'), sd('v0', 0, 'a2'),
+  here('wide'), dsll32('t0', 'a0', 0), daddu('t0', 't0', 'a1'), sd('t0', 0, 'a2'), dsra32('v0', 't0', 0), jr('ra'), sll('v1', 't0', 0),
   here('likely'), beql('a0', 'zero', 'likely_zero'), addiu('v0', 'zero', 1), addiu('v0', 'zero', 2), here('likely_zero'), jr('ra'), nop,
   here('addf'), lwc1(0, 0, 'a0'), lwc1(2, 4, 'a0'), addS(4, 0, 2), swc1(4, 8, 'a0'), jr('ra'), nop,
   here('square'), ldc1(0, 0, 'a0'), mulD(2, 0, 0), sdc1(2, 8, 'a0'), jr('ra'), nop,
+  here('mulf'), mulS(0, 12, 14), jr('ra'), nop,
+  here('addd'), addD(0, 12, 14), jr('ra'), nop,
+  here('bits'), jr('ra'), addu('v0', 'a1', 'zero'),
   here('forever'), b('forever'), nop,
   here('misaligned'), lw('v0', 1, 'a0'), jr('ra'), nop,
   here('cartridge'), lui('t0', 0xB000), lw('v0', 0, 't0'), jr('ra'), nop,
@@ -109,7 +119,7 @@ const PROGRAM = [
 ];
 
 /** The functions, in order, each with the name of the label it starts at. */
-export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'likely', 'addf', 'square', 'forever', 'misaligned', 'cartridge', 'hardware', 'trap', 'unmapped', 'pick', 'shine'];
+export const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'wide', 'likely', 'addf', 'square', 'mulf', 'addd', 'bits', 'forever', 'misaligned', 'cartridge', 'hardware', 'trap', 'unmapped', 'pick', 'shine'];
 // what isn't code: the values, the switch's table, the table of functions, the numbers and the buffer
 const DATA = ['values', 'cases', 'functions', 'numbers', 'buffer', 'end'];
 

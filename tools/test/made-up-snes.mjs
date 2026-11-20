@@ -88,6 +88,73 @@ const PROGRAM = [
 ];
 
 // the functions, by where each starts and ends: the values and tables between pick_2 and shine aren't any
+/**
+ * A program's 32 KB of LoROM, seen at $00:8000, with its header: { rom, labels, end }. `program` is its pieces: bytes,
+ * names where they are, and what needs to know where things are; `title` its name, `sram` whether it has 2 KB of save
+ * memory with a battery, and `nmi` and `irq` the names of the native mode's two interrupts' handlers. Every other
+ * vector is its start.
+ */
+function assemble(program, { title, sram = false, nmi = 'start', irq = 'start' }) {
+  const labels = {};
+  let pc = ORIGIN;
+  for (const piece of program) {
+    if (typeof piece === 'number') pc++;
+    else if (piece.name) labels[piece.name] = pc;
+    else pc += piece.size;
+  }
+  const end = pc;
+  const rom = new Uint8Array(0x8000);
+  pc = ORIGIN;
+  for (const piece of program) {
+    if (typeof piece === 'number') rom[pc++ - ORIGIN] = piece;
+    else if (!piece.name) for (const byte of piece.at(labels, pc)) rom[pc++ - ORIGIN] = byte;
+  }
+  // the header, at $FFC0 of bank $00: a title, LoROM, ROM, with save memory and a battery or not, 32 KB of ROM and 2 KB
+  // of save memory or none, and the vectors
+  const header = 0x7FC0;
+  rom.set([...title.padEnd(21)].map(c => c.charCodeAt(0)), header);
+  rom[header + 0x15] = 0x20;
+  rom[header + 0x16] = sram ? 0x02 : 0x00;
+  rom[header + 0x17] = 0x05;
+  rom[header + 0x18] = sram ? 0x01 : 0x00;
+  for (let v = 0x24; v < 0x40; v += 2) rom.set(w(labels.start), header + v);
+  rom.set(w(labels[nmi]), header + 0x2A);
+  rom.set(w(labels[irq]), header + 0x2E);
+  rom.set([0, 0, 0, 0], header + 0x1C);
+  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
+  rom.set(w(~sum & 0xFFFF), header + 0x1C);
+  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  return { rom, labels, end };
+}
+
+/** The program a made-up cartridge gives the sound processor, and where it runs: a value to the first port, a call
+ *  that adds one, and a loop that never ends. */
+export const SOUND_AT = 0x0400;
+export const SOUND_PROGRAM = [0xE8, 0x12, 0xC4, 0xF4, 0xCD, 0x34, 0x3F, 0x0B, 0x04, 0x2F, 0xFE, 0xBC, 0x6F];
+
+// the 65816's side: the sound processor's start-up program, in its own ROM, waits for $AA and $BB on the first two
+// ports; then the address to $2142, a 1 to $2141 and $CC to $2140, and each byte to $2141 with its count to $2140,
+// each once the sound processor has said the count back; and last the address to run, a 0 to $2141 and the count two
+// past the last, which sends the sound processor there. With A of 8 bits and X and Y of 16
+const UPLOADER = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A,
+  here('ready'), 0xAE, ...w(0x2140), 0xE0, ...w(0xBBAA), 0xD0, rel('ready'),
+  0xA2, ...w(SOUND_AT), 0x8E, ...w(0x2142), 0xA9, 0x01, 0x8D, ...w(0x2141), 0xA9, 0xCC, 0x8D, ...w(0x2140),
+  here('begun'), 0xCD, ...w(0x2140), 0xD0, rel('begun'),
+  0xA0, ...w(0),
+  here('send'), 0xB9, abs('program'), 0x8D, ...w(0x2141), 0x98, 0x8D, ...w(0x2140),
+  here('said'), 0xCD, ...w(0x2140), 0xD0, rel('said'), 0xC8, 0xC0, ...w(SOUND_PROGRAM.length), 0xD0, rel('send'),
+  0xA2, ...w(SOUND_AT), 0x8E, ...w(0x2142), 0x9C, ...w(0x2141), 0x98, 0x1A, 0x8D, ...w(0x2140),
+  here('spin'), 0x80, rel('spin'),
+  here('program'), ...SOUND_PROGRAM,
+];
+
+/** A second made-up cartridge, which gives the sound processor its program as games do: { rom, labels }. */
+export function madeUpSoundCartridge() {
+  const { rom, labels } = assemble(UPLOADER, { title: 'DREAMPORTS SOUND' });
+  return { rom, labels };
+}
+
 const FUNCTIONS = ['start', 'main', 'sum', 'fill', 'lookup', 'twice', 'leaves8', 'forever', 'wait', 'halt', 'hardware', 'port', 'nowhere', 'romwrite', 'jumpout', 'bank', 'direct', 'move', 'save', 'tick', 'pick', 'nmi', 'shine', 'hidden'];
 const ENDS = { pick: 'nmi', nmi: 'values' };
 
@@ -96,36 +163,7 @@ const ENDS = { pick: 'nmi', nmi: 'values' };
  * console sees it, and `functions` each of the list above, { name, address, size }.
  */
 export function madeUpCartridge() {
-  const labels = {};
-  let pc = ORIGIN;
-  for (const piece of PROGRAM) {
-    if (typeof piece === 'number') pc++;
-    else if (piece.name) labels[piece.name] = pc;
-    else pc += piece.size;
-  }
-  const end = pc;
-  const rom = new Uint8Array(0x8000);
-  pc = ORIGIN;
-  for (const piece of PROGRAM) {
-    if (typeof piece === 'number') rom[pc++ - ORIGIN] = piece;
-    else if (!piece.name) for (const byte of piece.at(labels, pc)) rom[pc++ - ORIGIN] = byte;
-  }
-  // the header, at $FFC0 of bank $00: a title, LoROM, ROM and save memory with a battery, 32 KB of ROM and 2 KB of
-  // save memory, and the vectors, every one of them the start but for the native mode's NMI and IRQ
-  const header = 0x7FC0;
-  rom.set([...'DREAMPORTS MADE UP   '].map(c => c.charCodeAt(0)), header);
-  rom[header + 0x15] = 0x20;
-  rom[header + 0x16] = 0x02;
-  rom[header + 0x17] = 0x05;
-  rom[header + 0x18] = 0x01;
-  for (let v = 0x24; v < 0x40; v += 2) rom.set(w(labels.start), header + v);
-  rom.set(w(labels.nmi), header + 0x2A);
-  rom.set(w(labels.tick), header + 0x2E);
-  rom.set(w(labels.start), header + 0x3C);
-  rom.set([0, 0, 0, 0], header + 0x1C);
-  const sum = rom.reduce((total, byte) => total + byte, 0) + 0x1FE;
-  rom.set(w(~sum & 0xFFFF), header + 0x1C);
-  rom.set(w(sum & 0xFFFF), header + 0x1E);
+  const { rom, labels, end } = assemble(PROGRAM, { title: 'DREAMPORTS MADE UP', sram: true, nmi: 'nmi', irq: 'tick' });
   const functions = FUNCTIONS.map((name, i) => {
     const next = name in ENDS ? ENDS[name] : FUNCTIONS[i + 1];
     return { name, address: labels[name], size: (next ? labels[next] : end) - labels[name] };

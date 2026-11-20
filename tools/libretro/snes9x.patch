@@ -5,10 +5,12 @@ the program that plays the original (tools/libretro/host.c) can ask to be told o
 where that is in the cartridge's ROM whichever bank shows it, its first byte, and the processor's registers with the
 flags M, X and E, which say how long each of its instructions is. That's how the code map learns which functions ran in
 play and the mode each ran in (tools/snes/functions.mjs), and gameplay proven which instructions and which way each
-branch went (tools/lib/played.mjs).
+branch went (tools/lib/played.mjs). It also says where Snes9x keeps each of the console's memories, the work memory,
+the sound processor's, the video memory, the colours and the sprites' table, so the tools can read them as a frame ends
+(tools/libretro/held.h), as `read` reads the program a game gives the sound processor (tools/snes/read.mjs).
 
 The processor only calls the function it was given, when it was given one, between reading an instruction and running
-it: nothing of the console changes, so every frame's picture and sound are the same with it or without. Nothing of
+it, and the memories are only read: nothing of the console changes, so every frame's picture and sound are the same with it or without. Nothing of
 Snes9x is in the repository but the lines of its own this change sits between.
 
 diff --git a/cpuexec.cpp b/cpuexec.cpp
@@ -35,10 +37,10 @@ index 0494810..830af52 100644
  		(*Opcodes[Op].S9xOpcode)();
  
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index b7aaace..18b9df3 100644
+index b7aaace..26ec087 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
-@@ -2246,6 +2246,35 @@ static void report_buttons()
+@@ -2246,6 +2246,52 @@ static void report_buttons()
      }
  }
  
@@ -69,6 +71,23 @@ index b7aaace..18b9df3 100644
 +{
 +   dreamports_told = told;
 +   DreamportsRan   = told ? dreamports_ran : NULL;
++}
++
++/* Dreamports: where Snes9x keeps each of the console's memories, so the tools' program can read them as a frame ends
++ * (tools/libretro/held.h): 0 the work memory, 1 the sound processor's, 2 the video memory, 3 the colours, two bytes
++ * each, lowest first, and 4 the sprites' table. Null for a stretch past a memory's end. */
++extern "C" RETRO_API const uint8_t *retro_dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++{
++   static const uint32_t sizes[5] = { 0x20000, 0x10000, 0x10000, 512, 512 + 32 };
++   if (memory >= 5 || address > sizes[memory] || bytes > sizes[memory] - address) return NULL;
++   switch (memory)
++   {
++      case 0: return Memory.RAM + address;
++      case 1: return SNES::smp.apuram + address;
++      case 2: return Memory.VRAM + address;
++      case 3: return (const uint8_t *) PPU.CGDATA + address;
++      default: return PPU.OAMData + address;
++   }
 +}
 +
  void retro_run()
