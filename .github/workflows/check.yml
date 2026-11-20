@@ -39,12 +39,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # the site: its build, and a new game's start in a real browser
+          # the site: its build, and a new game's start in a real browser; and the Nintendo 64's kit, proven against
+          # Parallel N64, which this job builds, as it has the time to
           - part: site
             run: |
               npm run check
               npm run build
               npm run test:game
+              npm run test:n64-kit
           # the kits and the consoles' emulators, the Nintendo 64's function check, here as the functions job is near its
           # time, and the Super Nintendo's processor running one function at a time
           - part: consoles
@@ -54,7 +56,6 @@ jobs:
               npm run test:real-console
               npm run test:ps1-kit
               npm run test:n64-twin
-              npm run test:n64-kit
               npm run test:snes-call
           # the function check, with a small program of the project's own built into a made-up cartridge, which mGBA
           # runs; match and the NES's function check; the whole cartridge rebuilt and every byte of it accounted for,
@@ -110,6 +111,9 @@ jobs:
           check-latest: true
           cache: npm
       - run: npm ci
+      # OpenGL's headers, which Parallel N64's source includes though nothing of them is linked
+      - if: matrix.part == 'site'
+        run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libgl-dev
       - run: ${{ matrix.run }}
 
   check:

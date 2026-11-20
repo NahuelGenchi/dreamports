@@ -59,7 +59,7 @@ These are the numbers each emulator gave for a small program, once it had set up
 
 **Buttons.** The NES's were pressed in a recording. The Mega Drive's and Nintendo 64's agree with their emulators' source, and the rest are still only as chosen.
 
-**Building.** Each builds with a compiler and `make` alone, but for Play!, which needs CMake too, and on Linux the headers of EGL and OpenGL ES and Mesa's drawing, which on Debian or Ubuntu `sudo apt install libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri` installs. Parallel N64 is built with no recompiler and no OpenGL, so it needs no assembler or graphics libraries, and runs on its interpreter, with `-O2` in place of its makers' `-Ofast`, so its floating-point unit rounds as IEEE 754 asks, as the console's does.
+**Building.** Each builds with a compiler and `make` alone, but for Play!, which needs CMake too, and on Linux the headers of EGL and OpenGL ES and Mesa's drawing, which on Debian or Ubuntu `sudo apt install libegl-dev libgles-dev libegl-mesa0 libgl1-mesa-dri` installs. Parallel N64 is built with no recompiler and no OpenGL, so it needs no assembler or graphics libraries, only OpenGL's headers on Linux, which its `libretro.c` includes whatever it's built with and `sudo apt install libgl-dev` installs, and runs on its interpreter, with `-O2` in place of its makers' `-Ofast`, so its floating-point unit rounds as IEEE 754 asks, as the console's does.
 
 ## The PlayStation 2
 
