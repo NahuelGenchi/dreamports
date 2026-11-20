@@ -56,7 +56,8 @@ jobs:
           # with another program of the project's own laid out as a linker lays it; and test:same-memory, which builds a
           # program of the project's own as a cartridge and as a Dreamport from the same C, and has prove find every
           # frame and the whole work memory the same in mGBA and in a browser (tools/README.md); and an NES library of
-          # the project's own, found in a second made-up program by its short hash and proven there; and the GBA kit's
+          # the project's own, found in a second made-up program by its short hash and proven there, and a PlayStation one,
+          # found in a second program by building it with GCC 2.7.2 and by its short hash; and the GBA kit's
           # clock, measured against mGBA an instruction at a time on a made-up program's power-on; and the console's
           # stack in a Dreamport, which has to leave the same words as mGBA where a later function reads them unset;
           # and the kit as the sound hardware of a game that runs the sound engine itself
@@ -76,6 +77,7 @@ jobs:
               npm run test:n64-call
               npm run test:same-memory
               npm run test:nes-libraries
+              npm run test:ps1-libraries
           # a game made a function at a time, with the same program: match and twin keep each proof, and its tasks go by
           # them; a big game's tasks of functions, each under its stretch's issue, and no issue past what GitHub holds
           # under one; a shared library of the project's own, proven in two made-up games at addresses of their own;
