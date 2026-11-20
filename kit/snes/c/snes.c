@@ -65,6 +65,7 @@ void snes_write(uint16_t address, uint8_t value) {
 #ifndef DP_TWIN_CHECK
   if (address < 0x2134) ppu_write(address, value);
   if (address == 0x420B && value) dma_start(value);
+  if ((address & 0xFF8F) == 0x430A) hdma_lines_written(address >> 4 & 7, value);
 #endif
   uint8_t *cpu = SNES_CPU_REGISTERS;
   if (address == 0x4203) {

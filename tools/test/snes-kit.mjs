@@ -11,7 +11,9 @@
 // rotation on and off, from an even address and an odd one. The modes program goes through modes 0 to 4, with offsets
 // for each column of tiles, 256-colour tiles, direct colours and mosaic, and windows over them. The mode 7 program
 // turns its field a step each frame, through every way outside the field, both flips, mosaic, the second background,
-// direct colours, windows and colour maths, and reads the matrix's product back each frame. The colour program goes through 16 settings of windows
+// direct colours, windows and colour maths, and reads the matrix's product back each frame. The HDMA program runs
+// seven channels at once, through every way a channel reads its table, onto scrolls, brightness, windows, colours,
+// mosaic and the mode. The colour program goes through 16 settings of windows
 // and colour maths, the sub screen and the fixed colour, added, taken away and halved, at brightness 15 and below. The
 // music program sends the sound processor a program
 // with its samples through the console's start-up program, waits for its first answer, and gives it the frame's count
@@ -24,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { COLOUR, madeUpColourCartridge, madeUpMode7Cartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
+import { COLOUR, HDMA, madeUpColourCartridge, madeUpHdmaCartridge, madeUpMode7Cartridge, madeUpModesCartridge, madeUpMusicCartridge, madeUpPictureCartridge, madeUpSpriteCartridge, MODE7, MODES, MUSIC, PICTURE, SPRITES } from './made-up-snes.mjs';
 
 const COPIES = join(LOCAL, 'copies.json');
 const MEDIA = join(REPO, 'public', 'media');
@@ -73,6 +75,15 @@ const PROGRAMS = [
       // found where the product first isn't 0, once the sine's top byte is 1
       [[['snes_write(0x2122, snes_read(0x2134));', 'snes_write(0x2122, snes_read(0x2135));']], 'the product\'s bytes mixed up', 42],
       [[['snes_write(0x211A, snes_bus(', 'snes_write(0x211A, 0x00 & snes_bus(']], 'the field always wrapped and never flipped', 16],
+    ],
+  },
+  {
+    name: 'hdma', game: 'test-snes-kit-hdma', title: 'DREAMPORTS HDMA', cartridge: madeUpHdmaCartridge, data: HDMA, file: 'hdma.c',
+    wrongs: [
+      [[['channel(0, 0x02, 0x0D,', 'channel(0, 0x02, 0x0F,']], 'the scroll\'s HDMA on BG2 rather than BG1'],
+      [[['channel(1, 0x40,', 'channel(1, 0x00,']], 'the brightness\'s table read as it stands, not through its addresses'],
+      [[['SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0x80);', 'SNES_RAM[0x2000] = (uint8_t)((low & 0x3F) | 0xC0);']], 'the window table\'s first count off'],
+      [[['(((low & 0x20) >> 2) ^ 0x7F)', '(0x7F)']], 'channel 3 never turned off', 32],
     ],
   },
   {
