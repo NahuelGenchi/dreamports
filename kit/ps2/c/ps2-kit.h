@@ -107,7 +107,7 @@ const uint8_t *mc_bytes(uint32_t *size);
 /** The IOP's interrupt lines the kit keeps: the sound chip's, then the two sound DMA channels' ended transfers. */
 uint32_t iop_lines(void);
 /** The sound chip (spu2.c): a register written or read, at its IOP address, a DMA transfer to or from a core, giving
- *  how many blocks it took, a block of 45 samples mixed, and whether a core's interrupt is pending. */
+ *  how many blocks it took, a block of 48 samples mixed, and whether a core's interrupt is pending. */
 void spu2_write(uint32_t address, uint32_t value);
 uint32_t spu2_read(uint32_t address);
 uint32_t spu2_dma(int core, uint8_t *buffer, uint32_t block_size, uint32_t blocks, uint32_t direction);
@@ -119,5 +119,12 @@ uint32_t spu2_list_hash(void);
 uint32_t spu2_list_count(void);
 const uint8_t *spu2_list_bytes(uint32_t *size);
 const int16_t *spu2_heard(uint32_t *pairs);
+/** For the tools' emulator, which mixes with this chip too: the chip as the console starts, on the emulator's memory for
+ *  it, its state for a save state, and a core's transfer mode and DMA bits for the sound list. */
+void spu2_power(uint8_t *ram);
+uint32_t spu2_state_size(void);
+void spu2_state_save(uint8_t *to);
+void spu2_state_load(const uint8_t *from);
+void spu2_transfer(int core, uint32_t *mode, uint32_t *control);
 
 #endif

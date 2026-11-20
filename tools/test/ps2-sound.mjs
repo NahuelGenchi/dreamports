@@ -72,7 +72,7 @@ function writeGame({ broken = false, early = false, noPressure = false } = {}) {
     PAD_SET_UP: sound.PAD_SET_UP.map(([bytes, answered]) => `  { static const uint8_t command[] = { ${bytes.map(hex).join(', ')} }; sio2(command, sizeof command, ${answered}); }`).join('\n'),
     LABEL_ENUM: sound.LABEL_NAMES.map(name => name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')).join(', '),
     ATTR: hex(R.ATTR), TSA_HI: hex(R.TSA_HI), TSA_LO: hex(R.TSA_LO), STD: hex(R.STD), IRQA_HI: hex(R.IRQA_HI), IRQA_LO: hex(R.IRQA_LO),
-    KON_HI: hex(R.KON_HI), KOFF_HI: hex(R.KOFF_HI), MMIX: hex(R.MMIX), ENDX_HI: hex(R.ENDX_HI), IRQINFO: hex(R.IRQINFO),
+    KON_HI: hex(R.KON_HI), KOFF_HI: hex(R.KOFF_HI), NOTE: hex(R.NOTE), ENDX_HI: hex(R.ENDX_HI), IRQINFO: hex(R.IRQINFO),
     VOICE0_VOLR: hex(sound.voice(0, R.VOLR)), VOICE0_PITCH: hex(sound.voice(0, R.PITCH)), VOICE1_VOLL: hex(sound.voice(1, R.VOLL)),
     ATTR_SET_UP: hex(sound.ATTR_SET_UP), ATTR_PLAYING: hex(sound.ATTR_PLAYING), TONE_AT: hex(sound.TONE_AT), CLICK_AT: hex(sound.CLICK_AT), IRQ_AT: hex(sound.IRQ_AT),
     MVOLR: hex(R.MVOLR), MASTER_SWEEP_AT: sound.MASTER_SWEEP_AT, MASTER_BACK_AT: sound.MASTER_BACK_AT, MASTER_SWEEP: hex(sound.MASTER_SWEEP), MASTER_RIGHT: hex(sound.MASTER_RIGHT),
