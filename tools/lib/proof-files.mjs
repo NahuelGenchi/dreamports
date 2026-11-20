@@ -174,7 +174,7 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 export function cartridgeOf(path, console = 'gba') {
   let bytes = null, program = null;
   const copy = () => (bytes ??= readFileSync(path));
-  if (console === 'ps2') return Object.assign((address, count) => (program ??= loadedCopy(path).read)(address, count), { copy, disc: path, code: f => loadedCopy(path).codeOf(f) });
+  if (console === 'ps2') return Object.assign((address, count) => (program ??= loadedCopy(path).read)(address, count), { copy, disc: path, code: f => loadedCopy(path).codeOf(f), modules: () => loadedCopy(path).modules });
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
