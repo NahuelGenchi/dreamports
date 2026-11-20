@@ -22,13 +22,18 @@
 //   proofs.json's "starts") saves what the original's saves, so its pushes are written, and the registers it doesn't
 //   save reach the functions it calls as its caller left them. Its own registers, its locals and where its calls go
 //   back to are left out, as the code after its start isn't proven.
+//
+// A routine the original has in hand-written assembly, whose twin is C proven by the same memory, has no compiler to
+// give its frame back: a shared library keeps such routines in a table (library.json's "frames"), their assembly as a
+// decompilation writes it, which stack-map.mjs reads (routineMap), and the twin's frame is the routine's
+// (routineFrame): its stores to the stack written at the points of its C the table pairs with the routine's.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { preprocess } from './match.mjs';
 import { compilerPath } from './agbcc.mjs';
-import { stackMap } from './stack-map.mjs';
+import { routineMap, stackMap } from './stack-map.mjs';
 
 const REGISTER = { r0: 0, r1: 1, r2: 2, r3: 3, r4: 4, r5: 5, r6: 6, r7: 7, r8: 8, r9: 9, r10: 10, r11: 11, ip: 12, r12: 12, lr: 14 };
 const hex = n => `0x${(n >>> 0).toString(16).toUpperCase()}u`;
@@ -152,7 +157,7 @@ function heldLocals(body, info, text, file) {
  * start and return, its calls' return addresses and registers, and its stack locals at the console's addresses.
  * `addressOf(name)` is where the original has a function, odd in Thumb code, or null. Gives { text, gaps }.
  */
-export function withStack({ file, text, tree, map, matched, addressOf, starts = new Set(), without = new Set() }) {
+export function withStack({ file, text, tree, map, matched, addressOf, starts = new Set(), without = new Set(), routines = null, valueOf = () => null }) {
   placed(tree);
   // a use of a function-like macro ends at its closing bracket, where clang names only the macro
   for (const node of everything(tree)) {
@@ -186,6 +191,15 @@ export function withStack({ file, text, tree, map, matched, addressOf, starts = 
   for (const fn of kids(tree).filter(node => node.kind === 'FunctionDecl' && node.place?.file === file)) {
     const body = kids(fn).find(node => node.kind === 'CompoundStmt');
     const info = map.functions[fn.name];
+    // a routine the original has in assembly, which no compiler gives back: its frame is its table's
+    const routine = routines?.[fn.name];
+    if (body?.place && routine && !matched.has(fn.name) && !without.has('routines') && addressOf(fn.name) !== null) {
+      const made = routineFrame({ fn, body, text, file, tree, routine, address: addressOf(fn.name), addressOf, valueOf });
+      header.push(...made.header);
+      edits.push(...made.edits);
+      gaps.push(...made.gaps);
+      continue;
+    }
     if (!body?.place || !info) continue;
     const address = addressOf(fn.name);
     if (address === null) continue;
@@ -282,6 +296,264 @@ export function withStack({ file, text, tree, map, matched, addressOf, starts = 
   return { text: render(text, edits), header: header.join('\n'), gaps };
 }
 
+// --- a routine the original has in assembly
+
+// a callee's text, with no spaces, as a table's notes name it
+const tidy = written => written.replace(/\s+/g, '');
+const NO_VALUE = 0xFF, NO_SP = 'GBA_STACK_NO_SP';
+
+// the arguments of a macro's use that starts at `open`, its opening bracket in `text`: { args, end }, end after the ')'
+function macroArguments(text, open) {
+  const args = [];
+  let depth = 0, from = open + 1;
+  for (let at = open; at < text.length; at++) {
+    const c = text[at];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') {
+      if (--depth === 0) {
+        args.push(text.slice(from, at).trim());
+        return { args, end: at + 1 };
+      }
+    } else if (c === ',' && depth === 1) {
+      args.push(text.slice(from, at).trim());
+      from = at + 1;
+    }
+  }
+  return null;
+}
+
+// The ways from one point of a routine to another, as one step of its frame: where its execution can go from `leave`
+// (the instructions after the last anchor) to `target`, not through another of its anchors, calls or exits. Gives null
+// when there's no way, or the instructions every way passes, in their order, and those only some ways do.
+function ways(routine, leave, target, stops) {
+  const instrs = routine.instrs;
+  // from `from`, within `within`, never through `without`: whether a way reaches the target, or comes back to `back`
+  const walk = (from, within, { without = -1, back = -1 } = {}) => {
+    const seen = new Set(), queue = from.filter(i => i !== without && within(i));
+    while (queue.length) {
+      const i = queue.shift();
+      if (i === back) return true;
+      if (seen.has(i)) continue;
+      seen.add(i);
+      if (i === target) {
+        if (back < 0) return true;
+        continue;
+      }
+      if (stops.has(i)) continue;
+      queue.push(...instrs[i].next.filter(j => j !== without && within(j)));
+    }
+    return false;
+  };
+  // what a way from `leave` reaches, and of that, what reaches the target
+  const reached = new Set(), queue = [...leave];
+  while (queue.length) {
+    const i = queue.shift();
+    if (reached.has(i)) continue;
+    reached.add(i);
+    if (i !== target && !stops.has(i)) queue.push(...instrs[i].next);
+  }
+  if (!reached.has(target)) return null;
+  const on = new Set([target]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const i of reached) if (!on.has(i) && !stops.has(i) && instrs[i].next.some(j => on.has(j))) { on.add(i); grew = true; }
+  }
+  const within = i => on.has(i);
+  // an instruction every way passes is one without which the target can't be reached
+  const every = [...on].filter(i => i !== target && !walk(leave, within, { without: i }));
+  const some = [...on].filter(i => i !== target && !every.includes(i));
+  // those every way passes, in the order a way passes them
+  const order = [];
+  const seen = new Set();
+  for (let at = leave.find(within); at !== undefined && at !== target && !seen.has(at); at = instrs[at].next.find(j => within(j) && walk([j], within))) {
+    seen.add(at);
+    if (every.includes(at)) order.push(at);
+  }
+  // whether an instruction can run again before the target
+  const again = i => walk(instrs[i].next, within, { back: i });
+  return { every: order.length === every.length ? order : every.sort((a, b) => a - b), some, again };
+}
+
+/**
+ * A twin of a routine its game's original has in assembly, with the routine's frame from a library's table
+ * (stack-map.mjs, routineMap): its pushes and its stores to the stack written where its C reaches the points the table
+ * pairs with the routine's (its calls, its returns and the runs it times), each with what the Dreamport holds as it
+ * runs, and its calls made from where the routine makes them. Gives { header, edits, gaps }.
+ */
+function routineFrame({ fn, body, text, file, tree, routine, address, addressOf, valueOf }) {
+  const name = fn.name, header = [], edits = [], gaps = [];
+  const instrs = routine.instrs;
+  const all = [...everything(body)];
+  const params = kids(fn).filter(node => node.kind === 'ParmVarDecl');
+  const hexOf = n => `0x${(n >>> 0).toString(16).toUpperCase()}u`;
+  // the C of a value, or null for one nothing the Dreamport holds gives
+  const cOf = v => {
+    if (v.const !== undefined) return `(uint64_t)${hexOf(v.const)}`;
+    if (v.symbol !== undefined) {
+      const at = addressOf(v.symbol) ?? valueOf(v.symbol);
+      return at === null ? null : `(uint64_t)${hexOf(at + (v.add ?? 0))}`;
+    }
+    if (v.param !== undefined) return params.some(p => p.name === v.param) ? `gba_arg_${v.param}_` : null;
+    if (v.sp !== undefined) return `gba_stack_asm_sp(${v.sp})`;
+    if (v.caller !== undefined) return `gba_stack_asm_caller(${v.caller === 'lr' ? 14 : Number(v.caller.slice(1))})`;
+    if (v.load !== undefined) return `gba_stack_peek(${hexOf(v.load)}, ${v.bytes})`;
+    if (v.c !== undefined) return v.pointer ? `(uint64_t)gba_stack_address((uint32_t)(uintptr_t)(${v.c}))` : `(uint64_t)(uint32_t)(uintptr_t)(${v.c})`;
+    return null;
+  };
+  const why = v => v.unknown ?? (v.symbol !== undefined ? `the address of ${v.symbol}, which the version doesn't give` : v.param !== undefined ? `${v.param}, which isn't a parameter of the twin` : 'a value nothing gives');
+
+  // the twin's points: its start, its calls, its returns, its end, and the runs it times of this routine
+  const anchors = [{ kind: 'entry', arrive: null, leave: [0], sp: null }];
+  const asmAnchors = instrs.map((ins, i) => (ins.anchor ? { ...ins.anchor, i } : null)).filter(Boolean);
+  const callsInC = [];
+  for (const call of all) {
+    if (call.kind !== 'CallExpr') continue;
+    if (!call.place && call.written && call.written.file === file && !call.written.endsInMacro) call.place = { file, begin: call.written.begin, end: call.written.end };
+    if (!call.place) continue;
+    const callee = kids(call)[0];
+    if (!callee?.written || callee.written.file !== file) continue;
+    callsInC.push({ call, text: tidy(text.slice(callee.written.begin, callee.written.end)) });
+  }
+  callsInC.sort((a, b) => a.call.place.begin - b.call.place.begin);
+  const counted = new Map();
+  for (const c of callsInC) {
+    counted.set(c.text, (counted.get(c.text) ?? 0) + 1);
+    c.n = counted.get(c.text);
+    const asm = asmAnchors.find(a => (a.kind === 'call' || a.kind === 'jump') && tidy(a.text) === c.text && (a.n === null || a.n === c.n));
+    if (!asm) {
+      edits.push({ call: c.call, hooks: 'gba_stack_asm_unpaired();' });
+      gaps.push(`${name} line ${lineOf(text, c.call.place.begin)}: its call of ${c.text} is none the routine's table pairs with one of its own`);
+      continue;
+    }
+    asm.paired = true;
+    const ins = instrs[asm.i];
+    anchors.push({ kind: asm.kind, arrive: asm.i, leave: asm.kind === 'call' ? ins.next : [], sp: ins.sp, regs: ins.regs, call: c.call, at: asm.i });
+  }
+  const returns = all.filter(node => node.kind === 'ReturnStmt' && node.written?.file === file).sort((a, b) => a.written.begin - b.written.begin);
+  returns.forEach((ret, k) => {
+    const asm = asmAnchors.find(a => a.kind === 'return' && (a.n === null || a.n === k + 1));
+    if (asm) asm.paired = true;
+    anchors.push({ kind: 'return', arrive: asm ? asm.i : null, leave: [], sp: null, ret });
+  });
+  {
+    const asm = asmAnchors.find(a => a.kind === 'end') ?? asmAnchors.find(a => a.kind === 'return' && a.n === null);
+    if (asm) asm.paired = true;
+    anchors.push({ kind: 'end', arrive: asm ? asm.i : null, leave: [], sp: null });
+  }
+  // the runs it times, by the routine's name or another it has, each a statement of its own
+  const names = new Set([name, ...(routine.aliases ?? [])]);
+  const bodyText = text.slice(body.place.begin, body.place.end).replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, gone => ' '.repeat(gone.length));
+  for (const m of bodyText.matchAll(/\bM4A_TIME(_WHEN)?\s*\(/g)) {
+    const begin = body.place.begin + m.index, use = macroArguments(text, begin + m[0].length - 1);
+    if (!use) continue;
+    const [when, ...rest] = m[1] ? use.args : [null, ...use.args];
+    const [own, from, to] = rest;
+    if (!names.has(own)) continue;
+    let end = use.end;
+    while (/\s/.test(text[end] ?? '')) end++;
+    if (text[end] !== ';') continue;
+    const first = instrs.findIndex(ins => ins.offset === Number(from));
+    const last = instrs.findIndex(ins => ins.offset <= Number(to) && Number(to) < ins.offset + ins.bytes);
+    const straight = first >= 0 && last >= first && instrs.slice(first, last).every((ins, k) => ins.next.includes(first + k + 1));
+    if (!straight) {
+      gaps.push(`${name} line ${lineOf(text, begin)}: its timed run ${from} to ${to} isn't one of the routine's straight runs`);
+      continue;
+    }
+    anchors.push({ kind: 'run', from: first, arrive: last, leave: instrs[last].next, sp: null, begin, end: end + 1, when });
+  }
+  for (const a of asmAnchors.filter(a => !a.paired)) gaps.push(`${name}: the table pairs its instruction at offset 0x${instrs[a.i].offset.toString(16)} with ${a.kind === 'call' || a.kind === 'jump' ? `a ${a.kind} of ${a.text}` : `a ${a.kind}`} its twin doesn't have`);
+
+  // the steps from each anchor to each other one, with the stores on the way
+  const stops = new Set(instrs.map((ins, i) => (ins.call || ins.anchor || !ins.next.length ? i : -1)).filter(i => i >= 0));
+  const steps = [], writes = [], valuesOf = anchors.map(() => []);
+  const covered = new Set();
+  const valueIndex = (b, c) => {
+    if (c === null) return NO_VALUE;
+    let k = valuesOf[b].indexOf(c);
+    if (k < 0) {
+      k = valuesOf[b].length;
+      valuesOf[b].push(c);
+    }
+    return k;
+  };
+  const unknownWhy = new Set();
+  anchors.forEach((B, b) => {
+    if (B.arrive === null) return;
+    anchors.forEach((A, a) => {
+      let list;
+      // a run that ends with the call, jump or exit the next point is: nothing more on the way
+      if (A.kind === 'run' && B.kind !== 'run' && A.arrive === B.arrive) list = [];
+      else {
+        const target = B.kind === 'run' ? B.from : B.arrive;
+        const found = ways(routine, A.leave, target, stops);
+        if (!found) return;
+        list = [];
+        for (const i of found.every) for (const w of instrs[i].writes) {
+          const c = found.again(i) && w.value.c !== undefined ? null : cOf(w.value);
+          if (c === null) unknownWhy.add(`its store at offset 0x${instrs[i].offset.toString(16)}: ${found.again(i) && w.value.c !== undefined ? 'one in a loop, whose last value its C doesn\'t keep' : why(w.value)}`);
+          list.push({ slot: w.slot, bytes: w.bytes, c });
+          covered.add(i);
+        }
+        for (const i of found.some) for (const w of instrs[i].writes) {
+          // one the table says holds what a store every way makes there holds, as the C has it then, changes nothing
+          if (w.value.c !== undefined && list.some(each => each.slot === w.slot && each.bytes === w.bytes && each.c === cOf(w.value))) continue;
+          unknownWhy.add(`its store at offset 0x${instrs[i].offset.toString(16)}, on only some of the ways between two of its points`);
+          list.push({ slot: w.slot, bytes: w.bytes, c: null });
+        }
+        if (B.kind === 'run') for (let i = B.from; i <= B.arrive; i++) for (const w of instrs[i].writes) {
+          const c = cOf(w.value);
+          if (c === null) unknownWhy.add(`its store at offset 0x${instrs[i].offset.toString(16)}: ${why(w.value)}`);
+          list.push({ slot: w.slot, bytes: w.bytes, c });
+          covered.add(i);
+        }
+      }
+      if (list.some(w => w.slot === null)) unknownWhy.add('a store to the stack at a place it can\'t follow');
+      steps.push({ from: a, to: b, first: writes.length, count: list.length });
+      for (const w of list) writes.push({ slot: w.slot ?? 0, bytes: w.slot === null ? 0 : w.bytes, value: valueIndex(b, w.c) });
+    });
+  });
+  for (const why_ of unknownWhy) gaps.push(`${name}: ${why_}`);
+  instrs.forEach((ins, i) => { if (ins.writes.length && !covered.has(i) && ins.op !== 'arm') gaps.push(`${name}: its store at offset 0x${ins.offset.toString(16)} is on no way between two points its twin reaches`); });
+  if (instrs.some(ins => ins.op === 'arm')) gaps.push(`${name}: its ARM code, which the tools' assembler doesn't read, so what it stores is left out`);
+
+  const id = `gba_asm_${name}`;
+  header.push(`static const gba_asm_write ${id}_writes[] = { ${writes.map(w => `{ ${w.slot}, ${w.bytes}, ${w.value} }`).join(', ') || '{ 0, 0, 0xFF }'} };`);
+  header.push(`static const gba_asm_step ${id}_steps[] = { ${steps.map(s => `{ ${s.from}, ${s.to}, ${s.first}, ${s.count} }`).join(', ') || '{ 0xFF, 0xFF, 0, 0 }'} };`);
+  header.push(`static const int16_t ${id}_sp[] = { ${anchors.map(a => ((a.kind === 'call' || a.kind === 'jump') && a.sp !== null ? a.sp : NO_SP)).join(', ')} };`);
+  header.push(`static const gba_asm ${id} = { ${id}_steps, ${steps.length}, ${id}_writes, ${id}_sp };`);
+  const values = b => (valuesOf[b].length ? `(const uint64_t[]){ ${valuesOf[b].join(', ')} }` : '0');
+  const at = b => `gba_stack_asm_at(${b}, ${values(b)});`;
+  // its start, with the parameters the routine's registers hold kept as they arrive
+  const kept = Object.values(routine.args ?? {}).map(arg => params.find(p => p.name === arg)).filter(Boolean);
+  for (const arg of Object.values(routine.args ?? {})) if (!params.some(p => p.name === arg)) gaps.push(`${name}: the table names ${arg}, which isn't a parameter of its twin`);
+  const keep = kept.map(p => ` const uint64_t gba_arg_${p.name}_ = ${isPointer(p) ? `gba_stack_address((uint32_t)(uintptr_t)(${p.name}))` : `(uint32_t)(uintptr_t)(${p.name})`};`).join('');
+  edits.push({ at: body.place.begin + 1, cut: 0, put: ` uint32_t gba_stack_in_ __attribute__((cleanup(gba_stack_leave))) = gba_stack_asm_enter(&${id});${keep}` });
+  anchors.forEach((A, b) => {
+    if (A.kind === 'call' || A.kind === 'jump') {
+      const regs = Object.entries(A.regs ?? {}).map(([reg, v]) => `gba_stack_set(${Number(reg.slice(1))}, ${cOf(v) ?? 'GBA_STACK_NONE'});`).join(' ');
+      const ret = A.kind === 'call' ? `gba_stack_call(${hexOf((address & ~1) + instrs[A.at].offset + 4 + 1)});` : 'gba_stack_jump();';
+      edits.push({ call: A.call, hooks: `${at(b)} ${ret} ${regs}` });
+    } else if (A.kind === 'return') {
+      const ret = A.ret, begin = ret.written.begin;
+      let semi = ret.written.end;
+      while (semi < text.length && text[semi] !== ';') semi++;
+      if (kids(ret).length) {
+        edits.push({ at: begin, cut: 'return'.length, put: '{ __auto_type gba_returned_ = (' });
+        edits.push({ at: semi, cut: 1, put: `); ${at(b)} return gba_returned_; }` });
+      } else {
+        edits.push({ at: begin, cut: 0, put: `{ ${at(b)} ` });
+        edits.push({ at: semi + 1, cut: 0, put: ' }' });
+      }
+    } else if (A.kind === 'end') {
+      edits.push({ at: body.place.end - 1, cut: 0, put: ` ${at(b)} ` });
+    } else if (A.kind === 'run') {
+      edits.push({ at: A.begin, cut: 0, put: '{ ' });
+      edits.push({ at: A.end, cut: 0, put: ` ${A.when ? `if (${A.when}) ` : ''}${at(b)} }` });
+    }
+  });
+  return { header, edits, gaps };
+}
+
 // The text with every edit made: a call's edit puts its arguments in variables first, so its hooks run after them and
 // just before it, with the calls inside its arguments made the same way.
 function render(text, edits) {
@@ -310,7 +582,7 @@ function render(text, edits) {
 }
 
 /**
- * The game's own C files with the console's stack, for a version made the stricter way (`game`, such as
+ * The game's own C files, and the shared libraries' it takes, with the console's stack, for a version made the stricter way (`game`, such as
  * 'sonic-advance/strict', whose folder is `folder`): each file with a function proven by the same bytes is written
  * again under .dreamports/c/stack/, the rest kept. `args` are the build's own flags and folders and `filesTree` its files, both as from `repo`, for clang's tree.
  * Gives { sources, gaps }: the files to build, and what the stack can't hold, each as a line.
@@ -325,8 +597,16 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   // with no function proven by the same bytes, or no compiler to build one with, there's nothing to read the stack from
   if (!bytes.size || !original.compiler) return { sources: own, gaps: [] };
   const compiler = readCompiler(original, `games/${game.split('/')[0]}/proof/original.json`);
-  const { twinsOf, twins } = versionTwins(game);
+  const { twinsOf, twins, named, libraries } = versionTwins(game);
   const addressOf = name => (twins.get(name)?.size === 1 ? [...twins.get(name)][0] | 1 : null);
+  const valueOf = name => named.get(name) ?? null;
+  // the routines of each library's table, for its files
+  const routinesOf = new Map();
+  for (const { library, files } of libraries) {
+    if (!library.frames) continue;
+    const { routines } = routineMap(readFileSync(library.frames, 'utf8'));
+    for (const each of files) routinesOf.set(each, routines);
+  }
   const sources = [], gaps = [];
   mkdirSync(out, { recursive: true });
   for (const file of own) {
@@ -337,7 +617,9 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
       sources.push(file);
       continue;
     }
-    const map = await stackOfFile({ file, root: folder, includes: [dirname(file), join(folder, 'src')], compiler: compilerAt(compiler, defined[0].address), work: join(out, 'work', basename(file, '.c')) });
+    // a shared library's file is built from its own folder, as match builds it
+    const inside = !relative(folder, file).startsWith('..');
+    const map = await stackOfFile({ file, root: inside ? folder : dirname(file), includes: inside ? [dirname(file), join(folder, 'src')] : [dirname(file)], compiler: compilerAt(compiler, defined[0].address), work: join(out, 'work', basename(file, '.c')) });
     if (map.error) {
       gaps.push(`${basename(file)}: ${map.error}`);
       sources.push(file);
@@ -351,7 +633,7 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
       const start = map.functions[t.name]?.start, same = proofs.starts?.get(keyOf(t))?.bytes ?? 0;
       return !matched.has(t.name) && start && !start.loads && same >= Math.max(start.bytes, 2);
     }).map(t => t.name));
-    const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf, starts });
+    const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf, starts, routines: routinesOf.get(file) ?? null, valueOf });
     const copy = join(out, basename(file));
     writeFileSync(copy, `${made.header}\n#line 1 "${basename(file)}"\n${made.text}`);
     sources.push(copy);
