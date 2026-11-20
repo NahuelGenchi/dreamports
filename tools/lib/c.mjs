@@ -220,7 +220,9 @@ const KEPT_DAYS = 14;
 
 /** The object `make()` builds, `{ made }`, or what went wrong, `{ error }`, from the compiler's file tree `files` and
  *  what it's asked, `args`: kept in .dreamports/c/objects/ by all three and the compiler's version, so it's made once,
- *  and again only when one of those changes. With no compiler installed, nothing is kept. */
+ *  and again only when one of those changes. The compiler runs with no file but those in `files`, every file of each
+ *  folder on its include path and of the kit's own folders it includes from by their path, so every header a source
+ *  can include is in the key, as is every flag and define in `args`. With no compiler installed, nothing is kept. */
 export async function keptObject(files, args, make) {
   const compiler = compilerVersion(), file = compiler ? join(OBJECTS, `${buildFingerprint(files, args, compiler)}.o`) : null;
   if (file && existsSync(file)) {
