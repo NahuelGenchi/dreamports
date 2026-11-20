@@ -93,7 +93,7 @@ enum { TASK_TITLE = 0x02, TASK_GAME = 0x04, TASK_VIEW = 0x06, TASK_ARTHUR = 0x08
 #define TASK_STATE(task) RAM[0x02 + (task)]
 #define TASK_STACK(task) RAM[0x03 + (task)]   // where the task's own stack is, in the stack's page, while it isn't running
 /** The processor's stack pointer as a routine starts that `task`'s code calls `deep` calls down. A task's code starts
- *  with its stack at the top of its own room, which the table at $C3BC gives, as sub_C3A9 pulls its flags and where it
+ *  with its stack at the top of its own room, which the table at $C3BC gives, as $C3A9 pulls its flags and where it
  *  goes on from off it, and each call takes two bytes: the objects' kinds' routines run two calls down, called at
  *  $F36E and $9CDE. */
 static inline int stack_of(uint8_t task, int deep) { return (uint8_t)(cart(7, (uint16_t)(0xC3BC + task)) - 2 * deep); }
