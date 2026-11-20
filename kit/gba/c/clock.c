@@ -158,6 +158,8 @@ static struct {
   int64_t vblank_at[16];   // when the latest ones were
 } video;
 static void (*interrupt_handler)(void);
+static void (*line_drawn)(int y);
+void gba_clock_on_line(void (*line)(int y)) { line_drawn = line; }
 static uint32_t interrupt_address;
 
 static void irq_test(int64_t late) {
@@ -320,10 +322,12 @@ static void tick(int64_t by) {
       dma_event = -1;
       dma_due();
     } else if (which == 5 && video.hblank) {
-      // a line's H-blank starts, with its interrupt if DISPSTAT asks for it, 6 cycles on
+      // a line's H-blank starts, with its interrupt if DISPSTAT asks for it, 6 cycles on; a line of the picture is
+      // drawn now, as the emulator draws it
       video.hblank = 0;
       video.when = NOW - late + HBLANK;
       if (irq.display & 0x0010) irq_raise(IRQ_HBLANK, late - 6);
+      if (video.line < 160 && line_drawn) line_drawn(video.line);
     } else if (which == 5) {
       // the next line starts: the line count's interrupt on the line DISPSTAT names, and at line 160 the V-blank,
       // which is a frame's end, and its interrupt

@@ -86,6 +86,10 @@ void gba_clock_before(uint32_t pc);
  *  look for them: `read` gives it and `write` stores it, as gba_clock_swi's IntrWait and VBlankIntrWait do. */
 void gba_clock_on_wait(uint16_t (*read)(void), void (*write)(uint16_t value));
 
+/** What the clock calls as each of the picture's lines, 0 to 159, starts its H-blank in the console's time, which
+ *  is when the emulator draws it: gba_draw_line_now for a game that draws each line as the console does. */
+void gba_clock_on_line(void (*line)(int y));
+
 /** The frame the clock is in, from 0 at power-on. */
 uint32_t gba_clock_frame(void);
 

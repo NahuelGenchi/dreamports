@@ -34,6 +34,7 @@ EXPORT("dp_draw") uint32_t *dp_draw(void) {
   gba_draw_frame(screen);
   return screen;
 }
+void gba_draw_line_now(int y) { gba_draw_lines_to(y, kit_screen(SCREEN_W, SCREEN_H)); }
 /** Where the video hardware is, for the page to show the proof tools what it holds (proof.js `video`). */
 EXPORT("dp_vram") uint8_t *dp_vram(void) { return gba_vram; }
 EXPORT("dp_pal") uint16_t *dp_pal(void) { return gba_pal; }

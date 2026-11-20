@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { issueOfBranch, numberLines, pullRequestText, unfilled } from '../lib/pull-request.mjs';
+import { versionTitle } from '../../src/lib/languages.mjs';
 
 const TEMPLATE = readFileSync(new URL('../../.github/pull_request_template.md', import.meta.url), 'utf8');
 const CLIPS = '[![a frame of the clip](https://someone.github.io/dreamports/clips/walk/still.png)](https://someone.github.io/dreamports/clips/walk/clip.mp4)\n\n[Watch the clip](https://someone.github.io/dreamports/clips/walk/clip.mp4)';
@@ -75,6 +76,13 @@ test('the numbers, before and after, name the language and the parts added', () 
   assert.equal(lines.ported, 'Code ported in C: 10% → 15%');
   assert.equal(lines.gameplay, 'Gameplay proven in C: 50%, 1 of 2 parts → 100%, 2 of 2 parts, adding The late room');
   assert.equal(numberLines('walk', null, proof(1, [])).ported, 'Code ported: not measured yet → 5%');
+  // a trial, a second version beside a game's own, names its own language (#1679)
+  assert.equal(numberLines('walk/strict', null, proof(1, [])).ported, 'Code ported in C, the stricter way: not measured yet → 5%');
+});
+
+test('a trial\'s preview names its language, as a version\'s does', () => {
+  assert.equal(versionTitle('Walk Dreamport', 'c'), 'Walk Dreamport in C');
+  assert.equal(versionTitle('Walk Dreamport', 'strict'), 'Walk Dreamport in C, the stricter way');
 });
 
 test('angle brackets someone wrote aren\'t the template\'s words', () => {
