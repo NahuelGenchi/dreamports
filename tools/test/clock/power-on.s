@@ -3,7 +3,7 @@
 @ the sound's FIFO fed by DMA 1 at timer 0's rate, a long DMA fill of video memory, a loop of multiplies and stores
 @ to the slow work memory, and each of the BIOS's four kinds of CpuSet, then a loop that waits for nothing, long
 @ enough for the test to leave a frame of it untimed. After it come the interrupts: a handler of the program's own,
-@ which the BIOS reaches through an ARM instruction or two the test puts in the cartridge (../clock.mjs); the
+@ which the BIOS reaches through ARM instructions the test puts in the cartridge (../clock.mjs), as a dispatcher; the
 @ V-blank's interrupt taken out of the BIOS's VBlankIntrWait; timer 1's every 4,096 cycles, taken in the middle of a
 @ loop of multiplies and stores, out of another VBlankIntrWait and out of an IntrWait for it; and both, with every
 @ line's H-blank's and line 100's, for as long as the last loop goes on.

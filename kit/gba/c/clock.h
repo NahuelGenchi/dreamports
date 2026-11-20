@@ -44,7 +44,9 @@ void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint3
  *  copies, as its store runs, for the game to do that work then. Halt (2), IntrWait (4) and VBlankIntrWait (5) halt
  *  the processor until an interrupt wakes it, the frames that end meanwhile ended and the game's handler run from
  *  inside the call, and the two waits go on until the handler has acknowledged one they wait for (gba_clock_on_wait);
- *  they leave IME on. Gives 0, or -1 for a call the clock doesn't know. */
+ *  they leave IME on. Before it, what the game wrote to the registers in work it didn't time, which no run will
+ *  take, takes effect as the register's state: a DMA it started at once has copied already. Gives 0, or -1 for a call
+ *  the clock doesn't know. */
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index));
 
 /** A register the instruction timed last writes, as it runs: the DMA channels', the timers', the sound's and WAITCNT. */
@@ -140,7 +142,9 @@ uint16_t gba_clock_vcount(void);
  *  path, which the numbers decide, back to `back`. */
 void gba_clock_divsi3(uint32_t at, int32_t numerator, int32_t denominator, uint32_t back);
 
-/** The same for ARM code, read a word at a time, all of it run always, as a cartridge's start is. */
+/** The same for ARM code, read a word at a time, as a cartridge's start or its interrupt code: every instruction
+ *  runs but a branch that doesn't go where its next does, and each load or store that doesn't read the program
+ *  counter, a halfword's too, takes the next address of `at`. */
 void gba_clock_run_arm(uint32_t from, uint32_t to, uint32_t next, const uint32_t *at, int count);
 
 #endif
