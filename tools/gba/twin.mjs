@@ -36,7 +36,7 @@ import { LOCAL, REPO } from '../lib/paths.mjs';
 import { hex, readCodeMap, readOriginal, readRecordings } from '../lib/proof-files.mjs';
 import { originalPlay } from '../lib/recording.mjs';
 import { copyWith } from '../lib/copies.mjs';
-import { cKit, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
+import { cKit, keptObject, SAME_FLAGS, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { NOT_TAKEN, TAKEN, WENT_ELSEWHERE, WENT_ON, instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
@@ -399,11 +399,18 @@ function kitBuilt(id) {
     kits.set(id, (async () => {
       const kit = cKit(id), flags = flagsFor(kit);
       const tree = Object.fromEntries(kit.folders.map((folder, i) => [String(i), treeOf(folder, false)]));
+      // a folder the kit's own files include from by its path, as the PlayStation's psx_gpu/, inside its folder
+      for (const inside of kit.trees ?? []) {
+        const i = kit.folders.findIndex(folder => !relative(folder, dirname(inside)));
+        if (i >= 0) tree[String(i)][basename(inside)] = treeOf(inside);
+      }
       const includes = kit.folders.flatMap((_, i) => ['-I', `${KIT}/${i}`]);
       const objects = {}, defines = new Set();
       for (const source of kit.sources) {
         const name = `${KIT}_${Object.keys(objects).length}.o`;
-        const built = await compile([...flags, ...includes, '-c', `${KIT}/${kit.folders.findIndex(folder => !relative(folder, dirname(source)))}/${basename(source)}`], { [KIT]: tree }, name);
+        // each kept from one run of the check to the next, as a game's build keeps it (../lib/c.mjs)
+        const ask = [...flags, ...includes, '-c', `${KIT}/${kit.folders.findIndex(folder => !relative(folder, dirname(source)))}/${basename(source)}`];
+        const built = await keptObject({ [KIT]: tree }, ask, () => compile(ask, { [KIT]: tree }, name));
         if (built.error) throw new Error(`The kit didn't build for the function check:\n${built.error}`);
         objects[name] = built.made;
         for (const defined of namesOf(built.made).defines) defines.add(defined);
