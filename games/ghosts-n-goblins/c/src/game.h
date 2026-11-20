@@ -212,8 +212,11 @@ uint8_t take_object(void);
 /** sub_F708: an object is gone. */
 void remove_object(uint8_t object);
 /** The processor's Y register, for a routine that keeps it for its caller, from a caller whose code doesn't follow it
- *  yet. sub_EFDA and sub_F03E keep it in $9F and hand it back through $23, and sub_EF25 and sub_F68E keep it in $A9, so
- *  each of their twins is given it, as `y`, and writes it there. */
+ *  yet. sub_EFDA and sub_F03E keep it in $9F and hand it back through $23, and sub_EF25, sub_F68E and sub_D902 keep it
+ *  in $A9, so each of their twins is given it, as `y`, and writes it there. A kind's routine starts with Y its kind
+ *  times 2; after a sound or a look-up of a block Y is the bank put back, $D4, and after move_down it's $23. Only
+ *  three of Arthur's calls don't follow it: there Y comes back from the task switch, which keeps each task's X and Y
+ *  at $04D0 and $04D1 on from its number, and the game doesn't keep those yet. */
 enum { Y_NOT_FOLLOWED = 0 };
 /** sub_F68E: whether Arthur touches an object, whose half width and half height are in $26 and $27. */
 int arthur_touches(uint8_t object, uint8_t y);

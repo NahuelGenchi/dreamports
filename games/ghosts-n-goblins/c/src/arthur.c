@@ -31,6 +31,7 @@ enum { VIEW_X = 0x63, VIEW_Y = 0x66, VIEW_SPEED_X = 0x5C, VIEW_SPEED_Y = 0x5F };
 
 // sub_DBFB: the view is asked to move across so that Arthur is in the middle of the picture, by at most 7 pixels to
 // the right or 8 to the left.
+// dp:twin sub_DBFB view_follows_across() if X == 0
 static void view_follows_across(void) {
   uint32_t middle = (uint32_t)(RAM[VIEW_X + 2] << 16 | RAM[VIEW_X + 1] << 8 | RAM[VIEW_X]) + 0x8000;
   uint32_t ahead = (uint32_t)(X_SCREEN << 16 | X << 8 | RAM[OBJECT_X_PART + ARTHUR]) - middle;
@@ -53,6 +54,7 @@ static void view_follows_across(void) {
 
 // sub_DB99: and down, so that he's 144 pixels below its top, by at most 7 pixels down or 8 up. A screen is 240 pixels
 // high, so 16 are taken off or put back where the two are on different screens.
+// dp:twin sub_DB99 view_follows_down() if X == 0
 static void view_follows_down(void) {
   RAM[0x7B] = RAM[VIEW_Y];
   uint16_t line = (uint16_t)(RAM[VIEW_Y + 1] + 0x90);
@@ -85,12 +87,14 @@ static void view_follows_down(void) {
 }
 
 // sub_E166: his place down, on top of the block he's landed on.
+// dp:twin sub_E166 stand_on_block() if X == 0
 static void stand_on_block(void) { Y = (uint8_t)((Y & 0xF0) | 0x08); }
 
 // sub_DF62: whether something is in his way: a solid block 8 pixels ahead of him, 4 below his place, or the edge of the
-// picture. $D1 keeps the answer. The original calls it from four places of his task's stack, so the stack isn't
-// followed here.
-static int way_blocked(void) {
+// picture. $D1 keeps the answer. `s` is the stack pointer it starts with: drift's calls come from four places of his
+// task's stack, so they don't follow it.
+// dp:twin sub_DF62 +6 way_blocked(S) -> C if X == 0
+static int way_blocked(int s) {
   int left = HEADING == 0x0C;
   uint16_t ahead = (uint16_t)((X_SCREEN << 8 | X) + (left ? -8 : 8));
   RAM[0x74] = (uint8_t)ahead;
@@ -103,7 +107,7 @@ static int way_blocked(void) {
     RAM[0x77]++;
     took(WAY_AHEAD_NEXT_SCREEN);
   }
-  int solid = block_at_stage_place(S_NOT_FOLLOWED) >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
+  int solid = block_at_stage_place(call_from(s, left ? 0xDF79 : 0xDF69)) >= BLOCK_SOLID, edge = left ? SCREEN_X < 0x10 : SCREEN_X >= 0xF0;
   took(solid ? WAY_SOLID : left ? (edge ? WAY_LEFT_EDGE : WAY_LEFT_FREE) : edge ? WAY_RIGHT_EDGE : WAY_RIGHT_FREE);
   RAM[0xD1] = solid || edge ? 0x80 : 0;
   return solid || edge;
@@ -118,7 +122,7 @@ static void drift_unless(int blocked, uint8_t speed) {
   took(JUMPS);
   view_follows_across();
 }
-static void drift(uint8_t speed) { drift_unless(way_blocked(), speed); }
+static void drift(uint8_t speed) { drift_unless(way_blocked(S_NOT_FOLLOWED), speed); }
 
 // sub_DDA1: what the direction buttons ask for, from the copy's list at $E307: 0 for nothing, and otherwise a heading,
 // whose bit $04 says it's across. It's also where $85, B held since before, is cleared.
@@ -429,14 +433,15 @@ static void face_in_the_air(void) {
 }
 
 // sub_DF5D: whether something is in the way of a jump, which a jump straight up always has.
-static int jump_way_blocked(void) {
+// dp:twin sub_DF5D +6 jump_way_blocked(S) -> C if X == 0
+static int jump_way_blocked(int s) {
   if (!RAM[JUMP_MOVES_ACROSS]) {
     RAM[0xD1] = 0x80;
     took(JUMP_STRAIGHT_UP);
     return 1;
   }
   took(JUMP_MOVES);
-  return way_blocked();
+  return way_blocked(s);   // on into sub_DF62
 }
 
 // sub_DF93: his shape in a jump, by the way he faces, or a throw's.
@@ -490,7 +495,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         return DONE;
       }
       took(STAGE_JUMP_NOT_HIT);
-      drift_unless(jump_way_blocked(), 0x0C);
+      drift_unless(jump_way_blocked(call_from(stack_of(TASK_ARTHUR, 0), 0xDE40)), 0x0C);
       rise();
       jump_shape();
       placed(1);
@@ -544,7 +549,7 @@ static wait stage_jump(uint8_t *step, int *hit) {
         return DONE;
       }
       took(STAGE_JUMP_NOT_HIT);
-      drift_unless(jump_way_blocked(), long_fall ? 0x06 : 0x0C);
+      drift_unless(jump_way_blocked(call_from(stack_of(TASK_ARTHUR, 0), 0xDE86)), long_fall ? 0x06 : 0x0C);
       took(long_fall ? ARTHUR_FALL_BY_SEVEN : ARTHUR_FALL_BY_LIST);
       fall_by(long_fall ? 7 : jump_height());
       jump_shape();
