@@ -67,7 +67,7 @@ static void tests(uint8_t object) {
   RAM[OBJECT_SCREEN_Y + object] -= 4;
   took(FOREST_TESTS_BEGIN);
   int arthur_touched;
-  enemy_touch_tests(object, &arthur_touched);
+  enemy_touch_tests(object, &arthur_touched, NULL);
   RAM[OBJECT_SCREEN_Y + object] += 4;
   took(FOREST_TESTS_END);
 }
@@ -83,13 +83,15 @@ static void shoot(uint8_t object) {
   RAM[0x27] = 0x50;
   RAM[0x26] = 0x20;
   took(FOREST_SHOT_LOOKS);
-  if (arthur_near(object, Y_NOT_FOLLOWED)) {
+  if (arthur_near(object, shot)) {   // Y, the shot's object, as the look for a free one leaves it
     heading = DOWN;
     took(FOREST_SHOT_DOWN);
   } else if (arthur_is_right_of(object)) {
+    if (object >= 0x0F) took(READ_PAST_PAGE);   // its heading, read again, in the next page from the 15th object on
     if (heading != 0x04) { took(FOREST_SHOT_NOT_AHEAD_RIGHT); return; }
     took(FOREST_SHOT_AHEAD_RIGHT);
   } else {
+    if (object >= 0x0F) took(READ_PAST_PAGE);
     if (heading != 0x0C) { took(FOREST_SHOT_NOT_AHEAD_LEFT); return; }
     took(FOREST_SHOT_AHEAD_LEFT);
   }
@@ -114,7 +116,8 @@ static void shoot(uint8_t object) {
 
 // sub_04_A812, with its call: every so many rounds, sooner the harder the game, it looks for Arthur in front of it, or
 // within a box around it, and readies its shot.
-static void attack(uint8_t object) {
+// dp:twin sub_04_A812 +6 attack(X, Y) if X >= 1 && X < 0x16
+static void attack(uint8_t object, uint8_t y) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *rounds = &RAM[0x066E + object], heading = RAM[OBJECT_HEADING + object];
   took(CALLS);
   if (flag(object, ATTACKS)) {
@@ -131,28 +134,32 @@ static void attack(uint8_t object) {
   RAM[0x27] = 0x60;
   RAM[0x26] = 0x28;
   took(FOREST_LOOKS);
-  if (arthur_near(object, Y_NOT_FOLLOWED)) took(BRANCH_TAKEN);
+  if (arthur_near(object, y)) took(BRANCH_TAKEN);
   else {
     took(GOES_ON);
+    // its heading is read again, a cycle more from the 15th object on, where it's in the next page
     if (arthur_is_right_of(object)) {
       took(FOREST_AHEAD_RIGHT);
+      if (object >= 0x0F) took(READ_PAST_PAGE);
       if (heading != 0x04) { took(FOREST_NOT_AHEAD); return; }
       took(GOES_ON);
     } else {
       took(FOREST_AHEAD_LEFT);
+      if (object >= 0x0F) took(READ_PAST_PAGE);
       if (heading != 0x0C) { took(FOREST_NOT_AHEAD_LEFT); return; }
       took(BRANCH_TAKEN);
     }
   }
-  *flags |= ATTACKS;
+  *flags |= ATTACKS;   // by a jump to sub_F319, whose read of the flags is a cycle more from the 16th object on
+  if (object >= 0x10) took(READ_PAST_PAGE);
   took(FOREST_READIES);
 }
 
 // $A778: it turns round, eight rounds at speed 4 with four shapes, and then faces and heads the other way.
-static void turn_round(uint8_t object) {
+static void turn_round(uint8_t object, uint8_t y) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object], *state = &RAM[OBJECT_STATE + object];
   took(FOREST_TURN_MOVES);
-  move_object(object, 4, Y_NOT_FOLLOWED);
+  move_object(object, 4, y);
   ++*count;
   took(FOREST_TURN_COUNTED);
   if (*count >= 8) {
@@ -179,7 +186,7 @@ static void turn_round(uint8_t object) {
 }
 
 /** sub_04_A66A, kind 4. */
-void forest_enemy(uint8_t object) {
+void forest_enemy(uint8_t object, uint8_t y) {
   uint8_t *flags = &RAM[OBJECT_FLAGS + object], *count = &RAM[OBJECT_COUNT + object], *state = &RAM[OBJECT_STATE + object];
   if (flag(object, HIT)) {
     took(FOREST_DEAD);
@@ -196,7 +203,7 @@ void forest_enemy(uint8_t object) {
     RAM[0x27] = 1;   // 100 points
     took(FOREST_KILLED_SCORE);
     if (object >= 0x10) took(READ_PAST_PAGE);
-    add_score(object, 0);
+    add_score(object, RAM[0xD4]);   // Y as the sound leaves it
     took(JUMPS);
     enemy_burns_away(object);
     return;
@@ -205,7 +212,7 @@ void forest_enemy(uint8_t object) {
   took(FOREST_ALIVE);
   if (*state & TURNS) {
     took(FOREST_TURNS);
-    turn_round(object);
+    turn_round(object, y);
     return;
   }
   took(BRANCH_TAKEN);
@@ -299,9 +306,9 @@ void forest_enemy(uint8_t object) {
   }
   if (moves) {
     took(FOREST_MOVES);
-    move_object(object, 0x16, Y_NOT_FOLLOWED);
+    move_object(object, 0x16, y);
   }
-  attack(object);
+  attack(object, y);
   took(JUMPS);
   tests(object);
 }

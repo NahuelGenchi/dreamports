@@ -30,11 +30,14 @@ static void set_flag(uint8_t object, uint8_t which) {
 }
 
 // sub_04_B539: what touches it, 4 by 4. A weapon kills it: it falls the way the weapon was going, for 100 points.
-static int killed(uint8_t object) {
+// `y` is the processor's Y, which the tests leave the weapon in, and the sound the bank.
+// dp:twin sub_04_B539 +6 killed(X, &Y) if X >= 1 && X < 0x16 && RAM[0xBA] < 2
+static int killed(uint8_t object, uint8_t *y) {
   RAM[0x26] = RAM[0x27] = 4;
   took(BAT_TESTS);
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  enemy_touch_tests(object, &arthur_touched, y);
+  uint8_t weapon = *y;
   if (!HITS(object)) { took(BAT_NOT_HIT); return 0; }
   took(BAT_HIT);
   set_flag(object, HIT);
@@ -51,7 +54,8 @@ static int killed(uint8_t object) {
   RAM[0x26] = 0;
   RAM[OBJECT_COUNT + object] = 0;
   took(BAT_KILLED_SCORE);
-  add_score(object, weapon);
+  *y = RAM[0xD4];   // as the sound leaves it
+  add_score(object, *y);
   took(BAT_KILLED_ENDS);
   return 1;
 }
@@ -75,7 +79,7 @@ static int in_view(uint8_t object) {
 }
 
 // $B470: hanging.
-static void hangs(uint8_t object) {
+static void hangs(uint8_t object, uint8_t y) {
   show_object(object);
   if (!object_in_view(object)) {
     // by a jump to sub_F346, whose return is the bat's
@@ -86,7 +90,7 @@ static void hangs(uint8_t object) {
     return;
   }
   took(BAT_IN_VIEW);
-  if (killed(object)) { took(BAT_KILLED_RETURNS); return; }
+  if (killed(object, &y)) { took(BAT_KILLED_RETURNS); return; }
   RAM[OBJECT_SHAPE + object] = 0x88;
   took(BAT_LOOKS);
   if (RAM[OBJECT_SCREEN_Y + object] >= RAM[OBJECT_SCREEN_Y + ARTHUR]) { took(BAT_WAITS); return; }
@@ -98,9 +102,9 @@ static void hangs(uint8_t object) {
 }
 
 // $B4AA: dropping toward Arthur's height; within 16 lines above it, it turns to fly at him.
-static void drops(uint8_t object) {
+static void drops(uint8_t object, uint8_t y) {
   if (!in_view(object)) return;
-  if (killed(object)) { took(BAT_KILLED_RETURNS); return; }
+  if (killed(object, &y)) { took(BAT_KILLED_RETURNS); return; }
   if ((uint8_t)(RAM[OBJECT_SCREEN_Y + ARTHUR] - RAM[OBJECT_SCREEN_Y + object]) >= 0x10) took(BAT_DROPS_ON);
   else {
     took(BAT_LEVEL);
@@ -113,37 +117,38 @@ static void drops(uint8_t object) {
     }
   }
   took(BAT_DROP_MOVE);
-  move_object(object, 0x18, Y_NOT_FOLLOWED);
+  move_object(object, 0x18, y);
   took(JUMPS);
   wings(object);
 }
 
 // $B4E6: flying across at him, and up or down for 2 rounds each, faster the harder the game is.
-static void flies(uint8_t object) {
+static void flies(uint8_t object, uint8_t y) {
   if (!in_view(object)) return;
-  if (killed(object)) { took(BAT_KILLED_RETURNS); return; }
+  if (killed(object, &y)) { took(BAT_KILLED_RETURNS); return; }
   took(BAT_FLIES_ACROSS);
-  move_object(object, (uint8_t)(0x10 + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(0x10 + WALK_SPEED_ADDED), y);
   uint8_t heading = RAM[OBJECT_HEADING + object];
   int down = (RAM[OBJECT_COUNT + object] >> 1) & 1;
   RAM[OBJECT_HEADING + object] = down ? 0x08 : 0x00;
   took(down ? BAT_WAVE_DOWN : BAT_WAVE_UP);
   if (object >= 0x0F) took(READ_PAST_PAGE);
-  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), Y_NOT_FOLLOWED);
+  move_object(object, (uint8_t)(0x0C + WALK_SPEED_ADDED), y);
   RAM[OBJECT_HEADING + object] = heading;
   took(BAT_WAVE_BACK);
   wings(object);
 }
 
-void bat(uint8_t object) {
+// dp:twin sub_04_B45B bat(X, Y) if X >= 1 && X < 0x16 && RAM[0xBA] < 2
+void bat(uint8_t object, uint8_t y) {
   if (flag(object, HIT)) { took(BAT_DEAD); hit_enemy_falls(object); return; }
   RAM[OBJECT_COLOURS + object] = 0;
   took(BAT_ALIVE);
-  if (flag(object, FLIES)) { took(BAT_FLYING); flies(object); return; }
+  if (flag(object, FLIES)) { took(BAT_FLYING); flies(object, y); return; }
   took(BAT_NOT_FLYING);
-  if (flag(object, DROPS)) { took(BAT_DROPPING); drops(object); return; }
+  if (flag(object, DROPS)) { took(BAT_DROPPING); drops(object, y); return; }
   took(BAT_HANGING);
-  hangs(object);
+  hangs(object, y);
 }
 
 // ---- kind $0B, sub_04_B56F
@@ -162,7 +167,7 @@ static void shooter_tests(uint8_t object, uint8_t spark) {
   RAM[0x26] = 0x08;
   RAM[0x27] = 0x10;
   int arthur_touched;
-  uint8_t weapon = enemy_touch_tests(object, &arthur_touched);
+  uint8_t weapon = enemy_touch_tests(object, &arthur_touched, NULL);
   if (weapon) {
     RAM[OBJECT_FLAGS + weapon] = spark;
     took(SHOOTER_WEAPON_SPARKS);
