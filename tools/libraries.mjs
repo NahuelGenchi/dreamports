@@ -246,7 +246,7 @@ async function findIn(version) {
     const found = await finder.find({ library, rom, codeMap, version });
     const written = library.functions.filter(f => f.file && (found.variant === null || library.variants.get(found.variant).includes(f.file))).length;
     console.log(`${library.id}${found.variant ? `, variant ${found.variant}` : ''}: ${count(found.functions.size)} of ${plural(written, 'function')} found`);
-    for (const [name, address] of [...found.functions].sort((a, b) => a[1] - b[1])) console.log(`  0x${hex(address)}  ${name}`);
+    for (const [name, address] of [...found.functions].sort((a, b) => a[1] - b[1])) console.log(`  0x${hex(address)}  ${name}${found.unmatched?.has(name) ? ', placed by a call or its file\'s order: its instructions aren\'t the library\'s as built, and match says what differs' : ''}`);
     for (const { name, why } of found.missing) console.log(`  Not found   ${name}: ${why}`);
     for (const error of found.errors) console.log(`  Didn't build  ${error}`);
     for (const problem of found.problems) console.log(`  Doesn't agree  ${problem}`);

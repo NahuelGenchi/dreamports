@@ -40,6 +40,10 @@ export const TURN_LENGTH = 16;
 // map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
 export const TWICE = { Twice: 0x08000A80 };
 export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x08000A84, size: 24 }];
+// a function that goes through a list of pointers to structs, empty in the memory it's called from, and the list, its
+// count and the total it adds to, in a file of their own (through.c)
+export const THROUGH = { Tally: 0x08000E00 };
+NAMED.set('gShapes', 0x030000A0).set('gShapeCount', 0x030000B0).set('gTotal', 0x030000B4);
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -62,6 +66,22 @@ export function withTurn(rom) {
   const turned = Buffer.from(rom);
   [0xE59F1008, 0xE5912000, 0xE5812002, 0xE12FFF1E, NAMED.get('gFrame') + 2].forEach((word, i) => turned.writeUInt32LE(word, TURN.Turn - CARTRIDGE + 4 * i));
   return turned;
+}
+
+// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does, and one that
+// takes a place in gBall in r4 and a byte in r5 and gives nothing back (withPeek, peek.c)
+export const PEEK = { Peek: 0x08000A40, Spill: 0x08000A48 };
+export const PEEK_LENGTH = 6;
+export const SPILL_LENGTH = 16;
+
+export function withPeek(rom) {
+  const peeked = Buffer.from(rom);
+  // ldrb r3, [r2, #0], add r3, #1, bx lr
+  [0x7813, 0x3301, 0x4770].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Peek - CARTRIDGE + 2 * i));
+  // ldr r0, =gBall, mov r1, #7, and r1, r4, strb r5, [r0, r1], bx lr, and the word ldr loads
+  [0x4802, 0x2107, 0x4021, 0x5445, 0x4770, 0x0000].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Spill - CARTRIDGE + 2 * i));
+  peeked.writeUInt32LE(NAMED.get('gBall'), PEEK.Spill - CARTRIDGE + 12);
+  return peeked;
 }
 
 export function withTwice(rom) {
@@ -136,6 +156,13 @@ export function withAimed(rom, assembly) {
   const aimed = Buffer.from(rom);
   place(aimed, assembly, AIMED);
   return aimed;
+}
+
+// The same cartridge with the function of twin/through.c, which goes through a list of pointers to structs.
+export function withThrough(rom, assembly) {
+  const through = Buffer.from(rom);
+  place(through, assembly, THROUGH);
+  return through;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of

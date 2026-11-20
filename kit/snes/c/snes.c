@@ -45,16 +45,35 @@ void snes_write(uint16_t address, uint8_t value) {
   uint8_t *at = place(&address);
   if (!at) return;
   note(address, value, 1);
+#ifndef DP_TWIN_CHECK
+  if (address >= 0x2140 && address < 0x2144) {
+    apu_port_write(address & 3, value);
+    return;
+  }
+#endif
   if (address == 0x2180) {
     uint32_t to = port();
     SNES_RAM[to] = value;
     port_next(to);
     return;
   }
+#ifndef DP_TWIN_CHECK
+  // the picture unit's registers from $2134 on are only read: a write there does nothing, as in Snes9x
+  if (address >= 0x2134 && address < 0x2140) return;
+#endif
   *at = value;
 #ifndef DP_TWIN_CHECK
   if (address < 0x2134) ppu_write(address, value);
   if (address == 0x420B && value) dma_start(value);
+  if ((address & 0xFF8F) == 0x430A) hdma_lines_written(address >> 4 & 7, value);
+  if (address == 0x420C) hdma_enable_written(value);
+  // turning both timers' interrupts off clears TIMEUP's flag
+  if (address == 0x4200 && !(value & 0x30)) SNES_CPU_REGISTERS[0x211] &= 0x7F;
+  // $4201's top bit going off latches the counters, and $4213 reads back what $4201 has
+  if (address == 0x4201) {
+    if (!(value & 0x80) && (SNES_CPU_REGISTERS[0x213] & 0x80)) ppu_latch(1);
+    SNES_CPU_REGISTERS[0x213] = value;
+  }
 #endif
   uint8_t *cpu = SNES_CPU_REGISTERS;
   if (address == 0x4203) {
@@ -71,6 +90,19 @@ void snes_write(uint16_t address, uint8_t value) {
   }
 }
 
+#ifndef DP_TWIN_CHECK
+// the picture unit's registers that are only written and that Snes9x reads as what was last read from its first chip
+static int ppu_open_bus(uint16_t address) {
+  switch (address) {
+  case 0x2104: case 0x2105: case 0x2106: case 0x2108: case 0x2109: case 0x210A: case 0x2114: case 0x2115: case 0x2116:
+  case 0x2118: case 0x2119: case 0x211A: case 0x2124: case 0x2125: case 0x2126: case 0x2128: case 0x2129: case 0x212A:
+    return 1;
+  default:
+    return 0;
+  }
+}
+#endif
+
 uint8_t snes_read(uint16_t address) {
   uint8_t *at = place(&address);
   if (!at) return 0;
@@ -79,6 +111,14 @@ uint8_t snes_read(uint16_t address) {
     uint32_t from = port();
     value = SNES_RAM[from];
     port_next(from);
+#ifndef DP_TWIN_CHECK
+  } else if (address >= 0x2140 && address < 0x2144) {
+    value = apu_port_read(address & 3);
+  } else if ((address >= 0x2134 && address <= 0x213F) || ppu_open_bus(address)) {
+    value = ppu_read(address);
+  } else if (address == 0x4212) {
+    value = timing_4212();
+#endif
   } else {
     value = *at;
     if (address == 0x4210 || address == 0x4211) *at = value & 0x7F;

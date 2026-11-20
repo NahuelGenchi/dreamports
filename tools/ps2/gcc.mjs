@@ -25,6 +25,7 @@ import { arch, availableParallelism, platform } from 'node:os';
 import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 import { LOCAL } from '../lib/paths.mjs';
+import { fetchChecked } from '../lib/download.mjs';
 
 const PORT = 'https://raw.githubusercontent.com/decomp-meadow/ee-gcc-macos/5d7d41618273ee13ea1219c96d724bc5e63cce00';
 /** The versions the tools build: Sony's source, the port's patch and host header, and the original compiler's objects
@@ -72,19 +73,6 @@ export function zipFiles(zip) {
     at += 46 + nameLength + zip.readUInt16LE(at + 30) + zip.readUInt16LE(at + 32);
   }
   return files;
-}
-
-async function fetchChecked(url, sha256, what) {
-  let bytes;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`it answered ${response.status}`);
-    bytes = Buffer.from(await response.arrayBuffer());
-  } catch (error) {
-    throw new Error(`${what} couldn't be got from ${url}: ${error.cause?.message ?? error.message}.`);
-  }
-  if (createHash('sha256').update(bytes).digest('hex') !== sha256) throw new Error(`What ${url} gave isn't ${what} as the tools know it, so it isn't used.`);
-  return bytes;
 }
 
 // runs a step of the build, and says what went wrong with its last lines when it fails
