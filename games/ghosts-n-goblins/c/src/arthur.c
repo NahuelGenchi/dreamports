@@ -114,7 +114,7 @@ static int way_blocked(void) {
 static void drift_unless(int blocked, uint8_t speed) {
   if (blocked) { took(JUMP_BLOCKED); return; }
   took(JUMP_DRIFTS);
-  move_object(ARTHUR, speed, Y_NOT_FOLLOWED);
+  move_object(ARTHUR, speed, RAM[0xD4]);   // Y as way_blocked's look-up of the block leaves it
   took(JUMPS);
   view_follows_across();
 }

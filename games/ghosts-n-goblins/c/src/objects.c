@@ -880,7 +880,7 @@ wait objects_task(void) {
       switch (kind) {
         case 0x00: zombie(object, y); break;
         case 0x01: plant(object); break;
-        case 0x02: flier(object); break;
+        case 0x02: flier(object, y); break;
         case 0x03: knight(object, y); break;
         case 0x04: forest_enemy(object, y); break;
         case 0x05: boss(object, y); break;

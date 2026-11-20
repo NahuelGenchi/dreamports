@@ -252,7 +252,7 @@ int arthur_is_right_of(uint8_t object);
 /** sub_04_9EC0, kind 1: a plant; $F93D, kind $14: a crow; $F49C, kind $2B: a plant's shot (enemies.c). */
 void plant(uint8_t object);
 /** sub_04_9FB0, kind 2: the flier that sits near the end of the first stage (flier.c); $F4BC, kind $2C: its shot. */
-void flier(uint8_t object);
+void flier(uint8_t object, uint8_t y);
 void flier_shot(uint8_t object, uint8_t y);
 /** sub_02_8574: kind 7, by the second stage's apartments, and sub_04_AA4F, kind 7: the small white thing from a window (apartments.c). */
 void apartments_come(uint8_t *x);
