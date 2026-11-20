@@ -171,6 +171,7 @@ jobs:
       # the function check: Play!'s processors built by themselves for Apple's chip, and memories of play
       - run: npm run test:ps2-call
       - run: npm run test:ps2-twin
+      - run: npm run test:ps2-twin-programs
       - run: npm run test:ps2-memories
       - run: npm run test:ps2-flow -- --safari
 
