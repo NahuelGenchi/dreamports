@@ -1,9 +1,14 @@
 // What ran of the original, on a console whose emulator tells the tools of every instruction: the NES, in FCEUmm with
-// the tools' change to it (fceumm.patch). The program that drives the emulators includes this (host.c), and writes what
-// the Game Boy Advance's writes (../gba/original.c, ../gba/ran.h), for the same tools.
+// the tools' change to it (fceumm.patch), and the Super Nintendo, in Snes9x with theirs (snes9x.patch). The program
+// that drives the emulators includes this (host.c), and writes what the Game Boy Advance's writes (../gba/original.c,
+// ../gba/ran.h), for the same tools.
 //
 // A place is where an instruction is in the cartridge's program, as an offset from its first byte, whatever bank is
-// switched in at its address: what a code map calls an address on the NES (../nes/functions.mjs).
+// switched in at its address: what a code map calls an address on the NES (../nes/functions.mjs), and on the Super
+// Nintendo, where it's in the ROM, whichever bank shows it (../snes/functions.mjs). The Super Nintendo's 65816 runs
+// each instruction in a mode, A and X of 8 bits or 16 or the 6502's mode, which says how long it is: three bits, X of
+// 8 bits, A of 8 bits and the 6502's mode, from the lowest, which a record below says as its processor, and the same
+// place run in two modes has a record for each.
 //
 // FUNCTIONS, a file, lists where the code map's functions are: each its place, its size, its number in the code map,
 // and three words more that a Game Boy Advance's work RAM needs and nothing here reads (32 bits each, 6 in all). A
@@ -13,17 +18,21 @@
 // every instruction of the program that ran, and for a conditional branch each of its two ways, taken and not, each
 // with the stretches of frames it happened in. A record is five 32-bit words: the instruction's place, its first byte,
 // what happened (0 it ran, 1 its branch was taken, 2 it wasn't), and the first and the last frame of a stretch of
-// frames that each had it. The way a branch goes is read from the flags it tests, before it runs.
+// frames that each had it. The way a branch goes is read from the flags it tests, before it runs. On the Super Nintendo
+// the third word has the mode's three bits above the lowest byte.
 //
 // DP_ENTRIES, when it's set, names a file for where the processor was sent in ways only play shows, for the code map
 // (codemap.mjs): a record of three 32-bit words the first time each happens at a place, the place, how it got there
 // (1 called, by a JSR; 2 jumped to through a pointer, by a JMP ($xxxx); 3 returned to, by an RTS), and the frame. An
-// interrupt between the two instructions isn't one of them: it leaves three more bytes on the stack.
+// interrupt between the two instructions isn't one of them: it leaves three more bytes on the stack. On the Super
+// Nintendo a call is also a JSL or a JSR ($xxxx,X), a jump a JMP ($xxxx,X) or a JML [$xxxx], and a return an RTL, and
+// the second word has the mode the processor was in there above its lowest byte: a record for each way and mode.
 //
 // DP_REGISTERS, when it's set, names a file for what the processor held as each function of FUNCTIONS started, which
 // the function check can try a twin with: three 32-bit words each, the function's number in the code map, A, X, Y and
 // the stack pointer, a byte each from the lowest, and the flags in the lowest byte with the frame above them. Up to
-// REGISTERS_EACH for a function, each different from the others. They stay on the contributor's computer.
+// REGISTERS_EACH for a function, each different from the others. They stay on the contributor's computer. The Super
+// Nintendo's aren't written yet.
 //
 // The program that includes this has `err`, where it says what went wrong.
 
@@ -43,7 +52,8 @@ enum { CALLED = 1, JUMPED = 2, RETURNED = 3 };
 #define RTS 0x60
 #define JMP_POINTER 0x6C
 
-struct ranPlayed { uint32_t place, code, processor, start[HAPPENINGS]; long last[HAPPENINGS]; };
+// `other` is the next record of the same place in another mode, plus one, or 0
+struct ranPlayed { uint32_t place, code, processor, other, start[HAPPENINGS]; long last[HAPPENINGS]; };
 // `word`, with `hasWord`, is the first word a function only counts with (ran-ps2.h)
 struct ranFunction { uint32_t index; int inFrame, held, hasWord; uint32_t word; uint32_t (*registers)[2]; };
 
@@ -54,6 +64,7 @@ static struct {
 	uint32_t* played;
 	uint32_t* starts;
 	uint8_t* marks;
+	uint8_t* modes;      // on the Super Nintendo, the modes a place has been sent to in, a bit each
 	size_t size;
 	struct ranPlayed* list;
 	size_t count, room;
@@ -81,9 +92,11 @@ static void ranReach(uint32_t place) {
 	ran.played = realloc(ran.played, size * sizeof(uint32_t));
 	ran.starts = realloc(ran.starts, size * sizeof(uint32_t));
 	ran.marks = realloc(ran.marks, size);
+	ran.modes = realloc(ran.modes, size);
 	memset(ran.played + ran.size, 0, (size - ran.size) * sizeof(uint32_t));
 	memset(ran.starts + ran.size, 0, (size - ran.size) * sizeof(uint32_t));
 	memset(ran.marks + ran.size, 0, size - ran.size);
+	memset(ran.modes + ran.size, 0, size - ran.size);
 	ran.size = size;
 }
 
@@ -132,13 +145,17 @@ static void ranHappened(struct ranPlayed* p, int what) {
 	p->last[what] = ran.frame;
 }
 
+// a function started: it ran in this frame
+static void ranInThisFrame(struct ranFunction* f) {
+	if (f->inFrame) return;
+	f->inFrame = 1;
+	ran.inFrameOf[ran.inFrameCount] = f;
+	ran.inFrame[ran.inFrameCount++] = f->index;
+}
+
 // a function started: it ran in this frame, with these registers
 static void ranStarted(struct ranFunction* f, uint32_t axys, uint32_t p) {
-	if (!f->inFrame) {
-		f->inFrame = 1;
-		ran.inFrameOf[ran.inFrameCount] = f;
-		ran.inFrame[ran.inFrameCount++] = f->index;
-	}
+	ranInThisFrame(f);
 	if (!ran.registersFile || f->held == REGISTERS_EACH) return;
 	for (int i = 0; i < f->held; i++) if (f->registers[i][0] == axys && (f->registers[i][1] & 0xFF) == p) return;
 	if (!f->registers) f->registers = malloc(sizeof(uint32_t[2]) * REGISTERS_EACH);
@@ -179,6 +196,7 @@ static void ranInstruction(uint32_t pc, uint32_t place, uint32_t op, uint32_t ax
 		new->place = place;
 		new->code = op;
 		new->processor = 0;
+		new->other = 0;
 		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
 		ran.played[place] = (uint32_t) ran.count;
 	}
@@ -186,6 +204,66 @@ static void ranInstruction(uint32_t pc, uint32_t place, uint32_t op, uint32_t ax
 	ranHappened(now, RAN);
 	// the eight conditional branches: bits 6 and 7 say which flag, negative, overflow, carry or zero, and bit 5 what
 	// it has to be for the branch to be taken
+	if ((op & 0x1F) == 0x10) {
+		static const uint32_t FLAG[4] = { 0x80, 0x40, 0x01, 0x02 };
+		ranHappened(now, !(p & FLAG[op >> 6]) == !(op & 0x20) ? TAKEN : NOT_TAKEN);
+	}
+}
+
+// the Super Nintendo's 65816 (snes9x.patch): where a call, a jump through a pointer and a return send it, as the change
+// in the stack pointer after it says, 2 bytes or 3, in page 1 only in the 6502's mode
+enum { JSR65816 = 0x20, JSL = 0x22, JSR_TABLE = 0xFC, JMP_POINTER65816 = 0x6C, JMP_TABLE = 0x7C, JML_POINTER = 0xDC, RTS65816 = 0x60, RTL = 0x6B };
+
+/** What Snes9x calls between reading an instruction and running it: its address, its place in the ROM or RAN_NOWHERE,
+ *  its first byte, and the registers A, X, Y, S, D, DB, P and E. */
+static void ranInstruction65816(uint32_t pc, uint32_t place, uint32_t op, const uint32_t* r) {
+	(void) pc;
+	uint32_t p = r[6], e = r[7] & 1, s = r[3], mask = e ? 0xFF : 0xFFFF;
+	uint32_t mode = (p & 0x10 ? 1 : 0) | (p & 0x20 ? 2 : 0) | e << 2;
+	int way = 0;
+	uint32_t moved = (s - (uint32_t) ran.beforeS) & mask;
+	if ((ran.beforeOp == JSR65816 || ran.beforeOp == JSR_TABLE) && moved == (-2u & mask)) way = CALLED;
+	else if (ran.beforeOp == JSL && moved == (-3u & mask)) way = CALLED;
+	else if ((ran.beforeOp == JMP_POINTER65816 || ran.beforeOp == JMP_TABLE || ran.beforeOp == JML_POINTER) && moved == 0) way = JUMPED;
+	else if (ran.beforeOp == RTS65816 && moved == 2) way = RETURNED;
+	else if (ran.beforeOp == RTL && moved == 3) way = RETURNED;
+	ran.beforeOp = (int) op;
+	ran.beforeS = (int) s;
+	if (place == RAN_NOWHERE) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (way && ran.entriesFile && (!(ran.marks[place] & 2 << way) || !(ran.modes[place] & 1 << mode))) {
+		ran.marks[place] |= 2 << way;
+		ran.modes[place] |= 1 << mode;
+		uint32_t record[3] = { place, (uint32_t) way | mode << 8, (uint32_t) ran.frame };
+		fwrite(record, 4, 3, ran.entriesFile);
+	}
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
+	if (!ran.playedFile) return;
+	// the record of this place in this mode, or a new one, after any of it in other modes
+	uint32_t* link = &ran.played[place];
+	while (*link && ran.list[*link - 1].processor != mode) link = &ran.list[*link - 1].other;
+	if (!*link) {
+		if (ran.count == ran.room) {
+			ran.room = ran.room ? ran.room * 2 : 1 << 14;
+			ran.list = realloc(ran.list, ran.room * sizeof(struct ranPlayed));
+			link = &ran.played[place];
+			while (*link && ran.list[*link - 1].processor != mode) link = &ran.list[*link - 1].other;
+		}
+		struct ranPlayed* new = &ran.list[ran.count++];
+		new->place = place;
+		new->code = op;
+		new->processor = mode;
+		new->other = 0;
+		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
+		*link = (uint32_t) ran.count;
+	}
+	struct ranPlayed* now = &ran.list[*link - 1];
+	ranHappened(now, RAN);
+	// the eight conditional branches, as the 6502's: bits 6 and 7 say which flag, and bit 5 what it has to be
 	if ((op & 0x1F) == 0x10) {
 		static const uint32_t FLAG[4] = { 0x80, 0x40, 0x01, 0x02 };
 		ranHappened(now, !(p & FLAG[op >> 6]) == !(op & 0x20) ? TAKEN : NOT_TAKEN);
