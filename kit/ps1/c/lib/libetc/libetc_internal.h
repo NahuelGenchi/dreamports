@@ -1,4 +1,3 @@
-// SPDX-License-Identifier: MIT
 // What libetc's twins share: the types they're written with, the table of callbacks its interrupt code keeps, and the
 // functions of the PsyQ libraries they call, libapi's and libc's, which a game gives where its program has them.
 #ifndef LIBETC_INTERNAL_H
@@ -39,7 +38,6 @@ struct Callbacks {
 void* ResetCallback(void);
 void InterruptCallback(int irq, Callback f);
 VSyncSetter startIntrVSync(void);
-void* startIntrDMA(void);
 void v_wait(s32 count, s32 max);
 
 // libapi's

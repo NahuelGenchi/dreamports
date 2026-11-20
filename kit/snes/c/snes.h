@@ -75,6 +75,12 @@ void game_step(uint32_t buttons);
 void game_draw(void);
 /** The game's own sound, added to what the console's sound chip plays, which is already there. */
 void game_sound(float *left, float *right, int count);
+/** What the original's CLI (1) and SEI (0) do to the processor's I flag: the timers' interrupt reaches game_irq only
+ *  while IRQs are let in, and not as the console starts. */
+void snes_interrupts(int on);
+/** What a game whose original handles the timers' interrupt, IRQ, defines: its handler, which the kit runs at the
+ *  line and dot $4200 and $4207 to $420A say, between the lines it draws, as the console does (kit/snes/c/README.md). */
+void game_irq(void);
 /** What a game whose original sends the sound processor a program defines: that program's twin, from `address`, where
  *  the console's start-up program sends the sound processor once the main program has sent it there. The kit runs it
  *  beside game_step, and it waits with snes_spc_wait. A game that leaves it out has a sound processor that stops. */

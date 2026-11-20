@@ -24,7 +24,7 @@ export const DIVIDES = { Share: 0x08000540 };
 // a function that reads a register of the hardware and writes it changed, one that waits for a DMA the V-blank
 // starts, one that reads a register through its twin's own register file, and one whose DMA copies from the BIOS,
 // in a file of their own (register.c)
-export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680, Fetch: 0x08000940, Ready: 0x08000980 };
+export const REGISTER = { Shift: 0x080005E0, Await: 0x08000620, Bias: 0x08000680, Fetch: 0x08000940, Ready: 0x08000980, Picture: 0x08000AC0 };
 // what only play reaches, in a file of its own (play.c): a function that reads what play makes, the game itself,
 // which the cartridge starts, one that runs code play put in the work memory, and the value play keeps the stage in
 // (Play, which grew with Spare, after every other function, where it has room)
@@ -64,14 +64,19 @@ export function withTurn(rom) {
   return turned;
 }
 
-// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does (withPeek, peek.c)
-export const PEEK = { Peek: 0x08000A40 };
+// a routine written by hand that takes an address in r2 and gives back in r3, as no C function does, and one that
+// takes a place in gBall in r4 and a byte in r5 and gives nothing back (withPeek, peek.c)
+export const PEEK = { Peek: 0x08000A40, Spill: 0x08000A48 };
 export const PEEK_LENGTH = 6;
+export const SPILL_LENGTH = 16;
 
 export function withPeek(rom) {
   const peeked = Buffer.from(rom);
   // ldrb r3, [r2, #0], add r3, #1, bx lr
   [0x7813, 0x3301, 0x4770].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Peek - CARTRIDGE + 2 * i));
+  // ldr r0, =gBall, mov r1, #7, and r1, r4, strb r5, [r0, r1], bx lr, and the word ldr loads
+  [0x4802, 0x2107, 0x4021, 0x5445, 0x4770, 0x0000].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Spill - CARTRIDGE + 2 * i));
+  peeked.writeUInt32LE(NAMED.get('gBall'), PEEK.Spill - CARTRIDGE + 12);
   return peeked;
 }
 

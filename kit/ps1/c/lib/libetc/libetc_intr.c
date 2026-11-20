@@ -3,6 +3,16 @@
 // the console's eleven interrupts, and the table of callbacks the rest of libetc reaches it through.
 #include "libetc_internal.h"
 
+// Sony's code has startIntrDMA give 64 bits, which GCC keeps in two registers, so a call to it leaves startIntr one
+// register fewer to choose from. A Dreamport's WebAssembly calls a function by the type it has, a pointer.
+#ifdef MATCHING
+long long startIntrDMA();
+#define DMA_SETTER() ((Callback (*)(int, Callback))(long)startIntrDMA())
+#else
+void* startIntrDMA(void);
+#define DMA_SETTER() ((Callback (*)(int, Callback))startIntrDMA())
+#endif
+
 typedef struct {
     u16 interruptsInitialized;
     u16 inInterrupt;
@@ -98,7 +108,7 @@ intrEnv_t* startIntr() {
     HookEntryInt(intrEnv.buf);
     intrEnv.interruptsInitialized = true;
     pCallbacks->VSyncCallbacks = startIntrVSync();
-    pCallbacks->DMACallback = (Callback (*)(int, Callback))startIntrDMA();
+    pCallbacks->DMACallback = DMA_SETTER();
     _96_remove();
     ExitCriticalSection();
     return &intrEnv;
