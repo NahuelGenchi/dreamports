@@ -30,6 +30,8 @@ export const EACH = 4;
 const LAYOUT = 1;
 // how many unpacked memories are held at once, 395 KB each
 const HELD = 24;
+// how many of the words a place held a call is aimed with, at most
+const SEEN = 16;
 
 const fnv = text => {
   let hash = 0x811C9DC5;
@@ -154,8 +156,24 @@ export function openMemories(folder) {
     by.get(address).push({ ...memory, own: true });
     return memory;
   });
+  // the words each place held in the memories, every one different, in the order of the memories, for the check to
+  // aim a call with what the game itself kept there (#1709)
+  const words = new Map();
+  const heldAt = address => {
+    const where = inImage(address);
+    if (where < 0 || where + 4 > IMAGE) return [];
+    if (!words.has(address)) {
+      const found = new Set();
+      for (const memory of all) {
+        found.add(memory.image().readUInt32LE(where));
+        if (found.size >= SEEN) break;
+      }
+      words.set(address, [...found]);
+    }
+    return words.get(address);
+  };
   return {
-    count: all.length, functions: by.size,
+    count: all.length, functions: by.size, heldAt,
     of: address => by.get(address) ?? [],
     any: choose => (all.length ? all[choose.below(all.length)] : null),
   };

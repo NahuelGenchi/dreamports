@@ -9,6 +9,8 @@ name: Mac
 # a third compares the two: every draw list, sound and memory the same on both, as a Mac's proofs have to be Linux's.
 # And the function check: npm run test:ps2-call and test:ps2-twin on the Mac, where Play!'s processors are built for
 # Apple's chip, and npm run test:ps2-memories on both, which takes a made-up program's memories of play in Play! itself.
+# And on the Mac, npm run test:ps2-disc, test:ps2-cards, test:ps2-ledger and test:ps2-memory: the kit's disc reads and
+# memory cards against Play!'s, what the tools learn as a game plays, and the console's memories prove compares.
 # Nothing from any game is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as building Play! takes a while. It runs on pull requests that touch what the PlayStation 2's
@@ -175,6 +177,11 @@ jobs:
       - run: npm run test:ps2-twin
       - run: npm run test:ps2-twin-programs
       - run: npm run test:ps2-memories
+      # disc reads, memory cards, what the tools learn as a game plays and the console's memories for prove
+      - run: npm run test:ps2-disc
+      - run: npm run test:ps2-ledger
+      - run: npm run test:ps2-memory
+      - run: npm run test:ps2-cards
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
