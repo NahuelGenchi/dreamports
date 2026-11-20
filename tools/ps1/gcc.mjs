@@ -12,8 +12,11 @@
 // it with, config/mips/psx.h from decompals/old-gcc's patch at 370040a, the GCC 2.6.3 Xeeynamo/sotn-decomp builds Sony's
 // PsyQ libraries with. The patch is fetched as GCC's source is, at its fixed commit and checked against its hash, and
 // only that header is taken from it. GCC 2.6.3 comes from a Slackware mirror's gzip archive, whose C compiler's files
-// are those of GNU's own bzip2 archive, which Node.js can't unpack. What GCC needs to build this way is the tools'
-// own, written here, and changes nothing of GCC's compiling:
+// are those of GNU's own bzip2 archive, which Node.js can't unpack. Each file has a second address with the same
+// bytes, asked when the first fails (../lib/download.mjs): for GCC 2.7.2 the Internet Archive's copy of GNU's own, as
+// GNU's mirrors leave its old versions out or hold them packed again, for GCC 2.6.3 another Slackware mirror, and for
+// the patch the jsDelivr CDN's copy of the same commit. What GCC needs to build this way is the tools' own, written
+// here, and changes nothing of GCC's compiling:
 //   - a header for the computer it runs on, 32-bit and little-endian, as configure would write for one;
 //   - a declaration of each of its functions that returns nothing or a double, and a prototype of each of its error and
 //     warning functions, which take a varying number of arguments: C of 1995 calls them undeclared, and WebAssembly,
@@ -30,14 +33,22 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { LOCAL } from '../lib/paths.mjs';
 import { binaryen, filesIn } from '../lib/binaryen.mjs';
+import { fetchChecked } from '../lib/download.mjs';
 
-/** The versions the tools build, each from its archive, with its hash, and its target: GCC's own header, or one
- *  taken from a patch, fetched and checked the same way. */
+/** The versions the tools build, each from its archive, at its own address and then a copy's, with its hash, and its
+ *  target: GCC's own header, or one taken from a patch, fetched and checked the same way. */
 export const GCC = {
-  '2.7.2': { url: 'https://ftp.gnu.org/old-gnu/gcc/gcc-2.7.2.tar.gz', sha256: '7cd8bce5c3aeec59a72ecc2d3d5123864a817b14cdbd0680b1a969c3bccc5da5', target: 'mips/ecoffl.h' },
+  '2.7.2': {
+    urls: ['https://ftp.gnu.org/old-gnu/gcc/gcc-2.7.2.tar.gz', 'https://web.archive.org/web/2020id_/https://ftp.gnu.org/old-gnu/gcc/gcc-2.7.2.tar.gz'],
+    sha256: '7cd8bce5c3aeec59a72ecc2d3d5123864a817b14cdbd0680b1a969c3bccc5da5', target: 'mips/ecoffl.h',
+  },
   '2.6.3': {
-    url: 'https://mirrors.slackware.com/slackware/slackware-2.2.0/source/d/gcc/gcc-2.6.3.tar.gz', sha256: '66529b6ced4ccc580ec365809c1abed856d948283deff656801dec14f47d081a', target: 'mips/psx.h',
-    patch: { url: 'https://raw.githubusercontent.com/decompals/old-gcc/370040a1b8510c752c8c91434309599c8857b97d/patches/psx.patch', sha256: 'f575e1f3eb4bbd36aa90e39ce8697bce97be9ea2d818c20f2196142accdbcb5b', file: 'config/mips/psx.h' },
+    urls: ['https://mirrors.slackware.com/slackware/slackware-2.2.0/source/d/gcc/gcc-2.6.3.tar.gz', 'https://www.mirrorservice.org/sites/ftp.slackware.com/pub/slackware/slackware-2.2.0/source/d/gcc/gcc-2.6.3.tar.gz'],
+    sha256: '66529b6ced4ccc580ec365809c1abed856d948283deff656801dec14f47d081a', target: 'mips/psx.h',
+    patch: {
+      urls: ['https://raw.githubusercontent.com/decompals/old-gcc/370040a1b8510c752c8c91434309599c8857b97d/patches/psx.patch', 'https://cdn.jsdelivr.net/gh/decompals/old-gcc@370040a1b8510c752c8c91434309599c8857b97d/patches/psx.patch'],
+      sha256: 'f575e1f3eb4bbd36aa90e39ce8697bce97be9ea2d818c20f2196142accdbcb5b', file: 'config/mips/psx.h',
+    },
     // a call with one of its two arguments, which a computer of 1994 let pass and WebAssembly doesn't link: it's
     // reached only when GCC writes bytecode, which nothing asks of it here
     fixes: { 'varasm.c': [['\tbc_emit_labelref (name);', '\tbc_emit_labelref (name, 0);']] },
@@ -175,20 +186,6 @@ async function runWasi(module, args, { name = 'gcc', folders, stdin = null, stdo
   }
 }
 
-// a download's bytes, checked against its hash
-async function download(url, sha256, what) {
-  let got;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`it answered ${response.status}`);
-    got = Buffer.from(await response.arrayBuffer());
-  } catch (error) {
-    throw new Error(`${what} couldn't be got from ${url}: ${error.cause?.message ?? error.message}.`);
-  }
-  if (createHash('sha256').update(got).digest('hex') !== sha256) throw new Error(`What ${url} gave isn't ${what} as the tools know it, so it isn't used.`);
-  return got;
-}
-
 /** The file a unified diff makes new, `name` as its +++ line has it after the folder, its added lines alone. */
 export function newFileIn(diff, name) {
   const lines = diff.split('\n'), start = lines.findIndex(line => line.startsWith('+++ ') && line.split(/\s/)[1]?.replace(/^[^/]+\//, '') === name);
@@ -202,9 +199,9 @@ export function newFileIn(diff, name) {
 }
 
 async function fetchSource(version, log) {
-  const { url, sha256, patch } = GCC[version];
-  log(`Getting GCC ${version}'s source, from ${url}…`);
-  const packed = await download(url, sha256, `GCC ${version}'s source`);
+  const { urls, sha256, patch } = GCC[version];
+  log(`Getting GCC ${version}'s source, from ${urls[0]}…`);
+  const packed = await fetchChecked(urls, sha256, `GCC ${version}'s source`, { log });
   const files = new Map();
   for (const [path, bytes] of filesIn(gunzipSync(packed))) {
     const name = path.replace(/^gcc-[^/]+\//, '');
@@ -219,8 +216,8 @@ async function fetchSource(version, log) {
     files.set(name, Buffer.from(text, 'latin1'));
   }
   if (patch) {
-    const header = newFileIn((await download(patch.url, patch.sha256, `GCC ${version}'s target`)).toString('latin1'), patch.file);
-    if (!header) throw new Error(`${patch.url} doesn't make ${patch.file}, GCC ${version}'s target.`);
+    const header = newFileIn((await fetchChecked(patch.urls, patch.sha256, `GCC ${version}'s target`, { log })).toString('latin1'), patch.file);
+    if (!header) throw new Error(`${patch.urls[0]} doesn't make ${patch.file}, GCC ${version}'s target.`);
     files.set(patch.file, Buffer.from(header, 'latin1'));
   }
   return files;

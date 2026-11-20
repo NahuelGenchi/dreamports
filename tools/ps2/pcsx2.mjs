@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, 
 import { delimiter, join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
+import { fetchChecked } from '../lib/download.mjs';
 
 const FOLDER = join(LOCAL, 'pcsx2');
 const DOWNLOADS = join(FOLDER, 'downloads'), LIBRARIES = join(FOLDER, 'libraries'), WORK = join(FOLDER, 'work');
@@ -95,10 +96,9 @@ function run(what, program, args, cwd, env) {
 async function archive(name) {
   const [url, sha256] = ARCHIVES[name], file = join(DOWNLOADS, url.split('/').at(-1));
   if (!existsSync(file)) {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Getting ${url} failed: ${response.status}.`);
+    const bytes = await fetchChecked(url, sha256, `PCSX2's ${name}`);
     mkdirSync(DOWNLOADS, { recursive: true });
-    writeFileSync(file, Buffer.from(await response.arrayBuffer()));
+    writeFileSync(file, bytes);
   }
   if (createHash('sha256').update(readFileSync(file)).digest('hex') !== sha256) {
     rmSync(file, { force: true });
