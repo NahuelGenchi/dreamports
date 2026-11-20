@@ -197,11 +197,20 @@ async function prove({ game, title, cartridge, data, file, wrongs, screen }) {
   check(!existsSync(gameFolder(game)), 'nothing is left behind');
 }
 
+// the programs asked for: one alone when it's named, as `npm run test:snes-kit -- music`, the first or the second half
+// of them with --half 1 or --half 2, as Check runs them in two parts side by side, or else all of them
+function asked() {
+  const [first, second] = process.argv.slice(2);
+  if (first !== '--half') return PROGRAMS.filter(each => !first || each.name === first);
+  if (second !== '1' && second !== '2') throw new Error('Usage: npm run test:snes-kit -- [<program> | --half 1 | --half 2]');
+  const middle = Math.ceil(PROGRAMS.length / 2);
+  return second === '1' ? PROGRAMS.slice(0, middle) : PROGRAMS.slice(middle);
+}
+
 async function main() {
   const before = tracked(), copies = existsSync(COPIES) ? readFileSync(COPIES) : null;
   try {
-    // one program alone when it's named, as `npm run test:snes-kit -- music`
-    for (const program of PROGRAMS.filter(each => !process.argv[2] || each.name === process.argv[2])) {
+    for (const program of asked()) {
       console.log(`The ${program.name} program:`);
       await prove(program);
     }
