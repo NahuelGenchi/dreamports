@@ -91,8 +91,10 @@ void MPlayJumpTableCopy(void **table)
     void *const *from = gMPlayJumpTableTemplate;
     s32 i;
     M4A_TIME(MPlayJumpTableCopy, 0x0, 0xA, M4A_AT(chk_adr_r2, 0), M4A_ROM);
+    // each word stored as stm stores it, and the table's address moved on by 4 from wherever it started
     for (i = 0x24; i > 0; i--, from++) {
-        *table++ = chk_adr_r2(from) ? *from : NULL;
+        *M4A_STM_AT(void *, table) = chk_adr_r2(from) ? *from : NULL;
+        table++;
         // the next command's load and check, or back
         if (i > 1) {
             M4A_TIME(MPlayJumpTableCopy, 0xC, 0x12, M4A_AT(MPlayJumpTableCopy, 0x6), M4A_EW);
