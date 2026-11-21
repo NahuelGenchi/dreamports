@@ -498,9 +498,10 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
   }
 }
 
-/** 0x08001AA4, sa2__sub_8002B20: in the V-blank, each background on the list to draw has its map copied to video
- *  memory, from the tile its view starts at: a scrolling one only when it has moved onto another tile. Gives back FALSE
- *  outside the V-blank, the rest left for the next, and TRUE once the list is empty. */
+/** 0x08001AA4 to 0x0800258E, sa2__sub_8002B20: in the V-blank, each background on the list to draw has its map
+ *  copied to video memory, from the tile its view starts at: a scrolling one only when it has moved onto another tile.
+ *  Gives back FALSE outside the V-blank, the rest left for the next, and TRUE once the list is empty. The code map
+ *  keeps the code its long jumps go on into as five functions of their own, of which this is the twin too. */
 bool32 sa2__sub_8002B20(void) {
   u32 gap = 0;   // where a wide background's row goes on, kept from one background to the next as the original keeps it
   // (timed with nothing waiting: the way out is the function's end, reached by a `bl` the compiler wrote as a long jump)
