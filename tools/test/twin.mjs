@@ -11,6 +11,9 @@
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked. A function
 // that goes through a list of pointers to structs, empty in the memory it's called from, has its paths taken only
 // once the check makes a struct up where a pointer leads to none, laid out as agbcc's debugging records of its C say.
+// A function that reads through a pointer the game keeps to a table in the cartridge, a list of pointers to numbers,
+// has the path no number of the table takes taken only once the check makes the table up in the work memory, with
+// the numbers its pointers lead to made up too.
 //
 // Then the cartridge is given a game to play (twin/play.c), and the check memories of that play (--memories): a
 // function that reads what only play makes isn't checked from the memory of power-on and is from its own memories, a
@@ -29,7 +32,7 @@ import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/matc
 import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { typesOfFile } from '../gba/twin-shapes.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -93,8 +96,14 @@ const listed = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!listed.error, `the function that goes through a list of pointers builds with ${compiler.name}${listed.error ? `: ${listed.error}` : ''}`);
+// and a function that reads through a pointer the game keeps to a table in the cartridge, from a file of its own
+const tabled = await matchFile({
+  file: join(HERE, 'table.c'), compiler, work: join(work, 'built', 'table'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!tabled.error, `the function that reads through a pointer to a table in the cartridge builds with ${compiler.name}${tabled.error ? `: ${tabled.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')));
+writeFileSync(copy, withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -117,7 +126,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
+const lengths = new Map([...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...tabled.functions.filter(f => TABLE[f.name]).map(f => [TABLE[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -285,6 +294,22 @@ try {
   check(unseen.by.Tally?.kind === 'same', `a twin wrong only past a struct the memory has none of isn't found without them: ${unseen.by.Tally?.line ?? unseen.error}`);
   const seen = await checking(join(past, 'through.c'), {}, { typesOf });
   check(seen.by.Tally?.kind === 'differs' && /at 0x030000B[4-7], in the work memory/.test(seen.by.Tally.line), `and is found with them: ${seen.by.Tally?.line ?? seen.error}`);
+
+  console.log('A pointer the game keeps to a table in the cartridge, a list of pointers to numbers:');
+  const kinds = (await typesOf(join(HERE, 'table.c'))).values?.get('gTable');
+  check(kinds?.kind === 'pointer' && kinds.to?.size === 8 && kinds.to.fields[0]?.type?.to?.kind === 'pointer' && kinds.to.fields[0].type.to.to?.size === 2,
+    'agbcc\'s debugging records say it points to a struct of 8 bytes, whose first value points to pointers to numbers of 2 bytes');
+  const tableBlind = await checking(join(HERE, 'table.c'));
+  check(tableBlind.by.Measure?.kind === 'same' && tableBlind.by.Measure.whole === false && /left out/.test(tableBlind.by.Measure.line), `without the C's types, no number the table has takes the path that needs its top two bits, and it's left out: ${tableBlind.by.Measure?.line ?? tableBlind.error}`);
+  const tableTyped = await checking(join(HERE, 'table.c'), {}, { typesOf });
+  check(tableTyped.by.Measure?.kind === 'same' && tableTyped.by.Measure.whole === true && /after them made again from calls that read a table in the cartridge/.test(tableTyped.by.Measure.line), `with them, after the function's own calls, calls that read the table are made again with it made up in the work memory, its numbers made up too, and the calls take every path: ${tableTyped.by.Measure?.line ?? tableTyped.error}`);
+  const wider = join(work, `changed-${++variants}`);
+  cpSync(HERE, wider, { recursive: true });
+  writeFileSync(join(wider, 'table.c'), readFileSync(join(HERE, 'table.c'), 'utf8').replace('gWide += 2;', 'gWide += 3;'));
+  const narrow = await checking(join(wider, 'table.c'));
+  check(narrow.by.Measure?.kind === 'same', `a twin wrong only on that path isn't found without them: ${narrow.by.Measure?.line ?? narrow.error}`);
+  const widened = await checking(join(wider, 'table.c'), {}, { typesOf });
+  check(widened.by.Measure?.kind === 'differs' && /at 0x030000C[89AB], in the work memory/.test(widened.by.Measure.line), `and is found with them: ${widened.by.Measure?.line ?? widened.error}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));

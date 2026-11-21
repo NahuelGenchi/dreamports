@@ -44,6 +44,12 @@ export const TWICE_PIECES = [{ address: 0x08000A80, size: 4 }, { address: 0x0800
 // count and the total it adds to, in a file of their own (through.c)
 export const THROUGH = { Tally: 0x08000E00 };
 NAMED.set('gShapes', 0x030000A0).set('gShapeCount', 0x030000B0).set('gTotal', 0x030000B4);
+// a function that reads through a pointer the game keeps to a table in the cartridge, a list of pointers to numbers,
+// and the pointer, the kind it reads and the width it adds to, in a file of their own (table.c); the table, its list
+// and the numbers, where the cartridge has them, none with its top two bits set
+export const TABLE = { Measure: 0x08000E80 };
+NAMED.set('gTable', 0x030000C0).set('gKind', 0x030000C4).set('gWide', 0x030000C8);
+export const KINDS = 0x08000F00, PIECES = [[0x0001, 0x4002, 0x8003, 0x0004], [0x4000, 0x0005], [0x8001, 0x2000, 0x0007], [0x7FFF]];
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -147,6 +153,24 @@ export function withThrough(rom, assembly) {
   const through = Buffer.from(rom);
   place(through, assembly, THROUGH);
   return through;
+}
+
+// The same cartridge with the function of twin/table.c, the table it reads in the cartridge, its list of 4 kinds and
+// each kind's numbers, and a start that points gTable to the table before the loop that does nothing, as a game sets
+// a pointer to one of its own tables: ldr r0, =gTable   ldr r1, =table   str r1, [r0]   b .
+export function withTable(rom, assembly) {
+  const tabled = Buffer.from(rom);
+  place(tabled, assembly, TABLE);
+  const list = KINDS + 0x10, numbers = list + 4 * PIECES.length;
+  tabled.writeUInt32LE(list, KINDS - CARTRIDGE);
+  tabled.writeUInt16LE(PIECES.length, KINDS + 4 - CARTRIDGE);
+  let at = numbers;
+  PIECES.forEach((piece, kind) => {
+    tabled.writeUInt32LE(at, list + 4 * kind - CARTRIDGE);
+    piece.forEach(value => { tabled.writeUInt16LE(value, at - CARTRIDGE); at += 2; });
+  });
+  [0xE59F0008, 0xE59F1008, 0xE5801000, 0xEAFFFFFE, NAMED.get('gTable'), KINDS].forEach((word, i) => tabled.writeUInt32LE(word, 0xC0 + 4 * i));
+  return tabled;
 }
 
 // The same cartridge with a game to play: the functions of twin/play.c, and a start that goes to Play in place of
