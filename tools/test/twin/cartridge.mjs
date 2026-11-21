@@ -50,6 +50,11 @@ NAMED.set('gShapes', 0x030000A0).set('gShapeCount', 0x030000B0).set('gTotal', 0x
 export const TABLE = { Measure: 0x08000E80 };
 NAMED.set('gTable', 0x030000C0).set('gKind', 0x030000C4).set('gWide', 0x030000C8);
 export const KINDS = 0x08000F00, PIECES = [[0x0001, 0x4002, 0x8003, 0x0004], [0x4000, 0x0005], [0x8001, 0x2000, 0x0007], [0x7FFF]];
+// a function that writes through a pointer in the struct it's given, which one of its paths needs to point into that
+// struct, and the pointer to it, 0 in the memory the test calls from, and what it adds to, in a file of their own
+// (inside.c)
+export const INSIDE = { Pour: 0x08000F80 };
+NAMED.set('gStrip', 0x030000D0).set('gSpilled', 0x030000D4);
 
 // The made-up cartridge, from the assembly the compiler wrote: a header and a loop that does nothing, each function's
 // bytes where FUNCTIONS says, with each place the assembler left filled in, and the few bytes the program doesn't define.
@@ -153,6 +158,13 @@ export function withThrough(rom, assembly) {
   const through = Buffer.from(rom);
   place(through, assembly, THROUGH);
   return through;
+}
+
+// The same cartridge with the function of twin/inside.c, which writes through a pointer in the struct it's given.
+export function withInside(rom, assembly) {
+  const inside = Buffer.from(rom);
+  place(inside, assembly, INSIDE);
+  return inside;
 }
 
 // The same cartridge with the function of twin/table.c, the table it reads in the cartridge, its list of 4 kinds and
