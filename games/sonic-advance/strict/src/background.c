@@ -124,6 +124,8 @@ extern const u8 gOamShapesSizes[12][2];
 #define ARM_LDR(at) (*(const vu32 *)(at))
 #define ARM_LDRH(at) ((u32)*(const vu16 *)(at))
 #define ARM_LDRSH(at) ((s32)*(const volatile s16 *)(at))
+// A local the C reads before it ever sets it is, as the console's compiler leaves it, what its stack held there.
+#define BG_SPRITE_LEFTOVER(local, at) ((void)0)
 #else
 /** A halfword stored where the console has the address, the lowest bit dropped as its store drops it (hardware.c). */
 void console_store16(u32 at, u16 value);
@@ -134,6 +136,11 @@ void console_dma3_into(u32 src, void *dest, u32 control);
 #define ARM_LDR(at) ({ u32 at_ = (u32)(at), w_ = *(const u32 *)(at_ & ~3u), by_ = (at_ & 3) * 8; by_ ? w_ >> by_ | w_ << (32 - by_) : w_; })
 #define ARM_LDRH(at) ({ u32 at_ = (u32)(at), h_ = *(const u16 *)(at_ & ~1u); at_ & 1 ? h_ >> 8 | h_ << 24 : h_; })
 #define ARM_LDRSH(at) ({ u32 at_ = (u32)(at); at_ & 1 ? (s32)*(const s8 *)at_ : (s32)*(const s16 *)at_; })
+// A local the C reads before it ever sets it, which the original keeps at `at` in its frame, below its eight pushes and
+// its 0x44 bytes of locals: what the console's stack held there, as the Dreamport keeps it (kit/gba/c/stack.h), from
+// where the stack pointer was as the function was called.
+#include "stack.h"
+#define BG_SPRITE_LEFTOVER(local, at) ((local) = (u32)gba_stack_peek((u32)gba_stack_asm_sp(-0x64 + (at)), 4))
 #endif
 
 /** 0x08002958, sa2__sub_80039E4, dp:unaligned: in the V-blank, each sprite the game put on a background is drawn into
@@ -144,10 +151,14 @@ bool32 sa2__sub_80039E4(void) {
   u16 oam[3];
   u32 tileShift = 5, rowBytes, tilesX, tilesY, rows, left, i, part, nextPart;
   u32 bgVram, bgBase, cnt, bgId, s, dims, from, flags, anim;
-  u32 held = 0;   // the byte waiting for its neighbour in a rotating background's map
+  // the byte waiting for its neighbour in a rotating background's map, kept at 0x24 in the original's frame: it's set
+  // only at an even byte, so a row whose first byte is odd puts beside it what the stack held there
+  u32 held;
   s32 x, y, step;
   u32 at, row;
   u16 tile;
+
+  BG_SPRITE_LEFTOVER(held, 0x24);
 
   // (timed up to the first sprite: the display's status looked at at its load's time, and the ways out before it)
   TIME(0x08002958, 0x08002968, 0x0800296B);
