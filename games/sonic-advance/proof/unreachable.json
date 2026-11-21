@@ -9,6 +9,16 @@
       "The branch at 0800298A goes by the flags the instruction at 08002988 sets from numbers in the code and what the branch at 08002982 compared, in the run of instructions from 08002986, which only that branch comes into, gone its one way, and no word of the cartridge points into, so it's never not taken."
     ],
     [
+      "08002B06",
+      "taken",
+      "The branch at 08002B06 goes by the flags the instruction at 08002B04 sets from what, on every way into it the function's code allows, worked out across the function from 08002958, with what it reads from the cartridge at 0809BE28 to 0809BE47 and what it keeps on its own stack, can only send it one way, so it's never taken. Words of the cartridge that point into the function were set aside as not ways in, each because nothing refers to it: the word at 087CE110 holds 08002A1D, odd, so a Thumb address, outside the code map's functions, with 1 of the 64 words around it an address and neither beside it, and no word of the cartridge holds its address nor does any code work it out; the nearest place below it anything points to is 087CC214, 7932 bytes before it; the word at 080B25DC holds 08002AE7, odd, so a Thumb address, outside the code map's functions, with none of the 64 words around it an address, and no word of the cartridge holds its address nor does any code work it out; the nearest place below it anything points to is 080B2408, 468 bytes before it."
+    ],
+    [
+      "08002DE6",
+      "taken",
+      "The branch at 08002DE6 goes by the flags the instruction at 08002DE4 sets from what, on every way into it the function's code allows, worked out across the function from 08002958, with what it reads from the cartridge at 0809BE28 to 0809BE47 and what it keeps on its own stack, can only send it one way, so it's never taken. Words of the cartridge that point into the function were set aside as not ways in, each because nothing refers to it: the word at 087CE110 holds 08002A1D, odd, so a Thumb address, outside the code map's functions, with 1 of the 64 words around it an address and neither beside it, and no word of the cartridge holds its address nor does any code work it out; the nearest place below it anything points to is 087CC214, 7932 bytes before it; the word at 080B25DC holds 08002AE7, odd, so a Thumb address, outside the code map's functions, with none of the 64 words around it an address, and no word of the cartridge holds its address nor does any code work it out; the nearest place below it anything points to is 080B2408, 468 bytes before it."
+    ],
+    [
       "0809778C",
       "taken",
       "The branch at 0809778C goes by the flags the instruction at 0809778A sets from numbers in the code alone, in the run of instructions from 08097760, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never taken."
