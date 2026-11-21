@@ -7,14 +7,16 @@
 //   "from": who writes it,
 //   "functions": [
 //     ["080001C4", "bytes", "1f0c…", "9a3e…"],
-//     ["0800024C", "memory", "77b2…", "c41d…", 2000]
+//     ["0800024C", "memory", "77b2…", "c41d…", 2000],
+//     ["08000300", "memory", "5e0a…", "d27c…", 40000, [[1, 20000], [2, 20000]]]
 //   ]
 // }
 //
 // A line is a function of the code map by its key, the kind of proof, "bytes" when `npm run dp -- match` found its
 // twin comes out as the original's bytes and "memory" when `npm run dp -- twin` found it leaves the same memory, a
 // mark of the twin as it was written then, a mark of the original's function as the copy had it, and for "memory"
-// how many calls were compared. Only those two tools write a line, and only for a twin with no stop in it. A mark is
+// how many calls were compared, and, for one whose calls took every path only over several runs of the check, each
+// run's seed and calls (#1768). Only those two tools write a line, and only for a twin with no stop in it. A mark is
 // the start of a SHA-1: the twin's of its own code, of what its file holds outside every function, and of the game's
 // own headers the file includes, without their comments, and the original's of its bytes. So a proof goes stale by
 // itself: once the twin's code changes, or a line of its file outside the functions, or a header of its file, or the
@@ -83,16 +85,17 @@ export const proofsFile = version => join(proofFolder(version), PROOFS);
 /** Whether a version is made a function at a time: it keeps its proofs. */
 export const asksForProofs = version => existsSync(proofsFile(version));
 
-/** A proofs.json's JSON read: { original, functions }, `functions` a Map of each key to { kind, twin, original, calls }.
- *  Throws, saying what's wrong `where`, when it isn't one. */
+/** A proofs.json's JSON read: { original, functions }, `functions` a Map of each key to { kind, twin, original, calls,
+ *  runs }, `runs` for a proof over several runs, each [seed, calls]. Throws, saying what's wrong `where`, when it
+ *  isn't one. */
 export function parseProofs(found, where = PROOFS) {
   const lines = found?.functions;
   const good = line => Array.isArray(line) && /^[0-9A-F]{8}(?:\/[0-9A-F]{16})?(?:@[^~]+)?(?:~vu)?$/.test(line[0]) && Object.hasOwn(KINDS, line[1]) && MARK.test(line[2]) && MARK.test(line[3])
-    && (line[1] === 'memory' ? line.length === 5 && Number.isInteger(line[4]) && line[4] > 0 : line.length === 4);
+    && (line[1] === 'memory' ? (line.length === 5 || (line.length === 6 && goodRuns(line[5], line[4]))) && Number.isInteger(line[4]) && line[4] > 0 : line.length === 4);
   if (!found || typeof found.original !== 'string' || !Array.isArray(lines) || !lines.every(good)) {
     throw new Error(`${where} isn't as npm run dp -- match and npm run dp -- twin write it: only they write a function's proof, so take your changes to it back and run them again.`);
   }
-  const functions = new Map(lines.map(([key, kind, twin, original, calls]) => [key, { kind, twin, original, ...(calls ? { calls } : {}) }]));
+  const functions = new Map(lines.map(([key, kind, twin, original, calls, runs]) => [key, { kind, twin, original, ...(calls ? { calls } : {}), ...(runs ? { runs } : {}) }]));
   if (functions.size !== lines.length) throw new Error(`${where} lists a function twice: only npm run dp -- match and npm run dp -- twin write it.`);
   const started = found.starts ?? [];
   const goodStart = line => Array.isArray(line) && line.length === 4 && /^[0-9A-F]{8}$/.test(line[0]) && MARK.test(line[1]) && MARK.test(line[2]) && Number.isInteger(line[3]) && line[3] > 0;
@@ -100,6 +103,12 @@ export function parseProofs(found, where = PROOFS) {
   const starts = new Map(started.map(([key, twin, original, bytes]) => [key, { twin, original, bytes }]));
   return { original: found.original, functions, ...(starts.size ? { starts } : {}) };
 }
+
+// the runs a proof by the same memory over several of them says: two or more, each [seed, calls], no seed twice, as
+// the same seed makes the same calls again, adding up to its calls
+const goodRuns = (runs, calls) => Array.isArray(runs) && runs.length > 1
+  && runs.every(run => Array.isArray(run) && run.length === 2 && Number.isInteger(run[0]) && run[0] >= 0 && Number.isInteger(run[1]) && run[1] > 0)
+  && new Set(runs.map(([seed]) => seed)).size === runs.length && runs.reduce((sum, [, each]) => sum + each, 0) === calls;
 
 /** A version's proofs as its file has them, or null for a version that keeps none. */
 export function readProofs(version) {
@@ -118,7 +127,7 @@ export function readProofs(version) {
 /** A proofs.json's text, a function to a line, in the code map's order. */
 export function formatProofs({ original, functions, starts = new Map() }) {
   const lines = [...functions].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .map(([key, { kind, twin, original: theirs, calls }]) => `    ${JSON.stringify([key, kind, twin, theirs, ...(kind === 'memory' ? [calls] : [])])}`);
+    .map(([key, { kind, twin, original: theirs, calls, runs }]) => `    ${JSON.stringify([key, kind, twin, theirs, ...(kind === 'memory' ? [calls, ...(runs ? [runs] : [])] : [])])}`);
   const started = [...starts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([key, { twin, original: theirs, bytes }]) => `    ${JSON.stringify([key, twin, theirs, bytes])}`);
   const after = started.length ? `,\n  "starts": [\n${started.join(',\n')}\n  ]` : '';
   return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(FROM)},\n  "functions": [${lines.length ? `\n${lines.join(',\n')}\n  ` : ''}]${after}\n}\n`;
@@ -247,7 +256,7 @@ export function stateOf(version, { codeMap = readCodeMap(version), proofs = read
     return {
       key: f.key, address: f.address, size: f.size, ...(beyondProof(codeMap, f) ? { beyond: beyondProof(codeMap, f) } : {}),
       twin: twin && { name: twin.name, file: twin.file, line: twin.line },
-      kind: why ? null : line.kind, why, ...(why || !line.calls ? {} : { calls: line.calls }),
+      kind: why ? null : line.kind, why, ...(why || !line.calls ? {} : { calls: line.calls }), ...(why || !line.runs ? {} : { runs: line.runs }),
     };
   });
 }
@@ -259,9 +268,12 @@ export function countsOf(states) {
   return counts;
 }
 
+// numbers as a sentence lists them: 1, 2 and 3
+const listed = numbers => (numbers.length < 2 ? String(numbers[0]) : `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}`);
+
 /** A function's state in a few words, as the tools and a task say it. */
 export function stateText(state) {
-  if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls` : ''}`;
+  if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls${state.runs ? ` in ${state.runs.length} runs, seeds ${listed(state.runs.map(([seed]) => seed))}` : ''}` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
       : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
@@ -274,7 +286,8 @@ export function stateText(state) {
 
 /**
  * Keeps what `match` or `twin` found in a version's proofs, for a version that keeps them: `kind` is the tool's
- * proof, `proven` the keys of the functions it found the same, each with `calls` for 'memory', and `failed` the
+ * proof, `proven` the keys of the functions it found the same, each with `calls` for 'memory', and `runs` for one
+ * proven over several runs (each [seed, calls]), and `failed` the
  * keys of those it tried and didn't. A twin with a stop is never kept as proven, whatever the tool found. The same
  * bytes are the stronger proof, so a line that says them stays when `twin` finds the same memory too, and a line of
  * the other kind stays when this tool's own proof fails, as it's still what it says. A line whose twin has gone,
@@ -316,14 +329,14 @@ export function withProofs(kept, { kind, proven = [], failed = [], functions: al
   const functions = new Map([...kept].filter(([key]) => byKey.has(key) && marks.has(key)));
   const holds = key => functions.has(key) && functions.get(key).twin === marks.get(key).mark && [null, functions.get(key).original].includes(mark(byKey.get(key)));
   const result = { kept: [], stopped: [], already: [] };
-  for (const { key, calls } of proven) {
+  for (const { key, calls, runs } of proven) {
     if (!byKey.has(key) || !marks.has(key) || mark(byKey.get(key)) === null) continue;
     if (stopped.has(key)) {
       result.stopped.push(key);
       functions.delete(key);
     } else if (kind === 'memory' && functions.get(key)?.kind === 'bytes' && holds(key)) result.already.push(key);
     else {
-      functions.set(key, { kind, twin: marks.get(key).mark, original: mark(byKey.get(key)), ...(kind === 'memory' ? { calls } : {}) });
+      functions.set(key, { kind, twin: marks.get(key).mark, original: mark(byKey.get(key)), ...(kind === 'memory' ? { calls, ...(runs ? { runs } : {}) } : {}) });
       result.kept.push(key);
     }
   }

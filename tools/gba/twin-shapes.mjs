@@ -12,7 +12,9 @@
 // (docs/STANDARD.md): the original and the twin are given the same struct. A pointer the game keeps to one of its own
 // tables in the cartridge leads only to what that table has, which no change to the work memory varies, so a call that
 // read one is made again with the table made up in the work memory, as the cartridge's own with a few of its values
-// made up, and its lists of numbers or pointers made up too (#1759).
+// made up, and its lists of numbers or pointers made up too (#1759). A pointer in a struct made up points now and then
+// into a struct made up for the same call, the one being made among them, to a value of what it points to, as C allows
+// a pointer to any value of its kind, so a call whose copy writes over the struct it copies for is had too (#1767).
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -36,6 +38,9 @@ const ITEMS = 17;
 const CARTRIDGE = { from: 0x08000000, to: 0x0E000000 };
 // how many structs in the work memory a call's reads led to are looked in for more pointers, at most
 const INSIDE = 64;
+// one pointer in how many of a struct made up, of those that a value in a struct made up for the same call could be
+// pointed to by, points to one (#1767)
+const WITHIN = 8;
 const read = (bytes, at, size) => (size === 1 ? bytes[at] : size === 2 ? bytes.readUInt16LE(at) : bytes.readUInt32LE(at));
 
 /** The version's types in `file`'s C, as agbcc lays them out ({ values, structs }, stack-map.mjs typesOf), or { error }.
@@ -138,7 +143,7 @@ export function shapesOf(types, addressOf) {
     } else if (type.kind === 'struct') {
       for (const field of type.fields) {
         if (!field.bits) leavesOf(field.type, offset + field.offset, found);
-        else if ([1, 2, 4].includes(field.size) && !found.some(leaf => leaf.offset === offset + field.offset)) found.push({ offset: offset + field.offset, size: field.size, type: { kind: 'base', size: field.size, signed: false } });
+        else if ([1, 2, 4].includes(field.size) && !found.some(leaf => leaf.offset === offset + field.offset)) found.push({ offset: offset + field.offset, size: field.size, type: { kind: 'base', size: field.size, signed: false }, bits: true });
       }
     } else if (type.kind === 'union' && type.fields.length) leavesOf(type.fields[0].type, offset + type.fields[0].offset, found);
     return found;
@@ -170,15 +175,32 @@ export function shapesOf(types, addressOf) {
     return [...found];
   };
 
+  // the same struct or union, as two types read from the C may each be
+  const sameStruct = (a, b) => a === b || (a.kind === b.kind && a.name !== null && a.name === b.name && a.size === b.size);
+  // The addresses a pointer of `type` may hold in the structs made up for a call, `structs`, each { at, to, leaves }:
+  // of each value in them of what it points to, a number of that size or a pointer, as C allows, though not a
+  // bit-field's, whose address C doesn't take; or of each struct of the kind it points to (#1767)
+  const withinOf = (type, structs) => {
+    const to = whole(type.to);
+    if (!to) return [];
+    if (to.kind === 'struct' || to.kind === 'union') return structs.filter(each => sameStruct(whole(each.to), to)).map(each => each.at);
+    if (to.kind !== 'pointer' && ((to.kind !== 'base' && to.kind !== 'enum') || ![1, 2, 4].includes(to.size))) return [];
+    const fits = leaf => !leaf.bits && (to.kind === 'pointer' ? leaf.type.kind === 'pointer' : leaf.type.kind !== 'pointer' && leaf.type.size === to.size);
+    return structs.flatMap(each => each.leaves.filter(fits).map(leaf => each.at + leaf.offset));
+  };
+
   // A struct of `to`'s kind at `at`: as one the game keeps, when `image` has one, or as `held` reads one, the struct
   // in the cartridge the pointer held, with one to three of its values made up, or else each value made up, as
   // `choose` makes them up (`code` the functions' addresses), and a pointer to a struct another struct made up the
   // same way most times, in the room `take(bytes)` gives. With `lists`, for a struct made up in place of one of the
   // cartridge's, whose lists no change to the work memory varies either, a pointer to values that aren't a struct
   // leads most times to as many of them made up too; elsewhere it's a number, as a list in the work memory as short as
-  // that has a copy through it run past its end. Its changes, as [address, bytes, value].
-  const makeUp = (to, at, depth, image, take, choose, code, changes = [], held = null, lists = false) => {
+  // that has a copy through it run past its end. A pointer made up points now and then to a value of what it points
+  // to in a struct made up for the same call, as `structs` has each, this one among them. Its changes, as [address,
+  // bytes, value].
+  const makeUp = (to, at, depth, image, take, choose, code, changes = [], held = null, lists = false, structs = []) => {
     const leaves = leavesOf(to), kept = held ? [] : keptIn(to, image);
+    structs.push({ at, to, leaves });
     const fromImage = base => (offset, bytes) => read(image, inImage(base + offset), bytes);
     const model = held ? (choose.below(4) ? held : null) : kept.length && choose.below(4) ? fromImage(choose.from(kept)) : null;
     const made = new Set();
@@ -193,13 +215,25 @@ export function shapesOf(types, addressOf) {
         changes.push([address, leaf.size, choose.value({ bits: leaf.size * 8, signed: leaf.type.signed === true }, code)]);
         return;
       }
+      // now and then into a struct made up for the call, as a copy through it can write over that struct (#1767)
+      const within = withinOf(leaf.type, structs);
+      if (within.length && !choose.below(WITHIN)) {
+        changes.push([address, 4, choose.from(within)]);
+        return;
+      }
       const inner = structOf(leaf.type) ?? (lists ? itemsOf(leaf.type) : null), room = inner && depth < DEPTH && choose.below(4) ? take(inner.size) : null;
-      if (room !== null) makeUp(inner, room, depth + 1, image, take, choose, code, changes, null, lists);
+      if (room !== null) makeUp(inner, room, depth + 1, image, take, choose, code, changes, null, lists, structs);
       changes.push([address, 4, room ?? choose.value({ bits: 32, signed: false, pointer: true }, code)]);
     });
     return changes;
   };
 
+  // the C's own values' pointers to structs, by their addresses
+  const pointersOfValues = () => {
+    const found = new Map();
+    for (const region of regions) for (const slot of slotsIn(region.type, region.at, region.size)) if (!found.has(slot.address)) found.set(slot.address, slot.to);
+    return found;
+  };
   let pointers = null;
   return {
     /**
@@ -233,10 +267,7 @@ export function shapesOf(types, addressOf) {
     readThrough({ reads, image }) {
       // the C's own values' pointers to structs by their addresses, found once, and the structs in the work memory
       // the call's reads led to so far, which a few calls read many of: what a call reads is looked up in them alone
-      if (!pointers) {
-        pointers = new Map();
-        for (const region of regions) for (const slot of slotsIn(region.type, region.at, region.size)) if (!pointers.has(slot.address)) pointers.set(slot.address, slot.to);
-      }
+      if (!pointers) pointers = pointersOfValues();
       const inside = [], found = [];
       for (const [address, bytes] of reads) {
         if (bytes !== 4 || address & 3 || inImage(address) < 0) continue;
@@ -252,6 +283,30 @@ export function shapesOf(types, addressOf) {
         } else if (value >= CARTRIDGE.from && value + to.size <= CARTRIDGE.to && !found.some(slot => slot.address === address)) found.push({ address, to, held: value });
       }
       return found;
+    },
+
+    /**
+     * For a call that came back, after it read `reads` ([address, bytes]) from `image`, the memory it started from with
+     * what was changed for it: each pointer it read in a struct in the work memory its reads led to, which the C says
+     * points to a number or a pointer, with the addresses in that same struct it could point to instead, each of a
+     * value of what it points to that it doesn't point to now, as { address, targets } (#1767). As C allows, and a
+     * copy through it then writes over the struct it's in, as a background's map copied over its own count of rows.
+     */
+    pointsInto({ reads, image }) {
+      if (!pointers) pointers = pointersOfValues();
+      const inside = [], found = [];
+      for (const [address, bytes] of reads) {
+        if (bytes !== 4 || address & 3 || inImage(address) < 0) continue;
+        const struct = inside.findLast(each => address >= each.at && address < each.at + each.to.size);
+        const pointer = pointers.has(address) ? { to: pointers.get(address) } : struct ? pointerIn(struct.to, address - struct.at) : null;
+        if (!pointer) continue;
+        const value = image.readUInt32LE(inImage(address)), to = structOf(pointer);
+        // a pointer to a struct leads on to it, and one to a number or a pointer in such a struct is a way in
+        if (to) {
+          if (inside.length < INSIDE && inImage(value) >= 0 && inImage(value + to.size - 1) >= 0 && !inside.some(each => each.at === value)) inside.push({ at: value, to, leaves: leavesOf(to) });
+        } else if (struct && !found.some(slot => slot.address === address)) found.push({ address, pointer, value, struct });
+      }
+      return found.map(({ address, pointer, value, struct }) => ({ address, targets: withinOf(pointer, [struct]).filter(target => target !== value) })).filter(slot => slot.targets.length);
     },
 
     /**

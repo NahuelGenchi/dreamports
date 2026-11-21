@@ -5,7 +5,8 @@
 // has to find each twin the test spoils: a `>` turned to `>=`, found only because what the function reads is changed;
 // a byte written to the kit's video memory as if it were plain memory, where the kit does what the hardware would; a
 // function reached only through a pointer; a function that divides through the BIOS, followed there and back; a twin
-// that never comes back, stopped and not hung; and a twin that calls
+// that never comes back, stopped and not hung; a function whose ways two runs take between them, and neither alone,
+// proven over both, of which a run that differs is no part; and a twin that calls
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked. A function
@@ -13,7 +14,9 @@
 // once the check makes a struct up where a pointer leads to none, laid out as agbcc's debugging records of its C say.
 // A function that reads through a pointer the game keeps to a table in the cartridge, a list of pointers to numbers,
 // has the path no number of the table takes taken only once the check makes the table up in the work memory, with
-// the numbers its pointers lead to made up too.
+// the numbers its pointers lead to made up too. A function that writes through a pointer in the struct it's given has
+// the path that pointer takes into the same struct taken only once the check points it there now and then, in a
+// struct made up and in one the memory holds.
 //
 // Then the cartridge is given a game to play (twin/play.c), and the check memories of that play (--memories): a
 // function that reads what only play makes isn't checked from the memory of power-on and is from its own memories, a
@@ -31,8 +34,9 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
 import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { typesOfFile } from '../gba/twin-shapes.mjs';
+import { inImage } from '../gba/twin-memory.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -102,8 +106,14 @@ const tabled = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!tabled.error, `the function that reads through a pointer to a table in the cartridge builds with ${compiler.name}${tabled.error ? `: ${tabled.error}` : ''}`);
+// and a function that writes through a pointer in the struct it's given, from a file of its own
+const spilled = await matchFile({
+  file: join(HERE, 'inside.c'), compiler, work: join(work, 'built', 'inside'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!spilled.error && spilled.functions.find(f => f.name === 'Pour')?.length <= 0x1000 - (INSIDE.Pour - 0x08000000), `the function that writes through a pointer in its struct builds with ${compiler.name} and fits the cartridge${spilled.error ? `: ${spilled.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')));
+writeFileSync(copy, withInside(withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')), readFileSync(join(work, 'built', 'inside.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -126,7 +136,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...tabled.functions.filter(f => TABLE[f.name]).map(f => [TABLE[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
+const lengths = new Map([...spilled.functions.filter(f => INSIDE[f.name]).map(f => [INSIDE[f.name], f.length]), ...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...tabled.functions.filter(f => TABLE[f.name]).map(f => [TABLE[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -161,6 +171,21 @@ try {
   check(again.by.Fall?.line === found.by.Fall?.line, 'the same seed finds it at the same call');
   const other = await checking(spoiled, { seed: 7 });
   check(other.by.Fall?.kind === 'differs', 'and another seed finds it too');
+
+  console.log('Two runs, each taking a way of a branch the other never takes:');
+  // from the memory of power-on, nothing changed, the ball never gets past the floor; from the same memory with it
+  // high and falling, it always does
+  const high = Buffer.from(start);
+  high.writeInt16LE(200, inImage(NAMED.get('gBall') + 2));
+  high.writeInt16LE(3, inImage(NAMED.get('gBall') + 4));
+  const under = await checking(program(), { changes: false });
+  const over = await checking(program(), { changes: false, seed: 2 }, { start: high });
+  check(under.by.Fall?.kind === 'same' && under.by.Fall.whole === false && over.by.Fall?.kind === 'same' && over.by.Fall.whole === false, `each run alone leaves the same memory and leaves a way out: ${under.by.Fall?.line}; ${over.by.Fall?.line}`);
+  const firstRun = [{ seed: 1, calls: under.by.Fall?.compared, ran: under.by.Fall?.ran ?? [] }];
+  const both = await checking(program(), { changes: false, seed: 2 }, { start: high, earlier: address => (address === FUNCTIONS.Fall ? firstRun : []) });
+  check(both.by.Fall?.whole === true && JSON.stringify(both.by.Fall.runs) === JSON.stringify([[1, CALLS], [2, CALLS]]) && /with the calls of seed 1 before it, 800 in all/.test(both.by.Fall.line), `with the first run's ways, the second takes every path, a proof over both runs: ${both.by.Fall?.line}`);
+  const wrongBoth = await checking(spoiled, {}, { earlier: address => (address === FUNCTIONS.Fall ? firstRun : []) });
+  check(wrongBoth.by.Fall?.kind === 'differs' && wrongBoth.by.Fall.whole === undefined && wrongBoth.by.Fall.runs === undefined, `and a run that finds a twin different is no part of one, whatever runs came before it: ${wrongBoth.by.Fall?.line}`);
 
   console.log('A byte written to video memory:');
   const plain = await checking(program(['VIDEO8(TILES + at, colour);', 'gba_vram[at] = colour;']));
@@ -310,6 +335,29 @@ try {
   check(narrow.by.Measure?.kind === 'same', `a twin wrong only on that path isn't found without them: ${narrow.by.Measure?.line ?? narrow.error}`);
   const widened = await checking(join(wider, 'table.c'), {}, { typesOf });
   check(widened.by.Measure?.kind === 'differs' && /at 0x030000C[89AB], in the work memory/.test(widened.by.Measure.line), `and is found with them: ${widened.by.Measure?.line ?? widened.error}`);
+
+  console.log('A pointer in a struct made up, which one path needs to point into that struct:');
+  const insideTyped = await checking(join(HERE, 'inside.c'), {}, { typesOf });
+  check(insideTyped.by.Pour?.kind === 'same' && insideTyped.by.Pour.whole === true && /given a struct made up/.test(insideTyped.by.Pour.line), `with the C's types, the struct's pointer points now and then into the struct itself, at its count, and the calls take every path: ${insideTyped.by.Pour?.line ?? insideTyped.error}`);
+  const eight = join(work, `changed-${++variants}`);
+  cpSync(HERE, eight, { recursive: true });
+  writeFileSync(join(eight, 'inside.c'), readFileSync(join(HERE, 'inside.c'), 'utf8').replace('gSpilled += 7;', 'gSpilled += 8;'));
+  const into = await checking(join(eight, 'inside.c'), {}, { typesOf });
+  // the call that finds it: the pointer to the strip set to where a struct is made up, and the strip's own pointer to
+  // its count, 4 bytes on
+  const strip = /0x030000D0 was set to 0x([0-9A-F]{8})/.exec(into.by.Pour?.line ?? '')?.[1];
+  const pointsIn = strip && new RegExp(`0x${strip} was set to 0x${(parseInt(strip, 16) + 4).toString(16).toUpperCase().padStart(8, '0')}`).test(into.by.Pour.line);
+  check(into.by.Pour?.kind === 'differs' && /at 0x030000D[4-7], in the work memory/.test(into.by.Pour.line) && pointsIn, `and a twin wrong only on that path is found, by a call whose strip points to its own count: ${into.by.Pour?.line ?? into.error}`);
+
+  // a strip the memory holds, with its pointer somewhere else: after the function's own calls, a call that read the
+  // pointer is made again with it pointed into the strip
+  const held = Buffer.from(start);
+  held.writeUInt32LE(0x03000200, inImage(NAMED.get('gStrip')));
+  held.writeUInt32LE(0x03000300, inImage(0x03000200));
+  held.writeUInt16LE(5, inImage(0x03000204));
+  held.writeUInt16LE(9, inImage(0x03000206));
+  const heldTyped = await checking(join(HERE, 'inside.c'), {}, { typesOf, start: held });
+  check(heldTyped.by.Pour?.kind === 'same' && heldTyped.by.Pour.whole === true && /after them made again from calls that read .*a pointer in a struct, with it pointed into that struct/.test(heldTyped.by.Pour.line), `and with a strip the memory holds, calls that read its pointer are made again after the function's own with it pointed into the strip, and take every path: ${heldTyped.by.Pour?.line ?? heldTyped.error}`);
 
   console.log('A function called through a pointer:');
   const stepped = await checking(program(['gFrame += 3;', 'gFrame += 4;']));
