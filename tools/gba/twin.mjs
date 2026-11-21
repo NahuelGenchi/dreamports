@@ -26,7 +26,9 @@
 // over the calls compared, every instruction of the original's ran and each of its branches went both ways
 // (pathsLeft). One whose calls left a path out is said to be the same as far as they went, with the first of what
 // never ran. In a version that keeps its proofs (../lib/proofs.mjs), each function proven is kept there as proven by
-// the same memory, and one that differs loses that line. Only this tool and `match` write them.
+// the same memory, and one that differs loses that line. Only this tool and `match` write them. A function whose
+// calls took every path only with those of runs of other seeds before, kept on this computer, is proven over those
+// runs together, as each call of each was compared the same (../lib/twin-runs.mjs, #1768).
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -39,7 +41,8 @@ import { originalPlay } from '../lib/recording.mjs';
 import { copyWith } from '../lib/copies.mjs';
 import { cKit, keptObject, SAME_FLAGS, stackedCopies, twinsFolder, WASM_FLAGS } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
-import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
+import { asksForProofs, keepProofs, keptText, originalMarks, twinMarks } from '../lib/proofs.mjs';
+import { afterRun, readRuns, runsBefore, writeRuns } from '../lib/twin-runs.mjs';
 import { NOT_TAKEN, TAKEN, WENT_ELSEWHERE, WENT_ON, instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
@@ -1380,7 +1383,7 @@ export function givesBackUsed(bytes, functions) {
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
  * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, typesOf = null, options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, typesOf = null, earlier = () => [], options = {}, seed = options.seed ?? DEFAULTS.seed }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
@@ -1420,7 +1423,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
   return {
     functions: [
-      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...(f.run ? { run: f.run } : {}), ...whole(f, outcome(f, all), cartridge, ruledOut) })),
+      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...(f.run ? { run: f.run } : {}), ...whole(f, outcome(f, all), cartridge, ruledOut, earlier(f.address & ~1), seed) })),
       ...twins.filter(twin => twin.address === null && only === null).map(twin => ({ name: twin.name, address: null, line: twin.line })),
       ...unknown.filter(asked).map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
     ],
@@ -1428,14 +1431,28 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
 }
 
 // a function found the same, with whether its calls took every path of the original's, which is what makes it a
-// proof: `whole`, and after its line what they left out
-function whole(f, found, cartridge, ruledOut) {
+// proof: `whole`, and after its line what they left out. With the runs of other seeds before it, of the same twin and
+// original, `earlier`, each { seed, calls, ran }, one whose calls alone didn't take every path is whole when theirs
+// and its together did, its `runs` each one's [seed, calls]; and one not whole alone gives the ways it took, `ran`, for
+// them to be kept (#1768)
+function whole(f, found, cartridge, ruledOut, earlier = [], seed = DEFAULTS.seed) {
   if (found.kind !== 'same') return found;
   if (!f.span) return { ...found, whole: false, line: `${found.line}, but the code map has no function there, so which of its paths ran can't be said, and it isn't proven` };
-  const { total, left } = pathsLeft(cartridge(f.address & ~1, f.span), f.address & ~1, f.ran, ruledOut, f.modes);
+  const bytes = cartridge(f.address & ~1, f.span);
+  const { total, left } = pathsLeft(bytes, f.address & ~1, f.ran, ruledOut, f.modes);
   if (!left.length) return { ...found, whole: true, line: `${found.line}, which took every path of the original's` };
+  const ran = [...f.ran];
+  if (earlier.length) {
+    const together = new Map(f.ran);
+    for (const run of earlier) for (const [where, ways] of run.ran) together.set(where, (together.get(where) ?? 0) | ways);
+    if (!pathsLeft(bytes, f.address & ~1, together, ruledOut, f.modes).left.length) {
+      const runs = [...earlier.map(run => [run.seed, run.calls]), [seed, f.compared]].sort(([a], [b]) => a - b);
+      const seeds = earlier.map(run => run.seed).sort((a, b) => a - b);
+      return { ...found, whole: true, runs, ran, line: `${found.line}, which with the calls of seed${seeds.length === 1 ? '' : 's'} ${seeds.length === 1 ? seeds[0] : `${seeds.slice(0, -1).join(', ')} and ${seeds.at(-1)}`} before it, ${count(runs.reduce((sum, [, calls]) => sum + calls, 0))} in all, each compared the same, took every path of the original's` };
+    }
+  }
   const first = left.slice(0, 3).map(([where, how]) => `${at(where)} ${how}`).join(', ');
-  return { ...found, whole: false, left, line: `${found.line}, but they left out ${count(left.length)} of the original's ${count(total)} instructions and branch ways, such as ${first}: it's the same as far as they went, and isn't proven until calls take those too` };
+  return { ...found, whole: false, left, ran, line: `${found.line}, but they left out ${count(left.length)} of the original's ${count(total)} instructions and branch ways, such as ${first}: it's the same as far as they went, and isn't proven until calls take those too` };
 }
 
 /**
@@ -1542,12 +1559,21 @@ export async function twin(game, options = {}) {
   const givesBack = givesBackUsed(rom, codeMap.functions.filter(f => !f.bytes && f.address >= CARTRIDGE && !isArm(f.address)).map(f => ({ address: f.address, size: f.size })));
   const { ways: ruledOut } = readUnreachable(game);
   const proven = [], differing = [];
+  // the runs of other seeds kept on this computer, of functions their calls found the same without taking every path,
+  // for a run that keeps its proofs (../lib/twin-runs.mjs, #1768), and the marks they go with: the twin's and the
+  // original's as they are now
+  const keeping = asksForProofs(game) && !all.addresses && all.calls >= KEPT_FROM;
+  let kept = keeping ? readRuns(game) : null;
+  const marksNow = keeping ? twinMarks(game, codeMap) : null, markOf = keeping ? originalMarks(game, codeMap) : null;
+  const byKey = new Map(codeMap.functions.map(f => [f.key, f]));
+  const marksOf = key => ({ twin: marksNow?.get(key)?.mark ?? null, original: byKey.has(key) && markOf ? markOf(byKey.get(key)) : null });
+  const earlier = address => (kept ? runsBefore(kept, hex(address), marksOf(hex(address)), all.seed) : []);
   let wholes = 0;
   try {
     for (const file of chosen) {
       const result = await checkFile({
         original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories,
-        sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack, typesOf,
+        sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack, typesOf, earlier,
         runOf: twin => {
           const through = throughOf(twin, codeMap.functions);
           return through === null ? null : runIn(codeMap.functions, twin.address, through);
@@ -1576,12 +1602,15 @@ export async function twin(game, options = {}) {
         // a twin of a run proves each function of it (#1708)
         if (f.whole) {
           wholes++;
-          for (const address of f.run ?? [f.address]) proven.push({ key: hex(address), calls: f.compared });
+          const calls = f.runs ? f.runs.reduce((sum, [, each]) => sum + each, 0) : f.compared;
+          for (const address of f.run ?? [f.address]) proven.push({ key: hex(address), calls, ...(f.runs ? { runs: f.runs } : {}) });
         }
         else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
       }
+      if (kept) kept = afterRun(kept, all.seed, result.functions.filter(f => f.address !== null).map(f => ({ key: hex(f.address), marks: marksOf(hex(f.address)), kind: f.kind, whole: f.whole === true && !f.runs, calls: f.compared, ran: f.ran })));
     }
+    if (kept) writeRuns(game, kept);
   } finally {
     opened.original.close();
   }
