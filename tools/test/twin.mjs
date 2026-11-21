@@ -5,7 +5,8 @@
 // has to find each twin the test spoils: a `>` turned to `>=`, found only because what the function reads is changed;
 // a byte written to the kit's video memory as if it were plain memory, where the kit does what the hardware would; a
 // function reached only through a pointer; a function that divides through the BIOS, followed there and back; a twin
-// that never comes back, stopped and not hung; and a twin that calls
+// that never comes back, stopped and not hung; a function whose ways two runs take between them, and neither alone,
+// proven over both, of which a run that differs is no part; and a twin that calls
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked. A function
@@ -170,6 +171,21 @@ try {
   check(again.by.Fall?.line === found.by.Fall?.line, 'the same seed finds it at the same call');
   const other = await checking(spoiled, { seed: 7 });
   check(other.by.Fall?.kind === 'differs', 'and another seed finds it too');
+
+  console.log('Two runs, each taking a way of a branch the other never takes:');
+  // from the memory of power-on, nothing changed, the ball never gets past the floor; from the same memory with it
+  // high and falling, it always does
+  const high = Buffer.from(start);
+  high.writeInt16LE(200, inImage(NAMED.get('gBall') + 2));
+  high.writeInt16LE(3, inImage(NAMED.get('gBall') + 4));
+  const under = await checking(program(), { changes: false });
+  const over = await checking(program(), { changes: false, seed: 2 }, { start: high });
+  check(under.by.Fall?.kind === 'same' && under.by.Fall.whole === false && over.by.Fall?.kind === 'same' && over.by.Fall.whole === false, `each run alone leaves the same memory and leaves a way out: ${under.by.Fall?.line}; ${over.by.Fall?.line}`);
+  const firstRun = [{ seed: 1, calls: under.by.Fall?.compared, ran: under.by.Fall?.ran ?? [] }];
+  const both = await checking(program(), { changes: false, seed: 2 }, { start: high, earlier: address => (address === FUNCTIONS.Fall ? firstRun : []) });
+  check(both.by.Fall?.whole === true && JSON.stringify(both.by.Fall.runs) === JSON.stringify([[1, CALLS], [2, CALLS]]) && /with the calls of seed 1 before it, 800 in all/.test(both.by.Fall.line), `with the first run's ways, the second takes every path, a proof over both runs: ${both.by.Fall?.line}`);
+  const wrongBoth = await checking(spoiled, {}, { earlier: address => (address === FUNCTIONS.Fall ? firstRun : []) });
+  check(wrongBoth.by.Fall?.kind === 'differs' && wrongBoth.by.Fall.whole === undefined && wrongBoth.by.Fall.runs === undefined, `and a run that finds a twin different is no part of one, whatever runs came before it: ${wrongBoth.by.Fall?.line}`);
 
   console.log('A byte written to video memory:');
   const plain = await checking(program(['VIDEO8(TILES + at, colour);', 'gba_vram[at] = colour;']));

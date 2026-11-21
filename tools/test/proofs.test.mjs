@@ -14,6 +14,7 @@ import { functionTaskText, functionTasks } from '../tasks.mjs';
 import { whatToTake } from '../lib/take.mjs';
 import { whatCanStart } from '../../src/lib/pieces.mjs';
 import { field } from '../lib/claims.mjs';
+import { afterRun, runsBefore } from '../lib/twin-runs.mjs';
 
 const HEADER = '#define FLOOR 100\nextern int gY;\n';
 const PROGRAM = [
@@ -167,6 +168,47 @@ test('the file is a function to a line, read back as it was written, and nothing
     { original: 'abc', functions: [['08000200', 'memory', 'a'.repeat(16), 'b'.repeat(16)]] }, { original: 'abc', functions: [['08000200', 'bytes', 'yes', 'b'.repeat(16)]] },
     { original: 'abc', functions: [['08000200', 'bytes', 'a'.repeat(16), 'b'.repeat(16)], ['08000200', 'bytes', 'a'.repeat(16), 'b'.repeat(16)]] },
   ]) assert.throws(() => parseProofs(wrong), /npm run dp -- match and npm run dp -- twin write it/);
+});
+
+test('a proof by the same memory over several runs says each run\'s seed and calls, and nothing else is taken for one', () => {
+  const marks = marksOf(), given = { functions: codeMap.functions, marks, stopped: new Set(), mark: mark() };
+  const { functions } = withProofs(new Map(), { ...given, kind: 'memory', proven: [{ key: '08000260', calls: 30000, runs: [[1, 20000], [2, 10000]] }, { key: '08000200', calls: 2000 }] });
+  assert.deepEqual(functions.get('08000260'), { kind: 'memory', twin: marks.get('08000260').mark, original: markOf('bytes of 08000260'), calls: 30000, runs: [[1, 20000], [2, 10000]] });
+  assert.equal(functions.get('08000200').runs, undefined);
+  const text = formatProofs({ original: 'abc', functions });
+  assert.match(text, /"08000260","memory","[0-9a-f]{16}","[0-9a-f]{16}",30000,\[\[1,20000\],\[2,10000\]\]\]/);
+  assert.deepEqual(parseProofs(JSON.parse(text)), { original: 'abc', functions });
+  const found = states({ proofs: { functions }, marks });
+  assert.equal(stateText(found.get('08000260')), 'proven by the same memory, over 30,000 calls in 2 runs, seeds 1 and 2');
+  assert.equal(stateText(found.get('08000200')), 'proven by the same memory, over 2,000 calls');
+  const line = runs => ({ original: 'abc', functions: [['08000260', 'memory', 'a'.repeat(16), 'b'.repeat(16), 30000, runs]] });
+  // one run alone, a seed twice, runs that don't add up to the calls, and a run with no calls aren't a line's runs
+  for (const runs of [[[1, 30000]], [[1, 20000], [1, 10000]], [[1, 20000], [2, 9000]], [[1, 30000], [2, 0]], 'seeds 1 and 2']) {
+    assert.throws(() => parseProofs(line(runs)), /npm run dp -- match and npm run dp -- twin write it/, JSON.stringify(runs));
+  }
+});
+
+test('the runs kept of a function count with a run of another seed of the same twin and original, and a run that differs drops them', () => {
+  const marks = { twin: 'a'.repeat(16), original: 'b'.repeat(16) };
+  const same = (seed, ran, more = {}) => ({ key: '08000260', marks, kind: 'same', whole: false, calls: 2000, ran, ...more });
+  let kept = afterRun({}, 1, [same(1, [[0x08000260, 3]])]);
+  assert.deepEqual(kept, { '08000260': { ...marks, runs: [{ seed: 1, calls: 2000, ran: [[0x08000260, 3]] }] } });
+  assert.deepEqual(runsBefore(kept, '08000260', marks, 2), kept['08000260'].runs);
+  // the same seed makes the same calls: its run doesn't count with itself, and a new run of it with as many calls or
+  // more takes its place, while one of fewer doesn't
+  assert.deepEqual(runsBefore(kept, '08000260', marks, 1), []);
+  kept = afterRun(kept, 2, [same(2, [[0x08000262, 1]])]);
+  kept = afterRun(kept, 1, [same(1, [[0x08000264, 1]], { calls: 4000 })]);
+  assert.deepEqual(kept['08000260'].runs.map(run => [run.seed, run.calls]), [[1, 4000], [2, 2000]]);
+  assert.deepEqual(afterRun(kept, 1, [same(1, [[0x08000266, 1]], { calls: 1000 })]), kept);
+  // once the twin or the original isn't as it was, the runs kept count for nothing, and the next run starts again
+  assert.deepEqual(runsBefore(kept, '08000260', { ...marks, twin: 'c'.repeat(16) }, 3), []);
+  assert.deepEqual(afterRun(kept, 3, [same(3, [[0x08000260, 3]], { marks: { ...marks, twin: 'c'.repeat(16) } })])['08000260'].runs.map(run => run.seed), [3]);
+  // a run that took every path alone needs none kept, and one that couldn't compare enough leaves them as they were
+  assert.deepEqual(afterRun(kept, 3, [same(3, [[0x08000260, 3]], { whole: true })]), kept);
+  assert.deepEqual(afterRun(kept, 3, [{ key: '08000260', marks, kind: 'few' }]), kept);
+  // a run that found the twin different, or never back, or stopped, drops every run kept of it, and keeps none of its own
+  for (const kind of ['differs', 'never', 'stopped']) assert.deepEqual(afterRun(kept, 3, [{ key: '08000260', marks, kind, ran: [[0x08000260, 3]] }]), {}, kind);
 });
 
 test('a function that starts as the original\'s does is listed apart, and is no proof', () => {
