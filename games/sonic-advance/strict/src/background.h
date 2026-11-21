@@ -1,0 +1,45 @@
+// A background of the screen as the engine draws one: its tiles, and the map that lays them out.
+#ifndef BACKGROUND_H
+#define BACKGROUND_H
+#include "console.h"
+
+/** Tiles to copy to video memory. */
+struct GraphicsData {
+  /* 0x00 */ const void *src;
+  /* 0x04 */ void *dest;
+  /* 0x08 */ u16 size;
+  /* 0x0A */ u16 anim;
+};
+
+/** A background: which of the game's tile maps it shows, where in video memory, and how much of it. */
+struct Background {
+  /* 0x00 */ struct GraphicsData graphics;
+  /* 0x0C */ u16 *layoutVram;
+  /* 0x10 */ const u16 *layout;
+  /* 0x14 */ u16 xTiles;
+  /* 0x16 */ u16 yTiles;
+  /* 0x18 */ u16 unk18;
+  /* 0x1A */ u16 unk1A;
+  /* 0x1C */ u16 tilemapId;
+  /* 0x1E */ u16 unk1E;
+  /* 0x20 */ u16 unk20;
+  /* 0x22 */ u16 unk22;
+  /* 0x24 */ u16 unk24;
+  /* 0x26 */ u16 targetTilesX;
+  /* 0x28 */ u16 targetTilesY;
+  /* 0x2A */ u8 paletteOffset;
+  /* 0x2B */ u8 animFrameCounter;
+  /* 0x2C */ u8 animDelayCounter;
+  /* 0x2E */ u16 flags;
+  /* 0x30 */ u16 scrollX;
+  /* 0x32 */ u16 scrollY;
+  /* 0x34 */ u16 prevScrollX;
+  /* 0x36 */ u16 prevScrollY;
+  /* 0x38 */ const u16 *metatileMap;
+  /* 0x3C */ u16 mapWidth;
+  /* 0x3E */ u16 mapHeight;
+};
+
+void DrawBackground(struct Background *background);
+
+#endif
