@@ -104,6 +104,11 @@ const AIM_AFTER = 10, AIM_EVERY = 50, WITNESSES = 8, AIM_TRIES = 48;
 // how many structs, one through another, a call is made again with, each time it leaves through a pointer to one, and
 // how many times it's made again with another for each
 const MADE_UP = 3, MADE_AGAIN = 8;
+// After a function's calls, as many as a quarter of them more, each a call that came back after reading a pointer to
+// one of the game's own structs in the cartridge, made again with it made up in the work memory (#1759): of those
+// calls, how many are kept for it, at most, of each set of the branches with a way no call took that it reached, and
+// of how many such sets
+const TABLES = 4, TABLE_WITNESSES = 2, TABLE_SETS = 16;
 // the fewest calls of a function a proof by the same memory is made of
 export const KEPT_FROM = 1000;
 // how often the memory goes back to how the original left it: after this many calls, or this many in a row that
@@ -874,7 +879,7 @@ export async function compareCalls({ original, twins, start, functions, options,
   await original.set(mirror);
   // the addresses of the functions the module has twins of, for a value that is a pointer to code
   const code = functions.map(f => f.address);
-  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0, impossible: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, madeUp: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() } });
+  for (const f of functions) Object.assign(f, { compared: 0, tried: 0, aside: { never: 0, left: 0, clocked: 0, unbuilt: 0, mismatch: 0, impossible: 0 }, fields: new Map(), good: [], result: null, ran: new Map(), aimedCalls: 0, madeUp: 0, aim: { branches: [], witnesses: new Map(), tries: new Map() }, tables: { witnesses: new Map(), compared: 0, tried: 0 } });
   let since = 0, lost = 0;
   // with memories of play: whose memory the calls are going on from and which it was, the memory this call starts
   // from, if it starts from one, and the stack the original's calls start on, 0 for the game's own
@@ -882,6 +887,11 @@ export async function compareCalls({ original, twins, start, functions, options,
   // a call to make again at once from the memory it started from, with a struct made up for the pointer it left
   // through, the version's C saying it points to one (twin-shapes.mjs), and the same again with another struct
   let again = null, repeat = null;
+  // whether the function's own calls are done, and the calls made again with a table of the cartridge made up go on,
+  // each function's as many as a quarter of its calls: only then, so they take none of the calls the others would
+  // have been, nor change any of them (#1759)
+  let later = false;
+  const tables = Math.ceil(calls / TABLES), tablesOn = Boolean(shapes && changing && bytesOf);
   // where the original's calls start on the stack, for twins built with the console's stack, which start there too
   let sp = stacked ? (await original.about()).stack : 0;
   const onTop = async address => {
@@ -889,17 +899,36 @@ export async function compareCalls({ original, twins, start, functions, options,
     if (stacked) sp = (await original.about()).stack;
   };
   for (;;) {
-    const open = functions.filter(f => !f.result && f.compared < calls && f.tried < calls * TRIES && !(f.tried >= HOPELESS && !f.compared));
+    let open = later ? [] : functions.filter(f => !f.result && f.compared < calls && f.tried < calls * TRIES && !(f.tried >= HOPELESS && !f.compared));
+    if (!open.length && !later && tablesOn) {
+      later = true;
+      again = repeat = null;
+      for (const f of functions) if (f.span) f.aim.branches = branchesLeft(f, bytesOf);
+    }
+    if (later) open = functions.filter(f => !f.result && f.compared >= calls && f.tables.witnesses.size && f.tables.compared < tables && f.tables.tried < tables * TRIES);
     if (!open.length) break;
     let f;
     from = null;
     let retry = (again ?? repeat) && open.includes((again ?? repeat).f) ? again ?? repeat : null;
     again = repeat = null;
-    const made = retry ? shapes.makeUp(retry.slot, { image: withChanges(retry.start, retry.base), avoid: retry.avoid, choose, code }) : null;
+    // after the function's own calls: one that read a table in the cartridge, again, most times one that reached a
+    // branch with a way no call took yet
+    const next = !retry && later ? choose.from(open) : null;
+    if (next) {
+      const all = [...next.tables.witnesses.values()].flat(), waysLeftAt = new Set(next.aim.branches.map(branch => branch.where));
+      const towards = all.filter(witness => witness.ran.some(where => waysLeftAt.has(where)));
+      const witness = towards.length && choose.below(4) ? choose.from(towards) : choose.from(all), slot = choose.from(witness.through);
+      retry = { ...witness, f: next, base: witness.changed.filter(([address]) => address !== slot.address), slot, depth: 1, tries: 0 };
+    }
+    const made = retry ? shapes.makeUp(retry.slot, { image: withChanges(retry.start, retry.base), avoid: retry.avoid, choose, code, cartridge: bytesOf }) : null;
     if (!made) retry = null;
     if (retry?.tries + 1 < MADE_AGAIN) repeat = { ...retry, tries: retry.tries + 1 };
     if (retry) f = retry.f;
-    else if (!memories) {
+    else if (later) {
+      // no room for the table in that memory
+      if (next) next.tables.tried++;
+      continue;
+    } else if (!memories) {
       if (since >= FRESH_EVERY || lost >= FRESH_AFTER) {
         mirror = Buffer.from(start);
         await original.set(mirror);
@@ -922,7 +951,8 @@ export async function compareCalls({ original, twins, start, functions, options,
         since = lost = 0;
       }
     }
-    f.tried++;
+    if (later) f.tables.tried++;
+    else f.tried++;
     since++;
     // now and then a call aimed at a branch way no call took yet, from the memory a call that reached it started from
     // or the call before it again, with a struct made up for it
@@ -937,8 +967,8 @@ export async function compareCalls({ original, twins, start, functions, options,
       based = aim.witness.based;
       from = null;
       since = FRESH_EVERY;
-      if (retry) f.madeUp++;
-      else f.aimedCalls++;
+      if (retry && !later) f.madeUp++;
+      else if (!retry) f.aimedCalls++;
     }
     const spare = aim ? aim.witness.spare : from?.own ? [0, 1, 2, 3].map(i => from.arg(i) >>> 0) : [];
     // what it's given: made up, or what an earlier call that could be compared was given, as it is or with one changed,
@@ -1062,6 +1092,9 @@ export async function compareCalls({ original, twins, start, functions, options,
             f, start: startedFrom, args, base: changed.filter(([address]) => address !== slot.address), slot, top, spare, based,
             avoid: new Set(theirs.reads.map(([address]) => address & ~3)), depth: (retry?.depth ?? 0) + 1, tries: 0,
           };
+          // what was changed for it led it to where a struct is made up for it now, so it isn't held against those values
+          lost++;
+          continue;
         }
       }
       aside();
@@ -1075,9 +1108,13 @@ export async function compareCalls({ original, twins, start, functions, options,
       aside();
       continue;
     }
+    // the pointers to the game's own structs in the cartridge it read, which no change to the work memory varies: for
+    // the same call to be made again with one of them pointing to a struct made up in the work memory, once it's
+    // compared
+    const through = tablesOn && (retry?.depth ?? 0) < MADE_UP ? shapes.readThrough({ reads: theirs.reads, image: expected }) : [];
     for (const run of theirs.runs) run.bytes.copy(expected, run.at);
     const ours = await twins.call(f.call, args, changed, sp);
-    const call = { number: f.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
+    const call = { number: f.compared + f.tables.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
     if (ours.never) {
       f.result = { kind: 'never', ...call };
       mirror = expected;
@@ -1103,7 +1140,8 @@ export async function compareCalls({ original, twins, start, functions, options,
     const mask = !f.returns ? 0 : f.returns.bits === 32 ? 0xFFFFFFFF : (1 << f.returns.bits) - 1;
     const gaveSame = ((ours.gave ^ theirs.gave) & mask) === 0;
     if (gaveSame && image.equals(expected)) {
-      f.compared++;
+      if (later) f.tables.compared++;
+      else f.compared++;
       lost = 0;
       for (const field of used) field.lost = 0;
       if (f.good.length < 32) f.good.push(args);
@@ -1111,6 +1149,24 @@ export async function compareCalls({ original, twins, start, functions, options,
       if (f.returns) choose.gave(theirs.gave);
       // the original's own instructions this call ran, and the ways each went on: only a call compared counts
       for (const [where, ways] of theirs.ran) f.ran.set(where, (f.ran.get(where) ?? 0) | ways);
+      // a call that read a table in the cartridge: during the function's own calls kept, a few of each set of the
+      // branches with a way no call took yet it reached, to be made again with the table made up after them; and
+      // after them, made again at once, through what it read, most times when it reached such a branch, as what it read
+      // there may be what the table decides, and now and then otherwise
+      const reached = theirs.ran.filter(([where]) => f.aim.branches.some(branch => branch.where === where)).map(([where]) => where);
+      if (through.length && !later) {
+        const key = reached.join(), kept = f.tables.witnesses.get(key) ?? [];
+        if (kept.length < TABLE_WITNESSES && (kept.length || f.tables.witnesses.size < TABLE_SETS)) {
+          kept.push({ start: Buffer.from(startedFrom), args, changed: changed.map(change => [...change]), top, spare, based, through, ran: theirs.ran.map(([where]) => where), avoid: new Set(theirs.reads.map(([address]) => address & ~3)) });
+          f.tables.witnesses.set(key, kept);
+        }
+      } else if (through.length && !again && (reached.length ? choose.below(4) : !choose.below(4))) {
+        const slot = choose.from(through);
+        again = {
+          f, start: startedFrom, args, base: changed.filter(([address]) => address !== slot.address), slot, top, spare, based,
+          avoid: new Set(theirs.reads.map(([address]) => address & ~3)), depth: (retry?.depth ?? 0) + 1, tries: 0,
+        };
+      }
       // now and then, the branch ways no call took yet, to aim calls at
       if (bytesOf && f.span && (aim || f.compared === AIM_AFTER || f.compared % AIM_EVERY === 0)) f.aim.branches = branchesLeft(f, bytesOf);
       continue;
@@ -1196,7 +1252,7 @@ export function outcome(f, { calls, seconds }) {
   if (f.result?.kind === 'gives') return { kind: 'differs', line: `the twin gives back nothing, while the original gives back what its callers use: the call at ${at(f.result.call)} reads r0 after it.` };
   if (f.result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, f.result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (f.result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, f.result)}: the original came back and the twin stopped (${f.result.why}).${hardware}` };
-  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls${f.aimedCalls ? `, ${count(f.aimedCalls)} of them aimed at a branch way no call had taken` : ''}${f.madeUp ? `, ${count(f.madeUp)} given a struct made up where a pointer led to none` : ''}` };
+  if (f.compared >= calls) return { kind: 'same', line: `${count(f.compared)} calls${f.aimedCalls ? `, ${count(f.aimedCalls)} of them aimed at a branch way no call had taken` : ''}${f.madeUp ? `, ${count(f.madeUp)} given a struct made up where a pointer led to none` : ''}${f.tables?.compared ? `, and ${count(f.tables.compared)} after them made again from calls that read a table in the cartridge, with it made up in the work memory` : ''}` };
   // what kept the rest from being compared, the most common first
   const why = Object.entries({
     unbuilt: `the twin calls ${f.unbuilt}, which nothing built is the twin of`,
