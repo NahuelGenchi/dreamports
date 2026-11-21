@@ -125,18 +125,24 @@ u16 IdentifyFlash(void) {
 /** StartFlashTimer, 0x08098DDC: a wait of `phase`'s length starts on the library's timer, whose interrupt counts it. */
 void StartFlashTimer(u8 phase) {
   const u16 *maxTime = &gFlashMaxTime[phase * 3];
+  // the timer's registers, from where gTimerReg points as the wait starts: a halfword stored through it changes no
+  // pointer, as the console's compiler reads it once
+  vu16 *timer;
 
   gSavedIme = REG_READ16(REG_IME);
   REG_WRITE16(REG_IME, 0);
-  gTimerReg[1] = 0;
-  TIMER_WROTE(&gTimerReg[1]);
+  timer = gTimerReg;
+  timer[1] = 0;
+  TIMER_WROTE(&timer[1]);
   REG_WRITE16(REG_IE, REG_READ16(REG_IE) | (INTR_FLAG_TIMER0 << sTimerNum));
   gFlashTimeoutFlag = 0;
   sTimerCount = *maxTime++;
-  *gTimerReg++ = *maxTime++;
-  TIMER_WROTE(gTimerReg - 1);
-  *gTimerReg-- = *maxTime++;
-  TIMER_WROTE(gTimerReg + 1);
+  *timer = *maxTime++;
+  TIMER_WROTE(timer);
+  gTimerReg = timer + 1;
+  timer[1] = *maxTime++;
+  TIMER_WROTE(timer + 1);
+  gTimerReg = timer;
   REG_WRITE16(REG_IF, INTR_FLAG_TIMER0 << sTimerNum);
   REG_WRITE16(REG_IME, 1);
   TIME(0x08098DDC, 0x08098E5C, BACK, IW, 0x04000208, IW, 0x04000208, IW, 0x04000106, IW, 0x04000200, 0x04000200, IW, ROM, IW, ROM,
