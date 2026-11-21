@@ -176,10 +176,14 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 con
   d->control = (u16)(control >> 16) & (n == 3 ? 0xFFE0 : 0xF7E0);
   if (!(d->control & 0x8000) || (was & 0x8000)) return;
   wide = d->control >> 10 & 1 ? 4 : 2;
-  d->src = src & ~(wide - 1);
+  // a channel's address registers keep 28 bits, so the top four of an address are lost as it's written: a source of
+  // 0x48136049 reads the cartridge at 0x08136048. mGBA 0.10.5's dma.c and GBATEK agree on it for DMA3's two and the
+  // other channels' sources. DMA0's source and the other channels' destinations at 0x08000000 and up, which GBATEK
+  // has at 27 bits and mGBA makes a source of 0 or leaves where they were, are taken as they come, as no game's are
+  d->src = src & 0x0FFFFFFFu & ~(wide - 1);
   d->own = own;
   d->into = into;
-  d->dest = dest & ~(wide - 1);
+  d->dest = dest & 0x0FFFFFFFu & ~(wide - 1);
   d->count = control & (n == 3 ? 0xFFFF : 0x3FFF);
   if (!(d->control >> 12 & 3)) dma_run(d);
 }

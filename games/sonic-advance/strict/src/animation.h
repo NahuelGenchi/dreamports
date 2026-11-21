@@ -11,7 +11,7 @@
 struct SpriteTables {
   /* 0x00 */ const s32 *const *const *animations;
   /* 0x04 */ const u8 (*const *dimensions)[12];
-  /* 0x08 */ const void *const *oamData;
+  /* 0x08 */ const u16 *const *oamData;
   /* 0x0C */ const u16 *palettes;
   /* 0x10 */ const u8 *tiles_4bpp;
   /* 0x14 */ const u8 *tiles_8bpp;
