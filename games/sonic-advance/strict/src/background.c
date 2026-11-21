@@ -308,13 +308,14 @@ s32 Div(s32 num, s32 denom);
 #endif
 
 // `rows` rows of the map, a tile at a time, each turned by `flip`: across, from `from`, forward or back, as many as the
-// background is wide, read again after each tile, or `count` when that isn't below 0; down, `from` moves `step` bytes
-// a row and `to` a row of video memory, `line` bytes.
-static void bg_rows_by_tile(const struct Background *bg, u32 to, u32 from, u16 rows, u32 line, u32 step, u32 flip, int back, s32 count) {
+// background is wide, read again after each tile, when `wide`, or else `count`, none when that's 0 or below, as a
+// wrap past the map's edge by a negative count has; down, `from` moves `step` bytes a row and `to` a row of video
+// memory, `line` bytes.
+static void bg_rows_by_tile(const struct Background *bg, u32 to, u32 from, u16 rows, u32 line, u32 step, u32 flip, int back, int wide, s32 count) {
   while (rows-- != 0) {
     u32 next = to + line;
     u16 k;
-    for (k = 0; count < 0 ? k < bg->targetTilesX : (s32)k < count; k++)
+    for (k = 0; wide ? k < bg->targetTilesX : (s32)k < count; k++)
       BG_SPRITE_STORE16(to + k * 2u, (u16)(ARM_LDRH(back ? from - k * 2u : from + k * 2u) ^ flip));
     to = next;
     from += step;
@@ -382,14 +383,14 @@ static void bg_copy_whole(struct Background *bg, u32 flags, u32 affine, u32 line
   if (flags & BACKGROUND_FLIP_X) {
     if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xTiles * size + (u32)(bg->unk1E + bg->targetTilesX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, -1);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
     } else {
       from = (u32)bg->layout + (u32)bg->unk20 * xTiles * size + (u32)(bg->unk1E + bg->targetTilesX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, -1);
+      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
     }
   } else if (flags & BACKGROUND_FLIP_Y) {
     from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xTiles * size + (u32)bg->unk1E * size;
-    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, -1);
+    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0);
   } else if ((affine & 1) && size == 2 && (s32)(32 - left) > 0 && (s32)(bg->targetTilesX + left - 32) > 0) {
     u32 first = (32 - left) * 2, second = (bg->targetTilesX + left - 32) * 2;
     u32 control1 = 0x80000000u | (u32)((s32)first >> 1), control2 = 0x80000000u | (u32)((s32)second >> 1);
@@ -453,14 +454,14 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
   if (flags & BACKGROUND_FLIP_X) {
     if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xt * size + (u32)(bg->unk1E + tX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, -1);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
     } else {
       from = (u32)bg->layout + (u32)bg->unk20 * xt * size + (u32)(bg->unk1E + tX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, -1);
+      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
     }
   } else if (flags & BACKGROUND_FLIP_Y) {
     from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size + (u32)colX * size;
-    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, -1);
+    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0);
   } else {
     s32 before = (s16)wrap - 1;
     from = (u32)bg->layout + (u32)rowY * xt * size + (u32)colX * size;
@@ -482,14 +483,14 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
     if (flags & BACKGROUND_FLIP_X) {
       if (flags & BACKGROUND_FLIP_Y) {
         from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size + (u32)(w - 1) * size;
-        bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, -1);
+        bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
       } else {
         from = (u32)bg->layout + (u32)rowY * xt * size + (u32)(w - 1) * size;
-        bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, -1);
+        bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
       }
     } else if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, w);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 0, w);
     } else {
       from = (u32)bg->layout + (u32)rowY * xt * size;
       bg_rows_by_dma(to, from, rows, line, xTiles * size, 0x80000000u | (u32)((s32)((u32)w * size) / 2));
