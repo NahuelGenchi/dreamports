@@ -29,6 +29,8 @@ import { referenceOf } from './lib/reference.mjs';
 import { NOT_TAKEN, TAKEN, followsContent, ranBy, ranIn, readPlayed, untouchedOf } from './lib/played.mjs';
 import os from 'node:os';
 import { decidedBranches } from './lib/decided.mjs';
+import { decidedAcrossBranches } from './lib/decided-across.mjs';
+import { asideWhy, wordEvidence } from './lib/words-into.mjs';
 import { decidedMipsBranches, decidedMipsWhy } from './ps2/decided.mjs';
 import { loadedCopy } from './ps2/ledger.mjs';
 import { neverWrittenBranch, neverWrittenWhy, writesOf } from './lib/never-written.mjs';
@@ -348,7 +350,12 @@ function decidedPs2(path, codeMap) {
 }
 
 /** Why a branch the code decides can't go its other way, for the game's unreachable.json. */
-export function decidedWhy({ address, way, from, by, through = null }) {
+export function decidedWhy({ address, way, from, by, through = null, across = false, read = [], aside = [] }) {
+  if (across) {
+    const tables = read.length ? `, with what it reads from the cartridge at ${read.map(([lo, hi]) => (lo === hi ? hex(lo) : `${hex(lo)} to ${hex(hi)}`)).join(', ')}` : '';
+    const words = aside.length ? ` Words of the cartridge that point into the function were set aside as not ways in, each because nothing refers to it: ${aside.map(w => w.why).join('; ')}.` : '';
+    return `The branch at ${hex(address)} goes by ${by === null ? 'flags set' : `the flags the instruction at ${hex(by)} sets`} from what, on every way into it the function's code allows, worked out across the function from ${hex(from)}${tables} and what it keeps on its own stack, can only send it one way, so it's never ${way}.${words}`;
+  }
   if (through !== null) return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code and what the branch at ${hex(through)} compared, in the run of instructions from ${hex(from)}, which only that branch comes into, gone its one way, and no word of the cartridge points into, so it's never ${way}.`;
   return `The branch at ${hex(address)} goes by the flags the instruction at ${hex(by)} sets from numbers in the code alone, in the run of instructions from ${hex(from)}, which no instruction of the cartridge branches or calls into and no word of the cartridge points into, so it's never ${way}.`;
 }
@@ -356,14 +363,24 @@ export function decidedWhy({ address, way, from, by, through = null }) {
 // the branches the code itself decides, worked out from the cartridge alone, and with `write` put in the game's list
 async function decided(game, { original, codeMap, copy, write }) {
   const base = versionOf(game).game, ps2 = original.console === 'ps2';
-  const found = ps2 ? decidedPs2(copy.path, codeMap) : decidedBranches(new Uint8Array(readFileSync(copy.path)), codeMap.functions);
+  const rom = ps2 ? null : new Uint8Array(readFileSync(copy.path));
+  const straight = ps2 ? decidedPs2(copy.path, codeMap) : decidedBranches(rom, codeMap.functions);
+  // and, on the Game Boy Advance, what a reading across each whole function decides past those (lib/decided-across.mjs),
+  // with each word it set aside named and what the cartridge says of it
+  const across = ps2 ? [] : decidedAcrossBranches(rom, codeMap.functions, straight).map(d => ({
+    ...d, across: true, aside: d.aside.map(w => ({ ...w, why: asideWhy(wordEvidence(rom, codeMap.functions.filter(f => !f.bytes), w.at)) })),
+  }));
+  const found = [...straight, ...across];
   const whyOfIt = ps2 ? decidedMipsWhy : decidedWhy, what = ps2 ? 'the program its disc boots' : 'the cartridge';
   // nothing of it may ever have been played: a way that happened in any version's recordings can't be one that can't
   const versions = proofVersions().filter(version => versionOf(version).game === base && readCodeMap(version));
   const played = found.filter(d => versions.some(version => ranIn(version, readCodeMap(version), d.address).some(each => (d.way === 'taken' ? each.taken : each.notTaken))));
   if (played.length) throw new Error(`The tools worked out that ${played.map(d => `${hex(d.address)} is never ${d.way}`).join(', ')}, and a recording has played it so: that's the tools' fault, so nothing was written. Say so in an issue, with this line.`);
   console.log(`${count(found.length)} conditional branches of ${base} are decided by the code itself, worked out from ${what} alone, and none has gone its other way in any recording of ${versions.join(', ')}:`);
-  for (const d of found) console.log(`  ${hex(d.address)} is never ${d.way}: ${ps2 ? 'what it compares is set' : `the flags come from ${hex(d.by)},`} in the run from ${hex(d.from)}${d.through ? `, entered only by the branch at ${hex(d.through)}` : ''}.`);
+  for (const d of found) {
+    if (d.across) console.log(`  ${hex(d.address)} is never ${d.way}: worked out across the function from ${hex(d.from)}${d.read.length ? `, reading the cartridge at ${d.read.map(([lo, hi]) => `${hex(lo)}-${hex(hi)}`).join(', ')}` : ''}${d.aside.length ? `, with ${d.aside.map(w => `the word at ${hex(w.at)}`).join(' and ')} set aside: ${d.aside.map(w => w.why).join('; ')}` : ''}.`);
+    else console.log(`  ${hex(d.address)} is never ${d.way}: ${ps2 ? 'what it compares is set' : `the flags come from ${hex(d.by)},`} in the run from ${hex(d.from)}${d.through ? `, entered only by the branch at ${hex(d.through)}` : ''}.`);
+  }
   if (!write) {
     console.log(`--write puts them in games/${base}/proof/unreachable.json, where a person reads each before it goes in.`);
     return 0;
