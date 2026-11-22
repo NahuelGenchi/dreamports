@@ -97,7 +97,8 @@ u16 console_read16(u32 at) {
     if (!console_handling) console_in_vblank = 0;
     return (gba_io[IO_DISPSTAT >> 1] & ~7) | status;
   }
-  if (at == IO_VCOUNT) return console_blank_timed ? gba_clock_vcount() : (u16)console_line;
+  // with no clock going, as in the function check, the line the call started on, as console_vcount_at gives it
+  if (at == IO_VCOUNT) return console_blank_timed ? gba_clock_vcount() : !gba_clock_running() ? console_io[IO_VCOUNT >> 1] : (u16)console_line;
   if (at == IO_KEYINPUT) return ~console_keys & 0x3FF;
   if (at < sizeof gba_io) return gba_io[at >> 1];
   return at < sizeof console_io ? console_io[at >> 1] : 0;
@@ -125,6 +126,50 @@ void console_write16(u32 at, u16 value) {
 // repeats. A value of the Dreamport's own, as a fill's is, is read where it is, as the console reads its stack.
 struct console_dma { u32 src, dest, count; u16 control; const u8 *own; u8 *into; };
 static struct console_dma dma[4];
+// what the channels last moved, which a register no one can read gives a DMA in its place, as the bus still holds it:
+// a halfword twice over, or a word. A channel's first unit gets what the processor was fetching then instead, which
+// the Dreamport doesn't have, so it gets what the last channel moved
+static u32 dma_bus;
+
+// A register as a DMA reads it from 0x04000000 on, by how far it is from there, as mGBA 0.10.5's GBAIORead has it and
+// GBATEK's table of the registers agrees: one a game can read, as the processor reads it; the control of a channel as
+// it is; the sound's, but SOUNDCNT_H, X and BIAS, 0 while the sound is off; a few unused ones and the channels'
+// counts 0; and any other, written only or not there at all, what the bus holds. A timer's count is what the Dreamport
+// keeps in its place, the last written, where the console's goes on with its time.
+static u16 dma_read_register(u32 at) {
+  switch (at) {
+  case 0x10: case 0x12: case 0x14: case 0x16: case 0x18: case 0x1A: case 0x1C: case 0x1E: case 0x20: case 0x22:
+  case 0x24: case 0x26: case 0x28: case 0x2A: case 0x2C: case 0x2E: case 0x30: case 0x32: case 0x34: case 0x36:
+  case 0x38: case 0x3A: case 0x3C: case 0x3E: case 0x40: case 0x42: case 0x44: case 0x46: case 0x4C: case 0x54:
+  case 0xA0: case 0xA2: case 0xA4: case 0xA6: case 0xB0: case 0xB2: case 0xB4: case 0xB6: case 0xBC: case 0xBE:
+  case 0xC0: case 0xC2: case 0xC8: case 0xCA: case 0xCC: case 0xCE: case 0xD4: case 0xD6: case 0xD8: case 0xDA:
+    return (u16)dma_bus;
+  case 0xB8: case 0xC4: case 0xD0: case 0xDC: case 0x20A:
+  case 0x66: case 0x6A: case 0x6E: case 0x76: case 0x7A: case 0x7E: case 0x86: case 0x8A: case 0x136: case 0x142:
+  case 0x15A: case 0x206: case 0x302:
+    return 0;
+  case 0x60: case 0x62: case 0x64: case 0x68: case 0x6C: case 0x70: case 0x72: case 0x74: case 0x78: case 0x7C:
+  case 0x80:
+    if (!(console_read16(0x84) & 0x80)) return 0;
+    return console_read16(at);
+  case 0x00: case 0x02: case 0x04: case 0x06: case 0x08: case 0x0A: case 0x0C: case 0x0E: case 0x48: case 0x4A:
+  case 0x50: case 0x52: case 0x82: case 0x84: case 0x88: case 0x90: case 0x92: case 0x94: case 0x96: case 0x98:
+  case 0x9A: case 0x9C: case 0x9E: case 0xBA: case 0xC6: case 0xD2: case 0xDE: case 0x100: case 0x102: case 0x104:
+  case 0x106: case 0x108: case 0x10A: case 0x10C: case 0x10E: case 0x120: case 0x122: case 0x124: case 0x126:
+  case 0x128: case 0x12A: case 0x130: case 0x132: case 0x134: case 0x140: case 0x154: case 0x156: case 0x158:
+  case 0x200: case 0x202: case 0x204: case 0x208: case 0x300:
+    return console_read16(at);
+  case 0x150: case 0x152:
+    // the link's receive register, read, says it was
+    console_io[0x158 >> 1] &= ~2;
+    return console_read16(at);
+  case 0x800: case 0x802:
+    // the memory's control, which the console shows again at 0x04000800 and the emulator keeps at 0x210
+    return console_io[(at - 0x800 + 0x210) >> 1];
+  default:
+    return (u16)dma_bus;
+  }
+}
 
 static void dma_run(struct console_dma *d) {
   static const int step[4] = { 1, -1, 0, 1 };
@@ -142,6 +187,16 @@ static void dma_run(struct console_dma *d) {
       for (b = 0; b < wide; b += 2) { bus[b] = (u8)((at + b) >> 1); bus[b + 1] = (u8)((at + b) >> 9); }
       from = bus;
     }
+    // and from 0x04000000 on, the hardware's registers, each halfword as a DMA reads it
+    if (from == NULL && at >> 24 == 0x04) {
+      for (b = 0; b < wide; b += 2) {
+        u16 v = dma_read_register((at + b) & 0x00FFFFFEu);
+        bus[b] = (u8)v;
+        bus[b + 1] = (u8)(v >> 8);
+      }
+      from = bus;
+    }
+    if (from != NULL) dma_bus = wide == 4 ? (u32)(from[0] | from[1] << 8 | from[2] << 16 | (u32)from[3] << 24) : (u32)(from[0] | from[1] << 8) * 0x10001u;
     if (from != NULL && to != NULL) for (b = 0; b < wide; b++) to[b] = from[b];
     // a register is written as the processor writes one, a halfword at a time
     else if (from != NULL && !d->into && (d->dest + i * to_step) >> 24 == 0x04) {
@@ -153,6 +208,7 @@ static void dma_run(struct console_dma *d) {
   if (!d->own) d->src += count * from_step;
   if ((d->control >> 5 & 3) != 3) d->dest += count * to_step;
   if (!(d->control & 0x0200) || !(d->control >> 12 & 3)) d->control &= ~0x8000;
+  console_io[(0xBA + 12 * (d - dma)) >> 1] = d->control;
 }
 
 // the console's time: a channel's three words as the processor writes them, a value of the Dreamport's own read from
@@ -174,6 +230,8 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 con
   u16 was = d->control;
   u32 wide;
   d->control = (u16)(control >> 16) & (n == 3 ? 0xFFE0 : 0xF7E0);
+  // the control as the processor reads it back, on while the channel is, as the console's is
+  console_io[(0xBA + 12 * (n & 3)) >> 1] = d->control;
   if (!(d->control & 0x8000) || (was & 0x8000)) return;
   wide = d->control >> 10 & 1 ? 4 : 2;
   // a channel's address registers keep 28 bits, so the top four of an address are lost as it's written: a source of
