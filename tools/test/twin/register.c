@@ -7,7 +7,9 @@
 // A fourth has DMA channel 3 copy from the BIOS, which a DMA can't read: the check sets such a call aside (#1559). A
 // fifth reads the line count, waits and reads it again, and whether the display is in the V-blank: a twin has no clock,
 // so the check holds both as each call starts, and starts some calls outside the V-blank (#1569). A sixth adds 228 to a
-// line of the picture, as m4a's SoundMain does: a call the check starts outside the V-blank starts on one (#1729).
+// line of the picture, as m4a's SoundMain does: a call the check starts outside the V-blank starts on one (#1729). A
+// seventh reads the display's control, which the console set at power-on, through the kit's display registers: the
+// check gives those the original's before each call too (#1773).
 #include "program.h"
 
 #ifdef MATCHING
@@ -88,4 +90,15 @@ void Picture(void) {
   u32 line = (u8)VCOUNT;
   if (line < 160) line += 228;
   gFrame = line;
+}
+
+#ifdef MATCHING
+#define DISPCNT_READ() (*(volatile u16 *)0x04000000)
+#else
+#define DISPCNT_READ() gba_io[0]
+#endif
+
+/** Mode, 0x08000A60: the frame the display's control, as the console has it. */
+void Mode(void) {
+  gFrame = DISPCNT_READ();
 }

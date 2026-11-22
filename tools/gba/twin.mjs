@@ -71,10 +71,10 @@ const flagsFor = kit => [...WASM_FLAGS, '-std=gnu11', ...SAME_FLAGS, ...kit.twin
 // `npm ci` brings doesn't find a file through a folder above
 const KIT = '__kit', ELSEWHERE = '__from';
 // what of the kit the thread that runs the twins reaches by name: the copy, and where the module's own values are,
-// which the kit's and the version's hardware are among, and the console's stack's start for a call and how far down
-// it went (twin-worker.mjs). Its video memory, colours and sprites are where the console has them, as the check builds
-// it (cKit's twinFlags)
-const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io', 'gba_stack_begin', 'gba_stack_lowest'];
+// which the kit's and the version's hardware are among, the registers a version keeps itself and the kit's display
+// registers, and the console's stack's start for a call and how far down it went (twin-worker.mjs). Its video memory,
+// colours and sprites are where the console has them, as the check builds it (cKit's twinFlags)
+const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io', 'gba_io', 'gba_stack_begin', 'gba_stack_lowest'];
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
