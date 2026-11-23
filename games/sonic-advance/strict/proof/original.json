@@ -1,0 +1,4 @@
+{
+  "keysAfterVBlank": true,
+  "workMemory": [{ "address": "02000000", "bytes": 262144 }, { "address": "03000000", "bytes": 32256 }]
+}
