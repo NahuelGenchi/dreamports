@@ -40,13 +40,15 @@ export function newlyDiffering(before, now) {
  * [{ name, row, wrong, unreached }], with how many things its name says that the original doesn't show, and the parts
  * whose goal doesn't come true within their frames, each { name, goal, frames } (src/lib/reaches.mjs).
  */
-export function worseThan(before, played) {
+export function worseThan(before, played, { byFunction = false } = {}) {
   const worse = [];
   for (const { name, row, wrong = 0, unreached = [] } of played) {
     const was = before[name];
     if (wrong) worse.push({ name, why: 'the original doesn\'t show what its name says' });
     else if (!was) {
-      if (row.matched < row.frames || row.neverInPlay?.length) worse.push({ name, why: 'nothing proved it before, and it doesn\'t match in every frame' });
+      // a version made a function at a time plays its game's recordings as far as its proven functions go, so one
+      // nothing proved before that doesn't match yet is no step back
+      if (row.neverInPlay?.length || (row.matched < row.frames && !byFunction)) worse.push({ name, why: 'nothing proved it before, and it doesn\'t match in every frame' });
       else if (unreached.length) worse.push({ name, why: `nothing proved it before, and the original doesn't get to ${unreached[0].goal}, which ${unreached[0].name} says it reaches` });
     } else {
       const [first] = newlyDiffering(was, row);
