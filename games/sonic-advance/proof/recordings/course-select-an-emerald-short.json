@@ -1,7 +1,7 @@
 {
   "about": "The same with six Chaos Emeralds: the row before the Moon Zone stops short.",
   "frames": 4400,
-  "start": "unlocked=14&tails=13&knuckles=13&amy=13&emeralds=63&current=12&started=0",
+  "start": "unlocked=14&tails=13&knuckles=13&amy=13&emeralds=63&current=12&started=0&only=126",
   "onlyInOriginal": [
     {
       "at": 3751,

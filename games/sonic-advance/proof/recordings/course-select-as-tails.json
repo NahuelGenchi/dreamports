@@ -1,7 +1,7 @@
 {
   "about": "The same as Tails, whose course select never has the Moon Zone: the row before it stops short.",
   "frames": 4400,
-  "start": "character=1&unlocked=13&sonic=14&knuckles=13&amy=13&emeralds=127&current=12&started=0",
+  "start": "character=1&unlocked=13&sonic=14&knuckles=13&amy=13&emeralds=127&current=12&started=0&only=126",
   "onlyInOriginal": [
     {
       "at": 3751,

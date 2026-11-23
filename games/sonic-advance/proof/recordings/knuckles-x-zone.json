@@ -1,7 +1,7 @@
 {
   "about": "From power-on with Knuckles having reached level 12: to the course select, down to that level and A on it, then running right and jumping.",
   "frames": 7400,
-  "start": "unlocked=12&character=2",
+  "start": "unlocked=12&character=2&only=146",
   "held": [
     [0,[]],
     [150,["A"]],

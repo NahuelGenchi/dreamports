@@ -1,7 +1,7 @@
 {
   "about": "The same play with the Moon Zone already beaten, X Zone started from the course select, so Egg X's defeat leads to the normal ending.",
   "frames": 8741,
-  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127",
+  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&only=126",
   "onlyInOriginal": [
     {
       "at": 1701,

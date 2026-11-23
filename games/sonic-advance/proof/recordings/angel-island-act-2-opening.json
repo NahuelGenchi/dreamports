@@ -1,7 +1,7 @@
 {
   "about": "From power-on with Sonic having reached level 9: through the course select to Angel Island Zone act 2, then its title card and first frames after it, with Sonic on the ground at the act's spawn.",
   "frames": 2610,
-  "start": "unlocked=9&character=0",
+  "start": "unlocked=9&character=0&only=166",
   "held": [
     [
       0,
