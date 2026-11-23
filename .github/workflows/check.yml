@@ -148,9 +148,31 @@ jobs:
         run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libgl-dev
       - run: ${{ matrix.run }}
 
+  # Nothing public credits a coding agent (AGENTS.md): the pull request's title, its description and its commits'
+  # messages, read as text and never run
+  credit:
+    name: Check (credit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: No commit or text of it credits a coding agent
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE: origin/${{ github.base_ref }}
+        # the check as main has it, so a pull request can't change what reads it, and its own where main has none yet
+        run: |
+          git show "$BASE:.github/credit/credit.mjs" > "$RUNNER_TEMP/credit.mjs" 2>/dev/null || cp .github/credit/credit.mjs "$RUNNER_TEMP/credit.mjs"
+          node "$RUNNER_TEMP/credit.mjs" "$BASE"
+
   check:
     name: Check
-    needs: tests
+    needs: [tests, credit]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
@@ -158,6 +180,7 @@ jobs:
       - name: Every part passed
         env:
           RESULT: ${{ needs.tests.result }}
+          CREDIT: ${{ needs.credit.result }}
         run: |
-          echo "The tests ended: $RESULT"
-          test "$RESULT" = success
+          echo "The tests ended: $RESULT, and the credit check: $CREDIT"
+          test "$RESULT" = success && test "$CREDIT" = success
