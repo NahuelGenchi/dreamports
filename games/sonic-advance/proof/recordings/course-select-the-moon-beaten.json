@@ -1,7 +1,7 @@
 {
   "about": "The same with the Moon Zone beaten and X Zone started from here: the row before the Moon Zone stops short.",
   "frames": 4400,
-  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=12",
+  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=12&only=126",
   "onlyInOriginal": [
     {
       "at": 3751,

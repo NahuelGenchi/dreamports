@@ -1,7 +1,7 @@
 {
   "about": "The same play with six Chaos Emeralds, so Egg X's defeat leads to the normal ending.",
   "frames": 8741,
-  "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=63",
+  "start": "unlocked=13&tails=13&knuckles=13&amy=13&emeralds=63&only=126",
   "onlyInOriginal": [
     {
       "at": 1701,

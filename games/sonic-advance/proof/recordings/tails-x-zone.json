@@ -1,7 +1,7 @@
 {
   "about": "From power-on with Tails having reached level 12: to the course select, down to that level and A on it, then running right and jumping, until the boss takes Tails' last life: the game over, and back to the SEGA logo once its song ends.",
   "frames": 7700,
-  "start": "unlocked=12&character=1",
+  "start": "unlocked=12&character=1&only=126",
   "held": [
     [0,[]],
     [150,["A"]],

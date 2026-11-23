@@ -1,7 +1,7 @@
 {
   "about": "The same with the Moon Zone beaten but a game started from another row: the rows scroll on, as the Moon Zone can open.",
   "frames": 4400,
-  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=2",
+  "start": "unlocked=15&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=2&only=126",
   "onlyInOriginal": [
     {
       "at": 3751,

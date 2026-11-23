@@ -1,7 +1,7 @@
 {
   "about": "From power-on with the Moon Zone open and a game having reached X Zone: to the course select, and Down held to its last rows, which scroll on past the row before the Moon Zone.",
   "frames": 4400,
-  "start": "unlocked=14&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=0",
+  "start": "unlocked=14&tails=13&knuckles=13&amy=13&emeralds=127&current=12&started=0&only=126",
   "onlyInOriginal": [
     {
       "at": 3751,

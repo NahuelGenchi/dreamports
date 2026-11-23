@@ -1,7 +1,7 @@
 {
   "about": "From power-on with Tails having reached level 6: to the course select, down to that level and A on it, then running right and jumping.",
   "frames": 3400,
-  "start": "unlocked=6&character=1",
+  "start": "unlocked=6&character=1&only=126",
   "held": [
     [0,[]],
     [150,["A"]],
