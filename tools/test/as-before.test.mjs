@@ -52,6 +52,15 @@ test('a recording nothing proved before has to match in every frame', () => {
   assert.deepEqual(worseThan({}, [{ name: 'new', row: row(100, [[99, 99]]) }]), [{ name: 'new', why: 'nothing proved it before, and it doesn\'t match in every frame' }]);
 });
 
+test('a version made a function at a time may not match a recording nothing proved before, yet', () => {
+  const played = [{ name: 'new', row: row(100, [[40, 99]]) }, { name: 'held', row: row(100, [], { neverInPlay: [[0, 30]] }) }, { name: 'back', row: row(100, [[20, 99]]) }];
+  assert.deepEqual(worseThan({ back: row(100, [[40, 99]]) }, played, { byFunction: true }), [
+    { name: 'held', why: 'nothing proved it before, and it doesn\'t match in every frame' },
+    { name: 'back', why: 'frame 20 matched before and differs now' },
+  ]);
+  assert.equal(worseThan({}, played.slice(0, 1)).length, 1);
+});
+
 test('before is the last commit, and the better of both sides while a merge is open, never the file as it is', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'dp-before-'));
   try {
