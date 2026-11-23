@@ -8,6 +8,6 @@ The original's `SoundInfo` is at 0x02001400, so its 15-frame counter, `c15`, is 
 
 A start point with `unlocked` and no `select` skips the character select, which the original still plays as the recording's `onlyInOriginal` stretch: 166 frames for Sonic and Amy, 146 for Knuckles, 126 for Tails or a save with every character. `front_start_game` makes up for them only when the start names them as `only`. Thirty recordings didn't, and ran 1, 6 or 11 frames apart from there on. With `only` the counters agree at every frame sampled.
 
-`tails-x-zone` is left without it: in step, its frames 2739 and 2740 differ by sound alone, around 8,000 Hz on the left, 12.2 steps against 3.2, 11.7 dB apart, where they matched 6 frames out. What that sound is isn't found.
+`tails-x-zone` is left without it: in step, its frames 2739 and 2740 differ by sound alone, around 8,000 Hz on the left, 12.2 steps against 3.2, 11.7 dB apart, where they matched 6 frames out. `sonic-the-moon` is too, as with it frame 22073 differs in JavaScript.
 
 Still apart: 10 frames after a soft reset, 5 to 10 from a start point at an act or a special stage, 2 in `options-menu` by frame 2643. Tiny Chao Garden's engine keeps its own `SoundInfo` elsewhere.
