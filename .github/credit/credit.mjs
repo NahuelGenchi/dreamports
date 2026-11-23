@@ -1,0 +1,55 @@
+// Nothing public here credits a coding agent (AGENTS.md, Tracking and delivery): anyone may use one, and a commit, a
+// pull request, an issue and a comment are their author's alone. This finds the lines that say otherwise in a text: a
+// co-author that is an agent, a line about what it was made with, and the footer some agents add. The Check workflow
+// runs it on a pull request's title, its description and its commits' messages, and never on a file, as the files
+// name agents where they have to, such as the copies of the /dreamport command.
+//
+// node .github/credit/credit.mjs [<base>]: the commits of this branch that aren't on <base>, origin/main unless named,
+// and, when the workflow gives them, the pull request's title and description (PR_TITLE, PR_BODY). Ends with 1 and a
+// line for each one found.
+
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+// an agent, or who makes one, as a credit names it
+const AGENT = '(?:claude(?: code)?|anthropic|codex|openai|chatgpt|gpt-?\\d[\\w.-]*|copilot|gemini|cursor|devin|aider|opencode|deepseek|windsurf|cline|amp|jules|an? (?:ai|llm)(?: (?:assistant|agent|model|tool))?|ai|llm)';
+const CREDITS = [
+  // a co-author that is an agent, by its name or its maker's address
+  new RegExp(`^\\s*co-authored-by:.*(?:\\b${AGENT}\\b|noreply@anthropic\\.com|noreply@openai\\.com)`, 'i'),
+  // "Generated with Claude Code", "Written by AI" and the like
+  new RegExp(`\\b(?:generated|written|made|created|authored|built|drafted|produced|assisted)[ -](?:with|by|using)\\b.{0,40}\\b${AGENT}\\b`, 'i'),
+  new RegExp(`\\b(?:ai|llm|${AGENT})[- ](?:assisted|generated|written|authored)\\b`, 'i'),
+  // the footer's sign
+  /🤖/u,
+];
+
+/** The lines of `text` that credit a coding agent, each as { line, text }, a line counted from 1. */
+export function creditLines(text) {
+  return String(text ?? '').split(/\r?\n/).map((each, at) => ({ line: at + 1, text: each.trim() })).filter(each => CREDITS.some(credit => credit.test(each.text)));
+}
+
+/** What to say of each text that credits an agent: `texts` are { where, text }. One line for each line found. */
+export function creditProblems(texts) {
+  return texts.flatMap(({ where, text }) => creditLines(text).map(found => `${where}, line ${found.line}: "${found.text.slice(0, 120)}"`));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const base = process.argv[2] ?? 'origin/main';
+  const log = spawnSync('git', ['log', '--format=%H%x00%B%x01', `${base}..HEAD`], { encoding: 'utf8', maxBuffer: 2 ** 26 });
+  if (log.status !== 0) {
+    console.error(`git couldn't list this branch's commits since ${base}: ${log.stderr.trim()}`);
+    process.exit(2);
+  }
+  const texts = log.stdout.split('\x01').map(each => each.trim()).filter(Boolean).map(each => {
+    const [hash, message] = each.split('\x00');
+    return { where: `Commit ${hash.slice(0, 8)}`, text: message };
+  });
+  if (process.env.PR_TITLE) texts.push({ where: 'The pull request\'s title', text: process.env.PR_TITLE });
+  if (process.env.PR_BODY) texts.push({ where: 'The pull request\'s description', text: process.env.PR_BODY });
+  const problems = creditProblems(texts);
+  if (!problems.length) console.log('Nothing here credits a coding agent.');
+  else {
+    console.error(`Nothing public here credits a coding agent (AGENTS.md): take ${problems.length === 1 ? 'this line' : 'these lines'} out.\n${problems.join('\n')}`);
+    process.exit(1);
+  }
+}
