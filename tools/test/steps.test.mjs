@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { sep, join, relative } from 'node:path';
 import { REPO } from '../lib/paths.mjs';
 
 const STEPS = 'kit/gba/ui/steps.js';
@@ -23,7 +23,8 @@ test('the site and the kit add a step to the browser\'s history only through ste
   const found = [];
   for (const folder of ['src', 'kit']) {
     for (const path of files(join(REPO, folder))) {
-      const file = relative(REPO, path);
+      // with /, as STEPS is written, whichever way the computer writes a path
+      const file = relative(REPO, path).split(sep).join('/');
       if (file === STEPS) continue;
       readFileSync(path, 'utf8').split('\n').forEach((line, i) => {
         if (STEPPING.some(pattern => pattern.test(line))) found.push(`${file}:${i + 1}: ${line.trim()}`);
