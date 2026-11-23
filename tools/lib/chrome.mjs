@@ -10,10 +10,11 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 // whether any process of the browser with this profile is still running: its helpers have the folder in their command lines too
 const running = profile => spawnSync('ps', ['-Awwo', 'args='], { encoding: 'utf8' }).stdout?.replaceAll('\n', ' ').includes(`--user-data-dir=${profile} `);
 
-// the browser left behind by a run that was stopped partway, on Windows, where nothing else can find it
+// the browser left behind by a run that was stopped partway, on Windows, where nothing else can find it. Its command
+// line has the profile's folder as the tools gave it, or in quotes, as a browser that started itself again writes it
 const stopBrowserOf = profile => spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), ['-NoProfile', '-Command',
-  'Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:DREAMPORTS_PROFILE) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'],
-{ env: { ...process.env, DREAMPORTS_PROFILE: `--user-data-dir=${profile}` }, stdio: 'ignore' });
+  '$of = "--user-data-dir=`"?" + [regex]::Escape($env:DREAMPORTS_PROFILE) + "(`"| |$)"; Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine -match $of } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }'],
+{ env: { ...process.env, DREAMPORTS_PROFILE: profile }, stdio: 'ignore' });
 
 // one nobody sees, left behind the same way elsewhere: it would go on working for nobody, and each close would wait for it.
 // A profile belongs to one folder's copy of one tool, and two runs of that can't share it anyway
@@ -113,16 +114,29 @@ export async function openChrome({ profile, headless = true, fresh = true, contr
   }
 }
 
+// how long a browser handed over to another process has to show its port, once the program started has ended
+const HANDED_OVER = 15000;
+
 async function drive(chrome, portFile, profile, headless, controllers) {
-  let ended = false;
-  const exited = new Promise(resolve => chrome.once('exit', () => {
-    ended = true;
-    resolve();
-  }));
+  let over = false, left = null, started = false, port, end;
+  const exited = new Promise(resolve => {
+    end = () => {
+      over = true;
+      resolve();
+    };
+  });
+  // On Windows the program started can hand the browser over to another process of it and end at once, cleanly
+  // (#1779). So its clean end before the browser is up isn't the browser's: the browser is then known by its profile
+  // and by its own connection, below. Any other end is the browser's
+  chrome.once('exit', code => {
+    if (process.platform === 'win32' && code === 0 && !started) left = Date.now();
+    else end();
+  });
+  // a browser handed over shows its port within moments, and one that ended instead never does
+  const ended = () => over || (left !== null && !port && Date.now() - left > HANDED_OVER);
   // a browser's first start on a computer can be slow, and one that has ended won't start any more
   const giveUp = Date.now() + 120000;
-  let port;
-  while (Date.now() < giveUp && !ended && !port) {
+  while (Date.now() < giveUp && !ended() && !port) {
     try {
       // it holds its port on the first line, and the file's done once there's a second
       const [first, second] = readFileSync(portFile, 'utf8').split('\n');
@@ -138,13 +152,28 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     throw new Error(noScreen ? 'The browser\'s window can\'t open, since this terminal has no screen to show it on. In WSL on Windows, run wsl --update in a Windows terminal, then open WSL again.' : 'The browser didn\'t start.');
   }
   let target;
-  while (Date.now() < giveUp && !ended && !target) {
+  while (Date.now() < giveUp && !ended() && !target) {
     try {
       target = (await (await fetch(`http://127.0.0.1:${port}/json/list`, { headers: { connection: 'close' } })).json()).find(t => t.type === 'page');
     } catch {
       // not answering yet
     }
     if (!target) await wait(100);
+  }
+  started = true;
+  // a browser handed over: it has ended when its own connection closes, and only its profile finds it to stop it
+  let whole = null;
+  if (left !== null) {
+    try {
+      if (!target) throw new Error('no page');
+      whole = await connect((await (await fetch(`http://127.0.0.1:${port}/json/version`, { headers: { connection: 'close' } })).json()).webSocketDebuggerUrl);
+    } catch {
+      stopBrowserOf(profile);
+      throw new Error('The browser didn\'t start.');
+    }
+    whole.closed.then(end);
+    // a tool that's stopped, or ends on an error, takes it too, as it does the browser it started itself
+    if (headless) process.once('exit', () => over || stopBrowserOf(profile));
   }
   if (!target) throw new Error('The browser didn\'t start.');
   // closing any of its pages ends the browser, which is asked through the page opened last
@@ -154,6 +183,10 @@ async function drive(chrome, portFile, profile, headless, controllers) {
     last.disconnect();
     chrome.kill();
     await Promise.race([exited, wait(5000)]);
+    if (whole) {
+      whole.disconnect();
+      stopBrowserOf(profile);
+    }
     // its helpers outlive it for a moment, and the network service writes to the profile as it quits, so the folder
     // can't be emptied for the next browser until they've gone
     for (let i = 0; i < 100 && running(profile); i++) await wait(50);
