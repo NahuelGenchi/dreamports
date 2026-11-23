@@ -1,43 +1,48 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="480" height="332" viewBox="0 0 480 332">
-<title>Game Boy Advance: 0% of its known shared code proven, 0 of 7,418 bytes and 0 of 118 functions, in 4 libraries, taken by 0 games.</title>
+<title>Game Boy Advance: 99.73% of its known shared code proven, 7,398 of 7,418 bytes and 116 of 118 functions, in 4 libraries, taken by 1 game.</title>
 <style>text{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace}.page{fill:#050a24}.block{fill:#0f1847}.text{fill:#eef4ff}.dim{fill:#a9b8e6}.track{fill:#26346e}.bytes{fill:#3fb950}.memory{fill:#58a6ff}.written{fill:#d29922}.unwritten{fill:#68728f}@media (prefers-color-scheme:light){.page{fill:#eef2fa}.block{fill:#dde4f3}.text{fill:#0b1533}.dim{fill:#3f4d73}.track{fill:#c3cde6}.bytes{fill:#1a7f37}.memory{fill:#0969da}.written{fill:#9a6700}.unwritten{fill:#737f9d}}</style>
 <rect class="page" width="480" height="332" rx="6"/>
 <text class="dim" x="9" y="18" font-size="11">Game Boy Advance's shared code</text>
-<text class="text" x="9" y="42" font-size="22" font-weight="700">0% proven</text>
-<text class="dim" x="9" y="60" font-size="11">0 of 7,418 bytes, 0 of 118 functions</text>
-<text class="dim" x="9" y="74" font-size="11">4 libraries, taken by 0 games</text>
+<text class="text" x="9" y="42" font-size="22" font-weight="700">99.73% proven</text>
+<text class="dim" x="9" y="60" font-size="11">7,398 of 7,418 bytes, 116 of 118 functions</text>
+<text class="dim" x="9" y="74" font-size="11">4 libraries, taken by 1 game</text>
 <rect class="bytes" x="9" y="83" width="8" height="8"/>
-<text class="dim" x="22" y="91" font-size="10">proven, same bytes (0)</text>
-<rect class="memory" x="178.4" y="83" width="8" height="8"/>
-<text class="dim" x="191.4" y="91" font-size="10">proven, same memory (0)</text>
+<text class="dim" x="22" y="91" font-size="10">proven, same bytes (116)</text>
+<rect class="memory" x="190.8" y="83" width="8" height="8"/>
+<text class="dim" x="203.8" y="91" font-size="10">proven, same memory (0)</text>
 <rect class="written" x="9" y="99" width="8" height="8"/>
-<text class="dim" x="22" y="107" font-size="10">written (117)</text>
-<rect class="unwritten" x="178.4" y="99" width="8" height="8"/>
-<text class="dim" x="191.4" y="107" font-size="10">not written (1)</text>
-<g><title>gba/m4a: 0 of 95 functions proven, 0 of 7,044 bytes, 94/95 written, taken by 0 versions</title>
+<text class="dim" x="22" y="107" font-size="10">written (1)</text>
+<rect class="unwritten" x="190.8" y="99" width="8" height="8"/>
+<text class="dim" x="203.8" y="107" font-size="10">not written (1)</text>
+<g><title>gba/m4a: 93 of 95 functions proven, 7,024 of 7,044 bytes, 94/95 written, taken by 1 version</title>
 <rect class="block" x="9" y="120" width="462" height="72" rx="3"/>
 <text class="text" x="16" y="135" font-size="11" font-weight="700">m4a</text>
 <text class="dim" x="464" y="135" font-size="10" text-anchor="end">94/95 written</text>
 <rect class="track" x="16" y="141" width="448" height="3" rx="1.5"/>
+<rect class="bytes" x="16" y="141" width="446.73" height="3"/>
 </g>
-<g><title>gba/libgcc: 0 of 17 functions proven, 0 of 178 bytes, 17/17 written, taken by 0 versions</title>
+<g><title>gba/libgcc: 17 of 17 functions proven, 178 of 178 bytes, 17/17 written, taken by 1 version</title>
 <rect class="block" x="9" y="200" width="362" height="62" rx="3"/>
 <text class="text" x="16" y="215" font-size="11" font-weight="700">libgcc</text>
 <text class="dim" x="16" y="227" font-size="10">17/17 written</text>
 <rect class="track" x="16" y="231" width="348" height="3" rx="1.5"/>
+<rect class="bytes" x="16" y="231" width="348" height="3"/>
 </g>
-<g><title>gba/bios: 0 of 4 functions proven, 0 of 20 bytes, 4/4 written, taken by 0 versions</title>
+<g><title>gba/bios: 4 of 4 functions proven, 20 of 20 bytes, 4/4 written, taken by 1 version</title>
 <rect class="block" x="379" y="200" width="92" height="62" rx="3"/>
 <text class="text" x="386" y="215" font-size="11" font-weight="700">bios</text>
 <text class="dim" x="386" y="227" font-size="10">4/4 written</text>
 <rect class="track" x="386" y="231" width="78" height="3" rx="1.5"/>
+<rect class="bytes" x="386" y="231" width="78" height="3"/>
 </g>
-<g><title>gba/newlib: 0 of 2 functions proven, 0 of 176 bytes, 2/2 written, taken by 0 versions</title>
+<g><title>gba/newlib: 2 of 2 functions proven, 176 of 176 bytes, 2/2 written, taken by 1 version</title>
 <rect class="block" x="9" y="270" width="462" height="52" rx="3"/>
 <text class="text" x="16" y="285" font-size="11" font-weight="700">newlib</text>
 <text class="dim" x="464" y="285" font-size="10" text-anchor="end">2/2 written</text>
 <rect class="track" x="16" y="291" width="448" height="3" rx="1.5"/>
+<rect class="bytes" x="16" y="291" width="448" height="3"/>
 </g>
-<path class="written" d="M16 151h8v8h-8zM26 151h8v8h-8zM36 151h8v8h-8zM46 151h8v8h-8zM56 151h8v8h-8zM66 151h8v8h-8zM76 151h8v8h-8zM86 151h8v8h-8zM96 151h8v8h-8zM106 151h8v8h-8zM116 151h8v8h-8zM126 151h8v8h-8zM136 151h8v8h-8zM146 151h8v8h-8zM156 151h8v8h-8zM166 151h8v8h-8zM176 151h8v8h-8zM186 151h8v8h-8zM196 151h8v8h-8zM206 151h8v8h-8zM216 151h8v8h-8zM226 151h8v8h-8zM236 151h8v8h-8zM246 151h8v8h-8zM256 151h8v8h-8zM266 151h8v8h-8zM276 151h8v8h-8zM286 151h8v8h-8zM306 151h8v8h-8zM316 151h8v8h-8zM326 151h8v8h-8zM336 151h8v8h-8zM346 151h8v8h-8zM356 151h8v8h-8zM366 151h8v8h-8zM376 151h8v8h-8zM386 151h8v8h-8zM396 151h8v8h-8zM406 151h8v8h-8zM416 151h8v8h-8zM426 151h8v8h-8zM436 151h8v8h-8zM446 151h8v8h-8zM456 151h8v8h-8zM16 161h8v8h-8zM26 161h8v8h-8zM36 161h8v8h-8zM46 161h8v8h-8zM56 161h8v8h-8zM66 161h8v8h-8zM76 161h8v8h-8zM86 161h8v8h-8zM96 161h8v8h-8zM106 161h8v8h-8zM116 161h8v8h-8zM126 161h8v8h-8zM136 161h8v8h-8zM146 161h8v8h-8zM156 161h8v8h-8zM166 161h8v8h-8zM176 161h8v8h-8zM186 161h8v8h-8zM196 161h8v8h-8zM206 161h8v8h-8zM216 161h8v8h-8zM226 161h8v8h-8zM236 161h8v8h-8zM246 161h8v8h-8zM256 161h8v8h-8zM266 161h8v8h-8zM276 161h8v8h-8zM286 161h8v8h-8zM296 161h8v8h-8zM306 161h8v8h-8zM316 161h8v8h-8zM326 161h8v8h-8zM336 161h8v8h-8zM346 161h8v8h-8zM356 161h8v8h-8zM366 161h8v8h-8zM376 161h8v8h-8zM386 161h8v8h-8zM396 161h8v8h-8zM406 161h8v8h-8zM416 161h8v8h-8zM426 161h8v8h-8zM436 161h8v8h-8zM446 161h8v8h-8zM456 161h8v8h-8zM16 171h8v8h-8zM26 171h8v8h-8zM36 171h8v8h-8zM46 171h8v8h-8zM56 171h8v8h-8zM16 241h8v8h-8zM26 241h8v8h-8zM36 241h8v8h-8zM46 241h8v8h-8zM56 241h8v8h-8zM66 241h8v8h-8zM76 241h8v8h-8zM86 241h8v8h-8zM96 241h8v8h-8zM106 241h8v8h-8zM116 241h8v8h-8zM126 241h8v8h-8zM136 241h8v8h-8zM146 241h8v8h-8zM156 241h8v8h-8zM166 241h8v8h-8zM176 241h8v8h-8zM386 241h8v8h-8zM396 241h8v8h-8zM406 241h8v8h-8zM416 241h8v8h-8zM16 301h8v8h-8zM26 301h8v8h-8z"/>
+<path class="bytes" d="M16 151h8v8h-8zM26 151h8v8h-8zM36 151h8v8h-8zM46 151h8v8h-8zM56 151h8v8h-8zM66 151h8v8h-8zM76 151h8v8h-8zM86 151h8v8h-8zM96 151h8v8h-8zM106 151h8v8h-8zM116 151h8v8h-8zM126 151h8v8h-8zM136 151h8v8h-8zM146 151h8v8h-8zM156 151h8v8h-8zM166 151h8v8h-8zM176 151h8v8h-8zM186 151h8v8h-8zM196 151h8v8h-8zM206 151h8v8h-8zM216 151h8v8h-8zM226 151h8v8h-8zM236 151h8v8h-8zM246 151h8v8h-8zM256 151h8v8h-8zM266 151h8v8h-8zM276 151h8v8h-8zM286 151h8v8h-8zM306 151h8v8h-8zM316 151h8v8h-8zM326 151h8v8h-8zM336 151h8v8h-8zM346 151h8v8h-8zM356 151h8v8h-8zM366 151h8v8h-8zM376 151h8v8h-8zM386 151h8v8h-8zM396 151h8v8h-8zM406 151h8v8h-8zM416 151h8v8h-8zM426 151h8v8h-8zM436 151h8v8h-8zM446 151h8v8h-8zM456 151h8v8h-8zM16 161h8v8h-8zM26 161h8v8h-8zM36 161h8v8h-8zM46 161h8v8h-8zM56 161h8v8h-8zM66 161h8v8h-8zM76 161h8v8h-8zM86 161h8v8h-8zM96 161h8v8h-8zM106 161h8v8h-8zM116 161h8v8h-8zM136 161h8v8h-8zM146 161h8v8h-8zM156 161h8v8h-8zM166 161h8v8h-8zM176 161h8v8h-8zM186 161h8v8h-8zM196 161h8v8h-8zM206 161h8v8h-8zM216 161h8v8h-8zM226 161h8v8h-8zM236 161h8v8h-8zM246 161h8v8h-8zM256 161h8v8h-8zM266 161h8v8h-8zM276 161h8v8h-8zM286 161h8v8h-8zM296 161h8v8h-8zM306 161h8v8h-8zM316 161h8v8h-8zM326 161h8v8h-8zM336 161h8v8h-8zM346 161h8v8h-8zM356 161h8v8h-8zM366 161h8v8h-8zM376 161h8v8h-8zM386 161h8v8h-8zM396 161h8v8h-8zM406 161h8v8h-8zM416 161h8v8h-8zM426 161h8v8h-8zM436 161h8v8h-8zM446 161h8v8h-8zM456 161h8v8h-8zM16 171h8v8h-8zM26 171h8v8h-8zM36 171h8v8h-8zM46 171h8v8h-8zM56 171h8v8h-8zM16 241h8v8h-8zM26 241h8v8h-8zM36 241h8v8h-8zM46 241h8v8h-8zM56 241h8v8h-8zM66 241h8v8h-8zM76 241h8v8h-8zM86 241h8v8h-8zM96 241h8v8h-8zM106 241h8v8h-8zM116 241h8v8h-8zM126 241h8v8h-8zM136 241h8v8h-8zM146 241h8v8h-8zM156 241h8v8h-8zM166 241h8v8h-8zM176 241h8v8h-8zM386 241h8v8h-8zM396 241h8v8h-8zM406 241h8v8h-8zM416 241h8v8h-8zM16 301h8v8h-8zM26 301h8v8h-8z"/>
+<path class="written" d="M126 161h8v8h-8z"/>
 <path class="unwritten" d="M296 151h8v8h-8z"/>
 </svg>
