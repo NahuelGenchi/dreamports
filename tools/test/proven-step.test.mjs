@@ -3,7 +3,7 @@
 // what the pull request's check (tools/clips-check.mjs) and share make of it, with a made-up game. npm run check runs them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { join } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import { parseCodeMap } from '../lib/proof-files.mjs';
 import { marksIn, parseProofs, withProofs } from '../lib/proofs.mjs';
 import { proofLines, provenStep, recordingsAt, showsProofs, standProblems, stepProofs } from '../lib/proven-step.mjs';
@@ -28,7 +28,8 @@ const STEPS = files({ 'src/game.h': `${HEADER}void Step(void);\n`, 'src/twins.c'
 // each twin's mark, as the tools take it of these files
 function marksOf(after) {
   const sources = [...after.keys()].filter(path => path.endsWith('.c')).map(path => join('/version', path));
-  const read = path => after.get(path.slice('/version/'.length)) ?? null;
+  // by its path inside the folder with /, as the tools read a file, whichever way the computer writes a path
+  const read = path => after.get(relative('/version', path).split(sep).join('/')) ?? null;
   return marksIn(codeMap, { folder: '/version', files: sources, twinsOf: new Map(sources.map(file => [file, twinsIn(read(file))])), read });
 }
 // proofs.json as `match` leaves it after proving these functions of these files, and `twin` those in `memory`
