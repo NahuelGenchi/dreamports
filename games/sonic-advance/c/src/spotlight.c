@@ -1,67 +1,152 @@
-// A spotlight's beam, translated from front/spotlight.js (SAT-R's CreateSpotlightBeamTask and Task_SpotlightBeam, as
-// Sonic Advance's own code has them, asm/non_matching/game/shared/stage/sa1_Task_SpotlightBeam.inc). A beam is a
-// window shaped like a wedge from a point below the screen, swinging back and forth: its angle swings one way while it
-// is under half a turn and the other way past it, and its two edges are drawn into the window's sides a line at a time.
+// A spotlight's beam: a task that swings it, and draws it as a window of the screen with the line-window functions.
+// The opening has two, and Ice Paradise has its own.
+#include "core.h"
+#include "bg_triangles.h"
+#include "spotlight.h"
+#include "task.h"
 
-#include "sa.h"
+#define DISPLAY_WIDTH 240
 
-#define BEAM_PRIORITY 0x2000
+extern const s16 gSineTable[1280];
+s32 Div(s32 num, s32 denom);
 
-// tan of a 1024-step angle in 8.8, from the sine table's 8.8 values
-static int tan8(int a) { return s16(bios_div((SINE[a] >> 6) << 8, SINE[a + 0x100] >> 6)); }
-// the angle an edge that leaves the screen's side is measured at
-static int side_angle(int a) { return (a > 0xFF ? a - 0x300 : 0x100 - a) & 0x3FF; }
+/** The tangent of an angle of the sine table's 1,024, with 8 bits of fraction, as the BIOS divides it. */
+#define TAN(angle) Div((gSineTable[(angle)] >> 6) << 8, gSineTable[(angle) + 0x100] >> 6)
 
-static void beam_destroyed(Task *t) { (void)t; e.flags &= ~FLAGS_HBLANK_COPY; }
-static void spotlight_beam(Task *t);
+/** 0x08011DBC, CreateSpotlightBeamTask: the task, with its beam set to where it starts. */
+struct Task *CreateSpotlightBeamTask(void) {
+  struct Task *t = TaskCreate(CODE(Task_SpotlightBeam), sizeof(struct SpotlightBeam), 0x2000, 0, CODE(TaskDestructor_8012284));
+  struct SpotlightBeam *beam = TASK_DATA(t);
 
-/**
- * CreateSpotlightBeamTask: `unk0` is the beam's angle (1024 a turn), `unk2` how fast its swing changes and `unk4` the
- * swing (8.8), (`unk6`, `unk8`) the point it comes from, `bg` which window it is (as the H-blank effects number them: 2
- * is window 0's, 3 window 1's) and `unkB` how wide it is.
- */
-Task *create_spotlight_beam(Beam *beam) {
-  beam->unk0 = 0; beam->unk2 = 64; beam->unk4 = 0x800; beam->unk6 = 120; beam->unk8 = 200; beam->bg = 0; beam->unkB = 32;
-  return create_task(spotlight_beam, beam, BEAM_PRIORITY, 0, beam_destroyed);
+  beam->unk6 = 120;
+  beam->unk8 = 200;
+  beam->unk0 = 0;
+  beam->unk2 = 64;
+  beam->unk4 = 0x800;
+  beam->bg = 0;
+  beam->unkB = 32;
+
+  return t;
 }
 
-// where one edge of the beam, at angle `a`, meets the screen: (x, y) on its top or one of its sides
-static void edge_end(const Beam *b, int a, int x, int *ex, int *ey) {
-  if (x <= 0) { *ex = 0; *ey = s16(b->unk8 - ((b->unk6 * tan8(side_angle(a))) >> 8)); }
-  else if (x > 0xEF) { *ex = 0xF0; *ey = s16(b->unk8 - (((0xF0 - b->unk6) * tan8(side_angle(a))) >> 8)); }
-  else { *ex = x; *ey = 0; }
-}
+/** 0x08011E08, Task_SpotlightBeam: the beam swung by its speed, back and forth across the screen, and its two edges
+ *  drawn as the edges of its window, line by line, from where the light shines to the screen's bottom. */
+void Task_SpotlightBeam(void) {
+  // the triangle the window's edges follow, its corners as the line-window functions take them, and where each
+  // edge leaves the screen, x then y
+  u8 tri[8];
+  s16 left[2];
+  s16 right[2];
+  struct SpotlightBeam *beam = TASK_DATA(gCurTask);
+  u32 angle;
+  u32 other;
 
-// Task_SpotlightBeam
-static void spotlight_beam(Task *t) {
-  Beam *b = t->data;
-  b->unk4 = s16((b->unk0 & 0xFFFF) > 0x1FF ? b->unk2 + b->unk4 : b->unk4 - b->unk2);
-  b->unk0 = ((b->unk4 >> 8) + (b->unk0 & 0xFFFF)) & 0x3FF;
-  int a0 = (b->unk0 + b->unkB) & 0x3FF;
-  if (SINE[a0 + 0x100] == 0) return;
-  // the edges as [x0, y0, x1, y1] where they meet the screen's top or side, then its bottom, as bytes
-  uint8_t p[8];
-  int x0, y0, x1, y1;
-  edge_end(b, a0, s16(b->unk6 - ((b->unk8 * tan8(a0)) >> 8)), &x0, &y0);
-  p[0] = (uint8_t)x0; p[1] = (uint8_t)y0;
-  p[2] = (uint8_t)((b->unk6 & 0xFF) - (((b->unk8 - 0xA0) * tan8(a0)) >> 8));
-  p[3] = 0xA0;
-  int a1 = (0x400 - ((b->unk0 & 0xFFFF) - b->unkB)) & 0x3FF;
-  edge_end(b, a1, s16(((b->unk8 * tan8(a1)) >> 8) + (b->unk6 & 0xFFFF)), &x1, &y1);
-  p[4] = (uint8_t)x1; p[5] = (uint8_t)y1;
-  p[6] = (uint8_t)((((b->unk8 - 0xA0) * tan8(a1)) >> 8) + (b->unk6 & 0xFF));
-  p[7] = 0xA0;
-#define TOP(y) (e.winRegs[b->bg & 1 ? 3 : 2] = (uint16_t)(((y) << 8) | 0xA0))
-  if ((b->unk0 & 0xFFFF) <= 0x1FF) {
-    if (y1 > 0x9F) return;
-    TOP(p[5]);
-    if (y0 > 0x9F) window_right(b->bg, p[4], p[5], p[6], p[7], 0);
-    else window_between(b->bg, p);
+  if ((u16)beam->unk0 <= 0x1FF)
+    beam->unk4 -= beam->unk2;
+  else
+    beam->unk4 += beam->unk2;
+
+  beam->unk0 += beam->unk4 >> 8;
+  angle = ((beam->unk0 &= 0x3FF) + beam->unkB) & 0x3FF;
+
+  if (gSineTable[angle + 0x100] == 0)
+    return;
+
+  // the left edge: where it leaves the screen, at its bottom or at a side
+  left[0] = beam->unk6 - ((beam->unk8 * (s16)TAN(angle)) >> 8);
+  if (left[0] <= 0) {
+    left[0] = 0;
+    if (angle > 0xFF) {
+      other = (angle - 0x300) & 0x3FF;
+      left[1] = beam->unk8 - ((beam->unk6 * (s16)TAN(other)) >> 8);
+    } else {
+      other = (0x100 - angle) & 0x3FF;
+      left[1] = beam->unk8 - ((beam->unk6 * (s16)TAN(other)) >> 8);
+    }
+  } else if (left[0] > DISPLAY_WIDTH - 1) {
+    left[0] = DISPLAY_WIDTH;
+    if (angle > 0xFF) {
+      other = (angle - 0x300) & 0x3FF;
+      left[1] = beam->unk8 - (((DISPLAY_WIDTH - beam->unk6) * (s16)TAN(other)) >> 8);
+    } else {
+      other = (0x100 - angle) & 0x3FF;
+      left[1] = beam->unk8 - (((DISPLAY_WIDTH - beam->unk6) * (s16)TAN(other)) >> 8);
+    }
   } else {
-    if (y0 > 0x9F) return;
-    TOP(p[1]);
-    if (y1 > 0x9F) window_left(b->bg, p[0], p[1], p[2], p[3], 0);
-    else window_between(b->bg, p);
+    left[1] = 0;
   }
-#undef TOP
+  tri[0] = left[0];
+  tri[1] = left[1];
+  tri[2] = beam->unk6 - (((beam->unk8 - DISPLAY_HEIGHT) * (s16)TAN(angle)) >> 8);
+  tri[3] = DISPLAY_HEIGHT;
+
+  // the right edge, the same way
+  angle = (u16)(0x400 - (beam->unk0 - beam->unkB)) & 0x3FF;
+  right[0] = ((beam->unk8 * (s16)TAN(angle)) >> 8) + beam->unk6;
+  if (right[0] <= 0) {
+    right[0] = 0;
+    if (angle > 0xFF) {
+      other = (angle - 0x300) & 0x3FF;
+      right[1] = beam->unk8 - ((beam->unk6 * (s16)TAN(other)) >> 8);
+    } else {
+      other = (0x100 - angle) & 0x3FF;
+      right[1] = beam->unk8 - ((beam->unk6 * (s16)TAN(other)) >> 8);
+    }
+  } else if (right[0] > DISPLAY_WIDTH - 1) {
+    right[0] = DISPLAY_WIDTH;
+    if (angle > 0xFF) {
+      other = (angle - 0x300) & 0x3FF;
+      right[1] = beam->unk8 - (((DISPLAY_WIDTH - beam->unk6) * (s16)TAN(other)) >> 8);
+    } else {
+      other = (0x100 - angle) & 0x3FF;
+      right[1] = beam->unk8 - (((DISPLAY_WIDTH - beam->unk6) * (s16)TAN(other)) >> 8);
+    }
+  } else {
+    right[1] = 0;
+  }
+  tri[4] = right[0];
+  tri[5] = right[1];
+  tri[6] = (((beam->unk8 - DISPLAY_HEIGHT) * (s16)TAN(angle)) >> 8) + beam->unk6;
+  tri[7] = DISPLAY_HEIGHT;
+
+  // the window's edges: both of them along the triangle's sides, or one beside the side the beam leaves by
+  if ((u16)beam->unk0 <= 0x1FF) {
+    if (right[1] > DISPLAY_HEIGHT - 1)
+      return;
+    if (left[1] > DISPLAY_HEIGHT - 1) {
+      if (beam->bg & 1)
+        gWinRegs[3] = (tri[5] << 8) | DISPLAY_HEIGHT;
+      else
+        gWinRegs[2] = (tri[5] << 8) | DISPLAY_HEIGHT;
+      sub_8006228(beam->bg, tri[4], tri[5], tri[6], tri[7], 0);
+      return;
+    }
+    if (beam->bg & 1)
+      gWinRegs[3] = (tri[5] << 8) | DISPLAY_HEIGHT;
+    else
+      gWinRegs[2] = (tri[5] << 8) | DISPLAY_HEIGHT;
+    sub_800724C(beam->bg, (TriParam1 *)tri);
+    return;
+  }
+
+  if (left[1] > DISPLAY_HEIGHT - 1)
+    return;
+  if (right[1] > DISPLAY_HEIGHT - 1) {
+    if (beam->bg & 1)
+      gWinRegs[3] = (tri[1] << 8) | DISPLAY_HEIGHT;
+    else
+      gWinRegs[2] = (tri[1] << 8) | DISPLAY_HEIGHT;
+    sub_80064A8(beam->bg, tri[0], tri[1], tri[2], tri[3], 0);
+    return;
+  }
+  if (beam->bg & 1)
+    gWinRegs[3] = (tri[1] << 8) | DISPLAY_HEIGHT;
+  else
+    gWinRegs[2] = (tri[1] << 8) | DISPLAY_HEIGHT;
+  sub_800724C(beam->bg, (TriParam1 *)tri);
+}
+
+/** 0x08012284, TaskDestructor_8012284: the beam's task gone, so no lines are copied at each H-blank any more. */
+void TaskDestructor_8012284(struct Task *t) {
+  gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
 }
