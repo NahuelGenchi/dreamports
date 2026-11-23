@@ -23,14 +23,36 @@ test('with nothing asked, the first free one in C', () => {
   assert.deepEqual(ask(g), { do: 'take', piece: g.logos, notes: [] });
 });
 
-test('one they have already comes before a free one, in the language asked for first', () => {
+test('one they have already comes before a free one, when it is in the language they work in', () => {
   const g = game();
-  g.jsTitle.assignees = [{ login: 'Sam' }];
-  assert.equal(ask(g).do, 'carry-on');
-  assert.equal(ask(g).piece, g.jsTitle);
-  g.options.assignees = [{ login: 'sam' }];
+  g.options.assignees = [{ login: 'Sam' }];
+  assert.deepEqual([ask(g).do, ask(g).piece], ['carry-on', g.options]);
+  g.jsTitle.assignees = [{ login: 'sam' }];
   assert.equal(ask(g).piece, g.options);
   assert.equal(ask(g, { language: 'js' }).piece, g.jsTitle);
+});
+
+test('one of theirs in the other language is said, and they take a free one in theirs', () => {
+  const g = game();
+  g.jsTitle.assignees = [{ login: 'sam' }];
+  const found = ask(g);
+  assert.deepEqual([found.do, found.piece], ['take', g.logos]);
+  assert.match(found.notes[0], new RegExp(`#${g.jsTitle.number} .* is yours already`));
+});
+
+test('one of theirs that waits is said too, and never handed back', () => {
+  const g = game();
+  g.options.assignees = [{ login: 'sam' }];
+  const found = ask(g, { waiting: [{ piece: g.options, on: [{ number: g.title.number, name: 'Title screen in C' }] }], free: [g.logos, g.title, g.jsTitle, g.jsOptions] });
+  assert.deepEqual([found.do, found.piece], ['take', g.logos]);
+  assert.equal(found.notes.length, 1);
+});
+
+test('with nothing free at all, one of theirs in the other language is carried on with, unless they named the language', () => {
+  const g = game();
+  g.jsTitle.assignees = [{ login: 'sam' }];
+  assert.deepEqual([ask(g, { free: [] }).do, ask(g, { free: [] }).piece], ['carry-on', g.jsTitle]);
+  assert.equal(ask(g, { free: [], languageNamed: true }).do, 'stop');
 });
 
 test('theirs that a pull request has in review is finished, so they take the next', () => {

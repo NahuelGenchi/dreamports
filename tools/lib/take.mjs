@@ -63,9 +63,14 @@ export function whatToTake({ pieces, free, waiting, reviewing, login, language, 
     }
   }
 
-  // one they have already, in the language asked for before any other
-  const own = open.filter(theirs);
-  if (own.length) return { do: 'carry-on', piece: own.find(piece => pieceOf(piece).language === language) ?? own[0], notes };
+  // one they have already, when it's in the language they work in and waits on nothing. Another of theirs, in the
+  // other language or waiting, isn't handed back in its place: it's said, and they take a free one (#1788)
+  const held = new Set(waiting.map(wait => wait.piece));
+  const own = open.filter(theirs), ready = own.filter(piece => !held.has(piece));
+  const mine = ready.find(piece => pieceOf(piece).language === language);
+  if (mine) return { do: 'carry-on', piece: mine, notes };
+  const others = own.filter(piece => piece !== mine);
+  if (others.length) notes.push(`${others.map(called).join(', ')} ${others.length === 1 ? 'is' : 'are'} yours already, in another language or waiting on something, so ${others.length === 1 ? 'it isn\'t' : 'they aren\'t'} what comes next.`);
 
   // the first free one, as free comes in the order a player meets the game
   const freeIn = wanted => free.filter(piece => pieceOf(piece).language === wanted);
@@ -76,5 +81,8 @@ export function whatToTake({ pieces, free, waiting, reviewing, login, language, 
   if (language !== 'js' && !languageNamed && freeIn('js').length) {
     return { do: 'take', piece: freeIn('js')[0], notes: [...notes, `Nothing is free in ${LANGUAGES[language].name}, so this one is in JavaScript.`] };
   }
+  // nothing else to take, so one of theirs in the other language, unless they asked for the language by name
+  const other = ready.find(piece => pieceOf(piece).language !== language);
+  if (other && !languageNamed) return { do: 'carry-on', piece: other, notes: [] };
   return { do: 'stop', notes };
 }
