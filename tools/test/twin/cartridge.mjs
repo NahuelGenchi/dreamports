@@ -36,6 +36,10 @@ export const GIVES = { Count: 0x08000580, Keep: 0x080005A0 };
 // and the number it loads beside them
 export const TURN = { Turn: 0x08000900 };
 export const TURN_LENGTH = 16;
+// a function of ARM code written by hand, which reads what the link port received and compares it with a mark
+// (withLinked, link.c): 44 bytes of code and the address it loads beside them
+export const LINKED = { Linked: 0x08000D80 };
+export const LINKED_LENGTH = 44;
 // a Thumb start that goes on into ARM code, as a library's veneer does, with its ARM part an entry of its own as a code
 // map has it (withTwice, twice.c): 4 bytes of Thumb, then 20 of ARM and the address it loads
 export const TWICE = { Twice: 0x08000A80 };
@@ -93,6 +97,16 @@ export function withPeek(rom) {
   [0x4802, 0x2107, 0x4021, 0x5445, 0x4770, 0x0000].forEach((op, i) => peeked.writeUInt16LE(op, PEEK.Spill - CARTRIDGE + 2 * i));
   peeked.writeUInt32LE(NAMED.get('gBall'), PEEK.Spill - CARTRIDGE + 12);
   return peeked;
+}
+
+// The same cartridge with Linked, in ARM: mov r12, #0x04000000   add r12, r12, #0x120   ldrh r0, [r12]
+// ldr r1, =gFrame   mov r2, #0xFE   add r2, r2, #0xFE00   cmp r0, r2   bne past the next two   mov r0, #1
+// str r0, [r1]   bx lr. The mark, 0xFEFE, is made of two numbers and named only by the cmp.
+export function withLinked(rom) {
+  const linked = Buffer.from(rom), at = LINKED.Linked - CARTRIDGE;
+  if (!linked.subarray(at, at + LINKED_LENGTH + 4).every(byte => byte === linked[at])) throw new Error('Linked has no room in the made-up cartridge.');
+  [0xE3A0C301, 0xE28CCE12, 0xE1DC00B0, 0xE59F1018, 0xE3A020FE, 0xE2822CFE, 0xE1500002, 0x1A000001, 0xE3A00001, 0xE5810000, 0xE12FFF1E, NAMED.get('gFrame')].forEach((word, i) => linked.writeUInt32LE(word, at + 4 * i));
+  return linked;
 }
 
 export function withTwice(rom) {
