@@ -24,7 +24,8 @@
 //                       processor does it (1), or leave a call that makes one as one a twin can't follow (0, as at
 //                       first). Answers 0.
 //   'c' address span r0 r1 r2 r3 limit onStack [words] changes [address bytes value]
-//                       changes those values, the display's status at 0x04000004 and its line at 0x04000006 among them, then calls the
+//                       changes those values, the display's status at 0x04000004 and its line at 0x04000006 among them,
+//                       and what the link port received, 0x04000120 to 0x04000126, for this call only, then calls the
 //                       function at the address, odd for Thumb code, `span`
 //                       bytes long, with its first four arguments in the registers and the rest on the stack, and
 //                       lets it run up to `limit` instructions. Answers:
@@ -43,6 +44,7 @@
 //                         1 for a tst, its two values, and where each came from, as from[] below keeps it: its kind,
 //                         bytes and how many steps since (in one word), where, and each of six steps, a kind and a
 //                         number
+//                         whether it read what the link port received (1) or not (0)
 //                       A call that didn't come back is taken back at once, and changes nothing.
 //   't' top             the stack the calls after it start on: an address, or 0 for the game's own. Answers 0.
 //   'w' count [address] the functions to see start in play, each by its address. Answers 0.
@@ -127,6 +129,11 @@ static uint8_t undo[IMAGE], before[IMAGE], after[IMAGE];
 // what a call did
 static int watching;
 static uint32_t hardware, leftFor, stackLow, stackHigh;
+// What the link port received from each console, four halfwords the hardware alone writes, so no function can be
+// given them through memory: whether the call read them, which the check then gives other values in later calls
+#define LINK_AT 0x04000120u
+#define LINK_BYTES 8
+static uint32_t linkRead;
 // whether a swi has the call in the BIOS, and the stack of the BIOS's own mode, from where it starts down to the
 // lowest the swi took it
 static int inBios;
@@ -387,6 +394,7 @@ static void touched(uint32_t address, int bytes, int write) {
 	}
 	if (address >= 0x04000000u && address < 0x04000000u + IO_BYTES) {
 		if (!hardware) hardware = address;
+		if (!write && address < LINK_AT + LINK_BYTES && address + bytes > LINK_AT) linkRead = 1;
 		return;
 	}
 	if (!write && address >= CARTRIDGE && address - CARTRIDGE + bytes <= romSize) return;
@@ -536,8 +544,16 @@ static void call(void* state) {
 	memcpy(before, undo, IMAGE);
 	heldStatus = gba->memory.io[(DISPSTAT_AT - 0x04000000u) >> 1];
 	heldLine = gba->memory.io[(VCOUNT_AT - 0x04000000u) >> 1];
+	uint16_t linkGiven[LINK_BYTES / 2], linkWas[LINK_BYTES / 2];
+	int linkSet[LINK_BYTES / 2] = { 0 };
 	for (uint32_t changes = in32(); changes; changes--) {
 		uint32_t where = in32(), bytes = in32(), value = in32();
+		// what the link port received from one console: the hardware's, given once the call's start is kept (below)
+		if (where >= LINK_AT && where < LINK_AT + LINK_BYTES && !(where & 1) && bytes == 2) {
+			linkGiven[(where - LINK_AT) >> 1] = (uint16_t) value;
+			linkSet[(where - LINK_AT) >> 1] = 1;
+			continue;
+		}
 		// the display's status, as the call starts: only its bits that say where the display is
 		if (where == DISPSTAT_AT && bytes == 2) {
 			heldStatus = (uint16_t) ((heldStatus & ~7u) | (value & 7u));
@@ -555,6 +571,11 @@ static void call(void* state) {
 	uint32_t top = stackTop(state);
 	giveImage(before);
 	core->saveState(core, state);
+	// after the state is kept, so the hardware is the console's own again once the call is over
+	for (int i = 0; i < LINK_BYTES / 2; i++) {
+		linkWas[i] = gba->memory.io[((LINK_AT - 0x04000000u) >> 1) + i];
+		if (linkSet[i]) gba->memory.io[((LINK_AT - 0x04000000u) >> 1) + i] = linkGiven[i];
+	}
 
 	int thumb = address & 1;
 	ARMSetPrivilegeMode(cpu, MODE_SYSTEM);
@@ -573,7 +594,7 @@ static void call(void* state) {
 	cpu->gprs[ARM_PC] = address & ~1u;
 	if (thumb) ThumbWritePC(cpu); else ARMWritePC(cpu);
 
-	hardware = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
+	hardware = 0; linkRead = 0; left = 0; clocked = 0; leftFor = 0; readCount = 0; numberCount = 0; pairCount = 0;
 	stackLow = top; stackHigh = top + 4 * onStack;
 	// the first four arguments come from the call, and r4 and up when the twin says it takes them; the rest from nowhere
 	// the check can change
@@ -608,6 +629,15 @@ static void call(void* state) {
 			else if ((opcode & 0xFFC0) == 0x4280) pair(cpu->gprs[opcode & 7], cpu->gprs[opcode >> 3 & 7]);
 			else if ((opcode & 0xFF00) == 0x4500) pair(cpu->gprs[(opcode & 7) | (opcode >> 4 & 8)], cpu->gprs[opcode >> 3 & 15]);
 			if (pc >= own && pc - own < span) compared(pc, opcode, (const uint32_t*) cpu->gprs);
+		} else {
+			// and in ARM code a cmp that always runs, with a number, turned as the instruction says, or with another
+			// register as it is: code written by hand, as a link's interrupt is, compares that way
+			uint32_t arm;
+			LOAD_32(arm, pc & cpu->memory.activeMask, cpu->memory.activeRegion);
+			if ((arm & 0xFFF00000u) == 0xE3500000u) {
+				uint32_t turn = (arm >> 8 & 15) * 2, number = arm & 0xFF;
+				pair(cpu->gprs[arm >> 16 & 15], turn ? number >> turn | number << (32 - turn) : number);
+			} else if ((arm & 0xFFF00FF0u) == 0xE1500000u) pair(cpu->gprs[arm >> 16 & 15], cpu->gprs[arm & 15]);
 		}
 		memcpy(was, cpu->gprs, sizeof was);
 		lastReadKept = 0;
@@ -647,6 +677,7 @@ static void call(void* state) {
 
 	takeImage(after);
 	core->loadState(core, state);
+	for (int i = 0; i < LINK_BYTES / 2; i++) gba->memory.io[((LINK_AT - 0x04000000u) >> 1) + i] = linkWas[i];
 	// the stack is the original's own business
 	for (uint32_t a = stackLow & ~3u; a < stackHigh; a++) {
 		long at = inImage(a);
@@ -682,6 +713,7 @@ static void call(void* state) {
 	for (size_t i = 0; ended == CAME_BACK && i < ranCount; i++) { out32(own + ranAt[i] * 2); out32(ran[ranAt[i]]); }
 	out32(ended == CAME_BACK ? (uint32_t) aimCount : 0);
 	for (size_t i = 0; ended == CAME_BACK && i < aimCount; i++) for (int w = 0; w < AIM_WORDS; w++) out32(aims[i][w]);
+	out32(linkRead);
 	answer();
 }
 
