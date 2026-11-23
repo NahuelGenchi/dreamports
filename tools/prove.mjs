@@ -404,7 +404,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
 
   say('starting the Dreamport…');
   {
-    await openDreamport(page, server, game, copy, { query: `?proof${recording.start ? `&${recording.start}` : ''}`, saves: startSaves && Object.fromEntries(Object.entries(startSaves).map(([key, save]) => [key, save.bytes])) });
+    await openDreamport(page, server, game, copy, { built: true, query: `?proof${recording.start ? `&${recording.start}` : ''}`, saves: startSaves && Object.fromEntries(Object.entries(startSaves).map(([key, save]) => [key, save.bytes])) });
     await page.evaluate(`window.__makeFilter = ${makeFilter}`);
     await page.evaluate(`window.__quick = ${quick && !asked.length}; window.__paced = ${paced}; window.__drawLists = ${!!drawLists}; window.__soundLists = ${!!soundLists}; window.__memory = ${JSON.stringify(memory)}; window.__console = ${JSON.stringify({ id: machine.id, screen: machine.screen, frame: machine.frame, sound: machine.sound })};`);
     await page.evaluate(IN_PAGE);
@@ -539,13 +539,15 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     // a game that stopped drew nothing more: the frame it stopped at and every one after differ
     const reached = hashes.length;
+    // the clip the recording names, unless the game stopped before it and drew none of it
+    const clipNamed = clipAt && clipAt[0] < reached ? clipAt : null;
     if (stopped) {
       for (let f = reached; f < frames; f++) { hashes.push(null); sounds.push(null); ownMemory.push(null); }
       if (firstPicture < 0) firstPicture = stopped.frame;
       if (firstDifference < 0) {
         firstDifference = stopped.frame;
         // the clip shows the four seconds before it, as the game drew nothing more
-        if (!clipAt && !quick) {
+        if (!clipNamed && !quick) {
           const before = [];
           for (let f = Math.max(0, reached - 240); f < reached; f++) before.push(f);
           for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(before)})`)) keptFrames.add(f);
@@ -633,9 +635,9 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // the clip: the recording's, or five seconds from a second before what this step changed, ending before the first
     // frame that differs, or else the last five seconds (lib/clips.mjs)
     const changed = quick ? null : changeOf(differing, soundDiffers, stretchesOf(pictureDifferent));
-    let clip = clipAt ?? clipWindow({ frames, changed, firstDifference });
+    let clip = clipNamed ?? clipWindow({ frames, changed, firstDifference });
     const keepClip = async () => {
-      if (quick || clipAt) return;
+      if (quick || clipNamed) return;
       const wantedNow = [];
       for (let f = clip[0]; f <= clip[1]; f++) if (!keptFrames.has(f)) wantedNow.push(f);
       for (const f of await page.evaluate(`__proof.keep(${JSON.stringify(wantedNow)})`)) keptFrames.add(f);
@@ -647,7 +649,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     clipKept();
     // a change found only once the recording has played, such as a frame that matches now, can be long gone from the
     // pictures the page keeps: the clip then goes where it would with no change
-    if (!quick && !clipAt && !clipFrames.length && changed) {
+    if (!quick && !clipNamed && !clipFrames.length && changed) {
       clip = clipWindow({ frames, changed: null, firstDifference });
       await keepClip();
       clipKept();
@@ -920,7 +922,7 @@ if (!isMainThread && workerData?.lane) {
       const result = await lane.play(name, page, { log: line => lines.push(line), say: () => {} });
       parentPort.postMessage({ at, result, lines });
     } catch (error) {
-      parentPort.postMessage({ error: error.message });
+      parentPort.postMessage({ error: error.stack });
     }
   });
   parentPort.postMessage({});
