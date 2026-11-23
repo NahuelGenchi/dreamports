@@ -55,12 +55,16 @@ const own = exports.__data_end ? { from: exports.__global_base?.value ?? 0, to: 
 const before = own && memory.slice(own.from, own.to);
 if (own && REGIONS.some(({ address, bytes }) => address + bytes > own.from)) throw new Error('The twins\' own values start inside the console\'s memory.');
 // A version that keeps the console's registers itself, as a same-memory version does in its console_io, is given the
-// original's as each call starts, as the original's own are as they were before each call (#1527). The kit's display
-// registers are the kit's, and stay as the module starts them.
+// original's as each call starts, as the original's own are as they were before each call (#1527), and so are the
+// display's, 0x04000000 to 0x04000057, which it keeps in the kit's gba_io, so a call that reads them, as a DMA from the
+// registers does, reads on both sides what the console has there (#1773).
 const registers = exports.console_io && workerData.registers ? new Uint8Array(workerData.registers) : null;
+const DISPLAY = 0x58;
+const display = registers && exports.gba_io ? registers.subarray(0, DISPLAY) : null;
 function putBack() {
   if (own) memory.set(before, own.from);
   if (registers) memory.set(registers, exports.console_io.value);
+  if (display) memory.set(display, exports.gba_io.value);
 }
 
 // A version built with the console's stack keeps its twins' locals and pushes there (kit/gba/c/stack.c): each call
@@ -88,9 +92,10 @@ parentPort.on('message', message => {
   putBack();
   for (const [where, bytes, value] of message.changes) {
     // a hardware register, as the display's status a call starts outside the V-blank with, goes where the version
-    // keeps the console's registers, or nowhere for one that doesn't
+    // keeps the console's registers, the display's in the kit's too, or nowhere for one that doesn't
     if (where >= 0x04000000 && where < 0x05000000) {
       if (registers && where - 0x04000000 + 2 <= registers.length) view.setUint16(exports.console_io.value + where - 0x04000000, value, true);
+      if (display && where - 0x04000000 + 2 <= DISPLAY) view.setUint16(exports.gba_io.value + where - 0x04000000, value, true);
       continue;
     }
     if (bytes === 1) view.setUint8(where, value);

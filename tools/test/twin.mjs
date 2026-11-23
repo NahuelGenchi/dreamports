@@ -202,6 +202,7 @@ try {
   check(shifted.by.Fetch?.kind !== 'same' && /left for 0x00000100, where a twin can't follow/.test(shifted.by.Fetch?.line ?? ''), `and so is one whose DMA copies from the BIOS, which a DMA can't read: ${shifted.by.Fetch?.line ?? shifted.error}`);
   check(shifted.by.Ready?.kind === 'same' && shifted.by.Ready.whole === true, `a call reads the line count and the V-blank as it started, as a twin with no clock does, and some calls start outside the V-blank, so every path is taken: ${shifted.by.Ready?.line ?? shifted.error}`);
   check(shifted.by.Picture?.kind === 'same' && shifted.by.Picture.whole === true, `and one that adds 228 to a line of the picture takes that way too, as a call outside the V-blank starts on one: ${shifted.by.Picture?.line ?? shifted.error}`);
+  check(shifted.by.Mode?.kind === 'same' && shifted.by.Mode.compared === CALLS, `a twin that reads the display's control through the kit's display registers starts each call from the original's, as the console set it at power-on${shifted.by.Mode?.kind === 'same' ? '' : `: ${shifted.by.Mode?.line ?? shifted.error}`}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
