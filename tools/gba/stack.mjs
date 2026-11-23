@@ -586,7 +586,7 @@ function render(text, edits) {
 
 /**
  * The game's own C files, and the shared libraries' it takes, with the console's stack, for a version made the stricter way (`game`, such as
- * 'sonic-advance/strict', whose folder is `folder`): each file with a function proven by the same bytes is written
+ * 'sonic-advance/c', whose folder is `folder`): each file with a function proven by the same bytes is written
  * again under .dreamports/c/stack/, the rest kept. `args` are the build's own flags and folders and `filesTree` its files, both as from `repo`, for clang's tree.
  * Gives { sources, gaps }: the files to build, and what the stack can't hold, each as a line.
  */

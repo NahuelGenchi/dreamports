@@ -8,8 +8,9 @@
 // C" (pieces.mjs). games/README.md explains it for people.
 //
 // A trial is a second version in a language a game already has one in, kept beside it while it's tried, as Sonic
-// Advance's made the stricter way is (#1455), in games/sonic-advance/strict/. It shares everything a version shares,
-// and only the tools know it, by its name, such as `npm run dp -- match sonic-advance/strict`. It isn't in LANGUAGES, so
+// Advance's made the stricter way was (#1455), in games/sonic-advance/strict/, until it became the game's version in C
+// (#1790). It shares everything a version shares, and only the tools know it, by its name, such as
+// `npm run dp -- match <game>/strict`. It isn't in LANGUAGES, so
 // no list of a game's versions has it: the site, the cards, the tasks, the claims and the numbers are as if it weren't
 // there, and its folder isn't copied to the site (src/integrations/games.mjs).
 

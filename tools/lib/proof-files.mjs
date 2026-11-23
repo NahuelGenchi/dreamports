@@ -48,7 +48,7 @@ export const mainVersion = game => versionsOf(game)[0];
 /** Every game with proof files and each of its versions. */
 export const proofVersions = () => proofGames().flatMap(versionsOf);
 
-/** A game's trials, by the tools' names for them, such as 'sonic-advance/strict': second versions kept beside its own
+/** A game's trials, by the tools' names for them, such as '<game>/strict': second versions kept beside its own
  *  while they're tried, which no list of its versions has (src/lib/languages.mjs). */
 export const trialsOf = game => Object.keys(TRIALS).filter(trial => existsSync(join(gameFolder(game), TRIALS[trial].folder, 'index.html')))
   .map(trial => versionName(game, trial));

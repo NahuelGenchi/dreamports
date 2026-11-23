@@ -1,139 +1,220 @@
-// The SEGA and Sonic Team logos, translated from front/logos.js (SAT-R's src/game/sa1/menus/title_screen.c:
-// CreateSegaLogo and the tasks after it). SEGA's logo wipes in from the bottom over 160 frames, a line more each frame
-// (the lines below it are the logo, the lines above it its first line stretched), holds for 120 frames and wipes out
-// the same way. Then Sonic Team's logo opens out from its middle: its top and bottom 40 lines show at once, and its
-// middle 80 lines start split apart, every other line shifted the other way, closing in 2 pixels a frame. With SEGA's
-// ring sound it holds for 122 frames, then fades to white over 33, and the intro starts. A or Start while it fades
-// goes to the title screen instead.
+// The two logos the game opens with: SEGA's, which opens and closes like a blind, then Sonic Team's, which fades to
+// white, or goes at once when A or Start is pressed.
+#include "logos.h"
+#include "background.h"
+#include "core.h"
+#include "task.h"
 
-#include "sa.h"
+#define TM_PRESENTED_BY_SEGA 86
+#define TM_CREATED_BY_SONIC_TEAM 87
+#define SE_RING 102
+#define LOGO_PRIORITY 0x2000
 
-enum { TM_PRESENTED_BY_SEGA = 86, TM_CREATED_BY_SONIC_TEAM = 87 };
-enum { WIPE = 160, SEGA_HOLD = 120, SONIC_TEAM_HOLD = 120, FADE_STEP = 0x80, FADE_END = 0x1000 };
+/** What SEGA's logo keeps: a count of frames, and its background. */
+struct SegaLogo {
+  /* 0x00 */ u16 frames;
+  /* 0x04 */ struct Background bg;
+};
 
-static struct { int unk0, qFade; Background bg; } logo;
+/** What Sonic Team's logo keeps: the same, and how far it has faded, in 256ths. */
+struct SonicTeamLogo {
+  /* 0x00 */ u16 frames;
+  /* 0x04 */ struct Background bg;
+  /* 0x44 */ s16 qFade;
+};
 
-// CreateSegaLogo and CreateSonicTeamLogo: layer 2 alone (map block 30, tiles from 0) with the logo's 20 × 10 tiles at
-// (5, 5), the map filled with tile 0 first
-static void show_logo(uint16_t tilemapId, TaskMain main) {
-  e.bldCnt = 0; e.bldY = 0;
-  e.dispCnt = 0x40;
-  e.bgCnt[2] = 0x5E01;
-  e.bgScroll[4] = 0; e.bgScroll[5] = 0;
-  memset(gba_vram, 0, 64);
-  e.mapFill[2].value = 0;
-  e.mapFill[2].rect[0] = 0; e.mapFill[2].rect[1] = 0; e.mapFill[2].rect[2] = 0xFF; e.mapFill[2].rect[3] = 0x40;
-  logo.unk0 = 0; logo.qFade = 0;
-  background_init(&logo.bg);
-  logo.bg.layoutVram = 30 * 0x800; logo.bg.tilemapId = tilemapId; logo.bg.unk22 = 5; logo.bg.unk24 = 5;
-  logo.bg.targetTilesX = 20; logo.bg.targetTilesY = 10; logo.bg.flags = 2;
-  create_task(main, &logo, 0x2000, 0, NULL);
-  draw_background(&logo.bg);
+/** CreateSegaLogo, 0x0800CFB8: the screen and the task of SEGA's logo. */
+void CreateSegaLogo(void) {
+  struct Task *t;
+  struct SegaLogo *logo;
+  struct Background *bg;
+
+  gBldRegs.bldCnt = 0;
+  gBldRegs.bldY = 0;
+  gFlags |= FLAGS_8000;
+  gDispCnt = DISPCNT_OBJ_1D_MAP;
+  gBgCntRegs[2] = 0x5E01;
+  gBgScrollRegs[2][0] = 0;
+  gBgScrollRegs[2][1] = 0;
+  DMA3_FILL32(0, VRAM, 64);
+  gBgSprites_Unknown1[2] = 0;
+  gBgSprites_Unknown2[2][0] = 0;
+  gBgSprites_Unknown2[2][1] = 0;
+  gBgSprites_Unknown2[2][2] = 0xFF;
+  gBgSprites_Unknown2[2][3] = 0x40;
+
+  t = TaskCreate(CODE(Task_SetSegaLogoTask), sizeof(struct SegaLogo), LOGO_PRIORITY, 0, NULL);
+  logo = TASK_DATA(t);
+  logo->frames = 0;
+  bg = &logo->bg;
+  bg->graphics.dest = (void *)VRAM;
+  bg->graphics.anim = 0;
+  bg->layoutVram = (u16 *)(VRAM + 0xF000);
+  bg->unk18 = 0;
+  bg->unk1A = 0;
+  bg->tilemapId = TM_PRESENTED_BY_SEGA;
+  bg->unk1E = 0;
+  bg->unk20 = 0;
+  bg->unk22 = 5;
+  bg->unk24 = 5;
+  bg->targetTilesX = 20;
+  bg->targetTilesY = 10;
+  bg->paletteOffset = 0;
+  bg->flags = 2;
+  DrawBackground(bg);
 }
 
-static void sega_wipe_in(Task *t);
-static void sega_start(Task *t) { t->main = sega_wipe_in; t->main(t); }
+/** Task_SegaLogoInit, 0x0800D098: the logo opens from the bottom, a line more each frame, for 160 frames. */
+void Task_SegaLogoInit(void) {
+  struct SegaLogo *logo = TASK_DATA(gCurTask);
 
-/** CreateSegaLogo. */
-void create_sega_logo(void) {
-  e.flags |= FLAGS_NO_RESET;
-  show_logo(TM_PRESENTED_BY_SEGA, sega_start);
-}
-
-static void sega_hold(Task *t);
-static void sega_wipe_out(Task *t);
-static void sonic_team_open(Task *t);
-static void sonic_team_hold(Task *t);
-static void sonic_team_fade(Task *t);
-static void to_title(Task *t);
-
-// Task_SegaLogoInit: the logo's lines from the bottom of the screen up, and above them its first line
-static void sega_wipe_in(Task *t) {
-  e.dispCnt |= 0x400;
-  logo.unk0++;
-  int h = e.bgScroll[4], v = e.bgScroll[5];
-  scroll_lines(2, 0, WIPE - logo.unk0, h, v + WIPE - logo.unk0);
-  fill_lines(2, WIPE - logo.unk0, WIPE, h, v);
-  if (logo.unk0 == WIPE) { t->main = sega_hold; logo.unk0 = 0; }
-}
-
-// sub_800D3E0: the logo as it is for 120 frames; nothing writes its lines' scroll now, and the H-blank copy is off, so
-// they all show the layer's own
-static void sega_hold(Task *t) {
-  if (++logo.unk0 == SEGA_HOLD) { t->main = sega_wipe_out; logo.unk0 = 0; }
-}
-
-static void sonic_team_start(Task *t) { t->main = sonic_team_open; t->main(t); }
-
-// Task_800D11C: the reverse, the logo's last line stretched up from the bottom
-static void sega_wipe_out(Task *t) {
-  logo.unk0++;
-  int h = e.bgScroll[4], v = e.bgScroll[5];
-  fill_lines(2, 0, WIPE - logo.unk0, h, v);
-  scroll_lines(2, WIPE - logo.unk0, WIPE, h, v + WIPE - logo.unk0);
-  if (logo.unk0 == WIPE) {
-    e.flags &= ~FLAGS_NO_RESET;
-    // SwitchToSonicTeamLogo
-    e.flags &= ~FLAGS_HBLANK_COPY;
-    destroy_task(t);
-    show_logo(TM_CREATED_BY_SONIC_TEAM, sonic_team_start);
+  gDispCnt |= DISPCNT_BG2_ON;
+  logo->frames++;
+  sub_8007858(2, 0, 160 - logo->frames, gBgScrollRegs[2][0], gBgScrollRegs[2][1] + 160 - logo->frames);
+  sub_80078D4(2, 160 - logo->frames, 160, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+  if (logo->frames == 160) {
+    gCurTask->main = CODE(sub_800D3E0);
+    logo->frames = 0;
   }
 }
 
-// Task_800D268: the top and bottom 40 lines as they are, the middle 80 split, closing 2 pixels a frame; once the split
-// is under 80 pixels, the middle lines from line 64 - unk0 on (as a byte) show as they are too
-static void sonic_team_open(Task *t) {
-  e.dispCnt |= 0x400;
-  logo.unk0 += 2;
-  if (logo.unk0 < 280) {
-    int h = e.bgScroll[4], v = e.bgScroll[5];
-    fill_lines(2, 0, 40, h, v);
-    fill_lines(2, 120, 160, h, v);
-    if (logo.unk0 < 200) shear_lines(2, 40, 120, 280 - logo.unk0, -1, h, v);
-    else {
-      shear_lines(2, 40, 64 - logo.unk0, 280 - logo.unk0, -1, h, v);
-      fill_lines(2, 64 - logo.unk0, 120, h, v);
+/** Task_800D11C, 0x0800D11C: the logo closes from the bottom, for 160 frames, and Sonic Team's follows. */
+void Task_800D11C(void) {
+  struct SegaLogo *logo = TASK_DATA(gCurTask);
+
+  logo->frames++;
+  sub_80078D4(2, 0, 160 - logo->frames, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+  sub_8007858(2, 160 - logo->frames, 160, gBgScrollRegs[2][0], gBgScrollRegs[2][1] + 160 - logo->frames);
+  if (logo->frames == 160) {
+    gFlags &= ~FLAGS_8000;
+    SwitchToSonicTeamLogo();
+  }
+}
+
+/** CreateSonicTeamLogo, 0x0800D198: the screen and the task of Sonic Team's logo. */
+void CreateSonicTeamLogo(void) {
+  struct Task *t;
+  struct SonicTeamLogo *logo;
+  struct Background *bg;
+
+  gBldRegs.bldCnt = 0;
+  gBldRegs.bldY = 0;
+  gDispCnt = DISPCNT_OBJ_1D_MAP;
+  gBgCntRegs[2] = 0x5E01;
+  gBgScrollRegs[2][0] = 0;
+  gBgScrollRegs[2][1] = 0;
+  DMA3_FILL32(0, VRAM, 64);
+  gBgSprites_Unknown1[2] = 0;
+  gBgSprites_Unknown2[2][0] = 0;
+  gBgSprites_Unknown2[2][1] = 0;
+  gBgSprites_Unknown2[2][2] = 0xFF;
+  gBgSprites_Unknown2[2][3] = 0x40;
+
+  t = TaskCreate(CODE(Task_SonicTeamLogoInit), sizeof(struct SonicTeamLogo), LOGO_PRIORITY, 0, NULL);
+  logo = TASK_DATA(t);
+  logo->frames = 0;
+  bg = &logo->bg;
+  bg->graphics.dest = (void *)VRAM;
+  bg->graphics.anim = 0;
+  bg->layoutVram = (u16 *)(VRAM + 0xF000);
+  bg->unk18 = 0;
+  bg->unk1A = 0;
+  bg->tilemapId = TM_CREATED_BY_SONIC_TEAM;
+  bg->unk1E = 0;
+  bg->unk20 = 0;
+  bg->unk22 = 5;
+  bg->unk24 = 5;
+  bg->targetTilesX = 20;
+  bg->targetTilesY = 10;
+  bg->paletteOffset = 0;
+  bg->flags = 2;
+  DrawBackground(bg);
+}
+
+/** Task_800D268, 0x0800D268: the logo comes in through a shape that narrows, two steps a frame, and rings when whole. */
+void Task_800D268(void) {
+  struct SonicTeamLogo *logo = TASK_DATA(gCurTask);
+
+  gDispCnt |= DISPCNT_BG2_ON;
+  logo->frames += 2;
+  if (logo->frames < 280) {
+    sub_80078D4(2, 0, 40, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+    sub_80078D4(2, 120, 160, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+    if (logo->frames < 200) {
+      sub_8007958(2, 40, 120, 280 - logo->frames, -1, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+    } else {
+      sub_8007958(2, 40, 64 - logo->frames, 280 - logo->frames, -1, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
+      sub_80078D4(2, 64 - logo->frames, 120, gBgScrollRegs[2][0], gBgScrollRegs[2][1]);
     }
   } else {
-    play_song(SONG_SEGA_RING);
-    e.flags &= ~FLAGS_HBLANK_COPY;
-    t->main = sonic_team_hold;
-    logo.unk0 = 0;
+    m4aSongNumStart(SE_RING);
+    gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
+    gCurTask->main = CODE(Task_800D450);
+    logo->frames = 0;
   }
 }
 
-// Task_800D450: 122 frames, then the fade to white starts
-static void sonic_team_hold(Task *t) {
-  if (logo.unk0++ > SONIC_TEAM_HOLD) {
-    logo.qFade = 0;
-    t->main = sonic_team_fade;
-    e.bldCnt = 0xFF;
-    e.bldY = 0;
-  }
-}
+/** sub_800D364, 0x0800D364: the logo fades to white, half a step a frame, and the story's opening follows. A or
+ *  Start goes to the title screen at once. */
+void sub_800D364(void) {
+  struct SonicTeamLogo *logo = TASK_DATA(gCurTask);
 
-// sub_800D364: brighter by a 32nd a frame; A or Start goes to the title screen (Task_800D4B0). Its last frame sets the
-// brightness to 16 as an 8.8 number, which the register reads as 0, so that frame isn't brightened.
-static void sonic_team_fade(Task *t) {
-  if (e.pressed & (KEY_A | KEY_START)) {
-    // CreateTitleScreen clears its first two tiles at once; the rest of the screen it starts next frame
-    memset(gba_vram, 0, 64);
-    t->main = to_title;
+  if (gPressedKeys & (A_BUTTON | START_BUTTON)) {
+    gCurTask->main = CODE(Task_800D4B0);
     return;
   }
-  logo.qFade += FADE_STEP;
-  if (logo.qFade > FADE_END) {
-    e.bldY = FADE_END;
-    destroy_task(t);
-    create_intro();
+  logo->qFade += 0x80;
+  if (logo->qFade > 0x1000) {
+    gBldRegs.bldY = 0x1000;
+    sub_800D498();
     return;
   }
-  e.bldY = (uint16_t)(logo.qFade >> 8);
+  gBldRegs.bldY = logo->qFade >> 8;
 }
 
-// Task_800D4B0
-static void to_title(Task *t) {
-  e.flags &= ~(FLAGS_NO_RESET | FLAGS_HBLANK_COPY);
-  destroy_task(t);
-  create_title_screen(1);
+/** Task_SetSegaLogoTask, 0x0800D3C4: SEGA's logo starts opening in the frame its task first runs. */
+void Task_SetSegaLogoTask(void) {
+  gCurTask->main = CODE(Task_SegaLogoInit);
+  CALL(gCurTask->main)();
+}
+
+/** sub_800D3E0, 0x0800D3E0: SEGA's logo stays for 120 frames. */
+void sub_800D3E0(void) {
+  struct SegaLogo *logo = TASK_DATA(gCurTask);
+
+  if (++logo->frames == 120) {
+    gCurTask->main = CODE(Task_800D11C);
+    logo->frames = 0;
+  }
+}
+
+/** SwitchToSonicTeamLogo, 0x0800D40C: from SEGA's logo to Sonic Team's. */
+void SwitchToSonicTeamLogo(void) {
+  gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
+  TaskDestroy(gCurTask);
+  CreateSonicTeamLogo();
+}
+
+/** Task_SonicTeamLogoInit, 0x0800D434: Sonic Team's logo starts coming in in the frame its task first runs. */
+void Task_SonicTeamLogoInit(void) {
+  gCurTask->main = CODE(Task_800D268);
+  CALL(gCurTask->main)();
+}
+
+/** Task_800D450, 0x0800D450: Sonic Team's logo stays for 121 frames, then starts to fade. */
+void Task_800D450(void) {
+  struct SonicTeamLogo *logo = TASK_DATA(gCurTask);
+
+  if (logo->frames++ > 120) {
+    logo->qFade = 0;
+    gCurTask->main = CODE(sub_800D364);
+    gBldRegs.bldCnt = 0xFF;
+    gBldRegs.bldY = 0;
+  }
+}
+
+/** sub_800D498, 0x0800D498: from Sonic Team's logo to the story's opening. */
+void sub_800D498(void) {
+  TaskDestroy(gCurTask);
+  CreateIntroAnimation();
 }

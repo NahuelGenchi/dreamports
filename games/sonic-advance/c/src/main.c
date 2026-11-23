@@ -1,49 +1,73 @@
-// Sonic Advance Dreamport in C: the game's own code, on the Game Boy Advance kit in C (kit/gba/c/gba.h), translated
-// from the JavaScript version in games/sonic-advance/src/, part by part. src/main.js runs it on the page, built to
-// WebAssembly as src/game.wasm (kit/gba/c/README.md).
+// Sonic Advance Dreamport in C, made the stricter way (docs/STANDARD.md, Twins and their proof): a function at a
+// time, as #1455 tried it and #1790 made it the game's version in C. Every function here but the few lines below is the
+// twin of one of the original's, with every value where the console keeps it, and has its proof in
+// proof/proofs.json. src/main.js runs it on the page, built to WebAssembly as src/game.wasm (kit/gba/c/README.md).
+//
+// It plays as far as its twins go: from power-on through its logos, the 1,700 frames of the soft-reset-logos recording
+// the same as the original's (proof/progress.json). The twins are made in the order the game runs them.
+//
+// Its twins follow SAT-R's decompilation of Sonic Advance (https://github.com/SAT-R/sa1 at fdd8956).
 
-#include "sa.h"
-#include "act.h"
+#ifndef MATCHING
+#include "console.h"
+#include "animation.h"
+#include "background.h"
+#include "bg_triangles.h"
+#include "core.h"
+#include "language.h"
+#include "multi_sio.h"
+#include "screen.h"
+#include "stage.h"
+#include "ui.h"
+#include "logos.h"
+#include "malloc.h"
+#include "flash.h"
+#include "save.h"
+#include "spotlight.h"
+#include "sprite.h"
+#include "task.h"
+// the shared sound engine the game takes from the kit (kit/gba/c/lib/m4a/, proof/libraries.json)
+#include "m4a_internal.h"
 
-// Where the original's sound work falls in the kit's chip frame, whose clock starts 71,058 cycles after the console's
-// power-on: SoundMain 82,606 cycles after mGBA's frame counter ticks, give or take 8 as the main loop gets to it, the
-// sound FIFO's first refill of each frame 84,969 after the tick, and the first visible line's H-blank DMA 84,778 after
-// it. SoundMain's place is where the kit's writes land on average on the cycle the original's take effect, over every
-// square write of amy-x-zone (#1240).
-#define POWER_ON_BEFORE 71058
-#define SOUND_MAIN_AT 52558
-#define FIFO_REFILL_AT 54918
-#define FIFO_REFILL_CYCLES 58
-#define HBLANK_DMA_AT 54727
+// the twins no header of theirs declares
+struct OamData *OamMalloc(u8 order);
+// and those of the compiler's helpers and the BIOS's stubs the game takes from the kit (kit/gba/c/lib/libgcc/ and
+// bios/), which only the twins' table names
+unsigned int _call_via_r0(void), _call_via_r1(void), _call_via_r2(void), _call_via_r3(void), _call_via_r4(void);
+unsigned int _call_via_r5(void), _call_via_r6(void), _call_via_r7(void), _call_via_r8(void), _call_via_r9(void);
+unsigned int _call_via_sl(void), _call_via_fp(void), _call_via_ip(void), _call_via_sp(void), _call_via_lr(void);
+int __divsi3(int numerator, int denominator);
+void __div0(void);
+int Div(int num, int denom), Mod(int num, int denom);
+// and the cartridge's own start, in ARM code, which does nothing here (crt0.c)
+void CartridgeStart(void), CartridgeInit(void), IntrMainArm(void);
+// and the C library's, whose twins are the console's build's alone (kit/gba/c/lib/newlib/): here the kit's own
+void *memcpy(void *dest, const void *src, unsigned long n);
+void *memset(void *dest, int c, unsigned long n);
 
-// once, with the player's copy in gba_rom: the sound engine, the save the cartridge keeps, then the console's power-on.
-// Sonic Advance builds the engine with four music players, the music's and three for sound effects, and its sound mode
-// (rom/sound.js): 5 DirectSound channels, master volume 15, 10512 Hz and no reverb
+// the console's start and what the page gives it each frame (hardware.c)
+void console_power_on(void);
+void console_set_keys(u16 keys);
+void console_start(void);
+void sub_8063E8C(u16 arg0);
+void Task_80640C8(void);
+void sub_8064244(void);
+void Task_8065058(void);
+void Task_806515C(void);
+void Task_IntroChaosEmeraldUpdate(void);
+
+// once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) {
-  // its SoundMain runs at one place in every frame of every screen, so the sound chip's writes land where its work has
-  // reached, and the squares count their time from power-on, as their phase depends on every write since (#1240)
-  gba_sound_psg_at(SOUND_MAIN_AT);
-  gba_sound_dma_at(FIFO_REFILL_AT, FIFO_REFILL_CYCLES, HBLANK_DMA_AT);
-  gba_sound_start_library(LIBRARY_SONIC_ADVANCE, 4, 5, 15, 10512, 0);
-  gba_sound_chip_clock(POWER_ON_BEFORE);
-  gba_sound_count_cycles();
-  save_open();
-  front_start();
-  if (front_special_start_point()) return;
-  int level = (int)gba_start_number("level", -1);
-  if (level >= 0 && !gba_start_number("power", 0)) {
-    act_active = 1;
-    act_start(level, (int)gba_start_number("card", -1), (int)gba_start_number("pre", 0));
-  } else sound_vsync_off();   // from power-on the engine waits for GameInit's m4aSoundInit, as the console starts up
+  gba_console_memory(1);
+  console_power_on();
 }
 
-// what the original does each frame, writing the video hardware's registers, VRAM, colours and sprites as it does
-// From the main menu's Tiny Chao Garden on, the garden's program runs instead (garden.c).
+// every frame: the buttons held, then the game from where it last waited for the V-blank to its next wait
 void game_step(uint16_t keys) {
-  if (garden_running()) {
-    garden_step();
-    return;
-  }
-  front_step(keys);
-  sound_late_step();
+  console_set_keys(keys);
+  kit_run(console_start);
 }
+
+// from an address kept in memory to the twin to call
+TWIN_TABLE
+#endif

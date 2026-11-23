@@ -1,5 +1,5 @@
 {
-  "about": "The names the twins in games/sonic-advance/strict/ give the original's values and functions, each with its address in Sonic Advance (USA). A name that is a label, such as gUnknown_03004C54, says its own and isn't here.",
+  "about": "The names the twins in games/sonic-advance/c/ give the original's values and functions, each with its address in Sonic Advance (USA). A name that is a label, such as gUnknown_03004C54, says its own and isn't here.",
   "addresses": {
     "gTasks": "030006B0",
     "gTaskPtrs": "03001220",

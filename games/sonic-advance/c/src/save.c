@@ -1,145 +1,118 @@
-// The save, translated from engine/save.js (SAT-R's src/game/sa1/save.c, and CreateEmptySaveGame in src/game/game.c):
-// Sonic Advance's one save, struct SaveGame, the 0x430 bytes the cartridge's flash memory keeps, which the kit's save
-// memory holds here (gba_save), with the rest of the flash, where Tiny Chao Garden keeps its own (garden.c). At power-on the game reads the save (SaveGameExists), or starts an empty one
-// (CreateEmptySaveGame) and the language screen; then it changes the save in memory as it goes, and writes it at set
-// moments (WriteSaveGame). engine/save.js lists its fields. The save's bytes are the same as the JavaScript version's,
-// so the two share it (main.js), and a player keeps their save whichever they play.
+// What the game keeps on the cartridge.
+#include "save.h"
+#include "core.h"
+#include "time.h"
 
-#include "sa.h"
-#include "levels.h"
+/** 0x08012F78: the sum of a sector's words, all but the last, which keeps it. */
+u32 SaveSectorSum(void *sector) {
+  u32 sum = 0;
+  u32 i;
 
-#define CHECKSUM 0x42C
-#define SAVE_SECTOR 0x1000
-#define SAVE_SECTORS 10   // the flash's first ten, of sixteen: Tiny Chao Garden has the rest (garden.c)
-#define SECURITY 0x4F524950u
-#define MAX_COURSE_TIME (10 * 3600)
-
-Save save;
-static uint8_t *flash;   // the cartridge's save memory, as the kit keeps it
-static int sector;       // the sector the save is in (0x0300508C), or -1 for none
-
-static uint32_t get32(const uint8_t *b, uint32_t at) { return b[at] | b[at + 1] << 8 | b[at + 2] << 16 | (uint32_t)b[at + 3] << 24; }
-static void set32(uint8_t *b, uint32_t at, uint32_t v) { b[at] = (uint8_t)v; b[at + 1] = (uint8_t)(v >> 8); b[at + 2] = (uint8_t)(v >> 16); b[at + 3] = (uint8_t)(v >> 24); }
-
-// CalculateChecksum
-static uint32_t checksum(const uint8_t *bytes) {
-  uint32_t sum = 0;
-  for (uint32_t i = 0; i < CHECKSUM; i += 4) sum += get32(bytes, i);
+#ifdef MATCHING
+  for (i = 0; i < SAVE_SECTOR_SIZE - 4; i += 4) sum += *(u32 *)((u8 *)sector + i);
+#else
+  for (i = 0; i < SAVE_SECTOR_SIZE - 4; i += 4) {
+    sum += *(u32 *)((u8 *)sector + i);
+    if (i == 0) TIME(0x08012F78, 0x08012F8C, 0x08012F83, IW);
+    else if (i + 4 < SAVE_SECTOR_SIZE - 4) TIME(0x08012F82, 0x08012F8C, 0x08012F83, IW);
+    else TIME(0x08012F82, 0x08012F94, BACK, IW);
+  }
+#endif
   return sum;
 }
 
-// CreateEmptySaveGame: normal difficulty, nothing cleared, the menus in English, the time limit on, no records, the
-// multiplayer names blank
-static void empty_save(uint8_t *bytes) {
-  memset(bytes, 0, SAVE_SIZE);
-  set32(bytes, 0x420, 50000);
-  for (int i = 0; i < 10; i++) {
-    uint32_t score = 0x380 + i * 16;
-    memset(bytes + score + 4, 0x20, 8);
-    bytes[score + 12] = 0xFF;
-  }
-  for (uint32_t i = 0x20; i < 0x380; i += 4) set32(bytes, i, MAX_COURSE_TIME);
-  bytes[0x19] = 1;
-}
+/** SaveGameExists, 0x08012C5C: reads the save from the last of the flash's sectors that holds one with the right sum,
+ *  counting from the first and stopping at one never written (from the second, when the first was never written).
+ *  None with no flash. */
+bool32 SaveGameExists(void) {
+  s8 sectorID = 0;
+  bool32 res;
 
-/** The save at power-on: the one the save memory keeps, if it is one (its security and checksum right), or an empty one. */
-void save_open(void) {
-  flash = gba_save(FLASH_BYTES);
-  save.keep = 1;
-  sector = -1;
-  // a start point's save is the game's own, kept nowhere, as the JavaScript version's openSave(null) gives it: it
-  // doesn't read the cartridge's, so the language screen comes as it does at a first start
-  if (gba_start_point("unlocked") || gba_start_point("special")) {
-    empty_save(save.bytes);
-    save.exists = 0;
-    save.keep = 0;
-    // the special stage's start point writes it at once (main.js), so the game has one if it starts again
-    if (gba_start_point("special")) save_write();
-    return;
-  }
-  // LoadSaveGame, 0x08012C5C: the save is in the last of the game's sectors that holds one, counting from the first and
-  // stopping at one never written (from the second, when the first was never written)
-  for (int i = get32(flash, 0) == SECURITY ? 0 : 1; i < SAVE_SECTORS; i++) {
-    const uint8_t *held = flash + i * SAVE_SECTOR;
-    if (get32(held, 0) != SECURITY) break;
-    if (get32(held, CHECKSUM) == checksum(held)) sector = i;
-  }
-  save.exists = sector >= 0;   // SaveGameExists
-  if (save.exists) memcpy(save.bytes, flash + sector * SAVE_SECTOR, SAVE_SIZE);
-  else empty_save(save.bytes);
-}
+  gUsedSaveSectorID = -1;
+  if (gFlags & FLAGS_NO_FLASH_MEMORY) return 0;
 
-/**
- * WriteSaveGame: nothing when the flash already holds the save; otherwise the save is marked, summed and kept. Returns
- * whether it was written, which takes WRITE_FRAMES.
- */
-// the act's rings into the save's ring bank (unk428), as a signed halfword, as CreateStageResults adds them
-void save_add_ring_bank(int rings) { set32(save.bytes, 0x428, le32(save.bytes, 0x428) + (uint32_t)(int16_t)rings); }
-
-int save_write(void) {
-  // 0x08012D4C: nothing when the sector the save is in holds these bytes. Otherwise the sector after the next is
-  // erased, so that reading stops there, and the next takes the save: ten sectors round, each written a tenth as often
-  if (sector >= 0) {
-    int same = 1;
-    for (int i = 0; i < SAVE_SIZE && same; i++) same = flash[sector * SAVE_SECTOR + i] == save.bytes[i];
-    if (same) return 0;
-  }
-  int next = sector + 1 > SAVE_SECTORS - 1 ? 0 : sector + 1;
-  memset(flash + (next + 1) % SAVE_SECTORS * SAVE_SECTOR, 0xFF, SAVE_SECTOR);
-  set32(save.bytes, 0, SECURITY);
-  set32(save.bytes, CHECKSUM, checksum(save.bytes));
-  sector = next;
-  // the flash takes a whole sector: the save, and what the console's memory holds after it
-  memset(flash + sector * SAVE_SECTOR, 0, SAVE_SECTOR);
-  memcpy(flash + sector * SAVE_SECTOR, save.bytes, SAVE_SIZE);
-  save.exists = 1;
-  // a start point's save is kept nowhere, but the proof tools see it written, to compare it with the cartridge's
-  if (save.keep || gba_start_point("proof")) gba_save_write();
-  return 1;
-}
-
-uint16_t save_unlocked_level(int character) { return (uint16_t)(save.bytes[0x08 + character * 2] | save.bytes[0x09 + character * 2] << 8); }
-void save_set_unlocked_level(int character, uint16_t level) { save.bytes[0x08 + character * 2] = (uint8_t)level; save.bytes[0x09 + character * 2] = (uint8_t)(level >> 8); }
-void save_moon_opened(void) {
-  uint16_t cur = save_unlocked_level(0);
-  if (cur < LEVEL_THE_MOON + 1) save_set_unlocked_level(0, (uint16_t)(LEVEL_THE_MOON + 1));
-}
-/** CreateExtraStageResults: the Moon beaten, the first unlocked level is 15 and unk424 is set. */
-void save_moon_beaten(void) {
-  save_set_unlocked_level(0, 15);
-  save.bytes[0x424] = 1;
-}
-#define TIME_RECORDS 0x20
-#define RECORD_LEVELS 18
-#define RECORDS_PER_COURSE 3
-static uint32_t record_at(int character, int level, int rank) {
-  return TIME_RECORDS + (uint32_t)((character * RECORD_LEVELS + level) * RECORDS_PER_COURSE + rank) * 4;
-}
-uint32_t save_time_record(int character, int level, int rank) { return get32(save.bytes, record_at(character, level, rank)); }
-int save_register_time_record(int character, int level, uint32_t time) {
-  for (int rank = 0; rank < RECORDS_PER_COURSE; rank++) {
-    uint32_t record = get32(save.bytes, record_at(character, level, rank));
-    if (time >= record) continue;
-    set32(save.bytes, record_at(character, level, rank), time);
-    for (int next = rank + 1; next < RECORDS_PER_COURSE; next++) {
-      uint32_t slower = get32(save.bytes, record_at(character, level, next));
-      set32(save.bytes, record_at(character, level, next), record);
-      record = slower;
+  {
+    ReadFlash(sectorID, 0, &gLoadedSaveGame, sizeof(struct SaveGame));
+    if (gLoadedSaveGame.security == SECTOR_SECURITY_NUM) {
+      if (gLoadedSaveGame.checksum == SaveSectorSum(&gLoadedSaveGame)) gUsedSaveSectorID = sectorID;
+    } else {
+      sectorID = 1;
     }
-    return rank == 0;
   }
-  return 0;
+
+  for (; sectorID < NUM_SAVE_SECTORS; sectorID++) {
+    ReadFlash(sectorID, 0, &gLoadedSaveGame, sizeof(struct SaveGame));
+    if (gLoadedSaveGame.security == SECTOR_SECURITY_NUM) {
+      if (gLoadedSaveGame.checksum == SaveSectorSum(&gLoadedSaveGame)) gUsedSaveSectorID = sectorID;
+    } else {
+      break;
+    }
+  }
+
+  if ((u8)gUsedSaveSectorID == 0xFF) {
+    gUsedSaveSectorID = -1;
+    res = FALSE;
+  } else {
+    ReadFlash(gUsedSaveSectorID, 0, &gLoadedSaveGame, sizeof(struct SaveGame));
+    res = TRUE;
+  }
+  return res;
 }
-uint32_t save_player_id(void) { return get32(save.bytes, 0x04); }
-void save_set_player_id(uint32_t id) { set32(save.bytes, 0x04, id); }
 
-// CreateEmptySaveGame, as DELETE GAME DATA's YES does it in the Options menu: the save in memory empty again
-void save_empty(void) { empty_save(save.bytes); }
+/** WriteSaveGame, 0x08012D4C: nothing with no flash, or when the sector the save was read from holds it already.
+ *  Otherwise the sector after next is erased, so reading stops there, and the next takes the save, marked and summed:
+ *  ten sectors in turn. Gives back the flash's error, or 0. */
+u16 WriteSaveGame(void) {
+  s32 i;
+  s8 sectorID;
+  u16 result;
 
-// sub_8012F6C, 0x08012F20: the game's ten sectors erased, and the next write goes to the second
-void save_erase(void) {
-  memset(flash, 0xFF, SAVE_SECTORS * SAVE_SECTOR);
-  sector = 0;
-  save.exists = 0;
-  if (save.keep || gba_start_point("proof")) gba_save_write();
+  if (gFlags & FLAGS_NO_FLASH_MEMORY) return 0;
+
+  if (gUsedSaveSectorID != -1) {
+    u8 *sectorBuffer = EwramMalloc(sizeof(struct SaveGame));
+    bool32 sectorIsUpToDate;
+
+    ReadFlash(gUsedSaveSectorID, 0, sectorBuffer, sizeof(struct SaveGame));
+    sectorIsUpToDate = TRUE;
+    for (i = 0; i < sizeof(struct SaveGame); i++) {
+      bool32 neq = sectorBuffer[i] != ((u8 *)&gLoadedSaveGame)[i];
+      if (neq) {
+        sectorIsUpToDate = FALSE;
+        break;
+      }
+    }
+    EwramFree(sectorBuffer);
+    if (sectorIsUpToDate) return 0;
+  } else {
+    // (timed from here where no save was read, and the sector after next isn't the list's last)
+    TIME(0x08012D4C, 0x08012D68, 0x08012DD1, IW, IW);
+  }
+
+  sectorID = gUsedSaveSectorID + 1;
+  if (sectorID == NUM_SAVE_SECTORS - 1) {
+    result = CALL(EraseFlashSector)(0);
+  } else {
+    TIME(0x08012DD0, 0x08012DDE, 0x08012DF1, IW);
+    if (sectorID >= NUM_SAVE_SECTORS) {
+      sectorID = 0;
+      TIME(0x08012DF0, 0x08012DF4, 0x08012DF7);
+    } else {
+      TIME(0x08012DF0, 0x08012DF2, 0x08012DF7);
+    }
+    TIME(0x08012DF6, 0x08012E08, 0x08099849, IW);
+    TIME(0x08099848, 0x08099848, (u32)EraseFlashSector);
+    result = CALL(EraseFlashSector)(sectorID + 1);
+  }
+
+  if (result == 0) {
+    gLoadedSaveGame.security = SECTOR_SECURITY_NUM;
+    TIME(0x08012E0A, 0x08012E1C, 0x08012F79, IW);
+    gLoadedSaveGame.checksum = SaveSectorSum(&gLoadedSaveGame);
+    gUsedSaveSectorID = sectorID;
+    TIME(0x08012E1E, 0x08012E38, 0x0809918D, IW, IW, IW);
+    result = ProgramFlashSectorAndVerifyNBytes(gUsedSaveSectorID, &gLoadedSaveGame, sizeof(struct SaveGame));
+    TIME(0x08012E3A, 0x08012E42, BACK);
+  }
+  return result;
 }
