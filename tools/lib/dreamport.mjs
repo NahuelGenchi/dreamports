@@ -20,15 +20,17 @@ export async function buildIfC(game) {
 
 /** Loads games/<game>/ with `query`, gives it the copy and, when `start`, presses Play and waits for the game. `game`
  *  can be a version in another language, such as sonic-battle/c (src/lib/languages.mjs). `saves`, each key's bytes, are
- *  the saves the game starts from under the proof tools, as a player's report carries them (kit/gba/save.js). */
-export async function openDreamport(page, server, game, copy, { query = '', start = true, saves = null } = {}) {
+ *  the saves the game starts from under the proof tools, as a player's report carries them (kit/gba/save.js). `built`
+ *  says the caller built the C already, as prove does once before its recordings play at the same time: two builds at
+ *  once write the same files. */
+export async function openDreamport(page, server, game, copy, { query = '', start = true, saves = null, built = false } = {}) {
   if (!existsSync(join(gameFolder(game), 'index.html'))) {
     // a game that started in C has no JavaScript version, and the tools name its version in C (src/lib/languages.mjs)
     const others = otherVersions(game);
     throw new Error(others.length ? `${game} has no version in JavaScript, as it started in C: the tools name it ${others[0]}, as in npm run dp -- prove ${others[0]}.`
       : `games/${game}/ has no index.html, the page the game starts from.`);
   }
-  await buildIfC(game);
+  if (!built) await buildIfC(game);
   if (saves) {
     // there before any of the page's code runs, as a game may open its save as it loads
     const given = Object.fromEntries(Object.entries(saves).map(([key, bytes]) => [key, Buffer.from(bytes).toString('base64')]));

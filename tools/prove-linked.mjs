@@ -49,7 +49,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
   say('starting the Dreamport…');
-  await openDreamport(page, server, game, copy, { query: `?proof&${recording.start ?? `vs=${players}`}` });
+  await openDreamport(page, server, game, copy, { built: true, query: `?proof&${recording.start ?? `vs=${players}`}` });
   await page.evaluate(IN_PAGE);
   // the recording's buttons as the Dreamport names them: the first of its buttons that is each of the console's (prove.mjs)
   const named = new Map();
