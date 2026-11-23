@@ -154,7 +154,9 @@ export async function ensureEeGcc(version = '2.9-ee-991111-01', log = console.lo
     const ee = configured('ee', ['--with-gnu-as', '--with-gnu-ld', '--enable-c-cpplib']);
     if (!readFileSync(join(ee, 'gcc', 'tm.h'), 'latin1').includes('MASK_MIPS5900|20))')) throw new Error('GCC wasn\'t configured as Sony configured it: its tm.h doesn\'t default to the R5900 with split addresses.');
     for (const dir of ['bison', 'libiberty', 'intl', 'bfd', 'opcodes', 'gas', 'ld']) step(`the ${dir} for the EE`, 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`], join(ee, dir), env);
-    step('GCC', 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`, `BISON=${join(ee, 'bison', 'bison')} -L ${join(src, 'bison')}/`, 'cpp', 'cc1', 'cc1plus', 'xgcc'], join(ee, 'gcc'), env);
+    // one file at a time: GCC writes some of its headers as it builds, and its Makefile of 1999 doesn't name every file
+    // that needs them, so several at once can compile one before a header it includes is there (#1786)
+    step('GCC', 'make', ['MAKEINFO=true', `CFLAGS=${CFLAGS}`, `BISON=${join(ee, 'bison', 'bison')} -L ${join(src, 'bison')}/`, 'cpp', 'cc1', 'cc1plus', 'xgcc'], join(ee, 'gcc'), env);
     const dvp = configured('dvp-elf', []);
     for (const dir of ['libiberty', 'intl', 'bfd', 'opcodes', 'gas']) step(`the ${dir} for the vector units`, 'make', [jobs, 'MAKEINFO=true', `CFLAGS=${CFLAGS}`], join(dvp, dir), env);
 
