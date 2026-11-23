@@ -36,7 +36,7 @@ import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal
 import { typesOfFile } from '../gba/twin-shapes.mjs';
 import { inImage } from '../gba/twin-memory.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, LINKED, LINKED_LENGTH, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withLinked, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -113,7 +113,7 @@ const spilled = await matchFile({
 });
 check(!spilled.error && spilled.functions.find(f => f.name === 'Pour')?.length <= 0x1000 - (INSIDE.Pour - 0x08000000), `the function that writes through a pointer in its struct builds with ${compiler.name} and fits the cartridge${spilled.error ? `: ${spilled.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withInside(withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')), readFileSync(join(work, 'built', 'inside.s'), 'utf8')));
+writeFileSync(copy, withLinked(withInside(withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')), readFileSync(join(work, 'built', 'inside.s'), 'utf8'))));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -203,6 +203,16 @@ try {
   check(shifted.by.Ready?.kind === 'same' && shifted.by.Ready.whole === true, `a call reads the line count and the V-blank as it started, as a twin with no clock does, and some calls start outside the V-blank, so every path is taken: ${shifted.by.Ready?.line ?? shifted.error}`);
   check(shifted.by.Picture?.kind === 'same' && shifted.by.Picture.whole === true, `and one that adds 228 to a line of the picture takes that way too, as a call outside the V-blank starts on one: ${shifted.by.Picture?.line ?? shifted.error}`);
   check(shifted.by.Mode?.kind === 'same' && shifted.by.Mode.compared === CALLS, `a twin that reads the display's control through the kit's display registers starts each call from the original's, as the console set it at power-on${shifted.by.Mode?.kind === 'same' ? '' : `: ${shifted.by.Mode?.line ?? shifted.error}`}`);
+
+  console.log('What the link port received, in ARM code:');
+  const link = { isArm: address => address === LINKED.Linked, sizeOf: address => (address === LINKED.Linked ? LINKED_LENGTH : sizeOf(address)) };
+  const linked = await checking(join(HERE, 'link.c'), {}, link);
+  check(linked.by.Linked?.kind === 'same' && linked.by.Linked.compared === CALLS && linked.by.Linked.whole === true, `a function that reads what the first console sent is given other values there, the mark its ARM code compares with among them, so every path is taken, and its twin leaves the same memory: ${linked.by.Linked?.line ?? linked.error}`);
+  const otherMark = join(work, `changed-${++variants}`);
+  cpSync(HERE, otherMark, { recursive: true });
+  writeFileSync(join(otherMark, 'link.c'), readFileSync(join(HERE, 'link.c'), 'utf8').replace('== 0xFEFE', '== 0xFEFF'));
+  const mismarked = await checking(join(otherMark, 'link.c'), {}, link);
+  check(mismarked.by.Linked?.kind === 'differs', `and a twin that waits for another mark differs: ${mismarked.by.Linked?.line ?? mismarked.error}`);
 
   console.log('A word read where none starts, in ARM code:');
   const arm = { isArm: address => address === TURN.Turn, sizeOf: address => (address === TURN.Turn ? TURN_LENGTH : sizeOf(address)) };
