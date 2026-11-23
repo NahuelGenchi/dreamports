@@ -42,7 +42,7 @@
     return out;
   };
 
-  let kept = null;
+  let kept = null, stopped = null;
   const shown = {}, clip = new Map();
   const FRAME_US = 1e6 * 280896 / 16777216;   // a frame of the console's, in microseconds
   const toBase64 = bytes => {
@@ -52,11 +52,18 @@
   };
   window.__linked = {
     /** Plays `frames`, each `{ players: [{ held }, …] }`, and resolves to each frame's hashes, one for each player. The
-     *  first frame whose hashes aren't `expected`'s (a list of lists) keeps all the players' pictures, once. */
+     *  first frame whose hashes aren't `expected`'s (a list of lists) keeps all the players' pictures, once. A game
+     *  that throws stops there, as one does on a path it hasn't ported yet: the hashes end before that frame, and
+     *  `stoppedBy` says what it threw. */
     async run(from, frames, expected, wanted, clipped = []) {
       const hashes = [];
       for (let i = 0; i < frames.length; i++) {
-        await played(frames[i]);
+        try {
+          await played(frames[i]);
+        } catch (error) {
+          stopped = String(error);
+          break;
+        }
         const pictures = dreamportsProof.pictures();
         const mine = pictures.map(hashOf);
         hashes.push(mine);
@@ -68,6 +75,8 @@
       return hashes;
     },
     shown,
+    /** What the game threw as it stopped, or null while it plays. */
+    stoppedBy() { return stopped; },
     /** The clip of these frames, as H.264: the Dreamport's pictures above, and below them the original's, which are
      *  fetched from `address` (every frame's, player after player, in 15-bit colour). `apart` counts the frames where a
      *  player's picture differs from the original's in more than half its pixels, as two different places do. */
