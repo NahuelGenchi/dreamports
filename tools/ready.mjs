@@ -2,7 +2,7 @@
 // every recording, `npm run check` and `npm run build`. For a version made a function at a time (lib/proofs.mjs) it
 // goes by each function's proof too: every proof kept has to hold still, and with --task, a function's address or a
 // task's name, each function of that task has to have its proof (`npm run dp -- proofs <version> --check`). Such a
-// version with no recording yet, as a new game has while its first functions are proven, has nothing to play, which is said. With --no-worse, which `update` gives it for a merge, recordings
+// version with no recording yet, as a new game has while its first functions are proven, has nothing to play, which is said. With --no-worse, which `update` gives it for a merge, and for a version made a function at a time, which plays its game's recordings only as far as its proven functions go, recordings
 // may differ as long as no frame that matched before does (lib/as-before.mjs). It prints what prove found and, of the rest, only what's wrong, with
 // the whole of it kept in .dreamports/ready/, as their full output costs an agent thousands of tokens on every request after it.
 
@@ -47,7 +47,7 @@ export async function run(args) {
   const nothingToPlay = asksForProofs(game) && !readRecordings(game).length;
   if (nothingToPlay) console.log('recordings: the game has none yet, so nothing was played. Its functions\' proofs are what this step has.');
   const proved = nothingToPlay ? { status: 0 } : spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });
-  const asBefore = noWorse && proved.status === DIFFERS_AS_BEFORE;
+  const asBefore = (noWorse || asksForProofs(game)) && proved.status === DIFFERS_AS_BEFORE;
   if (proved.status !== 0 && !asBefore) failed.push('prove');
   step('check', npm('check'));
   step('build', npm('build'));

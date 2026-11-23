@@ -51,6 +51,7 @@ import { goalsNamed, heldOver, readRoute } from './lib/route.mjs';
 import { recordingHash, mainProof, firstChanged, clipWindow, newFramesIn, clipProblems, changedText } from './lib/clips.mjs';
 import { keepRecord, recordOf } from './lib/same-proof.mjs';
 import { DIFFERS_AS_BEFORE, provenBefore, worseThan } from './lib/as-before.mjs';
+import { asksForProofs } from './lib/proofs.mjs';
 import { firstApart, listsIn } from './lib/draw-lists.mjs';
 
 const BATCH = 120;
@@ -252,7 +253,7 @@ export async function run(args) {
   }
   if (!failed) return 0;
   // frames differ: a step back, when one that matched in the last commit differs now, or as things were (lib/as-before.mjs)
-  const worse = worseThan(provenBefore(game), recordings.map((recording, at) => ({ name: recording.name, row: keptOf(results[at]), wrong: results[at].wrong, unreached: results[at].unreached })));
+  const worse = worseThan(provenBefore(game), recordings.map((recording, at) => ({ name: recording.name, row: keptOf(results[at]), wrong: results[at].wrong, unreached: results[at].unreached })), { byFunction: asksForProofs(game) });
   if (!worse.length) {
     console.log('No frame that matched in the last commit differs.');
     return DIFFERS_AS_BEFORE;
