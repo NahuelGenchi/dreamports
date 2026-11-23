@@ -80,6 +80,8 @@ const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', '
 const REGISTERS = 0x400;
 // the display's status, and its bit that says the display is in the V-blank, and the line count
 const DISPSTAT = 0x04000004, DISPSTAT_VBLANK = 1, VCOUNT = 0x04000006;
+// what the link port received from each of the four consoles, a halfword each, which the hardware alone writes
+const LINK = 0x04000120, LINKED = 4;
 // whether some code keeps a word beside it, where words start
 const holdsWord = (bytes, word) => {
   for (let at = 0; at + 4 <= bytes.length; at += 4) if (bytes.readUInt32LE(at) === word) return true;
@@ -296,7 +298,9 @@ class Original {
       a: kept.readUInt32LE(i * AIM_BYTES + 8), b: kept.readUInt32LE(i * AIM_BYTES + 12),
       from: [origin(i * AIM_BYTES + 16), origin(i * AIM_BYTES + 16 + ORIGIN_BYTES)],
     }));
-    return { ended, gave, steps, hardware, leftFor, reads, numbers, pairs, runs, ran, compares };
+    // whether it read what the link port received (call.c)
+    const link = (await this.take(4)).readUInt32LE(0) === 1;
+    return { ended, gave, steps, hardware, link, leftFor, reads, numbers, pairs, runs, ran, compares };
   }
 
   close() {
@@ -1030,11 +1034,18 @@ export async function compareCalls({ original, twins, start, functions, options,
       changed.push([DISPSTAT, 2, status ^ DISPSTAT_VBLANK]);
       if (f.line && !((status ^ DISPSTAT_VBLANK) & DISPSTAT_VBLANK)) changed.push([VCOUNT, 2, choose.below(160)]);
     }
+    // A function seen to read what the link port received starts half its calls with other values there, one console's
+    // or several's: only the hardware writes them, so no change of the memory gives them, and a link's interrupt goes
+    // by them, as by the mark that a packet starts (#1815)
+    if (!aim && changing && !asPlayed && f.link && choose.below(2)) {
+      for (let n = 0; n < LINKED; n++) if (!choose.below(2)) changed.push([LINK + 2 * n, 2, choose.value({ bits: 16, signed: false, pointer: false }, code)]);
+    }
     // from its own memory of play the original has every register as play had it, the ones the twin says it takes
     // nothing in too: a twin that takes fewer arguments than the original reads then differs, and isn't left unchecked
     const startedFrom = mirror;
     const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0, takes: f.registers?.takes ?? 4 });
     if (theirs.hardware) f.status = true;
+    if (theirs.link) f.link = true;
     // a call that made a comparison is a witness to aim from at the branch after it: a few of each, kept as they come,
     // more for one before a branch way no call took, all of a call's sharing one copy of the memory it started from
     if (theirs.ended === 0 && changing && options.aim !== false && bytesOf && f.span) {
