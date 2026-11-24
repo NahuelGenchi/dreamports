@@ -52,6 +52,7 @@ export const touchBits = (x, y) => ((1 << 15) | (x << 16) | (y << 24)) >>> 0;
 // turns a recording's buttons into what the emulator is given takes a touch as one more button
 function keysWithTouch(keys, [, , width, height]) {
   return new Proxy(keys, {
+    has(target, name) { return this.get(target, name) !== undefined; },
     get(target, name) {
       const touch = typeof name === 'string' ? TOUCH.exec(name) : null;
       if (!touch) return target[name];

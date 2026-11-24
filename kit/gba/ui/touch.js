@@ -30,9 +30,11 @@ const OPACITY = { min: 20, max: 100, step: 5, start: 60 };
 /**
  * Draws the controller in `stage`, the game's part of the page, for the player whose buttons `input` reads
  * (input.js), and keeps `screen`, the game's canvas, sized among its buttons. `key` names the game in this browser's
- * storage, where the buttons' opacity is kept. Returns { el, opacity, setOpacity(value), bindSlider(slider) }.
+ * storage, where the buttons' opacity is kept. `size` gives the picture's size now, for a game on another console, whose
+ * picture isn't the Game Boy Advance's and can change as it plays. Returns { el, opacity, setOpacity(value),
+ * bindSlider(slider), fit() }, `fit` being for a game to call when its picture's size changes.
  */
-export function createTouch(stage, input, { screen = stage.querySelector('canvas'), key }) {
+export function createTouch(stage, input, { screen = stage.querySelector('canvas'), key, size = () => [SCREEN_W, SCREEN_H] }) {
   stage.insertAdjacentHTML('beforeend', CONTROLLER);
   const el = stage.lastElementChild;
   input.bindTouch(el);
@@ -56,7 +58,7 @@ export function createTouch(stage, input, { screen = stage.querySelector('canvas
     if (!portrait.matches || el.hidden) return { width, height, below: 0 };
     const top = parseFloat(getComputedStyle(stage).paddingTop) || 0;
     const bottom = Math.min(...[...el.children].map(c => c.getBoundingClientRect().top)) - 16;
-    return { width, height: Math.max(SCREEN_H, bottom - top), below: Math.max(0, height - bottom) };
+    return { width, height: Math.max(size()[1], bottom - top), below: Math.max(0, height - bottom) };
   }
   // the screen at the largest scale that is a whole number of the display's pixels, so they stay square and sharp,
   // in the middle of its room; a tiny window shrinks it instead
@@ -64,10 +66,11 @@ export function createTouch(stage, input, { screen = stage.querySelector('canvas
     if (stage.hidden) return;
     const { width, height, below } = room();
     stage.style.paddingBottom = below ? `${below}px` : '';
-    const dpr = devicePixelRatio || 1, fits = Math.min(width / SCREEN_W, height / SCREEN_H);
+    const [across, down] = size();
+    const dpr = devicePixelRatio || 1, fits = Math.min(width / across, height / down);
     const scale = fits * dpr >= 1 ? Math.floor(fits * dpr) / dpr : fits;
-    screen.style.width = `${SCREEN_W * scale}px`;
-    screen.style.height = `${SCREEN_H * scale}px`;
+    screen.style.width = `${across * scale}px`;
+    screen.style.height = `${down * scale}px`;
     // on a screen too wide or too square for the buttons to fit beside the game, those that cover part of it are
     // more see-through
     const view = screen.getBoundingClientRect();
@@ -119,5 +122,5 @@ export function createTouch(stage, input, { screen = stage.querySelector('canvas
     slider.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && slider.hasPointerCapture(e.pointerId)) slideTo(e); });
   }
 
-  return { el, get opacity() { return opacity; }, setOpacity, bindSlider };
+  return { el, get opacity() { return opacity; }, setOpacity, bindSlider, fit };
 }
