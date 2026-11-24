@@ -72,6 +72,48 @@ int sceDisplayIsVblank(void);
  *  with none. For game_draw. */
 void psp_show(void);
 
+// ---- the graphics chip ------------------------------------------------------------------------------------------------
+
+/** A command of a display list: its number in the top byte and what it's given in the other three. */
+#define PSP_GE(command, value) (((uint32_t)(command) << 24) | ((uint32_t)(value) & 0x00FFFFFF))
+// the commands a list for 2D drawing uses most, by number
+enum {
+  PSP_GE_NOP = 0x00, PSP_GE_VADDR = 0x01, PSP_GE_IADDR = 0x02, PSP_GE_PRIM = 0x04, PSP_GE_JUMP = 0x08, PSP_GE_CALL = 0x0A, PSP_GE_RET = 0x0B,
+  PSP_GE_END = 0x0C, PSP_GE_SIGNAL = 0x0E, PSP_GE_FINISH = 0x0F, PSP_GE_BASE = 0x10, PSP_GE_VERTEXTYPE = 0x12, PSP_GE_OFFSETADDR = 0x13,
+  PSP_GE_ORIGIN = 0x14, PSP_GE_REGION1 = 0x15, PSP_GE_REGION2 = 0x16, PSP_GE_TEXTUREMAPENABLE = 0x1E, PSP_GE_DITHERENABLE = 0x20,
+  PSP_GE_ALPHABLENDENABLE = 0x21, PSP_GE_ALPHATESTENABLE = 0x22, PSP_GE_ZTESTENABLE = 0x23, PSP_GE_STENCILTESTENABLE = 0x24,
+  PSP_GE_COLORTESTENABLE = 0x27, PSP_GE_LOGICOPENABLE = 0x28, PSP_GE_MATERIALAMBIENT = 0x55, PSP_GE_MATERIALALPHA = 0x58,
+  PSP_GE_FRAMEBUFPTR = 0x9C, PSP_GE_FRAMEBUFWIDTH = 0x9D, PSP_GE_ZBUFPTR = 0x9E, PSP_GE_ZBUFWIDTH = 0x9F, PSP_GE_TRANSFERSRC = 0xB2,
+  PSP_GE_TRANSFERSRCW = 0xB3, PSP_GE_TRANSFERDST = 0xB4, PSP_GE_TRANSFERDSTW = 0xB5, PSP_GE_FRAMEBUFPIXFORMAT = 0xD2, PSP_GE_CLEARMODE = 0xD3,
+  PSP_GE_SCISSOR1 = 0xD4, PSP_GE_SCISSOR2 = 0xD5, PSP_GE_MINZ = 0xD6, PSP_GE_MAXZ = 0xD7, PSP_GE_COLORTEST = 0xD8, PSP_GE_COLORREF = 0xD9,
+  PSP_GE_COLORTESTMASK = 0xDA, PSP_GE_ALPHATEST = 0xDB, PSP_GE_STENCILTEST = 0xDC, PSP_GE_STENCILOP = 0xDD, PSP_GE_ZTEST = 0xDE,
+  PSP_GE_BLENDMODE = 0xDF, PSP_GE_BLENDFIXEDA = 0xE0, PSP_GE_BLENDFIXEDB = 0xE1, PSP_GE_DITH0 = 0xE2, PSP_GE_LOGICOP = 0xE6,
+  PSP_GE_ZWRITEDISABLE = 0xE7, PSP_GE_MASKRGB = 0xE8, PSP_GE_MASKALPHA = 0xE9, PSP_GE_TRANSFERSTART = 0xEA, PSP_GE_TRANSFERSRCPOS = 0xEB,
+  PSP_GE_TRANSFERDSTPOS = 0xEC, PSP_GE_TRANSFERSIZE = 0xEE,
+};
+// a vertex's parts for PSP_GE_VERTEXTYPE: its colour, its position, and whether it's in the screen's own coordinates
+enum {
+  PSP_GE_COLOR_565 = 4 << 2, PSP_GE_COLOR_5551 = 5 << 2, PSP_GE_COLOR_4444 = 6 << 2, PSP_GE_COLOR_8888 = 7 << 2,
+  PSP_GE_POSITION_16BIT = 2 << 7, PSP_GE_POSITION_FLOAT = 3 << 7, PSP_GE_INDEX_8BIT = 1 << 11, PSP_GE_INDEX_16BIT = 2 << 11, PSP_GE_THROUGH = 1 << 23,
+};
+// what PSP_GE_PRIM draws
+enum { PSP_GE_POINTS, PSP_GE_LINES, PSP_GE_LINE_STRIP, PSP_GE_TRIANGLES, PSP_GE_TRIANGLE_STRIP, PSP_GE_TRIANGLE_FAN, PSP_GE_RECTANGLES };
+// what sceGeListSync and sceGeDrawSync say of a list
+enum { PSP_GE_LIST_COMPLETED, PSP_GE_LIST_QUEUED, PSP_GE_LIST_DRAWING, PSP_GE_LIST_STALLING, PSP_GE_LIST_PAUSED };
+
+uint32_t sceGeEdramGetAddr(void);
+uint32_t sceGeEdramGetSize(void);
+/** Hands the chip the list at `list`, which it runs as far as `stall`, or to its end with a stall of 0, and gives the
+ *  list's number. `callback` and `args` are the console's own: the kit calls no callback of the game's yet. */
+int sceGeListEnQueue(uint32_t list, uint32_t stall, int callback, uint32_t args);
+int sceGeListEnQueueHead(uint32_t list, uint32_t stall, int callback, uint32_t args);
+int sceGeListDeQueue(int list);
+int sceGeListUpdateStallAddr(int list, uint32_t stall);
+/** Waits for the list to be done (mode 0), or says how it is (1). */
+int sceGeListSync(int list, int mode);
+/** Waits for every list to be done (mode 0), or says how the first is (1). */
+int sceGeDrawSync(int mode);
+
 // ---- the buttons and the stick --------------------------------------------------------------------------------------
 
 // the buttons as the console gives them, a bit each

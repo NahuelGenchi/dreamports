@@ -34,11 +34,16 @@ static void hold(uint32_t buttons) {
   ctrl_hold(held, left == right ? 128 : left ? 0 : 255, up == down ? 128 : up ? 0 : 255);
 }
 
+static uint32_t draw_hash, draw_count;
+
 static void frame(void) {
   audio_frame_starts();
+  ge_frame_starts();
   kernel_run_frame();
   sound_hash = audio_list_hash();
   sound_count = audio_list_count();
+  draw_hash = ge_list_hash();
+  draw_count = ge_list_count();
 }
 
 /** Starts the game, and runs the console's first frame. */
@@ -48,6 +53,7 @@ EXPORT("dp_start") void dp_start(void) {
   display_power();
   ctrl_power();
   audio_power();
+  ge_power();
   kernel_start(first_thread);
   frame();
 }
@@ -71,6 +77,12 @@ EXPORT("dp_sound_render") float *dp_sound_render(int count) {
 }
 EXPORT("dp_sound_render_max") int dp_sound_render_max(void) { return SOUND_MAX; }
 
+/** The draw list of the last frame run: its hash, and how many commands the graphics chip ran (ge.c). Its whole list
+ *  isn't kept, so the proof tools can't yet say which command of a list that differs isn't the original's. */
+EXPORT("dp_draw_list") uint32_t dp_draw_list(void) { return draw_hash; }
+EXPORT("dp_draw_list_count") uint32_t dp_draw_list_count(void) { return draw_count; }
+EXPORT("dp_draw_list_bytes") const uint8_t *dp_draw_list_bytes(void) { return 0; }
+EXPORT("dp_draw_list_size") uint32_t dp_draw_list_size(void) { return 0xFFFFFFFFu; }
 /** The sound list of the last frame run: its hash and how many things it holds (audio.c). */
 EXPORT("dp_sound_list") uint32_t dp_sound_list(void) { return sound_hash; }
 EXPORT("dp_sound_list_count") uint32_t dp_sound_list_count(void) { return sound_count; }

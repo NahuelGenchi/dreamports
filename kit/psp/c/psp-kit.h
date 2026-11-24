@@ -30,6 +30,8 @@ void kernel_power(void);
 void clock_schedule(int64_t cycles, clock_event event, uint64_t data);
 /** Takes back what was scheduled as `event` with `data`. */
 void clock_unschedule(clock_event event, uint64_t data);
+/** How many cycles from now `event` with `data` is due, less than none when it's late, and none when it isn't scheduled. */
+int64_t clock_left(clock_event event, uint64_t data);
 /** The time now, in cycles and in the microseconds the system gives a game. */
 uint64_t clock_now(void);
 uint64_t clock_microseconds(void);
@@ -37,7 +39,7 @@ uint64_t clock_microseconds(void);
 void clock_spend(int cycles);
 
 // what a thread waits for
-enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL };
+enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL, WAIT_GE_DRAW, WAIT_GE_LIST };
 /** The running thread's number, or 0 when none runs. */
 SceUID thread_current(void);
 /** Puts the running thread to wait for `kind`, `what` of it, keeping `value` for whoever wakes it. */
@@ -60,6 +62,9 @@ int thread_answer(int result);
 int thread_done(int result);
 /** Says the frame ends here, at the V-blank: whatever runs stops until the page's next frame. */
 void kernel_frame_ends(void);
+/** An interrupt begins and ends, with no handler of the game's: the change to the system's idle thread and back. */
+void kernel_interrupt_starts(void);
+void kernel_interrupt_ends(void);
 /** Runs the console until its frame ends. */
 void kernel_run_frame(void);
 /** Starts the program's first thread, at `entry`. */
@@ -67,6 +72,13 @@ void kernel_start(psp_thread_entry entry);
 
 // ---- display.c ----
 void display_power(void);
+// ---- ge.c: the graphics chip ----
+void ge_power(void);
+/** Starts a frame's draw list. */
+void ge_frame_starts(void);
+/** The frame's draw list: the hash of every command the chip ran and what each draw read, and how many commands. */
+uint32_t ge_list_hash(void);
+uint32_t ge_list_count(void);
 // ---- ctrl.c ----
 void ctrl_power(void);
 /** The buttons and the stick as the player holds them now: the console's own bits, and each way of the stick 0 to 255. */

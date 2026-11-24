@@ -38,6 +38,12 @@ void clock_unschedule(clock_event event, uint64_t data) {
     if (due[i].event == event && due[i].data == data) due[i--] = due[--due_count];
   }
 }
+int64_t clock_left(clock_event event, uint64_t data) {
+  for (int i = 0; i < due_count; i++) {
+    if (due[i].event == event && due[i].data == data) return (int64_t)(due[i].at - now);
+  }
+  return 0;
+}
 // the first thing due, or -1 with nothing
 static int first_due(void) {
   int first = -1;
@@ -278,6 +284,22 @@ void psp_time_pass(uint32_t cycles) {
   now += left;
 }
 void kernel_frame_ends(void) { frame_ended = 1; }
+
+// An interrupt: the system changes from the thread it has running to its idle thread to take it, 1,200 cycles, and
+// back once it's done, 1,200 more. A thread that was waiting isn't changed back to: the idle thread goes on until the
+// threads are next put in order. With the idle thread running, nothing changes.
+static int interrupted_running;
+void kernel_interrupt_starts(void) {
+  interrupted_running = 0;
+  if (!running) return;
+  now += 1200;
+  if (running->state == RUNNING) interrupted_running = 1;
+  else running = 0;
+}
+void kernel_interrupt_ends(void) {
+  if (interrupted_running) now += 1200;
+  interrupted_running = 0;
+}
 
 void kernel_run_frame(void) {
   frame_ended = 0;

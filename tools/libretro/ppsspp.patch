@@ -162,8 +162,51 @@ index 4e3e820..f03ac5c 100644
  			curMips->downcount -= GetInstructionCycleEstimate(instr);
  
  			// The reason we have to check this is the delay slot hack in Int_Syscall.
+diff --git a/GPU/Software/SoftGpu.cpp b/GPU/Software/SoftGpu.cpp
+index 09396da..11f9550 100644
+--- a/GPU/Software/SoftGpu.cpp
++++ b/GPU/Software/SoftGpu.cpp
+@@ -758,6 +758,20 @@ void SoftGPU::CheckConfigChanged(const DisplayLayoutConfig &config) {
+ 	}
+ }
+ 
++// Dreamports: each frame's draw list, every command the chip runs and the vertices and indices each draw reads, hashed
++// in the order run (dreamports_draw_list). The kit in C hashes its own the same way (kit/psp/c/ge.c).
++uint32_t dreamportsDrawHash = 0x811C9DC5;
++uint32_t dreamportsDrawCount = 0;
++static void DreamportsDrawn(u32 address, u32 length) {
++	for (u32 i = 0; i < length; i++)
++		dreamportsDrawHash = (dreamportsDrawHash ^ Memory::Read_U8(address + i)) * 0x01000193;
++}
++static void DreamportsCommand(u32 op) {
++	for (int i = 0; i < 4; i++)
++		dreamportsDrawHash = (dreamportsDrawHash ^ ((op >> (8 * i)) & 0xFF)) * 0x01000193;
++	dreamportsDrawCount++;
++}
++
+ void SoftGPU::FastRunLoop(DisplayList &list) {
+ 	PROFILE_THIS_SCOPE("soft_runloop");
+ 	const auto *cmdInfo = softgpuCmdInfo;
+@@ -765,6 +779,7 @@ void SoftGPU::FastRunLoop(DisplayList &list) {
+ 	SoftDirty dirty = dirtyFlags_;
+ 	for (; dc > 0; --dc) {
+ 		u32 op = Memory::ReadUnchecked_U32(list.pc);
++		DreamportsCommand(op);
+ 		const u32 cmd = op >> 24;
+ 		const auto &info = cmdInfo[cmd];
+ 		const u32 diff = op ^ gstate.cmdmem[cmd];
+@@ -869,6 +884,9 @@ void SoftGPU::Execute_Prim(u32 op, u32 diff) {
+ 	}
+ 
+ 	cyclesExecuted += EstimatePerVertexCost() * count;
++	DreamportsDrawn(gstate_c.vertexAddr, count * drawEngine_->FindVertexDecoder(gstate.vertType)->VertexSize());
++	if ((gstate.vertType & GE_VTYPE_IDX_MASK) != GE_VTYPE_IDX_NONE)
++		DreamportsDrawn(gstate_c.indexAddr, count << (((gstate.vertType & GE_VTYPE_IDX_MASK) >> GE_VTYPE_IDX_SHIFT) - 1));
+ 	int bytesRead;
+ 	gstate_c.UpdateUVScaleOffset();
+ 	drawEngine_->transformUnit.SetDirty(dirtyFlags_);
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..8e30731 100644
+index 3b2f103..295ea05 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
 @@ -32,6 +32,8 @@
@@ -175,7 +218,13 @@ index 3b2f103..8e30731 100644
  #include "Core/System.h"
  #include "Core/CoreTiming.h"
  #include "Core/HW/Display.h"
-@@ -1530,7 +1532,12 @@ bool retro_load_game(const struct retro_game_info *game)
+@@ -1527,10 +1529,18 @@ bool retro_load_game(const struct retro_game_info *game)
+    // default to interpreter to allow startup in platforms w/o JIT capability
+    // TODO: I guess we should auto detect? And also, default to IR Interpreter...
+    g_Config.iCpuCore         = (int)CPUCore::INTERPRETER;
++   // Dreamports: the software renderer works out each pixel and texel with its own C++ on every computer, as it has
++   // no code it compiles for Apple's chip, and the code it compiles for others' doesn't always draw what its C++ does
++   g_Config.bSoftwareRenderingJit = false;
  
     CoreParameter coreParam   = {};
     coreParam.enableSound     = true;
@@ -189,7 +238,7 @@ index 3b2f103..8e30731 100644
     coreParam.startBreak      = false;
     coreParam.headLess        = true;  // really?
     coreParam.graphicsContext = ctx;
-@@ -1697,6 +1704,10 @@ static void retro_input(void)
+@@ -1697,6 +1707,10 @@ static void retro_input(void)
  
     x_left = Libretro::clamp(x_left / norm * mappedNorm, -1.0f, 1.0f);
     y_left = Libretro::clamp(y_left / norm * mappedNorm, -1.0f, 1.0f);
@@ -200,7 +249,7 @@ index 3b2f103..8e30731 100644
  
     __CtrlSetAnalogXY(CTRL_STICK_LEFT, x_left, y_left);
     __CtrlSetAnalogXY(CTRL_STICK_RIGHT, x_right, y_right);
-@@ -1706,6 +1717,12 @@ void retro_run(void)
+@@ -1706,6 +1720,12 @@ void retro_run(void)
  {
     if (g_pendingBoot) {
        BootState state = PSP_InitUpdate(&g_bootErrorString);
@@ -213,7 +262,7 @@ index 3b2f103..8e30731 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
-@@ -2046,6 +2063,108 @@ inline int16_t Clamp16(int32_t sample) {
+@@ -2046,6 +2066,118 @@ inline int16_t Clamp16(int32_t sample) {
     return sample;
  }
  
@@ -225,6 +274,16 @@ index 3b2f103..8e30731 100644
 +   *count = dreamportsSoundCount;
 +   dreamportsSoundHash = 0x811C9DC5;
 +   dreamportsSoundCount = 0;
++}
++
++// Dreamports: the draw list of the frame that has just ended (GPU/Software/SoftGpu.cpp), which starts again here.
++extern uint32_t dreamportsDrawHash;
++extern uint32_t dreamportsDrawCount;
++extern "C" RETRO_API void dreamports_draw_list(uint32_t *hash, uint32_t *count) {
++   *hash = dreamportsDrawHash;
++   *count = dreamportsDrawCount;
++   dreamportsDrawHash = 0x811C9DC5;
++   dreamportsDrawCount = 0;
 +}
 +
 +// Dreamports: what the interpreter runs, each instruction, for the tools' count of what ran in each frame
@@ -323,14 +382,15 @@ index 3b2f103..8e30731 100644
     // We ignore volume here, because it's handled by libretro presumably.
  
 diff --git a/libretro/libretro.osx.def b/libretro/libretro.osx.def
-index 53a556a..19b223d 100644
+index 53a556a..8a82b1c 100644
 --- a/libretro/libretro.osx.def
 +++ b/libretro/libretro.osx.def
-@@ -1,6 +1,10 @@
+@@ -1,6 +1,11 @@
  #LIBRARY "libretro"
  #EXPORTS
  _retro_set_environment
 +_dreamports_sound_list
++_dreamports_draw_list
 +_dreamports_memory
 +_dreamports_call
 +_retro_dreamports_ran_mips
