@@ -93,3 +93,26 @@ test('the file is a part to a line, each part\'s functions in order, and only as
   // a PlayStation 2's functions of another program, and a vector unit's
   assert.ok(parsePartFunctions(`{"original":"${SHA1}","parts":{"The logos":["00000000@IOPRP254.IMG:CDVDFSV","00100008","003599B8~vu"]}}`));
 });
+
+test('on a PlayStation 2 disc a part\'s functions go a program at a time, the one it boots first, each in its own order', () => {
+  // the program the disc boots, a module for its second processor, another program for the EE and two vector unit
+  // programs, one in the boot program and one in a file of data, as ps2/functions.mjs keys them
+  const keys = ['00100000', '00100040', '00100080', '00000000@SOUND.IRX', '00000120@SOUND.IRX', '00000090@IOPRP254.IMG:CDVDFSV', '00300000@OTHER.ELF', '00100400~vu', '00000048@DATA/MODELS.BIN~vu'];
+  const disc = { console: 'ps2', functions: keys.map(key => ({ key, address: parseInt(key, 16), size: 16, ...(/@(.+?)(~vu)?$/.exec(key) ? { program: /@(.+?)(~vu)?$/.exec(key)[1] } : {}), ...(key.endsWith('~vu') ? { vu: true } : {}) })) };
+  // as prove writes a part's line: every key in the order text sorts them, which is no program's order
+  const first = ['00000120@SOUND.IRX', '00100000', '00100080', '00100400~vu'].sort();
+  const second = [...keys].sort();
+  const text = formatPartFunctions({ original: SHA1, parts: new Map([['A menu', first], ['A level', second]]) });
+  const read = parsePartFunctions(text);
+  assert.deepEqual([...read.parts.get('A menu')], first, 'each kind of key is read back as it was written');
+  const groups = partGroups([{ name: 'A menu' }, { name: 'A level' }], read.parts, disc);
+  assert.deepEqual(groups[0].functions.map(f => f.key), ['00100000', '00100080', '00000120@SOUND.IRX', '00100400~vu']);
+  assert.equal(groups[0].first, '00100000');
+  // the second part has what the first hasn't, in the order a group of functions has them (groupsOf): the boot
+  // program's, then each other program's by its name, a vector unit's program in a file among them
+  assert.deepEqual(groups[1].functions.map(f => f.key), ['00100040', '00000048@DATA/MODELS.BIN~vu', '00000090@IOPRP254.IMG:CDVDFSV', '00300000@OTHER.ELF', '00000000@SOUND.IRX']);
+  // what no part runs comes after, a program at a time too: none here, as the two parts run them all
+  assert.equal(groups.length, 2);
+  // a part is named by any of its functions' keys' addresses
+  assert.equal(groupNamed(groups, '0x00100040').name, 'A level');
+});

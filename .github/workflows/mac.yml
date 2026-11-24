@@ -100,6 +100,8 @@ jobs:
           retention-days: 7
       # the function check's memories of play, taken in Play! itself, which Check doesn't build
       - run: npm run test:ps2-memories
+      # what prove says each part of a game runs, a function of each kind in the part it first runs in (#1927)
+      - run: npm run test:ps2-part-functions
 
   mac:
     name: Mac (PlayStation 2)
@@ -188,6 +190,7 @@ jobs:
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
       - run: npm run test:ps2-cards
+      - run: npm run test:ps2-part-functions
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
@@ -246,6 +249,7 @@ jobs:
       - run: npm run test:ps2-disc
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
+      - run: npm run test:ps2-part-functions
       - run: npm run test:ps2-flow
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
