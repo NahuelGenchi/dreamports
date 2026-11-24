@@ -89,6 +89,8 @@ const FINDERS = {
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
     address: address => address,
+    // where the code loads, kept in the code map, so the function the cartridge starts is known with no copy (lib/proofs.mjs)
+    layout: cartridge => ({ load: hex(n64Functions.programOf(cartridge).load) }),
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
   // is of the program the disc boots
