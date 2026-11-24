@@ -367,7 +367,7 @@ export async function twin(asked, options = {}, log = console.log) {
   if (!asksForProofs(game)) return exit;
   const proven = functions.filter(f => f.whole).map(f => ({ key: f.key, calls: f.compared }));
   const differing = functions.filter(f => ['differs', 'never', 'stopped'].includes(f.kind)).map(f => f.key);
-  if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game's own names.');
+  if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
   else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
   else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
   return exit;

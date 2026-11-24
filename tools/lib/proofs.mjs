@@ -77,12 +77,25 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
  * aren't C the console's compiler built. In a Dreamport that work is the kit's. A PlayStation 2 function of another
  * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
- * have their proof by `twin` (ps2/twin.mjs).
+ * have their proof by `twin` (ps2/twin.mjs). On the Super Nintendo it's 'reset' for the function the console starts
+ * the cartridge at, its reset vector's: it sets the game up and goes round its main loop, and never comes back, so no
+ * call of it can be compared with a twin's, and it's the frames of play that say a Dreamport does what it does.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
+  if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
+}
+
+// where a Super Nintendo cartridge's reset vector is in its ROM, by its layout as a code map keeps it
+const resets = new WeakMap();
+function snesReset(layout) {
+  if (!resets.has(layout)) {
+    const cart = cartOfLayout(layout), { what, at } = placeIn(mapOf(cart), cart.reset);
+    resets.set(layout, what === ROM ? at : null);
+  }
+  return resets.get(layout);
 }
 
 /** A mark of some text or bytes: the first 16 digits of its SHA-1. */
@@ -220,8 +233,7 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
       const defined = new Map(piecesIn(read(file) ?? '', [], null, 'snes').functions.map(written => [written.name, written]));
       for (const twin of twinsOf.get(file)) {
         const { what, at } = placeIn(map, twin.address), written = defined.get(twin.name);
-        if (what === ROM && written) keep(at, { name: twin.name, line: written.line, code: written.code }, file, `${twin.code}
-`);
+        if (what === ROM && written) keep(at, { name: twin.name, line: written.line, code: written.code }, file, `${twin.code}\n`);
       }
     }
     return marks;
@@ -264,8 +276,8 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
   // file says
   if ((codeMap?.console ?? original.console) === 'snes') {
     let cart = null;
-    return f => markOf(Buffer.concat([Buffer.from(`${f.mode ?? ''} ${snesAddressOf(f.address, cart ??= readCartridge(cartridge.copy())).toString(16).toUpperCase().padStart(6, '0')}
-`), cartridge(f.address, f.size)]));
+    const runsAt = f => snesAddressOf(f.address, cart ??= readCartridge(cartridge.copy())).toString(16).toUpperCase().padStart(6, '0');
+    return f => markOf(Buffer.concat([Buffer.from(`${f.mode ?? ''} ${runsAt(f)}\n`), cartridge(f.address, f.size)]));
   }
   return f => markOf(cartridge(f.address, f.size));
 }
@@ -306,7 +318,8 @@ export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls${state.runs ? ` in ${state.runs.length} runs, seeds ${listed(state.runs.map(([seed]) => seed))}` : ''}` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
-      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
+        : state.beyond === 'reset' ? 'where the console starts the cartridge, which never comes back, so no proof reaches it yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',

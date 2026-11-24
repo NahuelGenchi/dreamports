@@ -204,7 +204,7 @@ try {
   run = dp('twin', VERSION, 'sum', '--calls', '1000');
   check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out) && readFileSync(proofs, 'utf8') === asTwinLeft, 'and with the path written, twin keeps it again');
   run = dp('proofs', VERSION);
-  check(run.status === 0 && /15 of 17 functions proven, 0 by the same bytes and 15 by the same memory/.test(run.out), `the version says how many functions have each proof: ${run.out.trim().split('\n')[0]}`);
+  check(run.status === 0 && /15 of 24 functions proven, 0 by the same bytes and 15 by the same memory/.test(run.out) && /The function the console starts the cartridge at is in no task/.test(run.out), `the version says how many functions have each proof, and that the one the console starts the cartridge at is in no task:${run.out.trim().split('\n')[0]}`);
 } finally {
   tidy();
   if (copies) writeFileSync(COPIES, copies);
