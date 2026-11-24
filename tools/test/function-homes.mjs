@@ -18,7 +18,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { firstFiles } from '../lib/new-game.mjs';
 import { formatCodeMap, readCodeMap } from '../lib/proof-files.mjs';
@@ -37,7 +37,7 @@ const check = (ok, what) => {
   console.log(`  ${ok ? 'ok' : 'FAILED'}: ${what}`);
   if (!ok) failures.push(what);
 };
-const env = login => ({ ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, STAND_IN_GITHUB: kept, STAND_IN_LOGIN: login, STAND_IN_WORK: join(work, 'claims') });
+const env = login => ({ ...process.env, DREAMPORTS_GH: join(bin, 'gh'), STAND_IN_GITHUB: kept, STAND_IN_LOGIN: login, STAND_IN_WORK: join(work, 'claims') });
 const dp = (...args) => {
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 26, env: env('sam') });
   return { status, out: stdout + stderr };
