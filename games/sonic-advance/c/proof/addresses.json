@@ -186,6 +186,19 @@
     "Task_RenderSonic": "08065225",
     "sub_80645E4": "080645B1",
     "Task_806562C": "080655F9",
-    "TaskDestructor_8065810": "080657DD"
+    "TaskDestructor_8065810": "080657DD",
+    "sub_80648D4": "080648A1",
+    "sub_8064BB4": "08064B81",
+    "sub_8064E84": "08064E51",
+    "IntroOpenTitlescreenSilent": "08064F6D",
+    "Task_IntroRenderTails": "080652F5",
+    "Task_IntroRenderKnuckles": "08065411",
+    "Task_IntroRenderAmy": "08065505",
+    "sub_80656A4": "08065671",
+    "sub_806571C": "080656E9",
+    "sub_8065794": "08065761",
+    "Task_LoadGameLogo": "0800D71D",
+    "Task_800D7EC": "0800D7ED",
+    "TaskDestructor_TitleScreen": "0800E021"
   }
 }
