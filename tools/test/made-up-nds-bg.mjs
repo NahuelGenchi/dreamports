@@ -1,6 +1,7 @@
 // A small Nintendo DS program with nothing from any game in it, written here, for the test of the Nintendo DS kit in C's
 // backgrounds (nds-kit.mjs): it gives the video memory's bank A to engine A's backgrounds and bank C to engine B's,
-// writes their colours, tiles and maps, and scrolls them once a frame, as the V-blank starts.
+// writes their colours, tiles and maps, and scrolls them once a frame, as the V-blank starts. A byte it writes to one
+// of the colours is lost, as the ARM9's byte writes to the colours are.
 //
 // Engine A, on the upper screen, has two text backgrounds of 16-colour tiles: the first at priority 1, its tiles a
 // stripe of eight colours and a block of one, alternating, in two of the colours' banks, every other pair of rows
@@ -31,6 +32,9 @@ main:
 	ldr r1, .Lcolours_a
 	mov r2, #32
 	bl copy_halves
+	ldr r0, .Lpalette_a
+	mov r1, #0xFF
+	strb r1, [r0, #2]
 	ldr r0, .Lpalette_b
 	mov r2, #0
 .Lcolours_b:

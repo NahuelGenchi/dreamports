@@ -17,6 +17,8 @@ void game_arm9(void) {
   nds9_write8(0x04000240, 0x81);
   nds9_write8(0x04000242, 0x84);
   for (uint32_t i = 0; i < 32; i++) nds9_write16(NDS_PALETTE_A + 2 * i, COLOURS[i]);
+  // a byte written to a colour, which the console loses
+  nds9_write8(NDS_PALETTE_A + 2, 0xFF);
   uint32_t colour = 0;
   for (uint32_t at = NDS_PALETTE_B; at < NDS_PALETTE_B + 0x200; at += 2) {
     nds9_write16(at, colour);

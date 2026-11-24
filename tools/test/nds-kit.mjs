@@ -67,7 +67,7 @@ async function main() {
   writeGame();
   run = dp('prove', C_GAME, 'scroll');
   const same = report('scroll');
-  check(run.status === 0 && same?.matched === FRAMES, `the kit's engines draw the program's backgrounds as melonDS does on every frame, 16 and 256 colours, two priorities, flips and scrolling: ${same?.matched} of ${FRAMES}, ${JSON.stringify(same?.firstDifference)}`);
+  check(run.status === 0 && same?.matched === FRAMES, `the kit's engines draw the program's backgrounds as melonDS does on every frame, 16 and 256 colours, two priorities, flips and scrolling, and a byte written to a colour lost: ${same?.matched} of ${FRAMES}, ${JSON.stringify(same?.firstDifference)}`);
   if (run.status) console.log(run.out);
   writeGame({ flip: '* 0' });
   run = dp('prove', C_GAME, 'scroll');
