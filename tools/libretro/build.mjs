@@ -116,8 +116,9 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    // on Windows with the compiler the tools got, whose make CMake has to be told to write for
-    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(WINDOWS ? ['-G', 'MinGW Makefiles'] : []), ...cmakeSettings(core)], source, tools?.env);
+    // on Windows, with the compiler and make the tools got for themselves (../gba/windows.mjs)
+    const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
+    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
     run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again

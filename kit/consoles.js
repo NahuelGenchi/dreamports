@@ -5,6 +5,12 @@
 // `disc` says its games come on discs, which the page reads a few sectors at a time (kit/copy/) and gives a game in C
 // through kit/c/disc.h. `provenBy` is how its games are proven when their original.json doesn't say: by their draw lists, on a console whose
 // games are mostly in three dimensions (docs/STANDARD.md), and by their pictures everywhere else.
+// A console with more screens than one, as the Nintendo DS has two, lists them in `screens`, each as where it is in the
+// picture and its size (left, top, width, height), and `screen` is the whole picture, one screen above the other with
+// nothing between them, as its frames are compared. `touch` is which of them is touched, counted from 0. A recording
+// keeps a touch beside the buttons, as "TOUCH@x,y", the pixel of that screen. The Nintendo DS's microphone and its lid
+// aren't here yet: a game hears nothing and its lid stays open. Its `sound` isn't a whole number, as its mixer makes a
+// pair of samples every 1,024 ticks of its clock.
 
 const MB = 1024 * 1024;
 const PAD = ['UP', 'DOWN', 'LEFT', 'RIGHT'];
@@ -22,6 +28,7 @@ export const CONSOLES = {
   ps2: { name: 'PlayStation 2', screen: [640, 448], frame: [1, 60], sound: 48000, provenBy: 'draw lists', soundBy: 'sound lists', disc: true, files: ['.iso', '.chd', '.cso', '.zso', '.bin', '.cue', '.elf'], largest: 9000 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L1', 'R1', 'L2', 'R2', 'L3', 'R3', 'SELECT', 'START', ...PAD, ...STICK] },
   // the console shows a field at a time, 240 of a picture's 480 lines, as the Nintendo 64 does; its two triggers are each a button with a way to press it partway: L and R are a trigger pressed all the way, to its click, and L_ANALOG and R_ANALOG one pressed short of it
   gamecube: { name: 'Nintendo GameCube', screen: [640, 240], frame: [1001, 60000], sound: 48000, disc: true, files: ['.iso', '.gcm', '.dol', '.elf'], largest: 1400 * MB, buttons: ['A', 'B', 'X', 'Y', 'Z', 'L', 'R', 'L_ANALOG', 'R_ANALOG', 'START', ...PAD, ...STICK, 'C_UP', 'C_DOWN', 'C_LEFT', 'C_RIGHT'] },
+  nds: { name: 'Nintendo DS', screen: [256, 384], screens: [[0, 0, 256, 192], [0, 192, 256, 192]], touch: 1, frame: [560190, 33513982], sound: 33513982 / 1024, files: ['.nds', '.srl'], largest: 512 * MB, buttons: ['A', 'B', 'X', 'Y', 'L', 'R', 'SELECT', 'START', ...PAD] },
   psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, disc: true, files: ['.iso', '.cso', '.zso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
   // a console that was never made, whose emulator is tools/test/made-up-core.c: the tools' own test of everything here, on any computer
   'made-up': { name: 'Made-up console', screen: [64, 48], frame: [1, 50], sound: 44100, files: ['.mu'], largest: MB, buttons: ['A', 'B', 'START', ...PAD] },
