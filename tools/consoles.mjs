@@ -28,6 +28,8 @@ const libretro = name => `https://github.com/libretro/${name}.git`;
 // floating-point unit works (../n64/original.mjs).
 // `gameChoosesRate` says its games choose their own sound's rate, so the tools hear it at the kit's. `needs` says why a
 // console can't run yet, in the words the tools say it (docs/CONSOLES.md)
+// The Nintendo DS's is melonDS, its makers' own source with a front of the tools' own built into it (nds/melonds/), as
+// melonDS's libretro cores are other people's ports of older versions of it.
 const CORES = {
   nes: { source: libretro('libretro-fceumm'), commit: 'e0f3086a8104f8fbbe49a2615b10401504a9533f', make: ['-f', 'Makefile.libretro'], built: 'fceumm_libretro', patch: 'tools/libretro/fceumm.patch', ran: true, options: { fceumm_overscan_h_left: '0', fceumm_overscan_h_right: '0', fceumm_overscan_v_top: '0', fceumm_overscan_v_bottom: '0', fceumm_hdpacks: 'disabled', fceumm_sndrate_hint: '48KHz' }, pad: { ...BASICS, A: 'A', B: 'B' } },
   snes: { source: libretro('snes9x'), commit: 'fae2fea08f74180759ef540ee94259213f503480', folder: 'libretro', built: 'snes9x_libretro', patch: 'tools/libretro/snes9x.patch', ran: true, pad: { ...BASICS, ...SAME(['A', 'B', 'X', 'Y', 'L', 'R']) } },
@@ -43,17 +45,38 @@ const CORES = {
   // at a time, all on one thread, a field of the picture to a frame, and the samples its audio interface takes, at the
   // interface's own rate, which the tools hear at the kit's (docs/CONSOLES.md)
   gamecube: { source: libretro('dolphin'), commit: 'e0f0bfec5003270c6252a51d1eae6e6bbec6c3ed', submodules: true, cmake: ['-DLIBRETRO=ON', '-DENABLE_LTO=OFF', '-DENABLE_VULKAN=OFF', '-DUSE_MGBA=OFF'], cmakeOn: { linux: ['-DENABLE_X11=OFF', '-DENABLE_EGL=OFF', '-DENABLE_HWDB=OFF'] }, target: 'dolphin_libretro', folder: 'build', folderOn: { win32: 'build/Binaries' }, built: 'dolphin_libretro', patch: 'tools/libretro/dolphin.patch', leaves: true, gameChoosesRate: true, withoutSubmodules: ['Externals/Qt', 'Externals/FFmpeg-bin', 'Externals/gtest', 'Externals/libadrenotools'], data: { 'Data/Sys/GC': 'dolphin-emu/Sys/GC' }, options: { dolphin_cpu_core: '0', dolphin_cpu_clock_rate: '1.00', dolphin_emulation_speed: '0.0', dolphin_main_cpu_thread: 'disabled', dolphin_fastmem: 'disabled', dolphin_fastmem_arena: 'disabled', dolphin_main_accurate_cpu_cache: 'enabled', dolphin_main_mmu: 'enabled', dolphin_cheats_enabled: 'disabled', dolphin_cheats_import: 'disabled', dolphin_skip_gc_bios: 'enabled', dolphin_fast_disc_speed: 'disabled', dolphin_rush_presentation: 'disabled', dolphin_early_presentation: 'disabled', dolphin_dsp_hle: 'disabled', dolphin_dsp_jit: 'disabled', dolphin_call_back_audio_method: '0', dolphin_renderer: 'Software', dolphin_efb_scale: '1', dolphin_crop_overscan: 'disabled', dolphin_texture_cache_accuracy: '0', dolphin_fast_depth_calculation: 'disabled', dolphin_force_true_color: 'disabled', dolphin_disable_copy_filter: 'disabled', dolphin_efb_access_enable: 'enabled', dolphin_bbox_enabled: 'enabled', dolphin_force_progressive: 'disabled', dolphin_efb_to_texture: 'disabled', dolphin_xfb_to_texture_enable: 'disabled', dolphin_defer_efb_copies: 'disabled', dolphin_immediate_xfb: 'disabled', dolphin_skip_dupe_frames: 'disabled', dolphin_early_xfb_output: 'enabled', dolphin_efb_scaled_copy: 'disabled', dolphin_efb_emulate_format_changes: 'enabled', dolphin_vi_skip: 'disabled', dolphin_fast_texture_sampling: 'disabled', dolphin_osd_enabled: 'disabled', dolphin_default_mouse_bindings_enabled: 'disabled' }, pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', START: 'START', ...STICK, A: 'A', B: 'B', X: 'X', Y: 'Y', Z: 'R', L: 'L2', R: 'R2', L_ANALOG: 'L3', R_ANALOG: 'R3', C_UP: 'RSTICK_UP', C_DOWN: 'RSTICK_DOWN', C_LEFT: 'RSTICK_LEFT', C_RIGHT: 'RSTICK_RIGHT' } },
+  nds: { source: 'https://github.com/melonDS-emu/melonDS.git', commit: 'ff972523f8a70e877dd054439876c3c8c6b79197', cmake: ['-DBUILD_QT_SDL=OFF', '-DENABLE_JIT=OFF', '-DENABLE_OGLRENDERER=OFF', '-DENABLE_GDBSTUB=OFF', '-DENABLE_LTO_RELEASE=OFF'], target: 'melonds_dreamports_libretro', folder: 'build', built: 'melonds_dreamports_libretro', patch: 'tools/libretro/melonds.patch', copies: { 'tools/nds/melonds/libretro.cpp': 'dreamports/libretro.cpp', 'tools/nds/melonds/CMakeLists.txt': 'dreamports/CMakeLists.txt' }, pad: { ...BASICS, ...SAME(['A', 'B', 'X', 'Y', 'L', 'R']) } },
   psp: { needs: 'no emulator has been chosen for it yet', pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', SELECT: 'SELECT', START: 'START', ...STICK, CROSS: 'B', CIRCLE: 'A', SQUARE: 'Y', TRIANGLE: 'X', L: 'L', R: 'R' } },
   'made-up': { local: 'tools/test/made-up-core.c', built: 'made_up_core', commit: 'local', gameChoosesRate: true, pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', START: 'START', A: 'A', B: 'B' } },
 };
 CORES.gbc = CORES.gb;
+
+// A touch as a recording keeps it beside the buttons, "TOUCH@x,y", the pixel of the console's touched screen
+const TOUCH = /^TOUCH@(\d{1,3}),(\d{1,3})$/;
+
+/** The bits host.c takes for a touch at a pixel of the touched screen: bit 15 for the touch, then across and down. */
+export const touchBits = (x, y) => ((1 << 15) | (x << 16) | (y << 24)) >>> 0;
+
+// The bit of each button, which on a console with a touched screen also gives a touch's bits by its name, so whatever
+// turns a recording's buttons into what the emulator is given takes a touch as one more button
+function keysWithTouch(keys, [, , width, height]) {
+  return new Proxy(keys, {
+    get(target, name) {
+      const touch = typeof name === 'string' ? TOUCH.exec(name) : null;
+      if (!touch) return target[name];
+      const x = Number(touch[1]), y = Number(touch[2]);
+      return x < width && y < height ? touchBits(x, y) : undefined;
+    },
+  });
+}
 
 /** A console by its id: its fields from kit/consoles.js, with `core`, what runs it, or null for mGBA, and `keys`, the bit of each of its buttons, or null for mGBA. */
 export function consoleOf(id) {
   const machine = CONSOLES[id];
   if (!machine) throw new Error(`The tools don't know a console called ${id}: they know ${Object.keys(CONSOLES).join(', ')} (kit/consoles.js).`);
   const core = CORES[id] ?? null;
-  return { id, ...machine, core, keys: core ? Object.fromEntries(Object.entries(core.pad).map(([name, retro]) => [name, 2 ** RETRO[retro]])) : null };
+  const keys = core ? Object.fromEntries(Object.entries(core.pad).map(([name, retro]) => [name, 2 ** RETRO[retro]])) : null;
+  return { id, ...machine, core, keys: keys && machine.touch !== undefined ? keysWithTouch(keys, machine.screens[machine.touch]) : keys };
 }
 
 export { CONSOLES };

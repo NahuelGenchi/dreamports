@@ -13,6 +13,7 @@
     "test:c-kit": "node tools/test/c-kit.mjs",
     "test:consoles": "node tools/test/any-console.mjs",
     "test:real-console": "node tools/test/real-console.mjs",
+    "test:real-nds": "node tools/test/real-nds.mjs",
     "test:real-ps2": "node tools/test/real-ps2.mjs",
     "test:real-gamecube": "node tools/test/real-gamecube.mjs",
     "test:gamecube-kit": "node tools/test/gamecube-kit.mjs",
