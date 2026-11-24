@@ -12,7 +12,7 @@ import { basename, join } from 'node:path';
 
 // DP_WINDOWS_BUILD names another, for someone who builds two things at once, as each build empties this folder first
 export const WINDOWS_BUILD = process.env.DP_WINDOWS_BUILD || join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-build');
-export const WINDOWS_COMPILER = join(process.env.ProgramData ?? 'C:\ProgramData', 'dreamports-compiler');
+export const WINDOWS_COMPILER = join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-compiler');
 
 const COMPILER = {
   name: 'w64devkit 2.10.1',
