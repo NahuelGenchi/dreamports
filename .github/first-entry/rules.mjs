@@ -55,11 +55,14 @@ const near = (a, b) => !!letters(a) && !!letters(b) && (letters(a).includes(lett
 // its code at 08000000 or 09000000. Another console's games say less or nothing, so their title has more room, and is
 // the game's name or part of it, as `rom` takes it from the copy's own name when its header has none. A PlayStation 2
 // disc's code is the name of the program it boots, as SLUS_205.73, and its functions are in more places than one
-// (`places`, tools/ps2/functions.mjs)
+// (`places`, tools/ps2/functions.mjs). A PlayStation Portable disc's code is its UMD's, as ULUS-10041, or none for a
+// program or a download, and a game's code runs in the console's memory for games, 0x08800000 to 0x0BFFFFFF
+// (tools/psp/functions.mjs)
 const OTHER = { title: /^[A-Za-z0-9][A-Za-z0-9 _.!&',:+()-]{0,59}$/, code: /^[A-Z0-9 -]{0,16}$/, address: /^/, named: found => near(namesOf(found).name, found.title) };
 const HEADER = {
   gba: { title: /^[A-Za-z0-9 _.!&'-]{1,12}$/, code: /^[A-Z0-9]{4}$/, address: /^0[89]/, named: () => true },
   ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true },
+  psp: { ...OTHER, code: /^(?:[A-Z]{4}-?[0-9]{5})?$/, address: /^0(?:8[89A-F]|9|A|B)/ },
   other: OTHER,
 };
 const headerOf = console => HEADER[console] ?? HEADER.other;

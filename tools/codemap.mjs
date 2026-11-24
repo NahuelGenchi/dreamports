@@ -38,6 +38,7 @@ import * as nesFunctions from './nes/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
 import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
+import * as pspFunctions from './psp/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -85,6 +86,14 @@ const FINDERS = {
     ...n64Functions,
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
+    address: address => address,
+  },
+  // a PlayStation Portable game's program, read off its disc or out of the file a download comes as, and placed where
+  // the emulator places it when it's relocatable
+  psp: {
+    ...pspFunctions,
+    file: 'tools/psp/functions.mjs',
+    read: pspFunctions.pspProgram,
     address: address => address,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list

@@ -843,6 +843,11 @@ int main(int argc, char** argv) {
 		startsFrame((uint32_t) frame);
 		retro_run();
 		noteSize(frame);
+		// a core that starts its console in its first frame, as PPSSPP does, has its memory only then
+		if (!memory || !memorySize) {
+			memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+		}
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			uint32_t address = reads[nextRead * 3 + 1], bytes = reads[nextRead * 3 + 2], value = 0;
 			if (!memory || address + bytes > memorySize) {

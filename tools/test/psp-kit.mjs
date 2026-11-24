@@ -135,6 +135,12 @@ async function main() {
     run = dp('prove', VERSION, 'buttons');
     const stick = report('buttons').firstDifference;
     check(run.status !== 0 && stick?.frame >= stickFrom && stick?.frame <= stickFrom + 3, `and one that never reads how far down the stick is differs at the first frame it's held up, frame ${stickFrom} or just after: ${JSON.stringify(stick)}`);
+
+    console.log('Its code map:');
+    run = dp('codemap', GAME);
+    const mapFile = join(proofFolder(GAME), 'code-map.json'), map = existsSync(mapFile) ? JSON.parse(readFileSync(mapFile, 'utf8')) : null;
+    const expected = [PROGRAM.LOAD_AT, program.at.sound].map(address => address.toString(16).toUpperCase().padStart(8, '0'));
+    check(run.status === 0 && map?.functions.map(([address]) => address).join() === expected.join() && /tools\/psp\/functions\.mjs/.test(map.from), `codemap finds the program's two functions, its start and its sound thread, and nothing of what it keeps for the system: ${map ? JSON.stringify(map.functions) : last(run)}`);
   } finally {
     // --keep leaves the test's game in games/, to look at what went wrong
     if (!process.argv.includes('--keep')) tidy();

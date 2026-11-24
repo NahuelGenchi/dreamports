@@ -67,29 +67,47 @@ export const SYSTEM = {
 };
 
 /**
- * A program as the console's loader takes it: an ELF file with one part, loaded at LOAD_AT, which starts at the first
- * of `code`. `code` is a list of instructions, names (here) and the things above that go by a name; `data` gives each
- * name its bytes or its words, kept after the code, four bytes apart at least; `imports` names the system's functions
- * it calls. After the data come the module's own description, the list of the modules it asks for, their functions'
- * numbers and the two instructions the system writes each call into.
+ * A program as the console's loader takes it: an ELF file with one part, which starts at the first of `code`. `code`
+ * is a list of instructions, names (here) and the things above that go by a name; `data` gives each name its bytes or
+ * its words, kept after the code, four bytes apart at least, a word given as { address: name } being the address of
+ * that name; `imports` names the system's functions it calls. After the data come the module's own description, the
+ * list of the modules it asks for, their functions' numbers and the two instructions the system writes each call into.
+ *
+ * It's loaded at LOAD_AT, where it says, or with `relocatable` it's a PRX, built as if from address 0, with a second
+ * part that lists every place that holds an address, which the console adds to as it puts the program where it has
+ * room: `at` is then where each name is once the tools' emulator has placed it, at `placedAt`. With `sections` the file
+ * names its sections as a compiler's does, which is how a reader tells its code from its values: without them, values
+ * right after the code that read as instructions can't be told from a function.
  * { elf, at }: the file, and where each name is.
  */
-export function pspProgram({ code, data = {}, imports = [], name = 'made-up' }) {
-  const at = {}, words = [];
-  let address = LOAD_AT;
+export function pspProgram({ code, data = {}, imports = [], name = 'made-up', relocatable = false, sections = false, placedAt = 0x08804000 }) {
+  const base = relocatable ? 0 : LOAD_AT;
+  const at = {}, words = [], places = [];
+  let address = base;
   for (const item of code) {
     if (item.here) at[item.here] = address;
     else address += 4;
   }
   const parts = [];
-  const place = (label, bytes) => {
+  // bytes at the next free address, under `label`, with each of `addresses`, offsets of words in them, a place that
+  // holds an address
+  const place = (label, bytes, addresses = []) => {
     address = (address + 3) & ~3;
     at[label] = address;
     parts.push([address, bytes]);
+    for (const offset of addresses) places.push([address + offset, 2]);
     address += bytes.length;
   };
   const wordsOf = list => Buffer.from(new Uint32Array(list).buffer);
-  for (const [label, value] of Object.entries(data)) place(label, value instanceof Uint32Array ? Buffer.from(value.buffer, value.byteOffset, value.byteLength) : Array.isArray(value) ? wordsOf(value) : Buffer.from(value));
+  const later = [];
+  for (const [label, value] of Object.entries(data)) {
+    if (value instanceof Uint32Array) place(label, Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+    else if (Array.isArray(value)) {
+      const bytes = Buffer.alloc(value.length * 4);
+      place(label, bytes, value.flatMap((word, index) => (typeof word === 'object' ? [index * 4] : [])));
+      later.push(() => value.forEach((word, index) => bytes.writeUInt32LE(typeof word === 'object' ? known(word.address) : word >>> 0, index * 4)));
+    } else place(label, Buffer.from(value));
+  }
   // the modules asked for, in the order their first function is named
   const modules = [];
   for (const wanted of imports) {
@@ -105,50 +123,109 @@ export function pspProgram({ code, data = {}, imports = [], name = 'made-up' }) 
     place(`calls ${entry.module}`, wordsOf(entry.functions.flatMap(() => [jr(RA), NOP])));
     entry.functions.forEach(({ wanted }, index) => { at[`call ${wanted}`] = at[`calls ${entry.module}`] + index * 8; });
   }
-  place('modules', wordsOf(modules.flatMap(({ module, functions }) => [at[`name ${module}`], 0x40010000, (functions.length << 16 | 5) >>> 0, at[`numbers ${module}`], at[`calls ${module}`]])));
+  place('modules', wordsOf(modules.flatMap(({ module, functions }) => [at[`name ${module}`], 0x40010000, (functions.length << 16 | 5) >>> 0, at[`numbers ${module}`], at[`calls ${module}`]])), modules.flatMap((_, index) => [index * 20, index * 20 + 12, index * 20 + 16]));
   const modulesEnd = address;
   const description = Buffer.alloc(52);
   description.writeUInt16LE(0x0101, 2);
   description.write(name, 4, 27, 'latin1');
   description.writeUInt32LE(at.modules, 44);
   description.writeUInt32LE(modulesEnd, 48);
-  place('module', description);
+  place('module', description, [44, 48]);
+  function known(label) {
+    if (at[label] === undefined) throw new Error(`The program names ${label}, which it doesn't have.`);
+    return at[label];
+  }
+  for (const write of later) write();
   for (const item of code) {
     if (item.here) continue;
-    const from = LOAD_AT + words.length * 4;
-    const known = label => { if (at[label] === undefined) throw new Error(`The program names ${label}, which it doesn't have.`); return at[label]; };
+    const from = base + words.length * 4;
     if (typeof item === 'number') words.push(item);
-    else if (item.jump) words.push((item.jump << 26 | (known(item.name) >>> 2 & 0x3FFFFFF)) >>> 0);
-    else if (item.upper !== undefined) words.push(lui(item.upper, known(item.name) >>> 16));
-    else if (item.lower !== undefined) words.push(ori(item.lower, item.lower, known(item.name) & 0xFFFF));
-    else words.push(imm(item.op, item.rs, item.rt, (known(item.name) - from - 4) >> 2));
+    else if (item.jump) {
+      places.push([from, 4]);
+      words.push((item.jump << 26 | (known(item.name) >>> 2 & 0x3FFFFFF)) >>> 0);
+    } else if (item.upper !== undefined) {
+      // the upper half makes up for the sign of the lower, which an addition takes
+      places.push([from, 5]);
+      words.push(lui(item.upper, (known(item.name) + 0x8000) >>> 16));
+    } else if (item.lower !== undefined) {
+      places.push([from, 6]);
+      words.push(addiu(item.lower, item.lower, known(item.name) & 0xFFFF));
+    } else words.push(imm(item.op, item.rs, item.rt, (known(item.name) - from - 4) >> 2));
   }
-  const size = address - LOAD_AT, HEADERS = 52 + 32;
-  const elf = Buffer.alloc(HEADERS + size);
+  const size = address - base, listed = relocatable ? Buffer.alloc(places.length * 8) : Buffer.alloc(0);
+  // each place: where it is from the first part's start, and its kind, with the first part as what its address counts from
+  if (relocatable) places.sort((a, b) => a[0] - b[0]).forEach(([where, kind], index) => { listed.writeUInt32LE(where, index * 8); listed.writeUInt32LE(kind, index * 8 + 4); });
+  // with `sections`, the list of places is a section of its own, as the console's loader then reads it, not a part
+  const listedAsPart = relocatable && !sections;
+  const HEADERS = 52 + 32 * (listedAsPart ? 2 : 1);
+  // the sections a program's file names, as a compiler writes them: its code, its values, its module's description,
+  // the list of places, and the sections' names
+  const codeBytes = words.length * 4, sectionsAt = (HEADERS + size + listed.length + 3) & ~3;
+  const named = [];
+  if (sections) {
+    named.push(['.text', 1, 6, base, HEADERS, codeBytes, 0]);
+    named.push(['.data', 1, 3, base + codeBytes, HEADERS + codeBytes, at.module - base - codeBytes, 0]);
+    named.push(['.rodata.sceModuleInfo', 1, 2, at.module, HEADERS + at.module - base, 52, 0]);
+    if (relocatable) named.push(['.rel.text', 0x700000A0, 0, 0, HEADERS + size, listed.length, 1]);
+  }
+  const names = sections ? Buffer.from(`\0${[...named.map(([label]) => label), '.shstrtab'].join('\0')}\0`, 'latin1') : Buffer.alloc(0);
+  const sectionCount = sections ? named.length + 2 : 0;
+  const elf = Buffer.alloc(sections ? sectionsAt + sectionCount * 40 + names.length : HEADERS + size + listed.length);
+  if (sections) {
+    let nameAt = 1;
+    named.forEach(([label, type, flags, where, offset, bytes, info], index) => {
+      const at40 = sectionsAt + (index + 1) * 40;
+      elf.writeUInt32LE(nameAt, at40);
+      elf.writeUInt32LE(type >>> 0, at40 + 4);
+      elf.writeUInt32LE(flags, at40 + 8);
+      elf.writeUInt32LE(where, at40 + 12);
+      elf.writeUInt32LE(offset, at40 + 16);
+      elf.writeUInt32LE(bytes, at40 + 20);
+      elf.writeUInt32LE(info, at40 + 28);
+      elf.writeUInt32LE(4, at40 + 32);
+      nameAt += label.length + 1;
+    });
+    const last = sectionsAt + (named.length + 1) * 40, namesAt = sectionsAt + sectionCount * 40;
+    elf.writeUInt32LE(nameAt, last);
+    elf.writeUInt32LE(3, last + 4);
+    elf.writeUInt32LE(namesAt, last + 16);
+    elf.writeUInt32LE(names.length, last + 20);
+    names.copy(elf, namesAt);
+    elf.writeUInt32LE(sectionsAt, 32);
+    elf.writeUInt16LE(sectionCount, 48);
+    elf.writeUInt16LE(sectionCount - 1, 50);
+    listed.copy(elf, HEADERS + size);
+  }
   elf.write('\x7FELF', 0, 'latin1');
   elf.set([1, 1, 1], 4);                         // 32 bits, the low byte first, version 1
-  elf.writeUInt16LE(2, 16);                      // a program, loaded where it says
+  elf.writeUInt16LE(relocatable ? 0xFFA0 : 2, 16); // a program loaded where it says, or one the console places
   elf.writeUInt16LE(8, 18);                      // MIPS
   elf.writeUInt32LE(1, 20);
-  elf.writeUInt32LE(LOAD_AT, 24);                // where it starts
-  elf.writeUInt32LE(52, 28);                     // the one part's header
+  elf.writeUInt32LE(base, 24);                   // where it starts
+  elf.writeUInt32LE(52, 28);                     // the parts' headers
   elf.writeUInt32LE(0x10A23000, 36);             // as the console's own programs say: MIPS II, EABI, the Allegrex
   elf.writeUInt16LE(52, 40);
   elf.writeUInt16LE(32, 42);
-  elf.writeUInt16LE(1, 44);
+  elf.writeUInt16LE(listedAsPart ? 2 : 1, 44);
   elf.writeUInt16LE(40, 46);
   elf.writeUInt32LE(1, 52);                      // loaded
   elf.writeUInt32LE(HEADERS, 56);
-  elf.writeUInt32LE(LOAD_AT, 60);
+  elf.writeUInt32LE(base, 60);
   // where the module's description is in the file, which is how the console's loader finds it with no section names
-  elf.writeUInt32LE(HEADERS + at.module - LOAD_AT, 64);
+  elf.writeUInt32LE(HEADERS + at.module - base, 64);
   elf.writeUInt32LE(size, 68);
   elf.writeUInt32LE(size, 72);
   elf.writeUInt32LE(7, 76);
   elf.writeUInt32LE(16, 80);
+  if (listedAsPart) {
+    elf.writeUInt32LE(0x700000A0, 84);           // the list of places that hold an address
+    elf.writeUInt32LE(HEADERS + size, 88);
+    elf.writeUInt32LE(listed.length, 100);
+    listed.copy(elf, HEADERS + size);
+  }
   Buffer.from(new Uint32Array(words).buffer).copy(elf, HEADERS);
-  for (const [where, bytes] of parts) bytes.copy(elf, HEADERS + where - LOAD_AT);
-  return { elf, at };
+  for (const [where, bytes] of parts) bytes.copy(elf, HEADERS + where - base);
+  return { elf, at: relocatable ? Object.fromEntries(Object.entries(at).map(([label, where]) => [label, where + placedAt])) : at };
 }
 
 // a rectangle of one colour, painted a word at a time: T0 its first pixel's address, T1 how many across, T2 how many
@@ -225,8 +302,8 @@ export const CYCLES = {
   OUTPUT: 2 + count(STRETCHES.output),
 };
 
-/** The program: { elf, at }. */
-export function madeUpPsp() {
+/** The program: { elf, at }. With `relocatable`, as a PRX the console places, and with `sections`, naming its sections. */
+export function madeUpPsp({ relocatable = false, sections = false } = {}) {
   // a block of the wave, left and right the same, 16 bits each
   const wave = new Int16Array(BLOCK * 2);
   for (let sample = 0; sample < BLOCK; sample++) wave[sample * 2] = wave[sample * 2 + 1] = sample % (HALF_WAVE * 2) < HALF_WAVE ? LOUD : -LOUD;
@@ -261,5 +338,6 @@ export function madeUpPsp() {
   return pspProgram({
     code, data: { 'sound name': 'sound\0', wave: new Uint32Array(wave.buffer), pad: new Uint32Array(4) },
     imports: ['sceDisplaySetMode', 'sceDisplaySetFrameBuf', 'sceDisplayWaitVblankStart', 'sceCtrlSetSamplingCycle', 'sceCtrlSetSamplingMode', 'sceCtrlPeekBufferPositive', 'sceKernelCreateThread', 'sceKernelStartThread', 'sceKernelGetSystemTimeLow', 'sceAudioChReserve', 'sceAudioOutputBlocking'],
+    relocatable, sections,
   });
 }
