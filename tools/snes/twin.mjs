@@ -35,10 +35,11 @@ import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
-import { openBuild } from '../gba/twin.mjs';
+import { KEPT_FROM, openBuild } from '../gba/twin.mjs';
 import { modeOf, narrowXY } from './65816.mjs';
 import { BLOCKS, HARDWARE, mapOf, NOTHING, placeIn, readCartridge, ROM, SAVE, WORK, WRAM } from './cartridge.mjs';
 import { contractsIn, NAMES } from './contracts.mjs';
@@ -361,13 +362,22 @@ export async function twin(asked, options = {}, log = console.log) {
   if (!copy) throw new Error(`twin calls the functions of ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   const read = await readAnyCopy(copy.path, original.console);
   if (read?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
-  return (await checkVersion({ game, codeMap, copyPath: copy.path, options: all, log })).exit;
+  const { exit, functions } = await checkVersion({ game, codeMap, copyPath: copy.path, options: all, log });
+  // a proof is found with the game's own names, and over enough calls to be worth the name, as on the other consoles
+  if (!asksForProofs(game)) return exit;
+  const proven = functions.filter(f => f.whole).map(f => ({ key: f.key, calls: f.compared }));
+  const differing = functions.filter(f => ['differs', 'never', 'stopped'].includes(f.kind)).map(f => f.key);
+  if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game's own names.');
+  else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+  else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven, failed: differing }), 'memory')) log(line);
+  return exit;
 }
 
 /**
  * Checks a version's twins against the cartridge at `copyPath`: `codeMap` its functions, keyed by their places in the
  * ROM, with their modes. Answers { exit, functions }: `exit` 0, or 3 when a twin differed, stopped or never came back,
- * or a contract couldn't be read, and `functions` each { label, name, kind, line, compared, whole, left }.
+ * or a contract couldn't be read, and `functions` each { key, label, name, kind, line, compared, whole, left }, `key`
+ * the function's in the code map.
  */
 export async function checkVersion({ game, codeMap, copyPath, options: asked = {}, log = console.log }) {
   const options = { ...DEFAULTS, ...Object.fromEntries(Object.entries(asked).filter(([, value]) => value !== undefined)) };
@@ -456,7 +466,7 @@ export async function checkVersion({ game, codeMap, copyPath, options: asked = {
           totals[kind]++;
           const whole = kind === 'same' && !left.length;
           if (whole) proven++;
-          results.push({ label: f.label, name: call.name, kind, line, compared: checked.compared, whole, left, total });
+          results.push({ key: mapped.key, label: f.label, name: call.name, kind, line, compared: checked.compared, whole, left, total });
           log(`  ${LABELS[kind]}  ${f.label} ${call.name}${kind === 'same' ? ', ' : ': '}${line}`);
           if (kind === 'same' && left.length) log(`    Its calls left out ${count(left.length)} of its ${count(total)} instructions and branch ways, such as ${left.slice(0, 3).map(([at, how]) => `${hex(at, 6)} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
         }

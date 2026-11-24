@@ -20,7 +20,11 @@
 // the start of a SHA-1: the twin's of its own code, of what its file holds outside every function, and of the game's
 // own headers the file includes, without their comments, and the original's of its bytes. So a proof goes stale by
 // itself: once the twin's code changes, or a line of its file outside the functions, or a header of its file, or the
-// code map gives the function other bytes, its line no longer counts, and the tool has to prove it again.
+// code map gives the function other bytes, its line no longer counts, and the tool has to prove it again. The
+// original's mark is taken the way the console's code is laid out. A Super Nintendo function's is of its bytes in the
+// ROM with the processor's mode it starts in, as the code map says it, and the address its code runs at, bank and all
+// (snes/functions.mjs, addressOf): the same bytes read in another mode are other instructions, and run from another
+// bank they call and push other addresses.
 //
 // A function `match` found different can still start as the original's does: "starts" lists each such one, its key,
 // the two marks, and how many of its first bytes are the same, `["08012D4C", "1f0c…", "9a3e…", 64]`. It's no proof of
@@ -42,6 +46,8 @@ import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
+import { cartOfLayout, mapOf, placeIn, readCartridge, ROM } from '../snes/cartridge.mjs';
+import { addressOf as snesAddressOf } from '../snes/functions.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
@@ -51,7 +57,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'ps1', 'ps2'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -165,7 +171,9 @@ const onDisk = path => (existsSync(path) && statSync(path).isFile() ? readFileSy
  * Every twin a version in C has, as it's written now: a Map of each function's key in the code map to
  * { name, file, line, mark }, the twin's name, its file in the version's folder, its line and its mark. On the Game
  * Boy Advance a twin is a function whose comment names the original's (lib/twins.mjs); on the NES one with a contract
- * beside it, whose words are part of what's marked (nes/twin.mjs). A function the game makes in its work memory has
+ * beside it, whose words are part of what's marked (nes/twin.mjs); on the Super Nintendo what a contract calls, the
+ * contract's words and the C function's code both marked, at the place in the ROM the address in its label is, as
+ * the code map says the cartridge is laid out (snes/contracts.mjs). A function the game makes in its work memory has
  * no twin here, as neither proof reaches one yet.
  */
 export function twinMarks(version, codeMap = readCodeMap(version)) {
@@ -206,6 +214,18 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
     }
     return marks;
   }
+  if (codeMap.console === 'snes') {
+    const map = mapOf(cartOfLayout(codeMap.layout));
+    for (const file of files) {
+      const defined = new Map(piecesIn(read(file) ?? '', [], null, 'snes').functions.map(written => [written.name, written]));
+      for (const twin of twinsOf.get(file)) {
+        const { what, at } = placeIn(map, twin.address), written = defined.get(twin.name);
+        if (what === ROM && written) keep(at, { name: twin.name, line: written.line, code: written.code }, file, `${twin.code}
+`);
+      }
+    }
+    return marks;
+  }
   for (const file of files) {
     for (const twin of twinsOf.get(file)) {
       if (twin.keyed) keep(functionKey(twin.keyed), twin, file);
@@ -240,6 +260,13 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
     return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
+  // a Super Nintendo function's, with the mode it starts in and the address its code runs at, as the top of this
+  // file says
+  if ((codeMap?.console ?? original.console) === 'snes') {
+    let cart = null;
+    return f => markOf(Buffer.concat([Buffer.from(`${f.mode ?? ''} ${snesAddressOf(f.address, cart ??= readCartridge(cartridge.copy())).toString(16).toUpperCase().padStart(6, '0')}
+`), cartridge(f.address, f.size)]));
+  }
   return f => markOf(cartridge(f.address, f.size));
 }
 

@@ -140,3 +140,19 @@ export function placeIn(map, address) {
   const what = map[block * 3];
   return { what, at: ((map[block * 3 + 1] + (address & 0xFFF)) & map[block * 3 + 2]) >>> 0 };
 }
+
+/** How a cartridge is laid out, as its code map keeps it (../lib/proof-files.mjs), so a tool with no copy of the game
+ *  can say where an address of the console is in its ROM: what mapOf reads of a cartridge, and its ROM's speed, which
+ *  says the bank its code is most often run from. Nothing of the game's code or data is in it. */
+export const layoutOf = ({ rom, mapping, sram, sramSize, romSize, speed }) => ({ mapping, rom: rom.length, sram, sramSize, romSize, speed });
+
+const isLayout = layout => layout && typeof layout === 'object' && ['lorom', 'hirom', 'exhirom'].includes(layout.mapping)
+  && ['rom', 'sram', 'sramSize', 'romSize'].every(key => Number.isInteger(layout[key]) && layout[key] >= 0) && layout.rom > 0 && ['fast', 'slow'].includes(layout.speed);
+
+/** A cartridge as readCartridge gives one, from the layout a code map keeps, with no byte of its ROM: what mapOf and
+ *  the address a function runs at need of it (functions.mjs). Throws on one that isn't as layoutOf writes it. */
+export function cartOfLayout(layout) {
+  if (!isLayout(layout)) throw new Error('The code map doesn\'t say how the cartridge is laid out, as codemap writes it for a Super Nintendo game: npm run dp -- codemap <game> writes it again.');
+  const { mapping, rom, sram, sramSize, romSize, speed } = layout;
+  return { rom: { length: rom }, mapping, sram, sramSize, romSize, speed, chip: null };
+}
