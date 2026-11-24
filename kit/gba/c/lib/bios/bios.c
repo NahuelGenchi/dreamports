@@ -4,8 +4,9 @@
 // instructions as npm run dp -- read prints them.
 //
 // In a Dreamport the BIOS's work is the version's own, as its hardware has it: a version that takes this library
-// gives each of these (console_cpu_set, console_div, console_mod, console_vblank_intr_wait), and the twin calls it,
+// gives each of these (console_cpu_fast_set, console_cpu_set, console_div, console_mod, console_vblank_intr_wait), and the twin calls it,
 // so the function check (twin) compares that work with the BIOS's.
+void console_cpu_fast_set(const void *src, void *dest, unsigned int control);
 void console_cpu_set(const void *src, void *dest, unsigned int control);
 int console_div(int num, int denom);
 int console_mod(int num, int denom);
@@ -13,11 +14,23 @@ void console_vblank_intr_wait(void);
 
 // each stub is its instructions alone, with nothing the compiler adds before or after them
 #ifdef MATCHING
+void CpuFastSet(const void *src, void *dest, unsigned int control) __attribute__((naked));
 void CpuSet(const void *src, void *dest, unsigned int control) __attribute__((naked));
 int Div(int num, int denom) __attribute__((naked));
 int Mod(int num, int denom) __attribute__((naked));
 void VBlankIntrWait(void) __attribute__((naked));
 #endif
+
+/** CpuFastSet: the BIOS's fast copy, or fill, of as many words as `control` says, eight at a time, from `src` to
+ *  `dest`. */
+void CpuFastSet(const void *src, void *dest, unsigned int control)
+{
+#ifdef MATCHING
+    asm("swi 12\n\tbx lr");
+#else
+    console_cpu_fast_set(src, dest, control);
+#endif
+}
 
 /** CpuSet: the BIOS's copy, or fill, of as many halfwords or words as `control` says, from `src` to `dest`. */
 void CpuSet(const void *src, void *dest, unsigned int control)

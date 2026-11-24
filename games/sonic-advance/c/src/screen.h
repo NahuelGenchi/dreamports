@@ -32,6 +32,8 @@ void UpdateScreenDma(void);
 void VBlankIntr(void);
 bool32 ProcessVramGraphicsCopyQueue(void);
 void ProcessOamBuffers(void);
+/** The BIOS's fast copier: copies or fills `control`'s count of words, eight at a time, from `src` to `dest`. */
+void CpuFastSet(const void *src, void *dest, u32 control);
 void m4aSoundVSync(void);
 void m4aMPlayAllStop(void);
 void m4aSoundVSyncOff(void);

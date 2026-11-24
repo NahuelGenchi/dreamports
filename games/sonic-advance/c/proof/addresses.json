@@ -180,6 +180,7 @@
     "gSineTable": "0809B3F0",
     "Div": "080997E5",
     "CpuSet": "080997E1",
+    "CpuFastSet": "080997DD",
     "Mod": "080997E9",
     "IntroOpenTitlescreenPlayMusic": "08064FC5",
     "Task_RenderSonic": "08065225",

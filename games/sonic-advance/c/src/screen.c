@@ -120,6 +120,72 @@ void UpdateScreenDma(void) {
 #endif
 }
 
+/** UpdateScreenCpuSet, 0x08000D34: UpdateScreenDma's work through the BIOS's copiers, for the screens that ask for
+ *  it: the palettes, the callbacks and the sprites' list by its fast one, the registers by the other. (Not timed: no
+ *  recording asks for the copiers yet.) */
+void UpdateScreenCpuSet(void) {
+  u8 i, j = 0;
+
+  REG_WRITE16(REG_DISPCNT, gDispCnt);
+  CpuCopy32(gBgCntRegs, (void *)(0x04000000 + REG_BG0CNT), sizeof(gBgCntRegs));
+
+  if (gFlags & FLAGS_UPDATE_BACKGROUND_PALETTES) {
+    CpuFastSet(gBgPalette, (void *)BG_PLTT, 0x200 / 4);
+    gFlags ^= FLAGS_UPDATE_BACKGROUND_PALETTES;
+  }
+  if (gFlags & FLAGS_UPDATE_SPRITE_PALETTES) {
+    CpuFastSet(gObjPalette, (void *)OBJ_PLTT, 0x200 / 4);
+    gFlags ^= FLAGS_UPDATE_SPRITE_PALETTES;
+  }
+
+  CpuCopy32(gWinRegs, (void *)(0x04000000 + REG_WIN0H), sizeof(gWinRegs));
+  CpuSet(&gBldRegs, (void *)(0x04000000 + REG_BLDCNT), 6 / 2);
+  CpuSet(gBgScrollRegs, (void *)(0x04000000 + REG_BG0HOFS), sizeof(gBgScrollRegs) / 2);
+  CpuCopy32(&gBgAffineRegs, (void *)(0x04000000 + REG_BG2PA), sizeof(gBgAffineRegs));
+
+  if (gFlags & FLAGS_EXECUTE_HBLANK_CALLBACKS) {
+    REG_OR16(REG_IE, INTR_FLAG_HBLANK);
+    {
+      u32 zero = j;
+      CpuFastSet(&zero, gHBlankIntrs, CPU_SET_SRC_FIXED | sizeof(gHBlankIntrs) / 4);
+    }
+    if (gNumHBlankCallbacks != 0) CpuFastSet(gHBlankCallbacks, gHBlankIntrs, gNumHBlankCallbacks);
+    gNumHBlankIntrs = gNumHBlankCallbacks;
+  } else {
+    REG_AND16(REG_IE, ~INTR_FLAG_HBLANK);
+    gNumHBlankIntrs = j;
+  }
+
+  if (sLastCalledVblankFuncId == VBLANK_FUNC_ID_NONE) {
+    ProcessOamBuffers();
+    CpuFastSet(gOamBuffer, (void *)OAM, OAM_SIZE / 4);
+  }
+
+  for (i = 0; i < gNumVBlankIntrs; i++) CALL(gVBlankIntrs[i])();
+
+  if (gFlags & FLAGS_EXECUTE_VBLANK_CALLBACKS) {
+    {
+      u32 zero = 0;
+      CpuFastSet(&zero, gVBlankIntrs, CPU_SET_SRC_FIXED | sizeof(gVBlankIntrs) / 4);
+    }
+    if (gNumVBlankCallbacks != 0) CpuFastSet(gVBlankCallbacks, gVBlankIntrs, gNumVBlankCallbacks);
+    gNumVBlankIntrs = gNumVBlankCallbacks;
+  } else {
+    gNumVBlankIntrs = 0;
+  }
+
+  j = sLastCalledVblankFuncId;
+  if (j == VBLANK_FUNC_ID_NONE) j = 0;
+  sLastCalledVblankFuncId = VBLANK_FUNC_ID_NONE;
+
+  for (; j < 4; j++) {
+    if (CALL(sVblankFuncs[j])() == 0) {
+      sLastCalledVblankFuncId = j;
+      break;
+    }
+  }
+}
+
 /** VBlankIntr, 0x08000F44: the V-blank's interrupt. The sound's frame, the line copy for the next frame started on DMA
  *  channel 0, the VCOUNT interrupt as the game asked, and Start, Select, B and A held together start the game again
  *  from the BIOS. */

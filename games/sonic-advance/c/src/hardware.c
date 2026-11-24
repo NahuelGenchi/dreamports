@@ -453,6 +453,17 @@ void console_cpu_set(const void *src, void *dest, u32 control) {
   for (i = 0; i < count; i++) cpu_set_unit(i);
 }
 
+/** CpuFastSet's work: words alone, as many as `control` says rounded up to eight, the BIOS's blocks. (Not in the
+ *  console's time yet: the kit's clock has no swi 0x0C, and no recording asks for it.) */
+void console_cpu_fast_set(const void *src, void *dest, u32 control) {
+  u32 count = ((control & 0x1FFFFF) + 7) & ~7u, i;
+  cpu_set.wide = 4;
+  cpu_set.fixed = control >> 24 & 1;
+  cpu_set.from = (u32)src & ~3u;
+  cpu_set.to = (u32)dest & ~3u;
+  for (i = 0; i < count; i++) cpu_set_unit(i);
+}
+
 void AgbMain(void);
 
 /** The cartridge's start, ARM code at 0x08000000: the interrupt handler's address where the BIOS looks for it, and

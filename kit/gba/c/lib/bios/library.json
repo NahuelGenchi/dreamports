@@ -10,6 +10,7 @@
     }
   },
   "functions": [
+    ["CpuFastSet",4,"bios.c"],
     ["CpuSet",4,"bios.c"],
     ["Div",4,"bios.c"],
     ["Mod",6,"bios.c"],
