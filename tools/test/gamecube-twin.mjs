@@ -5,10 +5,12 @@
 // kept highest byte first (../lib/wasm-fold.mjs). Every twin has to leave the same memory as its original over every
 // path, the hardware's registers among it, but the one whose original waits for the beam, which in a call never moves,
 // and says so. Then one line of the twins is changed at a time, and the check has to find each: a difference for a sum,
-// a shift that doesn't take six bits, a division by zero that gives 0 whatever the sign, a 64-bit sum short of its
-// carry, a case of a switch one off, the square's colours the other way round, a line of the controller's blocks short,
-// a register of the serial interface one off, and a twin that never comes back. Last, the same program as a game of its
-// own, through the tool everyone runs, npm run dp -- twin.
+// a shift left by 32 or more that keeps bits, a division by zero that gives 0 whatever the sign, a 64-bit sum short of
+// its carry, a case of a switch one off, the square's colours the other way round, a line of the controller's blocks
+// short, a register of the serial interface one off, and a twin that never comes back. Last, the same program as a game
+// of its own, through the tool everyone runs, npm run dp -- twin, which keeps a proof once the version is made a
+// function at a time, the original's side read from the program twin kept on this computer, and loses it when its twin
+// changes.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -137,7 +139,20 @@ try {
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'divide', '--calls', '200');
     check(run.status === 0 && /1 of 1 function/.test(run.out), 'the game\'s name alone means its version in C, and a twin is named by its own name');
+    // made a function at a time: twin keeps each proof it finds over enough calls, and a proof goes stale with its twin
+    run = dp('proofs', VERSION, '--start');
+    check(run.status === 0 && /made a function at a time/.test(run.out), `proofs --start makes it a version made a function at a time: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('twin', VERSION, 'sum', '--calls', '200');
+    check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls/.test(run.out), 'a proof isn\'t kept over fewer than 1,000 calls');
+    run = dp('twin', VERSION, 'sum', '--calls', '1000');
+    check(run.status === 0 && /1 function kept as proven by the same memory in games\/test-gamecube-twin\/c\/proof\/proofs\.json/.test(run.out), `over 1,000 calls, a twin proven is kept: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 0, `and its proof holds, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
+    run = dp('proofs', VERSION);
+    check(run.status === 0 && /1 of 12 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;\n}\n\n/**', 'return a - b;\n}\n\n/**'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status !== 0 && /sum/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${run.out.trim().split('\n').find(line => /sum/.test(line))}`);
     run = dp('twin', VERSION, 'sum', '--calls', '200');
     check(run.status === 3 && new RegExp(`Differs  ${hex(functions.sum.address)} sum: call \\d+, sum\\(`).test(run.out), `a twin that differs ends it with 3: ${run.out.trim().split('\n').find(line => /Differs/.test(line))}`);
     run = dp('twin', VERSION, '--memories');

@@ -16,8 +16,9 @@
 // In a REL a call's target is written by the console as it loads the module, from the module's own list of what to
 // write where, so that list is read for them, and for the functions the module starts and ends with.
 
-import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { LOCAL } from '../lib/paths.mjs';
 import { openDisc } from '../lib/read-copy.mjs';
 import { fillFunctions } from '../gba/functions.mjs';
 import { bytesOn, dolHeader, dolOf, filesOf } from '../../kit/copy/gcm.js';
@@ -229,4 +230,49 @@ export function discFunctions(code, listed = []) {
     all.push(...fillFunctions(of(program.path), findRelFunctions(program.bytes, of(program.path))).map(f => ({ ...f, program: program.path })));
   }
   return all;
+}
+
+// each copy's code, once a tool has read it in this run, by the copy's path, as a disc is read a few sectors at a time
+// and a tool that reads the original's bytes as it goes, as a proof's mark does (../lib/proofs.mjs), can't wait for it;
+// and kept on this computer by the copy's SHA-1, as the PlayStation's program is (../ps1/functions.mjs), so a proof's
+// mark is read without the disc in a later run too, as `proofs --check` reads one for every function: never in the
+// repository
+const READ = new Map();
+const KEPT = join(LOCAL, 'gamecube', 'programs');
+
+/** A copy's code as gamecubeDisc reads it, read once in a run, and with `sha1`, the copy's, kept on this computer too,
+ *  for keptGamecubeCode. */
+export async function gamecubeCode(path, sha1 = null) {
+  const code = READ.get(path) ?? await gamecubeDisc(path);
+  READ.set(path, code);
+  if (sha1 && !existsSync(join(KEPT, sha1, 'boot.dol'))) {
+    const into = join(KEPT, `${sha1}.new`);
+    rmSync(into, { recursive: true, force: true });
+    mkdirSync(join(into, 'modules'), { recursive: true });
+    writeFileSync(join(into, 'boot.dol'), code.boot);
+    for (const program of code.programs) writeFileSync(join(into, 'modules', encodeURIComponent(program.path)), program.bytes);
+    rmSync(join(KEPT, sha1), { recursive: true, force: true });
+    renameSync(into, join(KEPT, sha1));
+  }
+  return code;
+}
+
+/** A copy's code as gamecubeCode gives it, without waiting: a DOL's at once, and a disc's once a tool has read it in
+ *  this run, or null before. */
+export const readGamecubeCode = path => (extname(path).toLowerCase() === '.dol' ? { boot: readFileSync(path), programs: [] } : READ.get(path) ?? null);
+
+/** The code of the copy whose SHA-1 is `sha1` as a tool that read it kept it, or null when none has on this computer. */
+export function keptGamecubeCode(sha1) {
+  const folder = join(KEPT, sha1);
+  if (!existsSync(join(folder, 'boot.dol'))) return null;
+  const modules = join(folder, 'modules');
+  return { boot: readFileSync(join(folder, 'boot.dol')), programs: (existsSync(modules) ? readdirSync(modules) : []).map(name => ({ path: decodeURIComponent(name), kind: 'rel', bytes: readFileSync(join(modules, name)) })) };
+}
+
+/** A function's bytes in a copy's code: the DOL's at its address, or its module's from where it is in the module's
+ *  file, or null when the code has no such module. */
+export function functionBytes(code, f) {
+  if (!f.program) return dolReader(code.boot)(f.address, f.size);
+  const module = code.programs.find(program => program.path === f.program);
+  return module ? module.bytes.subarray(f.address, f.address + f.size) : null;
 }

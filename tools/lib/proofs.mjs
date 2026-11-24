@@ -45,13 +45,14 @@ import { contractsIn } from '../nes/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
+import { functionBytes, keptGamecubeCode, readGamecubeCode } from '../gamecube/functions.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2', 'gamecube'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -238,6 +239,12 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
   if ((codeMap?.console ?? original.console) === 'ps1') {
     const exe = readProgram(copy.path) ?? keptPs1Program(original.sha1);
     return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
+  }
+  // a GameCube game's, from the program its disc boots or the module a function's key names, as twin keeps them on
+  // this computer as it reads them, and until one has nothing is known of them
+  if ((codeMap?.console ?? original.console) === 'gamecube') {
+    const code = readGamecubeCode(copy.path) ?? keptGamecubeCode(original.sha1);
+    return code && (f => (functionBytes(code, f) ? markOf(functionBytes(code, f)) : null));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   return f => markOf(cartridge(f.address, f.size));
