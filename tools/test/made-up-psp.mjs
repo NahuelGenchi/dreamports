@@ -67,6 +67,10 @@ export const SYSTEM = {
   sceKernelCreateSema: ['ThreadManForUser', 0xD6DA4BA1], sceKernelSignalSema: ['ThreadManForUser', 0x3F53E640], sceKernelWaitSema: ['ThreadManForUser', 0x4E3A1105],
   sceKernelPollSema: ['ThreadManForUser', 0x58B1F937], sceKernelCreateEventFlag: ['ThreadManForUser', 0x55C20A00], sceKernelSetEventFlag: ['ThreadManForUser', 0x1FB15A32],
   sceKernelWaitEventFlag: ['ThreadManForUser', 0x402FCF22], sceKernelClearEventFlag: ['ThreadManForUser', 0x812346E4],
+  sceKernelCreateCallback: ['ThreadManForUser', 0xE81CAF8F], sceKernelRegisterExitCallback: ['LoadExecForUser', 0x4AC57943], sceKernelSleepThreadCB: ['ThreadManForUser', 0x82826F70],
+  sceKernelCreateMutex: ['ThreadManForUser', 0xB7D098C6], sceKernelLockMutex: ['ThreadManForUser', 0xB011B11F], sceKernelUnlockMutex: ['ThreadManForUser', 0x6B30100F],
+  sceKernelCreateLwMutex: ['ThreadManForUser', 0x19CFF145], sceKernelLockLwMutex: ['Kernel_Library', 0xBEA46419], sceKernelTryLockLwMutex: ['Kernel_Library', 0xDC692EE3],
+  sceKernelUnlockLwMutex: ['Kernel_Library', 0x15B6446B],
 };
 
 /**

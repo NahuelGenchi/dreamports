@@ -39,7 +39,7 @@ uint64_t clock_microseconds(void);
 void clock_spend(int cycles);
 
 // what a thread waits for
-enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL, WAIT_GE_DRAW, WAIT_GE_LIST, WAIT_SEMA, WAIT_EVENT_FLAG };
+enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL, WAIT_GE_DRAW, WAIT_GE_LIST, WAIT_SEMA, WAIT_EVENT_FLAG, WAIT_MUTEX, WAIT_LWMUTEX };
 /** The running thread's number, or 0 when none runs. */
 SceUID thread_current(void);
 /** A thread's priority now, and the next number the system gives a thing it makes, counted with the threads'. */
@@ -68,6 +68,8 @@ void kernel_frame_ends(void);
 /** An interrupt begins and ends, with no handler of the game's: the change to the system's idle thread and back. */
 void kernel_interrupt_starts(void);
 void kernel_interrupt_ends(void);
+/** The V-blank's interrupt: the running thread is changed for the idle one until the threads are next put in order. */
+void kernel_vblank_interrupt(void);
 /** Runs the console until its frame ends. */
 void kernel_run_frame(void);
 /** Starts the program's first thread, at `entry`. */
@@ -75,6 +77,10 @@ void kernel_start(psp_thread_entry entry);
 
 // ---- sync.c: semaphores and event flags ----
 void sync_power(void);
+// ---- mutex.c: mutexes, lightweight mutexes and callbacks ----
+void mutex_power(void);
+/** A thread ends: it stops waiting for its mutex and lets go of those it holds. */
+void mutex_thread_ends(SceUID thread);
 // ---- display.c ----
 void display_power(void);
 // ---- ge.c: the graphics chip ----

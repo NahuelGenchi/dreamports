@@ -188,6 +188,8 @@ static int wait_sema(SceUID uid, int wanted, uint32_t timeout) {
   return thread_answer(0);
 }
 int sceKernelWaitSema(SceUID uid, int wanted, uint32_t timeout) { return wait_sema(uid, wanted, timeout); }
+// with no callback notified, as the kit has none yet, the wait that takes callbacks is the same
+int sceKernelWaitSemaCB(SceUID uid, int wanted, uint32_t timeout) { return wait_sema(uid, wanted, timeout); }
 int sceKernelPollSema(SceUID uid, int wanted) {
   call_starts();
   if (wanted <= 0) return thread_done(ERROR_ILLEGAL_COUNT);
@@ -360,6 +362,7 @@ int sceKernelWaitEventFlag(SceUID uid, uint32_t bits, uint32_t wait, uint32_t ou
   clock_spend(500);
   return thread_answer(0);
 }
+int sceKernelWaitEventFlagCB(SceUID uid, uint32_t bits, uint32_t wait, uint32_t out, uint32_t timeout) { return sceKernelWaitEventFlag(uid, bits, wait, out, timeout); }
 int sceKernelPollEventFlag(SceUID uid, uint32_t bits, uint32_t wait, uint32_t out) {
   call_starts();
   if (wait & ~(uint32_t)(WAIT_OR | WAIT_CLEAR | WAIT_CLEAR_ALL)) return thread_done(ERROR_ILLEGAL_MODE);

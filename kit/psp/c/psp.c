@@ -55,6 +55,7 @@ EXPORT("dp_start") void dp_start(void) {
   audio_power();
   ge_power();
   sync_power();
+  mutex_power();
   kernel_start(first_thread);
   frame();
 }

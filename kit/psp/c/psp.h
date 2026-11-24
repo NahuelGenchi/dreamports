@@ -48,8 +48,10 @@ int sceKernelExitThread(int status);
 int sceKernelExitDeleteThread(int status);
 int sceKernelDeleteThread(SceUID thread);
 int sceKernelSleepThread(void);
+int sceKernelSleepThreadCB(void);
 int sceKernelWakeupThread(SceUID thread);
 int sceKernelDelayThread(uint32_t microseconds);
+int sceKernelDelayThreadCB(uint32_t microseconds);
 SceUID sceKernelGetThreadId(void);
 uint32_t sceKernelGetSystemTimeLow(void);
 uint64_t sceKernelGetSystemTimeWide(void);
@@ -75,6 +77,40 @@ int sceKernelCancelEventFlag(SceUID flag, uint32_t pattern, uint32_t waiting);
 int sceKernelWaitEventFlag(SceUID flag, uint32_t bits, uint32_t how, uint32_t out, uint32_t timeout);
 int sceKernelPollEventFlag(SceUID flag, uint32_t bits, uint32_t how, uint32_t out);
 int sceKernelReferEventFlagStatus(SceUID flag, uint32_t info);
+/** The waits that take callbacks, which with no callback notified wait as the others do. */
+int sceKernelWaitSemaCB(SceUID sema, int count, uint32_t timeout);
+int sceKernelWaitEventFlagCB(SceUID flag, uint32_t bits, uint32_t how, uint32_t out, uint32_t timeout);
+
+// ---- mutexes, lightweight mutexes and callbacks ---------------------------------------------------------------------
+
+// a mutex that wakes its threads by their priority, and one its thread may lock again
+enum { PSP_MUTEX_PRIORITY = 0x100, PSP_MUTEX_RECURSIVE = 0x200 };
+SceUID sceKernelCreateMutex(const char *name, uint32_t attributes, int count, uint32_t options);
+int sceKernelDeleteMutex(SceUID mutex);
+int sceKernelLockMutex(SceUID mutex, int count, uint32_t timeout);
+int sceKernelLockMutexCB(SceUID mutex, int count, uint32_t timeout);
+int sceKernelTryLockMutex(SceUID mutex, int count);
+int sceKernelUnlockMutex(SceUID mutex, int count);
+int sceKernelCancelMutex(SceUID mutex, int count, uint32_t waiting);
+int sceKernelReferMutexStatus(SceUID mutex, uint32_t info);
+/** A lightweight mutex keeps its state in a work area of 32 bytes in the console's memory, at `area`. */
+int sceKernelCreateLwMutex(uint32_t area, const char *name, uint32_t attributes, int count, uint32_t options);
+int sceKernelDeleteLwMutex(uint32_t area);
+int sceKernelLockLwMutex(uint32_t area, int count, uint32_t timeout);
+int sceKernelLockLwMutexCB(uint32_t area, int count, uint32_t timeout);
+int sceKernelTryLockLwMutex(uint32_t area, int count);
+int sceKernelUnlockLwMutex(uint32_t area, int count);
+int sceKernelReferLwMutexStatus(uint32_t area, uint32_t info);
+int sceKernelReferLwMutexStatusByID(SceUID mutex, uint32_t info);
+/** A callback: what a thread runs when it's notified, as the system calls it, with the times notified, what it was
+ *  notified with and what it was made with. The kit doesn't run one a game notifies yet (kit/psp/c/README.md). */
+typedef int (*psp_callback)(int count, int argument, uint32_t common);
+SceUID sceKernelCreateCallback(const char *name, psp_callback callback, uint32_t common);
+int sceKernelDeleteCallback(SceUID callback);
+int sceKernelRegisterExitCallback(SceUID callback);
+int sceKernelCheckCallback(void);
+int sceKernelGetCallbackCount(SceUID callback);
+int sceKernelReferCallbackStatus(SceUID callback, uint32_t info);
 
 // ---- the screen ----------------------------------------------------------------------------------------------------
 

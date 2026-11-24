@@ -171,6 +171,8 @@ static void stop_thread(struct thread *thread, int status) {
   thread->exit_status = status;
   thread->state = DORMANT;
   thread->wait_kind = WAIT_NONE;
+  // the mutexes it holds are let go of as it ends
+  mutex_thread_ends(thread->uid);
 }
 
 #ifdef __wasm__
@@ -307,6 +309,15 @@ void kernel_interrupt_ends(void) {
   if (interrupted_running) now += 1200;
   interrupted_running = 0;
 }
+// The V-blank's interrupt, which games' own handlers aren't on yet: the system changes from the thread it has running to
+// its idle thread, 1,200 cycles, that thread ready again ahead of its equals, and changes back only as it next puts the
+// threads in order, which the V-blank does at once when it wakes a thread, and the idle thread does at the next thing due.
+void kernel_vblank_interrupt(void) {
+  if (!running) return;
+  now += 1200;
+  if (running->state == RUNNING) make_ready(running);
+  running = 0;
+}
 
 void kernel_run_frame(void) {
   frame_ended = 0;
@@ -431,6 +442,10 @@ int sceKernelDelayThread(uint32_t microseconds) {
   thread_wait(WAIT_DELAY, running->uid, 0);
   return thread_answer(0);
 }
+// The waits that take callbacks: with no callback notified, as the kit runs none a game notifies yet, each is the wait
+// without them, as it is in the emulator (kit/psp/c/mutex.c).
+int sceKernelSleepThreadCB(void) { return sceKernelSleepThread(); }
+int sceKernelDelayThreadCB(uint32_t microseconds) { return sceKernelDelayThread(microseconds); }
 
 SceUID sceKernelGetThreadId(void) {
   call_starts();

@@ -65,7 +65,7 @@ const OWN = {
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'timing.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
   // a game keeps its own values above the console's memory, which is at the console's own addresses, the scratchpad
   // from 64 KB, the video memory from 64 MB and the main memory up to 192 MB (kit/psp/c/memory.c)
-  psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c'], header: true, gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
+  psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c', 'mutex.c'], header: true, gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
   n64: {
     folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
     // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
