@@ -38,7 +38,8 @@ jobs:
   tests:
     name: Check (${{ matrix.part }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 15 minutes a part, but one that says it needs more
+    timeout-minutes: ${{ matrix.minutes || 15 }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +117,14 @@ jobs:
               npm run test:function-homes
               npm run test:libraries
               npm run test:n64-match
+          # a game whose parts are its tasks, from its first day to its last task done, through the tools as they're
+          # typed, with a program of the project's own on the Game Boy Advance and a stand-in for GitHub: prove's list
+          # of each part held to what the program is known to run, and ready --task failing until each function has
+          # its proof and the part's frames are the same. In a job of its own, as ready checks and builds the site three
+          # times, near 20 minutes on a busy computer
+          - part: part tasks
+            minutes: 30
+            run: npm run test:part-tasks -- gba
           # the PlayStation 2, in a job of its own as it took tasks near the 15-minute limit (#1695): Sony's own
           # compiler and assemblers, built from Sony's GPL source with the runner's clang, kept only if they make the
           # original compiler's objects, the tools' tables checked against them, and match on the console against a
