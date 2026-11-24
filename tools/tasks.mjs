@@ -42,7 +42,7 @@ import { UPSTREAM, api } from './lib/github.mjs';
 import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
-import { asksForProofs, groupNamed, groupsOf, stateOf, stateText } from './lib/proofs.mjs';
+import { asksForProofs, groupNamed, groupsOf, KEEPS_PROOFS, stateOf, stateText } from './lib/proofs.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
@@ -81,6 +81,9 @@ async function openTasks(version, repo, yes, update = false) {
   if (language !== main && !inVersion) throw new Error(`${game} has no version in ${LANGUAGES[language].name} yet: npm run dp -- new ${version} starts one.`);
 
   const pieces = claims.piecesOf(game, entry);
+  if (startsByFunction(readOriginal(game).console, language, pieces)) {
+    throw new Error(`${version} has no task yet, and the tools keep a function's proof on its console, so it's made a function at a time (docs/STANDARD.md, Twins and their proof): run npm run dp -- proofs ${version} --start, commit the file it writes, and run this again, which then opens its tasks of functions.`);
+  }
   const proven = new Set((inVersion?.proof?.gameplay?.parts ?? []).filter(p => p.proven).map(p => nameKey(p.name)));
   const wanted = missingParts(planOf(file), pieces, language, proven, main);
   // a version in another language than the game's main one keeps its tasks under an issue of its own (#905)
@@ -121,6 +124,13 @@ async function openTasks(version, repo, yes, update = false) {
   }
   console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.`);
   return 0;
+}
+
+/** Whether a version that keeps no proofs has to start them before its first task: one in C with no task yet, open or
+ *  closed, on a console whose functions' proofs the tools keep (KEEPS_PROOFS). One that has tasks of parts already stays made a
+ *  part at a time, as its lead decides when that changes (proofs --start, #1864). */
+export function startsByFunction(console, language, pieces) {
+  return language === 'c' && KEEPS_PROOFS.includes(console) && !pieces.some(piece => pieceOf(piece).language === language);
 }
 
 /**

@@ -6,7 +6,7 @@ import { field } from '../lib/claims.mjs';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { holdGame, leftoverText, missingParts, taskText, taskTitled, keepTaking } from '../tasks.mjs';
+import { holdGame, leftoverText, missingParts, startsByFunction, taskText, taskTitled, keepTaking } from '../tasks.mjs';
 import { leftoverPieces } from '../lib/played.mjs';
 
 const parts = [
@@ -19,6 +19,15 @@ const parts = [
 test('leaves out a part with a recording, and one with a piece, open or closed, whatever its capitals', () => {
   const pieces = [{ title: 'Task: the intro', state: 'closed' }, { title: 'The title screen', state: 'open' }];
   assert.deepEqual(missingParts(parts, pieces).map(p => p.name), ['The main menu']);
+});
+
+test('a new version in C starts a function at a time on every console whose functions\' proofs the tools keep', () => {
+  for (const console of ['gba', 'nes', 'ps1', 'ps2']) assert.equal(startsByFunction(console, 'c', []), true, console);
+  for (const console of ['snes', 'n64', 'gb', 'gbc', 'md', 'psp', 'made-up']) assert.equal(startsByFunction(console, 'c', []), false, console);
+  // a version with a task already, open or closed, stays as it is, and another language's tasks aren't its own
+  assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu in C', state: 'closed' }]), false);
+  assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu', state: 'open' }]), true);
+  assert.equal(startsByFunction('ps2', 'js', []), false);
 });
 
 test('needs nothing when every part has its task', () => {
