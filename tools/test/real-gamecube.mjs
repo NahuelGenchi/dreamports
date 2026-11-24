@@ -66,9 +66,10 @@ async function main() {
   check(first.hashes.every((hash, frame) => hash === second.hashes[frame]), 'both runs show the same pictures');
   check(sameSound(first.sound, second.sound), 'both runs give the same sound, each sample in the same frame');
 
-  // the square moves a step each field and goes back to the left edge, the same picture TRAVEL / STEP fields later
-  const repeats = first.hashes.slice(LOOKED_AT[0], 90).every((hash, n) => hash === first.hashes[LOOKED_AT[0] + n + TRAVEL / STEP]);
-  check(repeats && new Set(first.hashes.slice(LOOKED_AT[0], 90)).size === 90 - LOOKED_AT[0], `the square is somewhere else each field, and in the same place ${TRAVEL / STEP} fields later`);
+  // the square moves a step each field and goes back to the left edge, the same picture TRAVEL / STEP fields later, over
+  // frames with nothing held then or TRAVEL / STEP frames on
+  const repeats = first.hashes.slice(LOOKED_AT[0], 40).every((hash, n) => hash === first.hashes[LOOKED_AT[0] + n + TRAVEL / STEP]);
+  check(repeats && new Set(first.hashes.slice(LOOKED_AT[0], 40)).size === 40 - LOOKED_AT[0], `the square is somewhere else each field, and in the same place ${TRAVEL / STEP} fields later`);
   const square = fifteen(SQUARE), odd = fifteen(SQUARE_ODD), background = fifteen(BACKGROUND);
   const squareAt = picture => picture.subarray((ROW + 1) * WIDTH, (ROW + 2) * WIDTH).findIndex(c => c === square || c === odd);
   const start = squareAt(first.pictures.get(LOOKED_AT[0]));
