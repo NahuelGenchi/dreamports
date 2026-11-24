@@ -6,7 +6,7 @@
 #include "page.h"
 
 // the most samples one call makes, a tenth of a second's: the page asks again for more
-#define SOUND_MAX (CONSOLE_SOUND_RATE / 10 + 1)
+#define SOUND_MAX (CONSOLE_SOUND_MOST / 10 + 1)
 static float sound[SOUND_MAX * 2];
 
 /** Starts the game. */
