@@ -1,3 +1,59 @@
+diff --git a/Core/HLE/__sceAudio.cpp b/Core/HLE/__sceAudio.cpp
+index b263af3..996e0bc 100644
+--- a/Core/HLE/__sceAudio.cpp
++++ b/Core/HLE/__sceAudio.cpp
+@@ -62,6 +62,21 @@ int srcFrequency = 0;
+ const int hwSampleRate = 44100;
+ const int hwBlockSize = 64;
+ 
++// Dreamports: the sound list, everything a game gives the sound channels that decides its sound, hashed in the order
++// given (FNV-1a), with how many things that was: each block handed to a channel, as 'Q', the channel, its two volumes,
++// its format and how many samples, and 'S', the samples' bytes, and each block of 64 samples the console mixes, as
++// 'M' and the samples as they leave it. The frontend reads it as each frame ends and starts it again
++// (dreamports_sound_list). The kit in C hashes its own the same way (kit/psp/c/audio.c).
++uint32_t dreamportsSoundHash = 0x811C9DC5;
++uint32_t dreamportsSoundCount = 0;
++static void DreamportsSoundListed(u8 kind, const void *data, size_t length) {
++	const u8 *bytes = (const u8 *)data;
++	dreamportsSoundHash = (dreamportsSoundHash ^ kind) * 0x01000193;
++	for (size_t i = 0; i < length; i++)
++		dreamportsSoundHash = (dreamportsSoundHash ^ bytes[i]) * 0x01000193;
++	dreamportsSoundCount++;
++}
++
+ static int audioIntervalCycles;
+ static int audioHostIntervalCycles;
+ 
+@@ -228,6 +243,14 @@ u32 __AudioEnqueue(AudioChannel &chan, int chanNum, bool blocking) {
+ 		return ret;
+ 	}
+ 
++	{
++		const u32 dreamportsValues = chan.sampleCount * (chan.format == PSP_AUDIO_FORMAT_STEREO ? 2 : 1);
++		const u32_le dreamportsAbout[5] = { (u32)chanNum, (u32)chan.leftVolume, (u32)chan.rightVolume, (u32)chan.format, chan.sampleCount };
++		DreamportsSoundListed('Q', dreamportsAbout, sizeof(dreamportsAbout));
++		if ((chan.format == PSP_AUDIO_FORMAT_STEREO || chan.format == PSP_AUDIO_FORMAT_MONO) && Memory::IsValidAddress(chan.sampleAddress) && Memory::IsValidAddress(chan.sampleAddress + (dreamportsValues - 1) * sizeof(s16_le)))
++			DreamportsSoundListed('S', Memory::GetPointerUnchecked(chan.sampleAddress), dreamportsValues * sizeof(s16_le));
++	}
++
+ 	// NOTE: The below is WRONG! See issue #20095.
+ 	//
+ 	// What we should be queueing here is just the sampleAddress and sampleCount. Then when dequeuing is when we should
+@@ -425,6 +448,14 @@ void __AudioUpdate(bool resetRecording) {
+ 		memset(mixBuffer, 0, hwBlockSize * 2 * sizeof(s32));
+ 	}
+ 
++	{
++		// Dreamports: the block as it leaves the console, kept within 16 bits as the frontend keeps it
++		s16_le dreamportsBlock[hwBlockSize * 2];
++		for (int i = 0; i < hwBlockSize * 2; i++)
++			dreamportsBlock[i] = mixBuffer[i] < -32767 ? -32767 : mixBuffer[i] > 32767 ? 32767 : mixBuffer[i];
++		DreamportsSoundListed('M', dreamportsBlock, sizeof(dreamportsBlock));
++	}
++
+ 	if (g_Config.bEnableSound) {
+ 		float multiplier = Volume100ToMultiplier(std::clamp(g_Config.iGameVolume, 0, VOLUMEHI_FULL));
+ 		if (PSP_CoreParameter().fpsLimit != FPSLimit::NORMAL || PSP_CoreParameter().fastForward) {
 diff --git a/Core/HLE/sceDisplay.cpp b/Core/HLE/sceDisplay.cpp
 index 9cc9bc7..567638a 100644
 --- a/Core/HLE/sceDisplay.cpp
@@ -62,7 +118,7 @@ index 12a2c0a..f29c93b 100644
  	rtcBaseTime.tv_usec = 0;
  	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..42909e4 100644
+index 3b2f103..d4f4377 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
 @@ -1530,7 +1530,12 @@ bool retro_load_game(const struct retro_game_info *game)
@@ -79,7 +135,18 @@ index 3b2f103..42909e4 100644
     coreParam.startBreak      = false;
     coreParam.headLess        = true;  // really?
     coreParam.graphicsContext = ctx;
-@@ -1706,6 +1711,12 @@ void retro_run(void)
+@@ -1697,6 +1702,10 @@ static void retro_input(void)
+ 
+    x_left = Libretro::clamp(x_left / norm * mappedNorm, -1.0f, 1.0f);
+    y_left = Libretro::clamp(y_left / norm * mappedNorm, -1.0f, 1.0f);
++   // Dreamports: a stick nobody touches is in its middle. The division above is of zero by zero then, which is no
++   // number, and what that became as a whole number, all the way up and left, was the compiler's to choose.
++   if (norm == 0.0f)
++      x_left = y_left = 0.0f;
+ 
+    __CtrlSetAnalogXY(CTRL_STICK_LEFT, x_left, y_left);
+    __CtrlSetAnalogXY(CTRL_STICK_RIGHT, x_right, y_right);
+@@ -1706,6 +1715,12 @@ void retro_run(void)
  {
     if (g_pendingBoot) {
        BootState state = PSP_InitUpdate(&g_bootErrorString);
@@ -92,3 +159,32 @@ index 3b2f103..42909e4 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
+@@ -2046,6 +2061,16 @@ inline int16_t Clamp16(int32_t sample) {
+    return sample;
+ }
+ 
++// Dreamports: the sound list of the frame that has just ended (Core/HLE/__sceAudio.cpp), which starts again here.
++extern uint32_t dreamportsSoundHash;
++extern uint32_t dreamportsSoundCount;
++extern "C" RETRO_API void dreamports_sound_list(uint32_t *hash, uint32_t *count) {
++   *hash = dreamportsSoundHash;
++   *count = dreamportsSoundCount;
++   dreamportsSoundHash = 0x811C9DC5;
++   dreamportsSoundCount = 0;
++}
++
+ void System_AudioPushSamples(const int32_t *audio, int numSamples, float volume) {
+    // We ignore volume here, because it's handled by libretro presumably.
+ 
+diff --git a/libretro/libretro.osx.def b/libretro/libretro.osx.def
+index 53a556a..ff52c8d 100644
+--- a/libretro/libretro.osx.def
++++ b/libretro/libretro.osx.def
+@@ -1,6 +1,7 @@
+ #LIBRARY "libretro"
+ #EXPORTS
+ _retro_set_environment
++_dreamports_sound_list
+ _retro_set_video_refresh
+ _retro_set_audio_sample
+ _retro_set_audio_sample_batch

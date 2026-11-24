@@ -1,0 +1,34 @@
+// @TITLE_C@: the game's own code, in C, on the PlayStation Portable's kit in C (kit/psp/c/psp.h), with the console's
+// screen, frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the
+// page, built to WebAssembly as src/game.wasm (kit/psp/c/README.md).
+
+#include "psp.h"
+
+// where this keeps what it reads of the pad, in the console's memory
+#define PAD_AT PSP_SCRATCHPAD
+
+// the program's first thread: what the original does from its start, asking the system for what it asks, and waiting
+// where it waits. To begin with, the screen in 32-bit colour from the start of the video memory, painted blue each
+// frame, and green while a button is held
+void game_start(void) {
+  sceDisplaySetMode(0, SCREEN_W, SCREEN_H);
+  sceDisplaySetFrameBuf(PSP_VRAM, 512, PSP_FORMAT_8888, PSP_SETBUF_NEXTFRAME);
+  for (;;) {
+    sceCtrlPeekBufferPositive(PAD_AT, 1);
+    uint32_t colour = psp_read32(PAD_AT + 4) ? 0xFF00FF00 : 0xFFFF0000;
+    for (int y = 0; y < SCREEN_H; y++) {
+      uint32_t *line = psp_memory(PSP_VRAM + (uint32_t)y * 512 * 4);
+      for (int x = 0; x < SCREEN_W; x++) line[x] = colour;
+    }
+    sceDisplayWaitVblankStart();
+  }
+}
+
+// not called on this console: a frame is the console's own, in which the game's threads run
+void game_step(uint32_t buttons) {}
+
+// its picture: what the screen shows of the framebuffer the game named
+void game_draw(void) { psp_show(); }
+
+// its sound, CONSOLE_SOUND_RATE samples a second, which starts as silence
+void game_sound(float *left, float *right, int count) {}

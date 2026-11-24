@@ -2,8 +2,11 @@
 // run in the tools' check of it (real-psp.mjs). It asks the console for its screen, 480 by 272 in 32-bit colour, and paints
 // it itself, as a program may: the framebuffer is the console's own video memory. A blue background, and a yellow square
 // that moves two pixels a frame from the left edge to the right and back after 448. A second thread of its own plays a
-// square wave through one of the console's sound channels, a block at a time, and the first reads the buttons each frame
-// and paints a bar as wide as the low bits of what it read. It runs straight from its ELF file, as the emulator's own
+// square wave through one of the console's sound channels, a block at a time, and the first reads the buttons and the
+// stick each frame and paints a bar as wide as what it read of each. It paints three bars more, so that what the
+// system answers shows in the picture: the number the system gave the thread, once, and the system's time in
+// microseconds as each frame's work starts and as it ends, which is a different width as soon as the program is 222
+// of the processor's cycles early or late. It runs straight from its ELF file, as the emulator's own
 // stand-in for the console's system software starts one, so no file of the console's is needed.
 //
 // What a program needs of the console it asks of the system's modules, by a number for each function (its NID): the file
@@ -17,8 +20,9 @@ export const WIDTH = 480, HEIGHT = 272, LINE = 512;
 export const BACKGROUND = 0xFF602010, SQUARE = 0xFF10D0F0, BAR = 0xFFFFFFFF;
 /** The square: its size, its line, how far it moves a frame, and where it goes back to the left edge. */
 export const SQUARE_SIZE = 32, SQUARE_Y = 120, STEP = 2, TURN = 448;
-/** The bar that shows the buttons: its line and its height. */
-export const BAR_Y = 16, BAR_HEIGHT = 4;
+/** The bars, each as wide as a number and one more: the lines of the thread's number's, the time's as each frame starts,
+ *  the buttons', the stick's and the time's as each frame's work ends, and their height. */
+export const THREAD_Y = 8, TIME_Y = 24, BAR_Y = 16, STICK_Y = 32, TIME_AGAIN_Y = 40, BAR_HEIGHT = 4;
 /** The sound: how many samples a block has, how long the wave's half is in samples, and how loud it is. */
 export const BLOCK = 1024, HALF_WAVE = 64, LOUD = 0x2000, VOLUME = 0x8000;
 
@@ -31,6 +35,7 @@ export const ori = (rt, rs, value) => imm(0x0D, rs, rt, value);
 export const addiu = (rt, rs, value) => imm(0x09, rs, rt, value);
 export const andi = (rt, rs, value) => imm(0x0C, rs, rt, value);
 export const lw = (rt, offset, base) => imm(0x23, base, rt, offset);
+export const lbu = (rt, offset, base) => imm(0x24, base, rt, offset);
 export const sw = (rt, offset, base) => imm(0x2B, base, rt, offset);
 export const sh = (rt, offset, base) => imm(0x29, base, rt, offset);
 export const sll = (rd, rt, shift) => (rt << 16 | rd << 11 | shift << 6) >>> 0;
@@ -54,6 +59,8 @@ export const SYSTEM = {
   sceDisplaySetMode: ['sceDisplay', 0x0E20F177], sceDisplaySetFrameBuf: ['sceDisplay', 0x289D82FE], sceDisplayWaitVblankStart: ['sceDisplay', 0x984C27E7],
   sceAudioChReserve: ['sceAudio', 0x5EC81C55], sceAudioOutputBlocking: ['sceAudio', 0x136CAF51], sceAudioOutput: ['sceAudio', 0x8C1009B2],
   sceCtrlSetSamplingCycle: ['sceCtrl', 0x6A2774F3], sceCtrlSetSamplingMode: ['sceCtrl', 0x1F4011E6], sceCtrlPeekBufferPositive: ['sceCtrl', 0x3A622550], sceCtrlReadBufferPositive: ['sceCtrl', 0x1F803938],
+  sceKernelGetSystemTimeLow: ['ThreadManForUser', 0x369ED59D], sceKernelGetSystemTimeWide: ['ThreadManForUser', 0x82BC5777], sceKernelGetThreadId: ['ThreadManForUser', 0x293B45B8],
+  sceKernelExitThread: ['ThreadManForUser', 0xAA73C935], sceKernelExitDeleteThread: ['ThreadManForUser', 0x809CE29B], sceKernelWakeupThread: ['ThreadManForUser', 0xD59EAD2F],
   sceKernelCreateThread: ['ThreadManForUser', 0x446D8DE6], sceKernelStartThread: ['ThreadManForUser', 0xF475845D], sceKernelSleepThread: ['ThreadManForUser', 0x9ACE131E], sceKernelDelayThread: ['ThreadManForUser', 0xCEADEB47],
   sceGeEdramGetAddr: ['sceGe_user', 0xE47E40E4], sceGeListEnQueue: ['sceGe_user', 0xAB49E76A], sceGeListUpdateStallAddr: ['sceGe_user', 0xE0D68148], sceGeListSync: ['sceGe_user', 0x03444EB4], sceGeDrawSync: ['sceGe_user', 0xB287BD61],
   sceKernelDcacheWritebackAll: ['UtilsForUser', 0x79D1C3FA],
@@ -151,7 +158,72 @@ const paint = name => [
   here(`${name} pixel`), sw(T3, 0, T4), addiu(T5, T5, -1), bne(T5, ZERO, `${name} pixel`), addiu(T4, T4, 4),
   addiu(T2, T2, -1), bne(T2, ZERO, `${name} line`), addiu(T0, T0, LINE * 4),
 ];
-const rectangle = (name, x, y, width, height, colour) => [...li(T0, VIDEO_MEMORY + (y * LINE + x) * 4), addiu(T1, ZERO, width), addiu(T2, ZERO, height), ...li(T3, colour), ...paint(name)];
+/** How many instructions painting a rectangle runs: four a pixel and five more a line. */
+export const paintCycles = (width, height) => height * (4 * width + 5);
+// the instructions of a list, which is the cycles they take when each runs once
+const count = list => list.filter(item => !item.here).length;
+
+// The program in stretches, each the instructions that run between two of the system's functions, with what it paints
+// in it: `before` runs first, `painted` are rectangles as [name, x, y, width, height, colour], a width or an x given as
+// a register's name being worked out by `before`, and `after` runs last, before the call. A stretch's cycles are its
+// instructions', which the program's Dreamport says after it has done the same (psp-kit/main.c): CYCLES has them by
+// each stretch's name, without what its rectangles take, which paintCycles gives.
+const fixed = (name, x, y, width, height, colour) => [...li(T0, VIDEO_MEMORY + (y * LINE + x) * 4), addiu(T1, ZERO, width), addiu(T2, ZERO, height), ...li(T3, colour), ...paint(name)];
+const FIXED = 6;
+// a bar as wide as T1 says, on line `y`, after its whole band is painted off: T1 is kept in S3 meanwhile
+const bar = (name, y) => [or(S3, T1, ZERO), ...fixed(`${name} off`, 0, y, WIDTH, BAR_HEIGHT, BACKGROUND), ...li(T0, VIDEO_MEMORY + y * LINE * 4), or(T1, S3, ZERO), addiu(T2, ZERO, BAR_HEIGHT), ...li(T3, BAR), ...paint(name)];
+const BAR_FIXED = 1 + FIXED + 6;
+
+const STRETCHES = {
+  // the screen: 480 by 272
+  mode: [addiu(A0, ZERO, 0), addiu(A1, ZERO, WIDTH), addiu(A2, ZERO, HEIGHT), ...call('sceDisplaySetMode')],
+  // the background, and the framebuffer at the start of video memory, 512 pixels a line, 32 bits a pixel
+  framebuffer: [...li(A0, VIDEO_MEMORY), addiu(A1, ZERO, LINE), addiu(A2, ZERO, 3), addiu(A3, ZERO, 1), ...call('sceDisplaySetFrameBuf')],
+  // the buttons, read as they are each frame, with the stick
+  cycle: [addiu(A0, ZERO, 0), ...call('sceCtrlSetSamplingCycle')],
+  analog: [addiu(A0, ZERO, 1), ...call('sceCtrlSetSamplingMode')],
+  // the thread that plays the wave
+  create: [...la(A0, 'sound name'), ...la(A1, 'sound'), addiu(A2, ZERO, 0x18), ...li(A3, 0x4000), addiu(T0, ZERO, 0), addiu(T1, ZERO, 0), ...call('sceKernelCreateThread')],
+  // a bar as wide as the low bits of the number the system gave the thread, and the thread started
+  start: [or(S1, V0, ZERO), andi(T1, V0, 0xFF), addiu(T1, T1, 1), or(A0, S1, ZERO), addiu(A1, ZERO, 0), addiu(A2, ZERO, 0), ...call('sceKernelStartThread')],
+  wait: [...call('sceDisplayWaitVblankStart')],
+  time: [...call('sceKernelGetSystemTimeLow')],
+  pad: [...la(A0, 'pad'), addiu(A1, ZERO, 1), ...call('sceCtrlPeekBufferPositive')],
+  // what the buttons' bar is as wide as: the low eight bits of what's held, with the eight above them, and one more
+  held: [...la(T0, 'pad'), lw(T1, 4, T0), srl(T2, T1, 8), xor(T1, T1, T2), andi(T1, T1, 0xFF), addiu(T1, T1, 1)],
+  // and the stick's: half of how far across it is and a quarter of how far down, and one more
+  stick: [...la(T0, 'pad'), lbu(T1, 8, T0), lbu(T2, 9, T0), srl(T1, T1, 1), srl(T2, T2, 2), addu(T1, T1, T2), addiu(T1, T1, 1)],
+  // the time's: its low eight bits, in microseconds, and one more
+  clock: [andi(T1, V0, 0xFF), addiu(T1, T1, 1)],
+  // the sound's thread: a channel of its own for blocks of 1,024 samples in stereo, and the wave again and again
+  reserve: [addiu(A0, ZERO, -1), addiu(A1, ZERO, BLOCK), addiu(A2, ZERO, 0), ...call('sceAudioChReserve')],
+  output: [or(A0, S1, ZERO), ...li(A1, VOLUME), ...la(A2, 'wave'), ...call('sceAudioOutputBlocking')],
+};
+/** The cycles each stretch of the program's own instructions takes, by its name, without what it paints. */
+export const CYCLES = {
+  MODE: count(STRETCHES.mode),
+  FRAMEBUFFER: FIXED + count(STRETCHES.framebuffer),
+  CYCLE: count(STRETCHES.cycle),
+  ANALOG: count(STRETCHES.analog),
+  CREATE: count(STRETCHES.create),
+  // the thread's number's bar is painted between making the thread and starting it
+  START: count(STRETCHES.start) + BAR_FIXED,
+  // into the frame's loop, and round it: the wait, the first reading of the time and its bar, the square's band and
+  // the square, the pad and its two bars, the second reading of the time and its bar, and on to the next frame
+  LOOP: 1,
+  WAIT: count(STRETCHES.wait),
+  TIME: count(STRETCHES.time),
+  CLOCK: count(STRETCHES.clock) + BAR_FIXED,
+  SQUARE: FIXED + 8,
+  PAD: count(STRETCHES.pad),
+  HELD: count(STRETCHES.held) + BAR_FIXED,
+  STICK: count(STRETCHES.stick) + BAR_FIXED,
+  NEXT: 4,
+  TURNED: 2,
+  RESERVE: count(STRETCHES.reserve),
+  FIRST_OUTPUT: 1 + count(STRETCHES.output),
+  OUTPUT: 2 + count(STRETCHES.output),
+};
 
 /** The program: { elf, at }. */
 export function madeUpPsp() {
@@ -159,39 +231,35 @@ export function madeUpPsp() {
   const wave = new Int16Array(BLOCK * 2);
   for (let sample = 0; sample < BLOCK; sample++) wave[sample * 2] = wave[sample * 2 + 1] = sample % (HALF_WAVE * 2) < HALF_WAVE ? LOUD : -LOUD;
   const code = [
-    // the screen: 480 by 272, the framebuffer at the start of video memory, 512 pixels a line, 32 bits a pixel
-    addiu(A0, ZERO, 0), addiu(A1, ZERO, WIDTH), addiu(A2, ZERO, HEIGHT), ...call('sceDisplaySetMode'),
-    ...rectangle('background', 0, 0, WIDTH, HEIGHT, BACKGROUND),
-    ...li(A0, VIDEO_MEMORY), addiu(A1, ZERO, LINE), addiu(A2, ZERO, 3), addiu(A3, ZERO, 1), ...call('sceDisplaySetFrameBuf'),
-    // the buttons, read as they are each frame
-    addiu(A0, ZERO, 0), ...call('sceCtrlSetSamplingCycle'), addiu(A0, ZERO, 1), ...call('sceCtrlSetSamplingMode'),
-    // the thread that plays the wave
-    ...la(A0, 'sound name'), ...la(A1, 'sound'), addiu(A2, ZERO, 0x18), ...li(A3, 0x4000), addiu(T0, ZERO, 0), addiu(T1, ZERO, 0), ...call('sceKernelCreateThread'),
-    or(A0, V0, ZERO), addiu(A1, ZERO, 0), addiu(A2, ZERO, 0), ...call('sceKernelStartThread'),
+    ...STRETCHES.mode,
+    ...fixed('background', 0, 0, WIDTH, HEIGHT, BACKGROUND), ...STRETCHES.framebuffer,
+    ...STRETCHES.cycle,
+    ...STRETCHES.analog,
+    ...STRETCHES.create,
+    ...STRETCHES.start.slice(0, 3), ...bar('thread', THREAD_Y), ...STRETCHES.start.slice(3),
     addiu(S0, ZERO, 0),
     here('frame'),
-    ...call('sceDisplayWaitVblankStart'),
+    ...STRETCHES.wait,
+    ...STRETCHES.time, ...STRETCHES.clock, ...bar('time', TIME_Y),
     // the square off where it was, the whole of its band, and on where it is now
-    ...rectangle('band', 0, SQUARE_Y, WIDTH, SQUARE_SIZE, BACKGROUND),
+    ...fixed('band', 0, SQUARE_Y, WIDTH, SQUARE_SIZE, BACKGROUND),
     ...li(T0, VIDEO_MEMORY + SQUARE_Y * LINE * 4), sll(T1, S0, 2), addu(T0, T0, T1), addiu(T1, ZERO, SQUARE_SIZE), addiu(T2, ZERO, SQUARE_SIZE), ...li(T3, SQUARE), ...paint('square'),
-    // the buttons: the bar's band off, then as many pixels of it as the low eight bits of what's held, and one more
-    ...rectangle('bar off', 0, BAR_Y, WIDTH, BAR_HEIGHT, BACKGROUND),
-    ...la(A0, 'pad'), addiu(A1, ZERO, 1), ...call('sceCtrlPeekBufferPositive'),
-    ...la(T0, 'pad'), lw(T1, 4, T0), srl(T2, T1, 8), xor(T1, T1, T2), andi(T1, T1, 0xFF), addiu(T1, T1, 1),
-    ...li(T0, VIDEO_MEMORY + BAR_Y * LINE * 4), addiu(T2, ZERO, BAR_HEIGHT), ...li(T3, BAR), ...paint('bar'),
+    ...STRETCHES.pad,
+    ...STRETCHES.held, ...bar('held', BAR_Y),
+    ...STRETCHES.stick, ...bar('stick', STICK_Y),
+    ...STRETCHES.time, ...STRETCHES.clock, ...bar('time again', TIME_AGAIN_Y),
     // two pixels on, and back to the left edge at the turn
     addiu(S0, S0, STEP), addiu(T1, ZERO, TURN), bne(S0, T1, 'frame'), NOP,
     j('frame'), addiu(S0, ZERO, 0),
-    // the sound's thread: a channel of its own for blocks of 1,024 samples in stereo, and the wave again and again
     here('sound'),
-    addiu(A0, ZERO, -1), addiu(A1, ZERO, BLOCK), addiu(A2, ZERO, 0), ...call('sceAudioChReserve'),
+    ...STRETCHES.reserve,
     or(S1, V0, ZERO),
     here('block'),
-    or(A0, S1, ZERO), ...li(A1, VOLUME), ...la(A2, 'wave'), ...call('sceAudioOutputBlocking'),
+    ...STRETCHES.output,
     j('block'), NOP,
   ];
   return pspProgram({
     code, data: { 'sound name': 'sound\0', wave: new Uint32Array(wave.buffer), pad: new Uint32Array(4) },
-    imports: ['sceDisplaySetMode', 'sceDisplaySetFrameBuf', 'sceDisplayWaitVblankStart', 'sceCtrlSetSamplingCycle', 'sceCtrlSetSamplingMode', 'sceCtrlPeekBufferPositive', 'sceKernelCreateThread', 'sceKernelStartThread', 'sceAudioChReserve', 'sceAudioOutputBlocking'],
+    imports: ['sceDisplaySetMode', 'sceDisplaySetFrameBuf', 'sceDisplayWaitVblankStart', 'sceCtrlSetSamplingCycle', 'sceCtrlSetSamplingMode', 'sceCtrlPeekBufferPositive', 'sceKernelCreateThread', 'sceKernelStartThread', 'sceKernelGetSystemTimeLow', 'sceAudioChReserve', 'sceAudioOutputBlocking'],
   });
 }
