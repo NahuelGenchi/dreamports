@@ -2,8 +2,8 @@
 // the reference emulator, built as test:real-nds builds it, every frame of both screens and the sound, each with a
 // Dreamport in C in a folder of its own that it removes after, so no game's copy is needed. test:real-nds proves the
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
-// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), and finds
-// Dreamports that draw them wrong.
+// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), and the two
+// processors talking (made-up-nds-ipc.mjs), and finds Dreamports that get them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,6 +13,7 @@ import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { writeRecording } from '../lib/recording.mjs';
 import { madeUpNdsBackgrounds } from './made-up-nds-bg.mjs';
 import { madeUpNdsSprites, setupInC } from './made-up-nds-obj.mjs';
+import { madeUpNdsIpc } from './made-up-nds-ipc.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -104,6 +105,27 @@ async function main() {
   writeSprites({ sprite1: '0x0001' });
   run = dp('prove', C_GAME, 'sprites');
   check(run.status !== 0 && report('sprites')?.firstDifference?.frame === 0, `and a sprite in front of the background where it's behind: ${JSON.stringify(report('sprites')?.firstDifference)}`);
+
+  console.log('The two processors talking: the shared memory, the message queue and the sync register');
+  const talking = madeUpNdsIpc(), talkingCopy = join(WORK, 'talking.nds');
+  writeFileSync(talkingCopy, talking.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP IPC', code: 'MDIE', sha1: talking.sha1 }, null, 2)}\n`);
+  run = dp('rom', talkingCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the third program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'sprites.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'talking.json'), {
+    about: 'The two processors talking, with A, B, Select and Start held at times.', frames: FRAMES,
+    held: [[0, []], [20, ['A']], [50, ['B', 'START']], [90, []], [120, ['SELECT']], [150, []]],
+  });
+  const writeTalking = ({ wramcnt = '0' } = {}) => writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'ipc.c'), 'utf8').replace('@WRAMCNT@', wramcnt));
+  writeTalking();
+  run = dp('prove', C_GAME, 'talking');
+  const talked = report('talking');
+  check(run.status === 0 && talked?.matched === FRAMES, `the kit's two processors talk as melonDS's do on every frame, through the queue, the sync register and the shared memory given from one to the other, the ARM9's fast data memory over it: ${talked?.matched} of ${FRAMES}, ${JSON.stringify(talked?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeTalking({ wramcnt: '2' });
+  run = dp('prove', C_GAME, 'talking');
+  check(run.status !== 0 && report('talking')?.firstDifference?.frame === 1, `a Dreamport that takes the wrong half of the shared memory is found once the ARM7's first reply shows, at frame 1: ${JSON.stringify(report('talking')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

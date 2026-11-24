@@ -182,6 +182,8 @@ int nds_video_write(uint32_t address, uint32_t value, int bytes) {
     nds_not_yet();
     return 1;
   }
+  // the engines' own registers, 0x04000000 and 0x04001000 on, and nothing else of the hardware
+  if ((address >> 12 != 0x04000 && address >> 12 != 0x04001) || (address & 0xFFF) >= 0x70) return 0;
   int engine = address >= 0x04001000;
   uint32_t r = address & 0xFFF;
   if (bytes == 1) { nds_not_yet(); return 1; }
@@ -225,6 +227,8 @@ int nds_video_read(uint32_t address, int bytes, uint32_t *value) {
     }
     return 1;
   }
+  // the engines' own registers, 0x04000000 and 0x04001000 on, and nothing else of the hardware
+  if ((address >> 12 != 0x04000 && address >> 12 != 0x04001) || (address & 0xFFF) >= 0x70) return 0;
   int engine = address >= 0x04001000;
   uint32_t r = address & 0xFFF;
   if (r == 0x000) { *value = bytes == 4 ? dispcnt[engine] : dispcnt[engine] & 0xFFFF; return 1; }

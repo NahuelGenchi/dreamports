@@ -19,6 +19,12 @@ uint32_t nds_video_dispcnt(int engine);
 /** An engine's line `y`, colours of 15 bits. */
 void nds_video_line(int engine, int y, uint16_t *line);
 
+// The shared memory, the ARM7's own, the sync register and the message queue (ipc.c), each processor's side by `seven`:
+// 1 when it's one of them
+void nds_ipc_power(void);
+int nds_ipc_read(int seven, uint32_t address, int bytes, uint32_t *value);
+int nds_ipc_write(int seven, uint32_t address, uint32_t value, int bytes);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */

@@ -134,11 +134,28 @@ static void main_write(uint32_t address, uint32_t value, int bytes) {
   for (int i = 0; i < bytes; i++) at[i] = (uint8_t)(value >> (8 * i));
 }
 
+// The ARM9's two fast memories, where the console's firmware leaves them for a game it starts, as the reference
+// emulator's direct start puts them (melonDS's SetupDirectBoot): its code memory (ITCM), 32 KB, seen again and again up
+// to 0x01FFFFFF, and its data memory (DTCM), 16 KB at 0x03000000, in front of the shared memory there. A game that moves
+// them, with the system control coprocessor, isn't followed yet.
+static uint8_t itcm[0x8000], dtcm[0x4000];
+static uint8_t *fast_at(uint32_t address) {
+  if (address < 0x02000000) return itcm + (address & 0x7FFF);
+  if (address >= 0x03000000 && address < 0x03004000) return dtcm + (address & 0x3FFF);
+  return 0;
+}
+
 static uint32_t arm9_read(uint32_t address, int bytes) {
   catch_up7();
+  uint8_t *fast = fast_at(address & ~(uint32_t)(bytes - 1));
+  if (fast) {
+    uint32_t value = 0;
+    for (int i = 0; i < bytes; i++) value |= (uint32_t)fast[i] << (8 * i);
+    return value;
+  }
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_video_read(address, bytes, &value)) return value;
+  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value)) return value;
   switch (address) {
   case NDS_DISPSTAT: return bytes == 4 ? dispstat(t9) | vcount(t9) << 16 : dispstat(t9);
   case NDS_DISPSTAT + 2: return vcount(t9);
@@ -151,8 +168,13 @@ static uint32_t arm9_read(uint32_t address, int bytes) {
 
 static void arm9_write(uint32_t address, uint32_t value, int bytes) {
   catch_up7();
+  uint8_t *fast = fast_at(address & ~(uint32_t)(bytes - 1));
+  if (fast) {
+    for (int i = 0; i < bytes; i++) fast[i] = (uint8_t)(value >> (8 * i));
+    return;
+  }
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
-  if (nds_video_write(address, value, bytes)) return;
+  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes)) return;
   if (address == NDS_POWCNT && bytes >= 2) { powcnt = value & 0x820F; return; }
   nds_not_yet();
 }
@@ -180,6 +202,8 @@ static void tsc_write(uint8_t value) {
 static uint32_t arm7_read(uint32_t address, int bytes) {
   wait7();
   if (address >> 24 == 0x02) return main_read(address, bytes);
+  uint32_t value;
+  if (nds_ipc_read(1, address, bytes, &value)) return value;
   switch (address) {
   case NDS_DISPSTAT: return bytes == 4 ? dispstat(t7) | vcount(t7) << 16 : dispstat(t7);
   case NDS_DISPSTAT + 2: return vcount(t7);
@@ -199,6 +223,7 @@ static void arm7_write(uint32_t address, uint32_t value, int bytes) {
   wait7();
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
   if (address >= 0x04000400 && address < 0x04000520) { nds_sound_write(t7, address, value, bytes); return; }
+  if (nds_ipc_write(1, address, value, bytes)) return;
   switch (address) {
   case NDS_SPICNT:
     // turning the bus off lets the chip go
@@ -240,6 +265,9 @@ EXPORT("dp_start") void dp_start(void) {
   kit_screen(SCREEN_W, SCREEN_H);
   nds_sound_power();
   nds_video_power();
+  nds_ipc_power();
+  for (int i = 0; i < 0x8000; i++) itcm[i] = 0;
+  for (int i = 0; i < 0x4000; i++) dtcm[i] = 0;
   t9 = t7 = 0;
   frame = -1;
   window_end = vblank_of(0);
