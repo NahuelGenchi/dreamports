@@ -2,7 +2,7 @@
 // as they're typed, with a program of the project's own (twin/program.c) as the game, so it needs nobody's copy of
 // anything. The console's compiler builds the program into a made-up cartridge, and the same C is the game's version
 // in C, in games/ for as long as this takes. GitHub is a stand-in: a small program named gh that keeps issues in a
-// file, so nothing is opened anywhere.
+// file, so nothing is opened anywhere. The tools start it in the GitHub CLI's place, by DREAMPORTS_GH (lib/github.mjs).
 //
 // What it shows: `match` and `twin` keep nothing for a version made a part at a time, as every game on main is;
 // after `proofs --start` each keeps what it proves, and nothing else is taken for a proof; a proof goes stale once
@@ -13,7 +13,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { withBuildTools } from '../gba/build.mjs';
@@ -71,7 +71,7 @@ answer(shown(issue));
 const bin = join(work, 'bin'), github = join(work, 'github.json');
 const dp = (...args) => {
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], {
-    cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 24, env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, STAND_IN_GITHUB: github },
+    cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 24, env: { ...process.env, DREAMPORTS_GH: join(bin, 'gh'), STAND_IN_GITHUB: github },
   });
   return { status, out: stdout + stderr };
 };
