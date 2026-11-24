@@ -5,12 +5,11 @@
 // the order of their times. A frame of the proof tools runs from one V-blank's start to the next's, as a frame's
 // picture and sound follow from what the programs wrote in the V-blank before it (tools/nds/melonds/libretro.cpp).
 //
-// The display is as melonDS draws it (its GPU_Soft.cpp and GPU2D_Soft.cpp): each engine, A and B, on the screen the
-// power register's top bit puts it on, white when its display is off or blanked, black for A and white for B when the
-// power register turns it off, and black when the screens are off. With its display on, an engine shows its backdrop,
-// the first of its colours: its backgrounds, its sprites, 3D and the master brightness aren't drawn yet, and a game
-// that turns one on stops (nds_not_yet). An engine's picture is the one its registers hold once the V-blank's writes are
-// done, as the console draws it in the frame after.
+// The display is as melonDS puts it together (its GPU_Soft.cpp): each engine, A and B, on the screen the power
+// register's top bit puts it on, white when its display is off or blanked, black for A and white for B when the power
+// register turns it off, and black when the screens are off. With its display on, an engine draws its line (video.c).
+// An engine's picture is the one its registers and memory hold once the V-blank's writes are done, as the console
+// draws it in the frame after.
 
 #include "nds.h"
 #include "nds-kit.h"
@@ -27,10 +26,8 @@ static int frame;                  // the frame being run, -1 at power-on
 static uint32_t held;              // the buttons, as console.h's bits
 static int touched, touch_x, touch_y;
 
-// the display: each engine's control, the power register, and the colours, 2 KB: A's backgrounds and sprites, then B's
-static uint32_t dispcnt[2];
+// the power register
 static uint16_t powcnt = 0x820F;
-static uint8_t palette[0x800];
 
 // the serial bus to the touch screen's chip, and the chip
 static uint16_t spicnt;
@@ -140,14 +137,9 @@ static void main_write(uint32_t address, uint32_t value, int bytes) {
 static uint32_t arm9_read(uint32_t address, int bytes) {
   catch_up7();
   if (address >> 24 == 0x02) return main_read(address, bytes);
-  if (address >> 24 == 0x05) {
-    uint32_t value = 0;
-    for (int i = 0; i < bytes; i++) value |= (uint32_t)palette[(address + i) & 0x7FF] << (8 * i);
-    return value;
-  }
+  uint32_t value;
+  if (nds_video_read(address, bytes, &value)) return value;
   switch (address) {
-  case NDS_DISPCNT_A: return dispcnt[0];
-  case NDS_DISPCNT_B: return dispcnt[1];
   case NDS_DISPSTAT: return bytes == 4 ? dispstat(t9) | vcount(t9) << 16 : dispstat(t9);
   case NDS_DISPSTAT + 2: return vcount(t9);
   case NDS_KEYINPUT: return keyinput();
@@ -160,27 +152,7 @@ static uint32_t arm9_read(uint32_t address, int bytes) {
 static void arm9_write(uint32_t address, uint32_t value, int bytes) {
   catch_up7();
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
-  if (address >> 24 == 0x05) {
-    // the colours take halfwords and words: a byte written there is written to both bytes of its halfword
-    if (bytes == 1) { value = (value & 0xFF) * 0x101; bytes = 2; address &= ~1u; }
-    for (int i = 0; i < bytes; i++) palette[(address + i) & 0x7FF] = (uint8_t)(value >> (8 * i));
-    return;
-  }
-  if (address == NDS_DISPCNT_A || address == NDS_DISPCNT_B) {
-    int engine = address == NDS_DISPCNT_B;
-    if (bytes == 4) dispcnt[engine] = value;
-    else if (bytes == 2) dispcnt[engine] = (dispcnt[engine] & 0xFFFF0000u) | (value & 0xFFFF);
-    else nds_not_yet();
-    // backgrounds, sprites, windows and 3D aren't drawn yet, nor a display of the video memory or of the main memory
-    if (dispcnt[engine] & 0x0000FF08u || ((dispcnt[engine] >> 16) & 3) > 1) nds_not_yet();
-    return;
-  }
-  if (address == NDS_DISPCNT_A + 2 || address == NDS_DISPCNT_B + 2) {
-    int engine = address == NDS_DISPCNT_B + 2;
-    dispcnt[engine] = (dispcnt[engine] & 0xFFFF) | (value & 0xFFFF) << 16;
-    if (((dispcnt[engine] >> 16) & 3) > 1) nds_not_yet();
-    return;
-  }
+  if (nds_video_write(address, value, bytes)) return;
   if (address == NDS_POWCNT && bytes >= 2) { powcnt = value & 0x820F; return; }
   nds_not_yet();
 }
@@ -267,6 +239,7 @@ void nds7_write32(uint32_t address, uint32_t value) { arm7_write(address, value,
 EXPORT("dp_start") void dp_start(void) {
   kit_screen(SCREEN_W, SCREEN_H);
   nds_sound_power();
+  nds_video_power();
   t9 = t7 = 0;
   frame = -1;
   window_end = vblank_of(0);
@@ -296,11 +269,14 @@ static uint32_t shown(uint32_t colour) {
   return 0xFF000000u | (colour >> 10 & 31) << 19 | (colour >> 5 & 31) << 11 | (colour & 31) << 3;
 }
 
-static uint32_t engine_colour(int engine) {
-  if (!(powcnt & (engine ? 0x200 : 0x2))) return engine ? 0x7FFF : 0;
-  if ((dispcnt[engine] & 0x80) || !((dispcnt[engine] >> 16) & 3)) return 0x7FFF;
-  const uint8_t *backdrop = palette + engine * 0x400;
-  return (backdrop[0] | backdrop[1] << 8) & 0x7FFF;
+// an engine's line as the screen shows it: what the power register and its display's mode make of what it draws
+static void engine_line(int engine, int y, uint16_t *line) {
+  uint32_t dispcnt = nds_video_dispcnt(engine);
+  uint16_t fill = 0xFFFF;
+  if (!(powcnt & (engine ? 0x200 : 0x2))) fill = engine ? 0x7FFF : 0;
+  else if ((dispcnt & 0x80) || !((dispcnt >> 16) & 3)) fill = 0x7FFF;
+  if (fill != 0xFFFF) { for (int x = 0; x < 256; x++) line[x] = fill; return; }
+  nds_video_line(engine, y, line);
 }
 
 /** Draws the last frame's two screens, the upper above the lower, and gives where its words are. */
@@ -308,10 +284,14 @@ EXPORT("dp_draw") uint32_t *dp_draw(void) {
   uint32_t *screen = kit_screen(SCREEN_W, SCREEN_H);
   // engine A is on the upper screen when the power register's top bit says so
   int upper = powcnt & 0x8000 ? 0 : 1;
-  uint32_t colours[2] = { engine_colour(upper), engine_colour(!upper) };
+  static uint16_t line[256];
   for (int s = 0; s < 2; s++) {
-    uint32_t pixel = powcnt & 1 ? shown(colours[s]) : 0xFF000000u;
-    for (int i = 0; i < 256 * 192; i++) screen[s * 256 * 192 + i] = pixel;
+    for (int y = 0; y < 192; y++) {
+      uint32_t *row = screen + (s * 192 + y) * 256;
+      if (!(powcnt & 1)) { for (int x = 0; x < 256; x++) row[x] = 0xFF000000u; continue; }
+      engine_line(s ? !upper : upper, y, line);
+      for (int x = 0; x < 256; x++) row[x] = shown(line[x]);
+    }
   }
   return screen;
 }

@@ -7,7 +7,8 @@ name: Linux, Mac and Windows (Nintendo DS)
 # a made-up program's two screens, its buttons, its touches and its sound, the same on all three by a hash the test
 # keeps (docs/CONSOLES.md#the-nintendo-ds), and npm run test:nds-twin, the function check, with the original in melonDS's own
 # processors and a made-up cartridge's twins in C, and npm run test:nds-flow, a made-up game taken through the new way of
-# making one, a part at a time, from proofs --start --parts to a part done, with a stand-in for GitHub. Nothing from any game's copy is needed, and nothing is sent anywhere.
+# making one, a part at a time, from proofs --start --parts to a part done, with a stand-in for GitHub, and
+# npm run test:nds-kit, the kit in C's pieces proven against melonDS with programs of the project's own. Nothing from any game's copy is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as the emulator takes minutes to build. It runs on pull requests that touch what those tools
 # are made of, after they merge, every week, so the newest systems GitHub has try it too, and by hand.
@@ -35,6 +36,8 @@ on:
       - 'tools/test/nds-twin/**'
       - 'tools/test/nds-flow.mjs'
       - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
       - 'tools/*.mjs'
       - 'src/lib/systems.ts'
       - 'public/systems/nds.svg'
@@ -66,6 +69,8 @@ on:
       - 'tools/test/nds-twin/**'
       - 'tools/test/nds-flow.mjs'
       - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
       - 'tools/*.mjs'
       - 'src/lib/systems.ts'
       - 'public/systems/nds.svg'
@@ -102,6 +107,7 @@ jobs:
       - run: npm run test:real-nds
       - run: npm run test:nds-twin
       - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
 
   mac:
     name: Mac (Nintendo DS)
@@ -130,6 +136,7 @@ jobs:
       - run: npm run test:real-nds
       - run: npm run test:nds-twin
       - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
 
   windows:
     name: Windows (Nintendo DS)
@@ -150,3 +157,4 @@ jobs:
       - run: npm run test:real-nds
       - run: npm run test:nds-twin
       - run: npm run test:nds-flow
+      - run: npm run test:nds-kit

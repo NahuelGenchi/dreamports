@@ -211,9 +211,14 @@ export function programWithNames(text, address) {
   const { sections, symbols, relocations } = assemble(text);
   const code = Buffer.from(sections['.text'].bytes), start = Buffer.alloc(12);
   // the assembler links nothing, so each call to a function of the program is filled in here: Thumb's bl, in two halves
-  for (const { at, kind, name } of relocations) {
+  for (const { at, kind, name, addend = 0 } of relocations) {
     const target = symbols.get(name);
-    if (kind !== 'call' || !target) throw new Error(`the made-up program names something it doesn't have: ${name}`);
+    if (!target || (kind !== 'call' && kind !== 'word')) throw new Error(`the made-up program names something it doesn't have: ${name}`);
+    // a word that holds one of the program's own addresses, where the program is in memory
+    if (kind === 'word') {
+      code.writeUInt32LE((address + 12 + target.at + addend) >>> 0, at);
+      continue;
+    }
     const offset = target.at - (at + 4);
     code.writeUInt16LE(0xF000 | ((offset >> 12) & 0x7FF), at);
     code.writeUInt16LE(0xF800 | ((offset >> 1) & 0x7FF), at + 2);

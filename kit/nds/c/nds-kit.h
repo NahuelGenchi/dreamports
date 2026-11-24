@@ -9,6 +9,16 @@
  *  or plays a sound the console wouldn't: the page says the game stopped there. */
 void nds_not_yet(void);
 
+// The 2D engines and the video memory (video.c), as the ARM9 sees them
+extern uint8_t nds_palette[0x800];
+void nds_video_power(void);
+/** A write or a read of the video's registers or memory: 1 when it's one of them. */
+int nds_video_write(uint32_t address, uint32_t value, int bytes);
+int nds_video_read(uint32_t address, int bytes, uint32_t *value);
+uint32_t nds_video_dispcnt(int engine);
+/** An engine's line `y`, colours of 15 bits. */
+void nds_video_line(int engine, int y, uint16_t *line);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */
