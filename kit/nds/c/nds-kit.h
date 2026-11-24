@@ -65,6 +65,16 @@ void nds_math_power(void);
 int nds_math_read(uint64_t now, uint32_t address, int bytes, uint32_t *value);
 int nds_math_write(uint64_t now, uint32_t address, uint32_t value, int bytes);
 
+// The cartridge slot and the cartridge (cart.c), each processor's side by `seven`, at its time `now`
+void nds_cart_power(void);
+/** A read or a write of the slot's registers, the cartridge's data or EXMEMCNT: 1 when it's one of them. */
+int nds_cart_read(int seven, uint64_t now, uint32_t address, int bytes, uint32_t *value);
+int nds_cart_write(int seven, uint64_t now, uint32_t address, uint32_t value, int bytes);
+/** Brings a side's transfer up to `now`: the words that come, and its end. */
+void nds_cart_run(int seven, uint64_t now);
+/** When a side's next word comes, or its transfer ends, or UINT64_MAX. */
+uint64_t nds_cart_next(int seven);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */

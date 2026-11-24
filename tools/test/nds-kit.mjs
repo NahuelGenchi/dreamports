@@ -4,8 +4,8 @@
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
 // banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), the two
 // processors talking (made-up-nds-ipc.mjs), their interrupts and timers (made-up-nds-irq.mjs), their DMA channels
-// (made-up-nds-dma.mjs), and the ARM9's divider and square root (made-up-nds-math.mjs), and finds Dreamports that get
-// them wrong.
+// (made-up-nds-dma.mjs), the ARM9's divider and square root (made-up-nds-math.mjs), and the cartridge slot
+// (made-up-nds-cart.mjs), and finds Dreamports that get them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,6 +19,7 @@ import { madeUpNdsIpc } from './made-up-nds-ipc.mjs';
 import { madeUpNdsIrq } from './made-up-nds-irq.mjs';
 import { madeUpNdsDma } from './made-up-nds-dma.mjs';
 import { madeUpNdsMath } from './made-up-nds-math.mjs';
+import { madeUpNdsCart } from './made-up-nds-cart.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -188,6 +189,25 @@ async function main() {
   writeDividing({ high: '0' });
   run = dp('prove', C_GAME, 'dividing');
   check(run.status !== 0 && report('dividing')?.firstDifference?.frame === 1, `a Dreamport that leaves out a numerator's high word is found in the first frame that shows a 64-bit division, frame 1: ${JSON.stringify(report('dividing')?.firstDifference)}`);
+
+  console.log('The cartridge slot, reading the cartridge');
+  const reading = madeUpNdsCart(), readingCopy = join(WORK, 'reading.nds');
+  writeFileSync(readingCopy, reading.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP CART', code: 'MDCE', sha1: reading.sha1 }, null, 2)}\n`);
+  run = dp('rom', readingCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the seventh program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'dividing.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'reading.json'), { about: 'The cartridge read four ways, with no button held.', frames: FRAMES, held: [[0, []]] });
+  const highFirst = '(place >> 24) << 8 | ((place >> 16) & 0xFF) << 16 | ((place >> 8) & 0xFF) << 24';
+  const writeReading = ({ place = highFirst } = {}) => writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'cart.c'), 'utf8').replace('@PLACE@', place));
+  writeReading();
+  run = dp('prove', C_GAME, 'reading');
+  const read = report('reading');
+  check(run.status === 0 && read?.matched === FRAMES, `the kit's cartridge slot reads the cartridge as melonDS's does on every frame: 0x200 bytes round a page's end, 4 bytes from a place that isn't a word's, the chip's number, and below 0x8000, at both speeds, each transfer's end with its interrupt's flag: ${read?.matched} of ${FRAMES}, ${JSON.stringify(read?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeReading({ place: '((place >> 8) & 0xFF) << 8 | ((place >> 16) & 0xFF) << 16 | (place >> 24) << 24' });
+  run = dp('prove', C_GAME, 'reading');
+  check(run.status !== 0 && report('reading')?.firstDifference?.frame === 0, `a Dreamport that writes the place lowest byte first is found at once: ${JSON.stringify(report('reading')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

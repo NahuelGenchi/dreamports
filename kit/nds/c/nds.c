@@ -96,6 +96,7 @@ static int would_wake(int seven) {
 static void interrupts(int seven) {
   uint64_t *now = seven ? &t7 : &t9;
   while (!handling[seven]) {
+    nds_cart_run(seven, *now);
     nds_irq_run(seven, *now);
     if (!nds_irq_master(seven) || !nds_irq_pending(seven)) return;
     if (!handlers[seven]) nds_not_yet();
@@ -156,6 +157,7 @@ static void wait9(uint64_t target, int halt) {
   for (;;) {
     woken_at[0] = NEVER;
     vblank_dmas(0);
+    nds_cart_run(0, t9);
     nds_irq_run(0, t9);
     if (halt ? would_wake(0) : t9 >= target) break;
     if (!halt && !handling[0] && nds_irq_master(0) && nds_irq_pending(0)) {
@@ -164,8 +166,9 @@ static void wait9(uint64_t target, int halt) {
       waiting[0] = 1;
       continue;
     }
-    uint64_t next = nds_irq_next(0), dma = nds_dma_next(0);
+    uint64_t next = nds_irq_next(0), dma = nds_dma_next(0), cart = nds_cart_next(0);
     if (dma < next) next = dma;
+    if (cart < next) next = cart;
     if (!halt && target < next) next = target;
     if (next >= window_end) {
       done9 = 1;
@@ -195,6 +198,7 @@ static void wait7_until(uint64_t target, int halt) {
       woken_at[1] = NEVER;
     }
     vblank_dmas(1);
+    nds_cart_run(1, t7);
     nds_irq_run(1, t7);
     if (halt ? would_wake(1) : t7 >= target) break;
     if (!halt && !handling[1] && nds_irq_master(1) && nds_irq_pending(1)) {
@@ -203,8 +207,9 @@ static void wait7_until(uint64_t target, int halt) {
       waiting[1] = 1;
       continue;
     }
-    uint64_t next = nds_irq_next(1), dma = nds_dma_next(1);
+    uint64_t next = nds_irq_next(1), dma = nds_dma_next(1), cart = nds_cart_next(1);
     if (dma < next) next = dma;
+    if (cart < next) next = cart;
     if (!halt && target < next) next = target;
     if (next >= window_end) {
       done7 = 1;
@@ -369,7 +374,7 @@ static uint32_t arm9_load(uint32_t address, int bytes) {
 static uint32_t arm9_bus_load(uint32_t address, int bytes) {
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value) || nds_irq_read(0, t9, address, bytes, &value) || nds_dma_read(0, address, bytes, &value) || nds_math_read(t9, address, bytes, &value)) return value;
+  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value) || nds_irq_read(0, t9, address, bytes, &value) || nds_dma_read(0, address, bytes, &value) || nds_math_read(t9, address, bytes, &value) || nds_cart_read(0, t9, address, bytes, &value)) return value;
   switch (address) {
   case NDS_DISPSTAT: return bytes == 4 ? nds_irq_dispstat(0, t9) | vcount(t9) << 16 : bytes == 1 ? nds_irq_dispstat(0, t9) & 0xFF : nds_irq_dispstat(0, t9);
   case NDS_DISPSTAT + 1: return nds_irq_dispstat(0, t9) >> 8;
@@ -392,7 +397,7 @@ static void arm9_store(uint32_t address, uint32_t value, int bytes) {
 
 static void arm9_bus_store(uint32_t address, uint32_t value, int bytes) {
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
-  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes) || nds_irq_write(0, t9, address, value, bytes) || nds_dma_write(0, address, value, bytes) || nds_math_write(t9, address, value, bytes)) return;
+  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes) || nds_irq_write(0, t9, address, value, bytes) || nds_dma_write(0, address, value, bytes) || nds_math_write(t9, address, value, bytes) || nds_cart_write(0, t9, address, value, bytes)) return;
   if (address == NDS_POWCNT && bytes >= 2) { powcnt = value & 0x820F; return; }
   nds_not_yet();
 }
@@ -437,7 +442,7 @@ static void arm7_write(uint32_t address, uint32_t value, int bytes) {
 static uint32_t arm7_load(uint32_t address, int bytes) {
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_ipc_read(1, address, bytes, &value) || nds_irq_read(1, t7, address, bytes, &value) || nds_dma_read(1, address, bytes, &value)) return value;
+  if (nds_ipc_read(1, address, bytes, &value) || nds_irq_read(1, t7, address, bytes, &value) || nds_dma_read(1, address, bytes, &value) || nds_cart_read(1, t7, address, bytes, &value)) return value;
   switch (address) {
   case NDS_DISPSTAT: return bytes == 4 ? nds_irq_dispstat(1, t7) | vcount(t7) << 16 : bytes == 1 ? nds_irq_dispstat(1, t7) & 0xFF : nds_irq_dispstat(1, t7);
   case NDS_DISPSTAT + 1: return nds_irq_dispstat(1, t7) >> 8;
@@ -457,7 +462,7 @@ static uint32_t arm7_load(uint32_t address, int bytes) {
 static void arm7_store(uint32_t address, uint32_t value, int bytes) {
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
   if (address >= 0x04000400 && address < 0x04000520) { nds_sound_write(t7, address, value, bytes); return; }
-  if (nds_ipc_write(1, address, value, bytes) || nds_irq_write(1, t7, address, value, bytes) || nds_dma_write(1, address, value, bytes)) return;
+  if (nds_ipc_write(1, address, value, bytes) || nds_irq_write(1, t7, address, value, bytes) || nds_dma_write(1, address, value, bytes) || nds_cart_write(1, t7, address, value, bytes)) return;
   switch (address) {
   case NDS_HALTCNT:
     // halted until an interrupt it has on asks for it, which it then takes with IME on
@@ -510,6 +515,7 @@ EXPORT("dp_start") void dp_start(void) {
   nds_irq_power();
   nds_dma_power();
   nds_math_power();
+  nds_cart_power();
   handlers[0] = handlers[1] = 0;
   handling[0] = handling[1] = waiting[0] = waiting[1] = halted[0] = halted[1] = 0;
   for (int i = 0; i < 0x8000; i++) itcm[i] = 0;
