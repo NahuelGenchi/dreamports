@@ -60,6 +60,11 @@ uint64_t *nds_time(int seven);
 uint32_t nds_bus_read(int seven, uint32_t address, int bytes);
 void nds_bus_write(int seven, uint32_t address, uint32_t value, int bytes);
 
+// The ARM9's divider and square root (math.c), at its time `now`: 1 when it's one of their registers
+void nds_math_power(void);
+int nds_math_read(uint64_t now, uint32_t address, int bytes, uint32_t *value);
+int nds_math_write(uint64_t now, uint32_t address, uint32_t value, int bytes);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */

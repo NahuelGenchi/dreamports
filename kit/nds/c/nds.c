@@ -369,7 +369,7 @@ static uint32_t arm9_load(uint32_t address, int bytes) {
 static uint32_t arm9_bus_load(uint32_t address, int bytes) {
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value) || nds_irq_read(0, t9, address, bytes, &value) || nds_dma_read(0, address, bytes, &value)) return value;
+  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value) || nds_irq_read(0, t9, address, bytes, &value) || nds_dma_read(0, address, bytes, &value) || nds_math_read(t9, address, bytes, &value)) return value;
   switch (address) {
   case NDS_DISPSTAT: return bytes == 4 ? nds_irq_dispstat(0, t9) | vcount(t9) << 16 : bytes == 1 ? nds_irq_dispstat(0, t9) & 0xFF : nds_irq_dispstat(0, t9);
   case NDS_DISPSTAT + 1: return nds_irq_dispstat(0, t9) >> 8;
@@ -392,7 +392,7 @@ static void arm9_store(uint32_t address, uint32_t value, int bytes) {
 
 static void arm9_bus_store(uint32_t address, uint32_t value, int bytes) {
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
-  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes) || nds_irq_write(0, t9, address, value, bytes) || nds_dma_write(0, address, value, bytes)) return;
+  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes) || nds_irq_write(0, t9, address, value, bytes) || nds_dma_write(0, address, value, bytes) || nds_math_write(t9, address, value, bytes)) return;
   if (address == NDS_POWCNT && bytes >= 2) { powcnt = value & 0x820F; return; }
   nds_not_yet();
 }
@@ -509,6 +509,7 @@ EXPORT("dp_start") void dp_start(void) {
   nds_ipc_power();
   nds_irq_power();
   nds_dma_power();
+  nds_math_power();
   handlers[0] = handlers[1] = 0;
   handling[0] = handling[1] = waiting[0] = waiting[1] = halted[0] = halted[1] = 0;
   for (int i = 0; i < 0x8000; i++) itcm[i] = 0;

@@ -3,8 +3,9 @@
 // Dreamport in C in a folder of its own that it removes after, so no game's copy is needed. test:real-nds proves the
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
 // banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), the two
-// processors talking (made-up-nds-ipc.mjs), their interrupts and timers (made-up-nds-irq.mjs), and their DMA channels
-// (made-up-nds-dma.mjs), and finds Dreamports that get them wrong.
+// processors talking (made-up-nds-ipc.mjs), their interrupts and timers (made-up-nds-irq.mjs), their DMA channels
+// (made-up-nds-dma.mjs), and the ARM9's divider and square root (made-up-nds-math.mjs), and finds Dreamports that get
+// them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +18,7 @@ import { madeUpNdsSprites, setupInC } from './made-up-nds-obj.mjs';
 import { madeUpNdsIpc } from './made-up-nds-ipc.mjs';
 import { madeUpNdsIrq } from './made-up-nds-irq.mjs';
 import { madeUpNdsDma } from './made-up-nds-dma.mjs';
+import { madeUpNdsMath } from './made-up-nds-math.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -168,6 +170,24 @@ async function main() {
   writeCopying({ reverse: '0x80000020' });
   run = dp('prove', C_GAME, 'copying');
   check(run.status !== 0 && report('copying')?.firstDifference?.frame === 2, `a Dreamport whose copy counts up where it counts down is found in the first frame that shows it, frame 2: ${JSON.stringify(report('copying')?.firstDifference)}`);
+
+  console.log('The ARM9\'s divider and square root');
+  const dividing = madeUpNdsMath(), dividingCopy = join(WORK, 'dividing.nds');
+  writeFileSync(dividingCopy, dividing.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP MATH', code: 'MDME', sha1: dividing.sha1 }, null, 2)}\n`);
+  run = dp('rom', dividingCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the sixth program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'copying.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'dividing.json'), { about: 'The divider and the square root at work, with no button held.', frames: FRAMES, held: [[0, []]] });
+  const writeDividing = ({ high = 'frames - 100' } = {}) => writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'math.c'), 'utf8').replace('@HIGH@', high));
+  writeDividing();
+  run = dp('prove', C_GAME, 'dividing');
+  const divided = report('dividing');
+  check(run.status === 0 && divided?.matched === FRAMES, `the kit's divider and square root work as melonDS's do on every frame, each size, by zero among them, read too soon and once they're done: ${divided?.matched} of ${FRAMES}, ${JSON.stringify(divided?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeDividing({ high: '0' });
+  run = dp('prove', C_GAME, 'dividing');
+  check(run.status !== 0 && report('dividing')?.firstDifference?.frame === 1, `a Dreamport that leaves out a numerator's high word is found in the first frame that shows a 64-bit division, frame 1: ${JSON.stringify(report('dividing')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
