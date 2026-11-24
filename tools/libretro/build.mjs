@@ -114,8 +114,11 @@ function buildHere(machine, log, tools) {
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
-    run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
-    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+    // and what one kind of computer has to say besides: Gambatte's makefile takes the tools' compiler on Windows for a
+    // Unix one, as it goes by what `uname` answers
+    const settings = [...(core.make ?? []), ...(core.makeOn?.[process.platform] ?? [])];
+    run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
   }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }
