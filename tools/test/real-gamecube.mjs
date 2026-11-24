@@ -86,9 +86,11 @@ async function main() {
   const wanted = heard.length / 2 / (PERIOD / 2);
   check(Math.abs(turns - wanted) <= 2, `and it turns over every ${PERIOD / 2} samples: ${turns} times in the frame, for ${wanted.toFixed(1)}`);
 
-  // the same program booted from its disc, through the disc's own apploader: the same pictures, a frame or more later
-  const late = booted.hashes.indexOf(first.hashes[LOOKED_AT[0]]) - LOOKED_AT[0];
-  check(late >= 0 && first.hashes.slice(LOOKED_AT[0], FRAMES - late).every((hash, n) => hash === booted.hashes[LOOKED_AT[0] + late + n]), `booted from its disc it shows the same pictures, ${late} frames later`);
+  // the same program booted from its disc, through the disc's own apploader: the same pictures, a frame or so apart,
+  // as the console starts a disc's program at another moment of the field than one given to it alone
+  const from = LOOKED_AT[0] + 8, apart = booted.hashes.indexOf(first.hashes[from]) - from;
+  const same = Math.abs(apart) <= 4 && first.hashes.slice(from, FRAMES - 8).every((hash, n) => hash === booted.hashes[from + apart + n]);
+  check(same, `booted from its disc it shows the same pictures, ${Math.abs(apart)} ${Math.abs(apart) === 1 ? 'frame' : 'frames'} ${apart < 0 ? 'sooner' : 'later'}`);
 
   // every frame's picture and sound, for the other computers to be held to
   const write = process.argv.indexOf('--write');

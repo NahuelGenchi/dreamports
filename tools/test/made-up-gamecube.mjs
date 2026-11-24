@@ -6,7 +6,9 @@
 // fields, and gives it a framebuffer of its own, which it writes straight into, in the YUV pairs the console shows: a
 // background, and a square that moves STEP pixels to the right each field and goes back to the left edge past 512. It
 // plays a tone too, a square wave it hands the audio interface by DMA, round and round, with no program on the sound
-// processor. It waits for line LINE of each field before it draws, so a picture is never shown half drawn.
+// processor. It waits for line LINE of each field before it draws, so a picture is never shown half drawn. It writes
+// its picture through the addresses that go round the processor's data cache, at 0xC0000000, as the video interface
+// reads the memory itself and never sees what the cache still holds.
 //
 // Its functions, in order, from where it loads:
 //   start    the entry: sets the stack, calls setup, and then for ever waits for a field and moves the square
@@ -14,21 +16,26 @@
 //            with the background, draws the square at the left edge and starts the tone
 //   fill     writes r5 words of r4 from r3, in a loop
 //   square   draws the square, r3 pixels from the left edge, in the colour in r4
-//   wait     comes back once the beam is at line LINE, having left it first
+//   wait     comes back once the beam is at line LINE of either field, having left it first
 //
 // The disc holds the program as a DOL, a small apploader of its own, which tells the console where each of the DOL's
 // sections goes, as every disc's does, and a file system with a few files of made-up bytes, one in a folder.
 
 /** Where the program loads and starts, where its values go, its framebuffer and its stack. */
 export const LOAD = 0x80003100, VALUES = 0x80004000, FRAMEBUFFER = 0x80100000, STACK = 0x80400000;
+/** The same memory with the data cache gone round: what the program writes its picture through. */
+export const UNCACHED = 0x40000000;
 /** The picture it shows, and what moves on it. */
 export const WIDTH = 640, HEIGHT = 480, STEP = 2, SQUARE_Y = 200, SQUARE_SIZE = 32, TRAVEL = 512, LINE = 100;
+// the video interface counts the lines of both fields in one go, 525 of them, so the second field's line LINE is this one
+const SECOND_LINE = LINE + 263;
 /** Its two colours, each as the word two pixels side by side take in the framebuffer: Y, Cb, Y, Cr. */
-export const BACKGROUND = 0x40806080, SQUARE = 0xC060C0A0;
-/** Its tone: a square wave of PERIOD samples, this loud, at the 48,000 samples a second the audio interface starts at. */
+export const BACKGROUND = 0x40804080, SQUARE = 0xC060C0A0;
+/** Its tone: a square wave of PERIOD samples, this loud, at the faster of the audio interface's two rates, which the
+ *  program sets, as the console starts it at the slower. */
 export const PERIOD = 96, LOUD = 0x2000;
 
-const VI = 0xCC002000, DSP = 0xCC005000;
+const VI = 0xCC002000, DSP = 0xCC005000, AI = 0xCC006C00;
 
 const d = (op, rt, ra, imm) => ((op << 26) | (rt << 21) | (ra << 16) | (imm & 0xFFFF)) >>> 0;
 const addi = (rt, ra, imm) => d(14, rt, ra, imm);
@@ -142,9 +149,11 @@ export function madeUpGameCube() {
     lhz(8, 0, 7), cmplwi(8, 0xFFFF), beq('registers-done'),
     lhz(9, 2, 7), add(8, 8, 6), sth(9, 0, 8), addi(7, 7, 4), b('register'),
     'registers-done',
-    address(3, FRAMEBUFFER), address(4, BACKGROUND), address(5, WIDTH * HEIGHT / 2), bl('fill'),
+    address(3, FRAMEBUFFER | UNCACHED), address(4, BACKGROUND), address(5, WIDTH * HEIGHT / 2), bl('fill'),
     li(3, 0), address(4, SQUARE), bl('square'),
-    // the tone: where it is, how many blocks of 32 bytes, and the bit that starts it
+    // the tone: the audio interface's faster rate, a zero in its control register, then where the tone is, how many
+    // blocks of 32 bytes, and the bit that starts it
+    address(6, AI), li(8, 0), stw(8, 0, 6),
     address(6, DSP), address(7, data.tone),
     srwi(8, 7, 16), sth(8, 0x30, 6), sth(7, 0x32, 6),
     li(8, (0x8000 | PERIOD * 4 / 32) - 0x10000), sth(8, 0x36, 6),
@@ -158,7 +167,7 @@ export function madeUpGameCube() {
 
     'square',
     // a row is WIDTH * 2 bytes, and two pixels a word
-    address(6, FRAMEBUFFER + SQUARE_Y * WIDTH * 2), srwi(7, 3, 1), mulli(7, 7, 4), add(6, 6, 7),
+    address(6, (FRAMEBUFFER | UNCACHED) + SQUARE_Y * WIDTH * 2), srwi(7, 3, 1), mulli(7, 7, 4), add(6, 6, 7),
     li(8, SQUARE_SIZE),
     'row',
     li(9, SQUARE_SIZE / 2), mtctr(9), addi(10, 6, -4),
@@ -170,9 +179,10 @@ export function madeUpGameCube() {
     'wait',
     address(6, VI),
     'leave',
-    lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('leave'),
+    lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('leave'), cmpwi(7, SECOND_LINE), beq('leave'),
     'reach',
-    lhz(7, 0x2C, 6), cmpwi(7, LINE), bne('reach'),
+    lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('reached'), cmpwi(7, SECOND_LINE), bne('reach'),
+    'reached',
     blr,
     'end',
   ];

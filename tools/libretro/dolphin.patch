@@ -1,0 +1,193 @@
+Dolphin (https://github.com/libretro/dolphin, the libretro front of https://github.com/dolphin-emu/dolphin,
+GPL-2.0-or-later, Copyright the Dolphin Emulator Project) runs the GameCube. The tools apply this change of Dreamports'
+own to its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so
+that its software renderer, which draws on the processor in whole numbers, the same picture on every computer, runs
+with no window and no graphics card.
+
+As its makers publish it, the libretro front starts each renderer when the graphics context it asked whoever runs it
+for arrives. The software renderer asks for none, so nothing starts it, and when it is started it still wants an OpenGL
+context, only to put its finished picture in a window. With this change the front starts the software renderer itself,
+before the console boots, as the others are; the renderer makes no OpenGL context under libretro; and each picture it
+shows is handed to whoever runs the core as it is in memory, the stretch of it that's shown, with a pixel's colours in
+the order libretro's XRGB8888 has them, where the renderer's texture has red first.
+
+It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
+Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
+kept the program from ending on Windows.
+
+Nothing of the console changes: the processor, the video interface and the renderer's drawing are as Dolphin has them.
+Nothing of Dolphin is in the repository but the lines of its own this change sits between.
+
+diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
+index 4ced7bf..024afc9 100644
+--- a/Source/Core/DolphinLibretro/Input.cpp
++++ b/Source/Core/DolphinLibretro/Input.cpp
+@@ -552,7 +552,8 @@ void Init(const WindowSystemInfo& wsi)
+   g_controller_interface.Initialize(wsi);
+   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
+ 
+-  GCAdapter::Init();
++  // Dreamports: no real adapter for GameCube controllers is looked for on the computer: the buttons come from whoever
++  // runs the core, and nothing else
+   Pad::Initialize();
+   Pad::InitializeGBA();
+   Keyboard::Initialize();
+diff --git a/Source/Core/DolphinLibretro/Main.cpp b/Source/Core/DolphinLibretro/Main.cpp
+index 97ba667..392c7d7 100644
+--- a/Source/Core/DolphinLibretro/Main.cpp
++++ b/Source/Core/DolphinLibretro/Main.cpp
+@@ -283,6 +283,11 @@ void retro_run(void)
+   if (Core::GetState(system) == Core::State::Starting &&
+       !Libretro::g_emuthread_launched)
+   {
++    // Dreamports: the other renderers are started when the graphics context they asked for arrives. The software
++    // renderer asks for none, so nothing started it: it's started here, before the console boots, as they are
++    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
++      Libretro::Video::Video_InitializeBackend();
++
+     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+     if (system.IsDualCoreMode())
+     {
+@@ -299,12 +304,7 @@ void retro_run(void)
+ 
+     Libretro::g_emuthread_launched = true;
+ 
+-    if(Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
+-    {
+-      g_gfx.reset();
+-      g_gfx = std::make_unique<Libretro::Video::SWGfx>();
+-    }
+-    else if (Config::Get(Config::MAIN_GFX_BACKEND) == "Null")
++    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Null")
+     {
+       g_gfx.reset();
+       g_gfx = std::make_unique<Libretro::Video::NullGfx>();
+@@ -527,7 +527,9 @@ void retro_run(void)
+     Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
+       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+       Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");
+-    WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
++    // Dreamports: no real Wii Remote is looked for on the computer, over Bluetooth, for a GameCube game
++    if (system.IsWii())
++      WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
+   }
+ 
+   if (wiimoteDeviceUpdated)
+diff --git a/Source/Core/DolphinLibretro/Video.cpp b/Source/Core/DolphinLibretro/Video.cpp
+index a2366e7..14cced2 100644
+--- a/Source/Core/DolphinLibretro/Video.cpp
++++ b/Source/Core/DolphinLibretro/Video.cpp
+@@ -475,6 +475,28 @@ void ContextReset(void)
+     g_context_status.MarkInitialized();
+ }
+ 
++// Dreamports: a picture of the software renderer's, handed to whoever runs the core: the stretch of the texture that's
++// shown, in the order libretro's XRGB8888 has a pixel's colours, where the texture has red first
++void ShowSoftwareImage(const u8* data, u32 texture_width, const MathUtil::Rectangle<int>& shown)
++{
++  static std::vector<u32> picture;
++  const int width = shown.GetWidth(), height = shown.GetHeight();
++  if (!video_cb || width <= 0 || height <= 0)
++    return;
++  picture.resize(static_cast<size_t>(width) * height);
++  for (int y = 0; y < height; y++)
++  {
++    const u8* row = data + (static_cast<size_t>(shown.top + y) * texture_width + shown.left) * 4;
++    for (int x = 0; x < width; x++)
++    {
++      picture[static_cast<size_t>(y) * width + x] =
++          0xFF000000u | (u32(row[x * 4]) << 16) | (u32(row[x * 4 + 1]) << 8) | row[x * 4 + 2];
++    }
++  }
++  video_cb(picture.data(), width, height, static_cast<size_t>(width) * 4);
++  UpdateActiveConfig();
++}
++
+ bool Video_InitializeBackend()
+ {
+   WindowSystemInfo wsi = {};
+diff --git a/Source/Core/VideoBackends/Software/SWGfx.cpp b/Source/Core/VideoBackends/Software/SWGfx.cpp
+index 7004c50..bce94af 100644
+--- a/Source/Core/VideoBackends/Software/SWGfx.cpp
++++ b/Source/Core/VideoBackends/Software/SWGfx.cpp
+@@ -62,6 +62,8 @@ bool SWGfx::BindBackbuffer(const ClearColor& clear_color)
+     return true;
+ 
+   GLContext* context = m_window->GetContext();
++  if (!context)
++    return true;
+   context->Update();
+   g_presenter->SetBackbuffer(context->GetBackBufferWidth(), context->GetBackBufferHeight());
+   return true;
+@@ -106,12 +108,28 @@ std::unique_ptr<AbstractPipeline> SWGfx::CreatePipeline(const AbstractPipelineCo
+   return std::make_unique<SWPipeline>();
+ }
+ 
++}  // namespace SW
++
++#if defined(__LIBRETRO__)
++// Dreamports: the libretro front takes each picture as it's shown (DolphinLibretro/Video.cpp)
++namespace Libretro::Video
++{
++void ShowSoftwareImage(const u8* data, u32 texture_width, const MathUtil::Rectangle<int>& shown);
++}
++#endif
++
++namespace SW
++{
+ // Called on the GPU thread
+ void SWGfx::ShowImage(const AbstractTexture* source_texture,
+                       const MathUtil::Rectangle<int>& source_rc)
+ {
+   if (!IsHeadless())
+     m_window->ShowImage(source_texture, source_rc);
++#if defined(__LIBRETRO__)
++  Libretro::Video::ShowSoftwareImage(static_cast<const SWTexture*>(source_texture)->GetData(0, 0),
++                                     source_texture->GetWidth(), source_rc);
++#endif
+ }
+ 
+ void SWGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool colorEnable,
+@@ -138,6 +156,9 @@ void SWGfx::SetScissorRect(const MathUtil::Rectangle<int>& rc)
+ SurfaceInfo SWGfx::GetSurfaceInfo() const
+ {
+   GLContext* context = m_window->GetContext();
++  // Dreamports: with no window, the size of the console's own framebuffer
++  if (!context)
++    return {640u, 528u, 1.0f, AbstractTextureFormat::RGBA8};
+   return {std::max(context->GetBackBufferWidth(), 1u), std::max(context->GetBackBufferHeight(), 1u),
+           1.0f, AbstractTextureFormat::RGBA8};
+ }
+diff --git a/Source/Core/VideoBackends/Software/SWOGLWindow.cpp b/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
+index a002e3e..41c1ae6 100644
+--- a/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
++++ b/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
+@@ -29,11 +29,18 @@ std::unique_ptr<SWOGLWindow> SWOGLWindow::Create(const WindowSystemInfo& wsi)
+ 
+ bool SWOGLWindow::IsHeadless() const
+ {
+-  return m_gl_context->IsHeadless();
++  // Dreamports: with no OpenGL context there's still a picture to show, which the libretro front hands over itself
++  return m_gl_context ? m_gl_context->IsHeadless() : false;
+ }
+ 
+ bool SWOGLWindow::Initialize(const WindowSystemInfo& wsi)
+ {
++#if defined(__LIBRETRO__)
++  // Dreamports: the software renderer draws on the processor and its picture is already in memory, so under libretro
++  // it needs no OpenGL context to put it in a window: the front gives the picture to whoever runs it (Video.h)
++  if (wsi.type == WindowSystemType::Libretro)
++    return true;
++#endif
+   m_gl_context = GLContext::Create(wsi);
+   if (!m_gl_context)
+     return false;
+@@ -87,6 +94,8 @@ bool SWOGLWindow::Initialize(const WindowSystemInfo& wsi)
+ void SWOGLWindow::ShowImage(const AbstractTexture* image,
+                             const MathUtil::Rectangle<int>& xfb_region)
+ {
++  if (!m_gl_context)
++    return;
+   const SW::SWTexture* sw_image = static_cast<const SW::SWTexture*>(image);
+   m_gl_context->Update();  // just updates the render window position and the backbuffer size
+ 

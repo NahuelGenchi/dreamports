@@ -49,6 +49,10 @@
 // can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
+//
+// The environment's DP_LEAVE, when it's set, has the program end the moment its work is written, without the core's own
+// ending, for a core whose ending can fail or never come, as Dolphin's does on Windows: nothing of a run is kept past
+// it anyway.
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -642,7 +646,22 @@ static void searchThread(void* console, int plays) {
 #endif
 }
 
+static int run(int argc, char** argv);
+
 int main(int argc, char** argv) {
+	int code = run(argc, argv);
+	if (getenv("DP_LEAVE")) {
+		fflush(NULL);
+#ifdef _WIN32
+		TerminateProcess(GetCurrentProcess(), (UINT) code);
+#else
+		_exit(code);
+#endif
+	}
+	return code;
+}
+
+static int run(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
 	if (argc < (live ? 6 : route ? 5 : 12)) {
 		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n");
@@ -837,6 +856,11 @@ int main(int argc, char** argv) {
 		ran.frame = frame;
 		startsFrame((uint32_t) frame);
 		retro_run();
+		// a core that makes the console's memory as it boots, in its first frame, has none to give before that
+		if (!memory) {
+			memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+		}
 		noteSize(frame);
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			uint32_t address = reads[nextRead * 3 + 1], bytes = reads[nextRead * 3 + 2], value = 0;
