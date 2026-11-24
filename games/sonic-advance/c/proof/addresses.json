@@ -199,6 +199,7 @@
     "sub_8065794": "08065761",
     "Task_LoadGameLogo": "0800D71D",
     "Task_800D7EC": "0800D7ED",
-    "TaskDestructor_TitleScreen": "0800E021"
+    "TaskDestructor_TitleScreen": "0800E021",
+    "m4aSongNumStart": "080977E5"
   }
 }
