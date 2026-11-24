@@ -2,7 +2,8 @@
 // the reference emulator, built as test:real-nds builds it, every frame of both screens and the sound, each with a
 // Dreamport in C in a folder of its own that it removes after, so no game's copy is needed. test:real-nds proves the
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
-// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), and finds a Dreamport that draws them wrong.
+// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), and finds
+// Dreamports that draw them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,6 +12,7 @@ import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { writeRecording } from '../lib/recording.mjs';
 import { madeUpNdsBackgrounds } from './made-up-nds-bg.mjs';
+import { madeUpNdsSprites, setupInC } from './made-up-nds-obj.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -75,6 +77,33 @@ async function main() {
   writeGame({ front: '0x0106' });
   run = dp('prove', C_GAME, 'scroll');
   check(run.status !== 0 && report('scroll')?.firstDifference?.frame === 0, `and a background behind where it should be in front: ${JSON.stringify(report('scroll')?.firstDifference)}`);
+
+  console.log('Sprites, on both engines, their tiles mapped both ways');
+  const sprites = madeUpNdsSprites(), spritesCopy = join(WORK, 'sprites.nds');
+  writeFileSync(spritesCopy, sprites.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP OBJS', code: 'MDOE', sha1: sprites.sha1 }, null, 2)}\n`);
+  run = dp('rom', spritesCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the second program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'scroll.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'sprites.json'), {
+    about: 'The sprites moving, with A and Right held at times.', frames: FRAMES,
+    held: [[0, []], [30, ['A']], [60, []], [100, ['RIGHT']], [130, ['A', 'RIGHT']], [160, []]],
+  });
+  const writeSprites = ({ flip = '0x1000', sprite1 = '0x0801' } = {}) => {
+    const numbers = { SETUP: setupInC(), FLIP: flip, SPRITE1: sprite1 };
+    writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'sprites.c'), 'utf8').replace(/@([A-Z_0-9]+)@/g, (_, key) => numbers[key]));
+  };
+  writeSprites();
+  run = dp('prove', C_GAME, 'sprites');
+  const drawn = report('sprites');
+  check(run.status === 0 && drawn?.matched === FRAMES, `the kit's engines draw the program's sprites as melonDS does on every frame, 16 and 256 colours, flipped, mapped both ways, off each edge, among the backgrounds, the earlier over the later: ${drawn?.matched} of ${FRAMES}, ${JSON.stringify(drawn?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeSprites({ flip: '0' });
+  run = dp('prove', C_GAME, 'sprites');
+  check(run.status !== 0 && report('sprites')?.firstDifference?.frame === 100, `a sprite that isn't flipped while Right is held is found where it first shows, at frame 100: ${JSON.stringify(report('sprites')?.firstDifference)}`);
+  writeSprites({ sprite1: '0x0001' });
+  run = dp('prove', C_GAME, 'sprites');
+  check(run.status !== 0 && report('sprites')?.firstDifference?.frame === 0, `and a sprite in front of the background where it's behind: ${JSON.stringify(report('sprites')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
