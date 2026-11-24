@@ -1,0 +1,63 @@
+diff --git a/Core/HLE/sceDisplay.cpp b/Core/HLE/sceDisplay.cpp
+index 9cc9bc7..567638a 100644
+--- a/Core/HLE/sceDisplay.cpp
++++ b/Core/HLE/sceDisplay.cpp
+@@ -156,6 +156,7 @@ void __DisplayVblankEndCallback(SceUID threadID, SceUID prevCallbackId);
+ 
+ void __DisplayFlip(int cyclesLate);
+ static void __DisplaySetFramerate(void);
++static bool dreamportsAtVblank = false;
+ 
+ static bool UseAutoFrameSkip() {
+ 	return g_Config.bAutoFrameSkip && !g_Config.bSkipBufferEffects;
+@@ -552,11 +553,12 @@ void hleEnterVblank(u64 userdata, int cyclesLate) {
+ 		framebuf = latchedFramebuf;
+ 		framebufIsLatched = false;
+ 		gpu->SetDisplayFramebuffer(framebuf.topaddr, framebuf.stride, framebuf.fmt);
+-		__DisplayFlip(cyclesLate);
+-	} else if (!flippedThisFrame) {
+-		// Gotta flip even if sceDisplaySetFramebuf was not called.
+-		__DisplayFlip(cyclesLate);
+ 	}
++	// Dreamports: one frame of the tools is one frame of the console, so each V-blank ends a frame and shows what the
++	// screen shows then, whether anything was drawn since the last or not, and nothing else ends one.
++	dreamportsAtVblank = true;
++	__DisplayFlip(cyclesLate);
++	dreamportsAtVblank = false;
+ }
+ 
+ static void NotifyUserIfSlow() {
+@@ -592,6 +594,20 @@ void __DisplayFlip(int cyclesLate) {
+ 	__DisplaySetFramerate();
+ 
+ 	flippedThisFrame = true;
++	// Dreamports: no frame is skipped, none waits for the computer's clock, and a frame ends at its V-blank alone.
++	if (!dreamportsAtVblank)
++		return;
++	DisplayFireFlip();
++	if (Core_NextFrame()) {
++		gpu->SetCurFramebufferDirty(true);
++		DisplayFireActualFlip();
++	}
++	gpuStats.numFlips++;
++	gstate_c.skipDrawReason &= ~SKIPDRAW_SKIPFRAME;
++	numSkippedFrames = 0;
++	CoreTiming::ScheduleEvent(0 - cyclesLate, afterFlipEvent, 0);
++	numVBlanksSinceFlip = 0;
++	return;
+ 	// We flip only if the framebuffer was dirty. This eliminates flicker when using
+ 	// non-buffered rendering. The interaction with frame skipping seems to need
+ 	// some work.
+diff --git a/Core/HLE/sceRtc.cpp b/Core/HLE/sceRtc.cpp
+index 12a2c0a..f29c93b 100644
+--- a/Core/HLE/sceRtc.cpp
++++ b/Core/HLE/sceRtc.cpp
+@@ -149,6 +149,8 @@ void __RtcInit()
+ 	// Everything else is relative to that, "virtual time."
+ 	timeval tv;
+ 	gettimeofday(&tv, NULL);
++	// Dreamports: the console's clock starts at the first second of 2005 in every run, and goes on by the console's own time.
++	tv.tv_sec = 1104537600;
+ 	rtcBaseTime.tv_sec = tv.tv_sec;
+ 	rtcBaseTime.tv_usec = 0;
+ 	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)

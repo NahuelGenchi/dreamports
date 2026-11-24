@@ -30,6 +30,8 @@ export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
 // What CMake builds a core with. Every product and sum the emulator's own C++ works out is rounded on its own, as
 // -ffp-contract=off asks: a compiler for arm64, such as Apple's on a Mac, would otherwise fuse a product and a sum into
 // one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
+// On Windows CMake is told of the compiler the tools got and its make, as it would otherwise look for Microsoft's
+const WINDOWS_CMAKE = ['-G', 'MinGW Makefiles', '-DCMAKE_C_COMPILER=gcc', '-DCMAKE_CXX_COMPILER=g++'];
 const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
   ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
 // a core with a patch of the project's own has the patch's hash in its name too, with the hash of each of the project's
@@ -80,7 +82,8 @@ export function fetchSource({ core, name }) {
   }
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
-  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
+  // all of them, or the ones a list names, where an emulator's source has many it isn't built from
+  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1', ...(Array.isArray(core.submodules) ? ['--', ...core.submodules] : [])], source);
   if (core.patch) {
     // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
     // emulator's own files, and the patch won't write over it
@@ -108,10 +111,10 @@ function buildHere(machine, log, tools) {
   }
   log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
   const source = fetchSource(machine);
-  const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
+  const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
-    run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(tools ? [...WINDOWS_CMAKE, `-DCMAKE_MAKE_PROGRAM=${tools.make}`] : []), ...cmakeSettings(core)], source, tools?.env);
+    run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);

@@ -8,7 +8,9 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
-export const WINDOWS_BUILD = join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-build');
+// DP_WINDOWS_BUILD names another folder, for two builds at once on one computer, as each empties its folder as it
+// starts and as it ends
+export const WINDOWS_BUILD = process.env.DP_WINDOWS_BUILD || join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-build');
 
 const COMPILER = {
   name: 'w64devkit 2.10.1',
