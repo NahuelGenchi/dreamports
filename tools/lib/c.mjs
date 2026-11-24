@@ -100,6 +100,8 @@ export function consoleHeader(id) {
 #define CONSOLE_CLOCK ${clock}
 // how many sound samples it plays a second
 #define CONSOLE_SOUND_RATE ${machine.sound}
+// and the most a second can hold, a whole number, where the rate isn't one, as the Nintendo DS's
+#define CONSOLE_SOUND_MOST ${Math.ceil(machine.sound)}
 
 // its buttons as game_step gets them, a bit each, held or not
 enum {
