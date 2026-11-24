@@ -38,6 +38,7 @@ import { compareState, describeState } from './lib/state.mjs';
 import { compareMemory, describeMemory, memoryBytes, memorySpec, workMemoryOf } from './lib/memory.mjs';
 import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '../src/lib/entries.mjs';
 import { readProof } from './readme.mjs';
+import { keepPartFunctions, PART_FUNCTIONS, readPartFunctions } from './lib/part-functions.mjs';
 import { referenceOf } from './lib/reference.mjs';
 import { compareCardSaves, compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
 import { cellsOf, contentIn, finderOf, layoutOf, outsideIn, playedIn, startedIn, writePlayed } from './lib/played.mjs';
@@ -226,6 +227,11 @@ export async function run(args) {
     if (content) Object.assign(totals, { played: { total, played, percent }, ...(content.total ? { content } : {}) });
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
+  // what each part runs of the original, for a game whose parts are a version's tasks: only where the game keeps it
+  if (codeMap && readPartFunctions(game)) {
+    const ranInParts = new Map(results.flatMap(result => result.partsRan ?? []));
+    if (keepPartFunctions(versionOf(game).game, original.sha1, ranInParts)) console.log(`\nWritten: games/${versionOf(game).game}/proof/${PART_FUNCTIONS}, the functions the original runs in each part. npm run dp -- tasks ${game} --update --yes writes the parts' tasks again from it.`);
+  }
   // what a whole proof found, which share can show in place of a clip when the step changed no frame (lib/same-proof.mjs)
   if (!names.length) {
     const file = `games/${game}/proof/progress.json`;
@@ -582,7 +588,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     const ownChanges = theirSaves?.before ? ownSaves.filter(change => change.frame >= 0) : ownSaves;
     const saved = !first.saves ? null : machine.id === 'ps2' ? compareCardSaves(theirSaves.changes, ownChanges) : compareSaves(theirSaves.changes, ownChanges, readLeftover(game));
     // what of the original's code ran in those frames, for gameplay proven, with the code the game made in memory
-    let played = null, outsideMap = null;
+    let played = null, outsideMap = null, startedInPart = null;
     if (seesPlayed) {
       const made = new Map(first.played.made.filter(m => codeMap.functions[m.index]?.bytes).map(m => [m.index, m.bytes]));
       const find = finderOf(codeMap, cartridge, made, first.played.modules);
@@ -595,8 +601,20 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       if (machine.id === 'ps2') {
         const places = new Map(codeMap.functions.map((f, index) => [f.key, index]));
         for (const key of startedIn(played.set, codeMap)) proven.add(places.get(key));
+        startedInPart = inPart => startedIn(playedIn(first.played.records, inPart, layoutOf(codeMap), find), codeMap);
       }
     }
+    // what the original ran in each part's frames, whether or not they matched: the part's functions, for a version
+    // whose tasks are its parts (lib/part-functions.mjs)
+    const partsRan = quick || !codeMap || !first.ran ? [] : parts.map(({ name: part, frames: [a, b] }) => {
+      const inPart = new Uint8Array(originalHeld.length + 1), ran = new Set();
+      for (let frame = Math.max(0, a); frame <= b && frame < frames; frame++) {
+        inPart[originalOf[frame]] = 1;
+        for (const f of first.ran[originalOf[frame]] ?? []) ran.add(codeMap.functions[f].key);
+      }
+      if (startedInPart) for (const key of startedInPart(inPart)) ran.add(key);
+      return [part, [...ran].sort()];
+    });
     const differing = stretchesOf(different), soundDiffers = stretchesOf(soundDifferent);
     // the frames the game says no player could ever see, which fail however they compare: { from, to, why }
     const neverSeen = [];
@@ -905,7 +923,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       log(`  Saves: the original wrote its save ${saved.original} time${saved.original === 1 ? '' : 's'} and the Dreamport ${saved.dreamport}, ${saved.same} the same. The first that differs is write ${write}${frame === null ? ', which the original never made' : `, at the original's frame ${frame}`}${file === undefined && at === null ? (frame === null ? '' : ', which the Dreamport never made') : where}.`);
     }
     if (showing) log(`  What the original shows as it ends: ${Object.entries(showing).map(([kind, value]) => `its ${kind} is ${typeof value === 'number' ? `${value}, which original.json gives no name` : value}`).join('; ')}.`);
-    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(saved && (saved.original || saved.dreamport) ? { saves: { original: saved.original, dreamport: saved.dreamport, same: saved.same } } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
+    return { frames, matched: quick && firstDifference >= 0 ? hashes.length - 1 : matched, differs: differing, soundDiffers, onlyInOriginal, neverInPlay: neverSeen, ...(played ? { played } : {}), ...(saved && (saved.original || saved.dreamport) ? { saves: { original: saved.original, dreamport: saved.dreamport, same: saved.same } } : {}), ...(showing ? { shows: showing } : {}), ...(goalsHeld ? { reached: goalsHeld } : {}), unreached, changed: !!changed, ...(partsRan.length ? { partsRan } : {}), functions: [...proven].sort((a, b) => a - b).map(i => codeMap.functions[i].key) };
     }
   }
 }
