@@ -51,7 +51,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2', 'psp'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';

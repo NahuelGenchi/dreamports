@@ -118,10 +118,19 @@ index 12a2c0a..f29c93b 100644
  	rtcBaseTime.tv_usec = 0;
  	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..d4f4377 100644
+index 3b2f103..b33273f 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
-@@ -1530,7 +1530,12 @@ bool retro_load_game(const struct retro_game_info *game)
+@@ -32,6 +32,8 @@
+ #include "Core/HLE/__sceAudio.h"
+ #include "Core/HW/MemoryStick.h"
+ #include "Core/MemMap.h"
++#include "Core/MIPS/MIPS.h"
++#include "Core/MIPS/MIPSTables.h"
+ #include "Core/System.h"
+ #include "Core/CoreTiming.h"
+ #include "Core/HW/Display.h"
+@@ -1530,7 +1532,12 @@ bool retro_load_game(const struct retro_game_info *game)
  
     CoreParameter coreParam   = {};
     coreParam.enableSound     = true;
@@ -135,7 +144,7 @@ index 3b2f103..d4f4377 100644
     coreParam.startBreak      = false;
     coreParam.headLess        = true;  // really?
     coreParam.graphicsContext = ctx;
-@@ -1697,6 +1702,10 @@ static void retro_input(void)
+@@ -1697,6 +1704,10 @@ static void retro_input(void)
  
     x_left = Libretro::clamp(x_left / norm * mappedNorm, -1.0f, 1.0f);
     y_left = Libretro::clamp(y_left / norm * mappedNorm, -1.0f, 1.0f);
@@ -146,7 +155,7 @@ index 3b2f103..d4f4377 100644
  
     __CtrlSetAnalogXY(CTRL_STICK_LEFT, x_left, y_left);
     __CtrlSetAnalogXY(CTRL_STICK_RIGHT, x_right, y_right);
-@@ -1706,6 +1715,12 @@ void retro_run(void)
+@@ -1706,6 +1717,12 @@ void retro_run(void)
  {
     if (g_pendingBoot) {
        BootState state = PSP_InitUpdate(&g_bootErrorString);
@@ -159,7 +168,7 @@ index 3b2f103..d4f4377 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
-@@ -2046,6 +2061,16 @@ inline int16_t Clamp16(int32_t sample) {
+@@ -2046,6 +2063,101 @@ inline int16_t Clamp16(int32_t sample) {
     return sample;
  }
  
@@ -173,18 +182,105 @@ index 3b2f103..d4f4377 100644
 +   dreamportsSoundCount = 0;
 +}
 +
++// Dreamports: the console's memory by address, whichever of its mirrors the address is in, or nullptr where it has
++// none, for the tools' program that drives the emulator (tools/libretro/host.c). Memory 0 is all the processor sees.
++extern "C" RETRO_API const uint8_t *dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes) {
++   if (memory != 0 || !Memory::IsValidRange(address, bytes))
++      return nullptr;
++   return Memory::GetPointerUnchecked(address);
++}
++
++// Dreamports: one function of a game's program at a time, run by the emulator's own interpreter, for the tools'
++// function check (tools/psp/twin.mjs). `in` holds the function's address, how many bytes long it is, how many
++// instructions it may run, the address it comes back to, the 32 registers with hi and lo, and how many places stop a
++// call, then each: the pairs of instructions the system writes its calls into. Each instruction runs as the
++// interpreter runs it, a branch with its delay slot. Before one that reads or writes memory, `noted` is told where and
++// how many bytes, and whether it reads (1) or writes (2), or the call ends there, as an exception, when the processor
++// has nothing there. `out` gets how the call ended (0 came back, 1 ran out of instructions, 2 met an exception, 3 went
++// where the check can't follow, 4 reached the system), where, the pc, how many instructions ran, and the registers;
++// `ran` a byte for each instruction of the function: 1 ran, 2 a branch there went to its target, 4 went on.
++extern "C" RETRO_API void dreamports_call(const uint32_t *in, uint32_t *out, uint8_t *ran, void (*noted)(uint32_t address, uint32_t bytes, uint32_t how)) {
++   MIPSState *m = currentMIPS;
++   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[38];
++   const uint32_t *stops = in + 39;
++   for (int i = 0; i < 32; i++)
++      m->r[i] = in[4 + i];
++   m->r[0] = 0;
++   m->hi = in[36];
++   m->lo = in[37];
++   m->pc = address;
++   m->nextPC = 0;
++   m->inDelaySlot = false;
++   const CoreState was = coreState;
++   coreState = CORE_RUNNING_CPU;
++   uint32_t end = 0, detail = 0, steps = 0;
++   for (;;) {
++      const uint32_t pc = m->pc;
++      if (pc == back && !m->inDelaySlot) { end = 0; break; }
++      if (steps >= limit) { end = 1; detail = pc; break; }
++      bool system = false;
++      for (uint32_t i = 0; i < stopCount && !system; i++)
++         system = pc == stops[i] || pc == stops[i] + 4;
++      if (system) { end = 4; detail = pc; break; }
++      if (!Memory::IsValidAddress(pc) || (pc & 3)) { end = 3; detail = pc; break; }
++      const MIPSOpcode op = Memory::Read_Instruction(pc, true);
++      const uint32_t word = op.encoding;
++      // a call of the system made by the game's own code
++      if ((word & 0xFC00003F) == 0x0000000C) { end = 4; detail = pc; break; }
++      const MIPSInfo info = MIPSGetInfo(op);
++      if (info & (IN_MEM | OUT_MEM)) {
++         const uint32_t opcode = word >> 26, base = m->r[(word >> 21) & 31];
++         uint32_t bytes = MIPSGetMemoryAccessSize(op), at = base + (int16_t)(word & 0xFFFF);
++         // the vector unit's loads and stores leave the offset's low two bits to say other things
++         if (opcode == 0x32 || opcode == 0x36 || opcode == 0x3A || opcode == 0x3E || opcode == 0x35 || opcode == 0x3D)
++            at = base + (int16_t)(word & 0xFFFC);
++         // a word or a quad moved in part reaches the whole of it
++         if (opcode == 0x22 || opcode == 0x26 || opcode == 0x2A || opcode == 0x2E) { at &= ~3u; bytes = 4; }
++         if (opcode == 0x35 || opcode == 0x3D) { at &= ~15u; bytes = 16; }
++         if (!bytes || !Memory::IsValidRange(at, bytes)) { end = 2; detail = at; break; }
++         if (noted) noted(at, bytes, (info & IN_MEM ? 1 : 0) | (info & OUT_MEM ? 2 : 0));
++      }
++      const bool slot = m->inDelaySlot;
++      MIPSInterpret(op);
++      steps++;
++      if (m->inDelaySlot && slot) {
++         m->pc = m->nextPC;
++         m->inDelaySlot = false;
++      }
++      if (pc >= address && pc - address < span) {
++         uint8_t &mark = ran[(pc - address) >> 2];
++         mark |= 1;
++         if (info & IS_CONDBRANCH)
++            mark |= !slot && m->inDelaySlot ? 2 : 4;
++      }
++      if (coreState != CORE_RUNNING_CPU) { end = 2; detail = pc; break; }
++   }
++   out[0] = end;
++   out[1] = detail;
++   out[2] = m->pc;
++   out[3] = steps;
++   for (int i = 0; i < 32; i++)
++      out[4 + i] = m->r[i];
++   out[36] = m->hi;
++   out[37] = m->lo;
++   m->inDelaySlot = false;
++   coreState = was;
++}
++
  void System_AudioPushSamples(const int32_t *audio, int numSamples, float volume) {
     // We ignore volume here, because it's handled by libretro presumably.
  
 diff --git a/libretro/libretro.osx.def b/libretro/libretro.osx.def
-index 53a556a..ff52c8d 100644
+index 53a556a..3df10b5 100644
 --- a/libretro/libretro.osx.def
 +++ b/libretro/libretro.osx.def
-@@ -1,6 +1,7 @@
+@@ -1,6 +1,9 @@
  #LIBRARY "libretro"
  #EXPORTS
  _retro_set_environment
 +_dreamports_sound_list
++_dreamports_memory
++_dreamports_call
  _retro_set_video_refresh
  _retro_set_audio_sample
  _retro_set_audio_sample_batch

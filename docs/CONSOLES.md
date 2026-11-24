@@ -79,7 +79,9 @@ PPSSPP runs it, built from [its makers' source](https://github.com/hrydgard/ppss
 
 **Its sound list.** The patch also keeps each frame's sound list, everything a game gives the sound channels and each block of 64 samples the console mixes, hashed as the kit in C hashes its own ([the kit](../kit/psp/c/README.md)), so a game's sound is proven by it and by every sample, as a PlayStation 2's is.
 
-**Still to come.** The graphics chip and the processor's own units in its kit in C, its code map, its function check and its proofs, each in its own issue. Nothing has tried a disc, a save, a start point or a search for a route on it yet.
+**Its function check.** The tools' patch also gives the core a call that runs one function of a game's program by the emulator's own interpreter, which `twin` calls beside the function's twin in C, from the same memory ([The function check on the PlayStation Portable](../tools/README.md#the-function-check-on-the-playstation-portable)), and the tools keep the console's proofs. `match` has no compiler for it: its games were built with Sony's or SN Systems', which no one can have freely.
+
+**Still to come.** The graphics chip and the processor's own units in its kit in C, each in its own issue. Nothing has tried a disc, a save, a start point or a search for a route on it yet.
 
 ## The PlayStation 2
 
