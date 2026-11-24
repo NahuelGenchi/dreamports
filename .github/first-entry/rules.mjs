@@ -55,11 +55,14 @@ const near = (a, b) => !!letters(a) && !!letters(b) && (letters(a).includes(lett
 // its code at 08000000 or 09000000. Another console's games say less or nothing, so their title has more room, and is
 // the game's name or part of it, as `rom` takes it from the copy's own name when its header has none. A PlayStation 2
 // disc's code is the name of the program it boots, as SLUS_205.73, and its functions are in more places than one
-// (`places`, tools/ps2/functions.mjs)
+// (`places`, tools/ps2/functions.mjs). A GameCube disc's code is its six letters, the game's four and its
+// publisher's two, its program runs in the console's 24 MB from 80000000, and its modules are places of their own
+// (tools/gamecube/functions.mjs)
 const OTHER = { title: /^[A-Za-z0-9][A-Za-z0-9 _.!&',:+()-]{0,59}$/, code: /^[A-Z0-9 -]{0,16}$/, address: /^/, named: found => near(namesOf(found).name, found.title) };
 const HEADER = {
   gba: { title: /^[A-Za-z0-9 _.!&'-]{1,12}$/, code: /^[A-Z0-9]{4}$/, address: /^0[89]/, named: () => true },
-  ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true },
+  ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true, vu: true },
+  gamecube: { ...OTHER, code: /^(?:[A-Z0-9]{6})?$/, address: /^8(?:0|1[0-7])/, places: true },
   other: OTHER,
 };
 const headerOf = console => HEADER[console] ?? HEADER.other;
@@ -87,8 +90,9 @@ export function readOriginal(text) {
 // its size, and the stretches of the cartridge the game copies into its work RAM, each where, from where and how long.
 // On a disc with more places than one, a function not in the program the disc boots says where it is after its
 // address: `@` and the file's path, with the module or the place inside it after a colon, and `~vu` for a vector
-// unit's code, as 00000000@IOPRP254.IMG:CDVDFSV and 003599B8~vu
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
+// unit's code, as 00000000@IOPRP254.IMG:CDVDFSV and 003599B8~vu, or on a GameCube disc a module's file, as
+// 000000F4@stage/first.rel
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Za-z0-9_.-]{1,32}(?:\/[A-Za-z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
 
 /** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null.
  *  A Super Nintendo game's map also says the processor's mode each function starts in (tools/snes/functions.mjs). */
@@ -110,6 +114,8 @@ export function readCodeMap(text, sha1, console = 'gba') {
   // a function in the work RAM, with its bytes, is a Game Boy Advance's (tools/codemap.mjs), and one in another place a
   // disc's
   const where = address => {
+    // a vector unit's code is a PlayStation 2's alone
+    if (address.endsWith('~vu') && !headerOf(console).vu) return false;
     if (address.length > 8 && address[8] !== '/') return places;
     return address.includes('/') ? console === 'gba' && /^0[23]/.test(address) : headerOf(console).address.test(address);
   };
