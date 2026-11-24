@@ -4,7 +4,7 @@
 
 This folder is the PlayStation Portable's kit for games written in C, on what [every console's kit in C](../../c/README.md) shares. A game keeps the console's memory at the console's own addresses, runs in the console's threads and time, and asks the system for what its original asks, by the same names. The kit answers as the console's emulator in the proof tools does, PPSSPP ([Other consoles](../../../docs/CONSOLES.md#the-playstation-portable)), down to the cycle a thread is woken on.
 
-Like the rest of the kits it's under [GPL-3.0-or-later](../../c/LICENSE), and nothing from any game is in it. It's written from how the console is documented to behave and from how PPSSPP, under the GPL too, answers a program.
+Like the rest of the kits it's under [GPL-3.0-or-later](../LICENSE), and nothing from any game is in it. It's written from how the console is documented to behave and from how PPSSPP, under the GPL too, answers a program.
 
 ## What's in it
 
