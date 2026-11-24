@@ -110,8 +110,10 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
-    run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+    // on Windows, with the compiler and make the tools got for themselves (../gba/windows.mjs)
+    const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
+    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
+    run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // On Windows the platform is named: libretro's makefiles tell it from `uname -a`, which there is w64devkit's, saying
     // Windows_NT, the computer's name and MS/Windows, and take Windows only for MINGW or a small "win" in it, which only a
