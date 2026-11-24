@@ -14,6 +14,12 @@
 // first voice's pitch, lets go of the tone and keys it on again, keys the click on, turns the second voice's volume into
 // a sweep, and writes back what it reads of the chip (the voices that reached their end, and whether the interrupt
 // address was played), so what the chip says is in the sound list too.
+//
+// madeUpPs2Sound({ timed: true }) carries a module of another kind, whose code takes the IOP's own time, as a sound
+// library's start does when it waits in a loop between its writes to the chip: its thread waits for each V-blank, then
+// writes the frame's number where the chip takes no notice, waits in a loop for longer than a block of samples, and
+// writes it again, and every TIMED_EVERY frames waits once more, for longer than a frame, and writes it a third time.
+// The EE only loads it and draws, with no server to call.
 
 import { LOAD_AT, lw as eeLw, sw as eeSw, addiu as eeAddiu, li as eeLi, here, bne as eeBne, j as eeJ, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET } from './made-up-ps2.mjs';
 
@@ -328,11 +334,60 @@ const soundModule = () => assembleIop([
   align(16), bytesAt('click', CLICK),
 ]);
 
+/** The timed module's waits, each in times round a loop of three instructions, which the emulator counts as three of
+ *  the IOP's ticks: a short one each frame, about 40 of the emulator's slices of 600 ticks, longer than a block of
+ *  samples is apart about half the time, and a long one, a frame and a half, on frame TIMED_AT of every TIMED_EVERY. Each
+ *  write after a wait comes about half a slice from a slice's end, as the waits are a whole number of slices and a half
+ *  from the thread's waking, so the few ticks the emulator's kernel takes to wake it don't move it to another slice. */
+export const SHORT_WAIT = 8100, LONG_WAIT = 307600, TIMED_EVERY = 50, TIMED_AT = 20;
+/** What the timed module writes after each of its waits, with the frame's number: before, after the short one and
+ *  after the long one. */
+export const TIMED_MARKS = [0, 0x4000, 0x8000];
+
+const timedModule = () => assembleIop([
+  // its start: its thread made and started, and it stays in memory
+  at('start'),
+  addiu(SP, SP, -32), sw(RA, 28, SP), sw(S0, 24, SP),
+  bal('started'), NOP, at('started'), startFrom('started'),
+  placeOf(A0, 'thread'), placeOf(T0, 'run'), sw(T0, 8, A0),
+  bal('CreateThread'), NOP,
+  addiu(A0, V0, 0), bal('StartThread'), addiu(A1, ZERO, 0),
+  lw(S0, 24, SP), lw(RA, 28, SP), addiu(SP, SP, 32),
+  JR_RA, addiu(V0, ZERO, 0),
+
+  // its thread, with S1 the frame, from when it first woke
+  at('run'),
+  bal('running'), NOP, at('running'), startFrom('running'),
+  lui(S3, 0xBF90), addiu(S1, ZERO, 0),
+  at('frame'),
+  bal('WaitVblankStart'), NOP,
+  sh(S1, R.NOTE, S3), ...li(T0, SHORT_WAIT),
+  at('short'), addiu(T0, T0, -1), bne(T0, ZERO, 'short'), NOP,
+  ori(T1, S1, TIMED_MARKS[1]), sh(T1, R.NOTE, S3),
+  remainder(TIMED_EVERY, 'timed'),
+  ...li(T1, TIMED_AT), bne(T2, T1, 'notLong'), NOP,
+  ...li(T0, LONG_WAIT),
+  at('long'), addiu(T0, T0, -1), bne(T0, ZERO, 'long'), NOP,
+  ori(T1, S1, TIMED_MARKS[2]), sh(T1, R.NOTE, S3),
+  at('notLong'),
+  beq(ZERO, ZERO, 'frame'), addiu(S1, S1, 1),
+
+  // what it calls of the IOP's kernel: thbase's CreateThread and StartThread, and vblank's WaitVblankStart
+  word(0x41E00000), word(0), word(0x0101), name8('thbase'),
+  at('CreateThread'), JR_RA, addiu(ZERO, ZERO, 4),
+  at('StartThread'), JR_RA, addiu(ZERO, ZERO, 6),
+  word(0), word(0),
+  word(0x41E00000), word(0), word(0x0101), name8('vblank'),
+  at('WaitVblankStart'), JR_RA, addiu(ZERO, ZERO, 4),
+  word(0), word(0),
+  at('thread'), word(0x02000000), word(0), word(0), word(0x800), word(32),
+]);
+
 // The module as an IRX file, the ELF the IOP's loader takes: one segment to load, and an .iopmod section saying its
 // name, where it starts and its sizes.
-function irxOf(words) {
+function irxOf(words, name) {
   const body = Buffer.from(new Uint32Array(words).buffer);
-  const name = 'dp_sound', iopmod = Buffer.alloc(26 + name.length + 1);
+  const iopmod = Buffer.alloc(26 + name.length + 1);
   iopmod.writeUInt32LE(0xFFFFFFFF, 0);     // no module information
   iopmod.writeUInt32LE(0, 4);              // where it starts, from its beginning
   iopmod.writeUInt32LE(0, 8);              // gp
@@ -380,7 +435,9 @@ function irxOf(words) {
 }
 
 /** The IOP module that plays the sound, as an IRX file. */
-export const soundIrx = () => irxOf(soundModule().words);
+export const soundIrx = () => irxOf(soundModule().words, 'dp_sound');
+/** The timed module, as an IRX file. */
+export const timedIrx = () => irxOf(timedModule().words, 'dp_timed');
 /** Where the module's file has its code, and where in that its tone and its click are, in bytes. */
 export const IRX_BODY = 0x80;
 export const moduleData = () => {
@@ -412,8 +469,8 @@ export const SIF_INIT = 0x80000002, SIF_REND = 0x80000008, SIF_BIND = 0x80000009
 // the place the RPC library sends a call's arguments to, which the emulator's SIF knows them by
 const RPC_ARGUMENTS = 0xDEADBEF0;
 
-export function madeUpPs2Sound() {
-  const irx = soundIrx();
+export function madeUpPs2Sound({ timed = false } = {}) {
+  const irx = timed ? timedIrx() : soundIrx();
   // the data after the GS's packet, each on a 16-byte boundary, in words from the start of it
   const layout = {}, data = [...PACKET];
   const put = (name, words) => {
@@ -506,15 +563,17 @@ export function madeUpPs2Sound() {
       ...sendTo('bind', 1, [0]), ...keep('bind id'), ...waitForReply('Bind', 'bind'),
       ...sendTo('call', 2, [1]), ...keep('call id'), eeAddiu(E.S4, E.V0, 0), ...waitForReply('Call', 'call'), ...dmaStat('call status'),
       ...keepWord('received 0', addressOf(packetAt, 'received')), ...keepWord('received 1', addressOf(packetAt, 'received') + 4),
-      // the module's own server, bound once
-      ...sendTo('serverBind', 1, [0]), ...waitForReply('ServerBind', 'server bind'),
+      // the module's own server, bound once, which the timed module hasn't
+      ...(timed ? [] : [...sendTo('serverBind', 1, [0]), ...waitForReply('ServerBind', 'server bind')]),
       ...eeLi(E.S3, addressOf(packetAt, 'labels')), eeAddiu(E.S5, E.ZERO, 0),
       here('frame'),
       ...waitForVBlank,
       // and called each frame with the frame's number, its answer kept
-      ...eeLi(E.T1, addressOf(packetAt, 'serverArguments')), eeSw(E.S5, 0, E.T1),
-      ...sendTo('serverCall', 2, [1]), ...waitForReply('ServerCall', null),
-      ...keepWord('answer', addressOf(packetAt, 'answered')), eeAddiu(E.S5, E.S5, 1),
+      ...(timed ? [] : [
+        ...eeLi(E.T1, addressOf(packetAt, 'serverArguments')), eeSw(E.S5, 0, E.T1),
+        ...sendTo('serverCall', 2, [1]), ...waitForReply('ServerCall', null),
+        ...keepWord('answer', addressOf(packetAt, 'answered')), eeAddiu(E.S5, E.S5, 1),
+      ]),
       ...send(PACKET),
       ...send(LABELS_SIZE, GIF_DMA, E.S3, 'labels'),
       eeJ('frame'), NOP,

@@ -9,7 +9,8 @@
 // the tools runs from one V-blank's start to the next, so it mixes 16 or 17 blocks, and what the IOP writes to the chip
 // as the frame starts comes before the frame's first block. The IOP's DMA to the sound chip goes on every 10,000 of its
 // ticks once a transfer has started, and the SIF's packets reach the EE as the EE's ticks pass (sif.c). A game's IOP
-// code runs as its frame starts, unless it says that time passes first (ps2_time_pass).
+// code runs as its frame starts, unless it says that time passes first (ps2_time_pass), and takes none of the IOP's
+// own unless it says how much (iop_time_pass, iop-bios.c).
 
 #include "ps2-kit.h"
 
@@ -181,7 +182,7 @@ static void ee_ticks(uint32_t ticks) {
 static void slice_end(void) {
   spu_ticks -= (int64_t)SLICE << 32;
   vblank_ticks -= SLICE;
-  iop_threads();
+  iop_threads(IOP_SLICE);
   iop_ticks(IOP_SLICE);
   into_slice = 0;
 }

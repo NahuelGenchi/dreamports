@@ -263,6 +263,7 @@ void sif_iop_run(void) {
   }
   waiting_count = 0;
 }
+int sif_iop_waiting(void) { return waiting_count > 0; }
 
 // As the EE's ticks pass: a bind whose server never came is answered with none, and the next packet goes to the EE's
 // memory once it has taken the last, as the EE's DMA channel 5 brings it, and the EE's handler runs.
