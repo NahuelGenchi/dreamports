@@ -74,13 +74,15 @@ void vu_kicked(const uint8_t *memory, uint32_t size, uint32_t at);
 /** The console's time (iop.c): set from power-on, and run to the next V-blank's start, mixing the sound due on the way. */
 void ps2_clock_power(void);
 void ps2_clock_to_vblank(void);
-/** The SIF as the EE's ticks pass (sif.c), the IOP's kernel set up as the console starts, and its threads woken by the
- *  V-blank (iop-bios.c). */
+/** The SIF as the EE's ticks pass (sif.c), the IOP's kernel set up as the console starts, its threads woken by the
+ *  V-blank, run at a slice's end with the IOP's ticks of it (iop-bios.c), and whether a call waits for a server's
+ *  thread (sif.c). */
 void sif_ticks(uint32_t ticks);
 void sif_iop_run(void);
 void iop_bios_power(void);
 void iop_vblank(void);
-void iop_threads(void);
+void iop_threads(uint32_t slice);
+int sif_iop_waiting(void);
 /** The pads on the SIO2 (pad.c): set as the console starts, given the frame's buttons, and the SIO2's registers and its
  *  two DMA channels as the IOP reaches them. */
 void pad_power(void);

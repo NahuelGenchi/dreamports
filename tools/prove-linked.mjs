@@ -49,7 +49,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const expected = Array.from({ length: frames }, (_, f) => Array.from({ length: players }, (_, p) => first.hashes[(f + 1) * players + p]));
 
   say('starting the Dreamport…');
-  await openDreamport(page, server, game, copy, { query: `?proof&${recording.start ?? `vs=${players}`}` });
+  await openDreamport(page, server, game, copy, { built: true, query: `?proof&${recording.start ?? `vs=${players}`}` });
   await page.evaluate(IN_PAGE);
   // the recording's buttons as the Dreamport names them: the first of its buttons that is each of the console's (prove.mjs)
   const named = new Map();
@@ -61,7 +61,9 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   if (missing.length) throw new Error(`${name}: holds ${missing.join(', ')}, which the Dreamport has no button for.`);
   const buttonsOf = list => list.map(b => named.get(b));
   const hashes = [], differ = [];
-  let firstDifference = -1;
+  // what the Dreamport threw, when it stopped, as a version does on a path it hasn't ported yet: the frame it stopped
+  // at and every one after differ, as in a recording one console plays (prove.mjs)
+  let firstDifference = -1, stopped = null;
   for (let from = 0; from < frames && !(quick && firstDifference >= 0 && from > Math.max(-1, ...keepAt)); from += BATCH) {
     const count = Math.min(BATCH, frames - from);
     say(`frame ${from + count} of ${frames}`);
@@ -76,6 +78,11 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
         differ.push(f);
         if (firstDifference < 0) firstDifference = f;
       }
+    }
+    if (played.length < count) {
+      stopped = { frame: from + played.length, threw: await page.evaluate('__linked.stoppedBy()') };
+      if (firstDifference < 0) firstDifference = stopped.frame;
+      break;
     }
   }
 
@@ -110,6 +117,11 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
     const last = stretches.at(-1);
     if (last && last[1] === f - 1) last[1] = f;
     else stretches.push([f, f]);
+  }
+  if (stopped && stopped.frame < frames) {
+    const last = stretches.at(-1);
+    if (last && last[1] === stopped.frame - 1) last[1] = frames - 1;
+    else stretches.push([stopped.frame, frames - 1]);
   }
   let clipFile = null, apart = 0, problems = [], changed = null;
   if (clipAt.length && hashes.length >= frames) {
@@ -154,6 +166,7 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   const matched = hashes.length - differ.length;
   const per = Array.from({ length: players }, (_, p) => hashes.filter((h, f) => h[p] !== expected[f][p]).length);
   log(`\n${name}: ${players} players, ${matched} of ${hashes.length} frames played match${firstDifference >= 0 ? `; the first that differs is ${firstDifference}, and each player differs in ${per.join(', ')} frames` : ''}. Pictures: ${out}`);
+  if (stopped) log(`  The Dreamport stopped at frame ${stopped.frame}, throwing ${stopped.threw.replace(/^Error: /, '')}, so it and every frame after differ. A path the game hasn't ported yet says so this way.`);
   if (clipFile) log(`  Clip, ${(clipFile.length / 1e6).toFixed(2)} MB, frames ${clipAt[0]} to ${clipAt.at(-1)}: ${out}/clip.mp4 (the Dreamport's screens above, the original's below)`);
   if (clipFile) log(`  What this step changed: ${changedText(changed)}${changed ? '' : ', so share leaves this clip out'}.`);
   if (changed) for (const problem of problems) log(`  share won't put this clip in a pull request: ${problem}`);

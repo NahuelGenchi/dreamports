@@ -286,6 +286,17 @@ void sif_call_reply(uint32_t id, const void *data);
 typedef int iop_start(int argc, char **argv);
 void iop_module_twin(const char *name, iop_start *start);
 void iop_each_vblank(void (*thread)(void));
+/** The IOP's own time, for a twin whose original's code takes long enough for it to count, as one that waits in a loop
+ *  between its writes to the sound chip: iop_time_pass says `iop_ticks` of the IOP's clock passed, one for each
+ *  instruction its original ran since the twin last said so, said after the code they count, as the emulator takes a
+ *  block's ticks as it ends. The emulator gives the IOP 600 a slice, so what the twin does next waits for the slice
+ *  where its original's goes on, and for a later frame when that's where it is. Only from a thread, an
+ *  iop_each_vblank's or a server's (sif_register_rpc), not from a module's start, and only for a Dreamport that calls
+ *  iop_keep_time once as it starts: its threads then run beside the EE's code (kit_run_beside, kit.h), as WebAssembly
+ *  only, and one partway through its work waits there for its time, the others behind it, as the IOP runs one thread
+ *  at a time. A twin that says nothing takes none of the IOP's time. */
+void iop_keep_time(void);
+void iop_time_pass(uint32_t iop_ticks);
 
 // The disc drive (cdvd.c). A game's EE code reaches it through the IOP's RPC servers, which the kit answers as the
 // emulator does, through the SIF. ps2_disc_sectors reads `count` sectors' 2048 bytes of data from `lba`, as the drive

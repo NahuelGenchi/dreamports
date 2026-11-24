@@ -141,6 +141,7 @@
     },
     "gba/bios": {
       "at": {
+        "CpuFastSet": "080997DC",
         "CpuSet": "080997E0",
         "Div": "080997E4",
         "Mod": "080997E8",
