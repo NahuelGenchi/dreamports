@@ -153,8 +153,11 @@ try {
   const first = opened.find(issue => issue.title.includes(FIRST)), second = opened.find(issue => issue.title.includes(SECOND));
   check(run.status === 0 && first?.number === HOME + 1 && second?.number === HOME + 2 && first.body.includes(keyOf(tick)) && !first.body.includes(keyOf(bump)) && second.body.includes(keyOf(bump)) && !second.body.includes(keyOf(tick)),
     `tasks --update writes each part's task again with the functions it runs that no part before it does: ${keyOf(tick)} for the first, ${keyOf(bump)} for the second`);
-  // the code no part runs, each program's start, comes after the parts, in groups that sit together in the code map
-  const rest = opened.filter(issue => issue.number > HOME + 2);
+  // the code no part runs, each program's start, comes after the parts, in groups that sit together in the code map,
+  // which tasks opens, where --update only writes those open again
+  check(opened.length === 2, 'tasks --update opens nothing new');
+  run = dp('tasks', VERSION, '--repo', REPOSITORY, '--yes');
+  const rest = issues().issues.filter(issue => issue.number > HOME + 2);
   check(rest.length === 2 && rest.some(issue => issue.title.includes('@ARM7')) && rest.every(issue => /^Task: Functions /.test(issue.title)),
     `and opens the code no part runs as tasks of functions, the ARM9's and the ARM7's: ${rest.map(issue => issue.title).join(', ')}`);
   if (run.status || !first || !second) console.log(run.out, opened.map(issue => issue.body).join('\n---\n'));
