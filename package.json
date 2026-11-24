@@ -14,6 +14,7 @@
     "test:consoles": "node tools/test/any-console.mjs",
     "test:real-console": "node tools/test/real-console.mjs",
     "test:real-gb": "node tools/test/real-gb.mjs",
+    "test:real-nds": "node tools/test/real-nds.mjs",
     "test:real-ps2": "node tools/test/real-ps2.mjs",
     "test:ps2-ledger": "node tools/test/ps2-ledger.mjs",
     "test:ps2-memory": "node tools/test/ps2-memory.mjs",
