@@ -246,6 +246,7 @@ jobs:
       - run: npm run test:ps2-disc
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
+      - run: npm run test:ps2-flow
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
       - name: Nothing left in the person's own folders
