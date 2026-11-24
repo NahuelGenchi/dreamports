@@ -32,7 +32,9 @@ import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionOf } from '
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO } from './lib/paths.mjs';
-import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, stateOf } from './lib/proofs.mjs';
+import { asksForProofs, countsOf, groupNamed, KINDS, stateOf } from './lib/proofs.mjs';
+import { leftOf, tasksOf } from './lib/part-functions.mjs';
+import { readProof } from './readme.mjs';
 import { functionTasks } from './tasks.mjs';
 import { readCodeMap } from './lib/proof-files.mjs';
 
@@ -147,20 +149,22 @@ function list(here, claims) {
 
 /**
  * How a version made a function at a time stands, or null for one made a part at a time: its `groups`, its
- * functions' `states` by key, and `groupOf(piece)`, the group a task is for, by its title.
+ * functions' `states` by key, and `groupOf(piece)`, the group a task is for, by its title. Its groups are its game's
+ * parts where the game keeps what each runs (lib/part-functions.mjs), and `played` names those it has proven.
  */
 function functionsOf(version) {
   if (!asksForProofs(version)) return null;
   const codeMap = readCodeMap(version);
   if (!codeMap) return null;
-  const groups = groupsOf(codeMap), states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
-  return { groups, states, groupOf: piece => groupNamed(groups, pieceOf(piece).name) };
+  const groups = tasksOf(version, codeMap), states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
+  const played = new Set((readProof(version)?.gameplay?.parts ?? []).filter(part => part.proven).map(part => part.name));
+  return { groups, states, played, groupOf: piece => groupNamed(groups, pieceOf(piece).name) };
 }
 
 // a task of functions whose functions all have their proof here: done, and waiting only to be closed
 const provenHere = (piece, made) => {
   const group = made?.groupOf(piece);
-  return Boolean(group) && group.functions.every(f => made.states.get(f.key)?.kind);
+  return Boolean(group) && !leftOf(group, made.states, made.played);
 };
 
 // " in C" after a number of a version in another language than JavaScript, and nothing after JavaScript's
@@ -192,7 +196,7 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   const free = all.free.filter(piece => !provenHere(piece, madeOf(pieceOf(piece).language)));
   const missing = wanted => {
     if (madeOf(wanted)) {
-      const { wanted: groups, waiting: more } = functionTasks(madeOf(wanted).groups, madeOf(wanted).states, pieces, wanted);
+      const { wanted: groups, waiting: more } = functionTasks(madeOf(wanted).groups, madeOf(wanted).states, pieces, wanted, undefined, madeOf(wanted).played);
       return groups.length + more;
     }
     const proven = new Set((versions.find(v => v.language === wanted)?.proof?.gameplay?.parts ?? []).filter(part => part.proven).map(part => nameKey(part.name)));
@@ -242,7 +246,17 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   }
   // a task of functions: what it's made of, and how it's done
   const group = found.piece && madeOf(pieceOf(found.piece).language)?.groupOf(found.piece);
-  if (group) {
+  if (group?.part) {
+    // a part of the game: the functions the original runs in it that no part before it has, and its recording
+    const states = madeOf(pieceOf(found.piece).language).states, left = group.functions.filter(f => !states.get(f.key)?.kind).length;
+    const its = version(pieceOf(found.piece).language), named = JSON.stringify(group.name);
+    if (!group.recorded) {
+      console.log(`  It's a part of the game with no recording of the original yet, which is where it starts: tools/commands/parts/part-tasks.md says how, and then which functions it's made of.`);
+    } else {
+      console.log(`  It's a part of the game, and ${group.functions.length} function${group.functions.length === 1 ? '' : 's'} of the original that it runs and no part before it does, ${left} still to prove: npm run dp -- proofs ${its} ${named} lists them.`);
+    }
+    console.log(`  It's done when npm run dp -- ready ${its} --task ${named} says each has its proof and the part is proven by its recording.`);
+  } else if (group) {
     const states = madeOf(pieceOf(found.piece).language).states, left = group.functions.filter(f => !states.get(f.key)?.kind).length;
     const its = version(pieceOf(found.piece).language);
     console.log(`  It's ${group.functions.length} function${group.functions.length === 1 ? '' : 's'} of the original, ${left} still to prove: npm run dp -- proofs ${its} ${group.first} lists them.`);
