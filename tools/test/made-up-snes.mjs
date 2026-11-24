@@ -171,6 +171,28 @@ export function madeUpCartridge() {
   return { rom, labels, functions };
 }
 
+// The parts program, for the test of a game whose tasks are its parts (snes-parts.mjs): a start that turns the screen
+// on, with no layer on it, and lets the V-blank's interrupt in, and that interrupt's handler, which reads $4210, calls
+// count, which adds one to the frame's count, a word at $00 of the direct page, and then red while the count is under
+// 60 and blue from then on. Each gives colour 0, the backdrop, a level from the count's low five bits: red in the
+// colour's low byte, blue in its high one. With A of 8 bits and X and Y of 16
+const PARTS_PROGRAM = [
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01,
+  0xA9, 0x0F, 0x8D, ...w(0x2100), 0xA9, 0x80, 0x8D, ...w(0x4200),
+  here('spin'), 0x80, rel('spin'),
+  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210), 0x20, abs('count'), 0xA5, 0x00, 0xC9, 60, 0xB0, rel('later'), 0x20, abs('red'), 0x40,
+  here('later'), 0x20, abs('blue'), 0x40,
+  here('count'), 0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x60,
+  here('red'), 0xA5, 0x00, 0x29, 0x1F, 0x9C, ...w(0x2121), 0x8D, ...w(0x2122), 0x9C, ...w(0x2122), 0x60,
+  here('blue'), 0xA5, 0x00, 0x29, 0x1F, 0x0A, 0x0A, 0x9C, ...w(0x2121), 0x9C, ...w(0x2122), 0x8D, ...w(0x2122), 0x60,
+];
+
+/** The parts program's cartridge: { rom, labels }, `labels` the address of start, nmi, count, red and blue. */
+export function madeUpPartsCartridge() {
+  const { rom, labels } = assemble(PARTS_PROGRAM, { title: 'DREAMPORTS PARTS', nmi: 'nmi' });
+  return { rom, labels };
+}
+
 // The picture program, for the kit's test (snes-kit.mjs): it fills video memory, the colours and two backgrounds'
 // maps by DMA, with the screen off, and then at each frame's V-blank scrolls the two backgrounds, the first across
 // and down, the third the other way, and sets the screen's brightness, which steps down from 15 to 0 every 8 frames.

@@ -1,12 +1,16 @@
-name: Mac and Windows (Super Nintendo and Nintendo 64)
+name: Linux, Mac and Windows (Super Nintendo and Nintendo 64)
 
 # The Super Nintendo's proof tools on a Mac and on Windows, as a person making a Dreamport on one has them (#1908), on
 # GitHub's own computers: on a Mac with Apple's chip, with Homebrew's Node.js and Apple's own compiler, and on Windows
 # with only git and Node.js, where each build gets its own compiler (tools/gba/windows.mjs). Each runs
 # npm run test:snes-call, which builds the program that runs one function of a cartridge in Snes9x's own 65816 and
 # tries it, and npm run test:snes-twin, the function check on a made-up cartridge's twins, with each proof kept, going
-# stale and held by proofs --check. Linux runs both in Check. Nothing from any game's copy is needed, and nothing is
-# sent anywhere.
+# stale and held by proofs --check. Linux runs both in Check. Then each of the three, Linux too, runs
+# npm run test:snes-parts (#1921): a made-up game whose tasks are its parts, each made a function at a time, from
+# proofs --start --parts to ready --task passing, with Snes9x built there with the tools' change to it, each twin
+# proven and every frame compared in the computer's own browser. It's here and not in Check, whose jobs have 15
+# minutes each, as it runs ready whole three times. Nothing from any game's copy is needed, and nothing is sent
+# anywhere: GitHub is a stand-in the test starts.
 #
 # It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
 # what those tools are made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and
@@ -29,6 +33,7 @@ on:
       - 'tools/snes/**'
       - 'tools/n64/**'
       - 'tools/test/made-up-snes.mjs'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/made-up-n64.mjs'
       - 'tools/test/snes-*'
       - 'tools/test/snes-*/**'
@@ -53,6 +58,7 @@ on:
       - 'tools/snes/**'
       - 'tools/n64/**'
       - 'tools/test/made-up-snes.mjs'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/made-up-n64.mjs'
       - 'tools/test/snes-*'
       - 'tools/test/snes-*/**'
@@ -71,6 +77,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linux-snes:
+    name: Linux (Super Nintendo)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:snes-parts
+
   mac-snes:
     name: Mac (Super Nintendo)
     runs-on: macos-latest
@@ -80,7 +102,7 @@ jobs:
         with:
           persist-credentials: false
       # what a person's Mac has or installs: Apple's command line tools give git and the C and C++ compilers, and
-      # Homebrew gives Node.js
+      # Homebrew gives Node.js, and Chrome is there
       - name: Getting ready on a Mac
         env:
           HOMEBREW_NO_INSTALL_CLEANUP: '1'
@@ -92,12 +114,14 @@ jobs:
           git --version
           brew install --quiet node
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
       - name: The tools' packages
         run: |
           node --version
           npm ci
       - run: npm run test:snes-call
       - run: npm run test:snes-twin
+      - run: npm run test:snes-parts
 
   windows-snes:
     name: Windows (Super Nintendo)
@@ -117,3 +141,4 @@ jobs:
       - run: npm ci
       - run: npm run test:snes-call
       - run: npm run test:snes-twin
+      - run: npm run test:snes-parts
