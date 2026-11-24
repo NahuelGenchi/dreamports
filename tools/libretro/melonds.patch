@@ -1,0 +1,37 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d193d1e..77e9a5b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -107,6 +107,9 @@ option(BUILD_QT_SDL "Build Qt/SDL frontend" ON)
+ 
+ add_subdirectory(src)
+ 
++# Dreamports: the tools' own front (tools/nds/melonds/ in the Dreamports repository)
++add_subdirectory(dreamports)
++
+ if (BUILD_QT_SDL)
+     add_subdirectory(src/frontend/qt_sdl)
+ endif()
+diff --git a/src/SPU.cpp b/src/SPU.cpp
+index e1d49f9..6f20687 100644
+--- a/src/SPU.cpp
++++ b/src/SPU.cpp
+@@ -30,6 +30,9 @@
+ 
+ #define INTERNAL_SAMPLE_RATE 16756991.f
+ 
++// Dreamports: each pair of samples as the mixer leaves it, for the tools' front (dreamports/libretro.cpp)
++namespace melonDS { void (*DreamportsMixed)(const s16* pair) = nullptr; }
++
+ namespace melonDS
+ {
+ using Platform::Log;
+@@ -1006,6 +1009,8 @@ void SPU::Mix(u32 spucycles)
+         output[1] &= 0xFFC0;
+     }
+ 
++    if (DreamportsMixed) DreamportsMixed(output);
++
+     BlipTimer += spucycles;
+ 
+     if (output[0] != OutputLastSamples[0])
