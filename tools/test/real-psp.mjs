@@ -21,6 +21,8 @@ const FRAMES = 600;
 const LOOKED_AT = [1, 2, 60, 224, 225, 226, 400, FRAMES - 1];
 // the frames a button is held on, and the button
 const HELD_FROM = 100, HELD_TO = 110;
+// the frames around them whose picture shows whether the bar is wide
+const BARS = [HELD_FROM - 1, HELD_FROM, HELD_FROM + 1, HELD_FROM + 2, HELD_TO, HELD_TO + 1, HELD_TO + 2];
 const WORK = join(LOCAL, 'test-real-psp');
 
 const failures = [];
@@ -61,7 +63,7 @@ async function main() {
   console.log(`A small program on ${machine.name}'s real emulator, ${FRAMES} frames, twice`);
   const buttons = new Array(FRAMES).fill(0);
   for (let frame = HELD_FROM; frame < HELD_TO; frame++) buttons[frame] = machine.keys.CROSS;
-  const run = () => reference.runOriginal({ copy, frames: FRAMES, buttons, pictures: [...LOOKED_AT, HELD_FROM - 1, HELD_FROM, HELD_FROM + 1, HELD_FROM + 2, HELD_TO, HELD_TO + 1, HELD_TO + 2], sound: true });
+  const run = () => reference.runOriginal({ copy, frames: FRAMES, buttons, pictures: [...new Set([...LOOKED_AT, ...BARS])].sort((a, b) => a - b), sound: true });
   // runOriginal stops if the emulator's sound rate or frame rate isn't what kit/consoles.js says
   const first = await run(), second = await run();
   const [width, height] = machine.screen;
@@ -97,7 +99,7 @@ async function main() {
   }
   check(new Set(first.hashes.slice(shownFrom, HELD_FROM)).size === Math.min(HELD_FROM - shownFrom, TURN / STEP), 'every frame shows the square in its own place');
   // the bar is one pixel wide with nothing held, and wider while CROSS is, whose bit the console keeps at 0x4000
-  const bars = [HELD_FROM - 1, HELD_FROM, HELD_FROM + 1, HELD_FROM + 2, HELD_TO, HELD_TO + 1, HELD_TO + 2].map(frame => [frame, barWidth(first.pictures.get(frame))]);
+  const bars = BARS.map(frame => [frame, barWidth(first.pictures.get(frame))]);
   const wide = (0x4000 >> 8 & 0xFF) + 1, onFrom = bars.find(([, bar]) => bar === wide)?.[0], offFrom = bars.find(([frame, bar]) => frame >= HELD_TO && bar === 1)?.[0];
   check(bars[0][1] === 1 && onFrom !== undefined && offFrom !== undefined && offFrom - onFrom === HELD_TO - HELD_FROM, `a button held from frame ${HELD_FROM} to ${HELD_TO} shows from frame ${onFrom} to ${offFrom}: ${JSON.stringify(bars)}`);
   console.log(`  the emulator runs at ${first.outside.fps} frames a second and mixes ${first.outside.rate} samples a second; the square shows from frame ${shownFrom}`);

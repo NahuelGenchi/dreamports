@@ -385,9 +385,14 @@ static const void* drawnPicture(unsigned width, unsigned height, size_t* pitch) 
 	return readBack;
 }
 
+// what the core prints goes nowhere, unless the environment's DP_SAYS is set, for finding out why a core won't run a copy
 static void quiet(int level, const char* text, ...) {
 	(void) level;
-	(void) text;
+	if (!getenv("DP_SAYS")) return;
+	va_list args;
+	va_start(args, text);
+	vfprintf(err, text, args);
+	va_end(args);
 }
 
 static bool environment(unsigned command, void* data) {
@@ -895,5 +900,12 @@ int main(int argc, char** argv) {
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(err, "]}\n");
 	fflush(err);
-	return 0;
+	// everything is written, so it ends here, without what a core does as a program ends: PPSSPP's threads are still
+	// running then, and what it tidies away under them stopped the program with an error. Windows runs a library's
+	// tidying even as a program ends at once, so there the program is stopped from outside, by itself
+	fflush(NULL);
+#ifdef _WIN32
+	TerminateProcess(GetCurrentProcess(), 0);
+#endif
+	_Exit(0);
 }

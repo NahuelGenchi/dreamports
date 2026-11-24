@@ -61,3 +61,34 @@ index 12a2c0a..f29c93b 100644
  	rtcBaseTime.tv_sec = tv.tv_sec;
  	rtcBaseTime.tv_usec = 0;
  	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
+diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
+index 3b2f103..42909e4 100644
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -1530,7 +1530,12 @@ bool retro_load_game(const struct retro_game_info *game)
+ 
+    CoreParameter coreParam   = {};
+    coreParam.enableSound     = true;
+-   coreParam.fileToStart     = Path(game->path);
++   // Dreamports: a program named with no folder is in the folder the emulator runs from, which is the folder its disc
++   // stands for, where a bare name was taken for the folder itself.
++   std::string dreamportsPath = game->path;
++   if (dreamportsPath.find_first_of("/\\") == std::string::npos)
++      dreamportsPath = "./" + dreamportsPath;
++   coreParam.fileToStart     = Path(dreamportsPath);
+    coreParam.startBreak      = false;
+    coreParam.headLess        = true;  // really?
+    coreParam.graphicsContext = ctx;
+@@ -1706,6 +1711,12 @@ void retro_run(void)
+ {
+    if (g_pendingBoot) {
+       BootState state = PSP_InitUpdate(&g_bootErrorString);
++      // Dreamports: the console starts in the first frame the tools ask for, however long the computer takes to load
++      // the program, so a recording's frames are the same on every computer.
++      while (state == BootState::Booting) {
++         sleep_ms(1, "dreamports-boot");
++         state = PSP_InitUpdate(&g_bootErrorString);
++      }
+       switch (state) {
+       case BootState::Failed:
+          g_pendingBoot = false;

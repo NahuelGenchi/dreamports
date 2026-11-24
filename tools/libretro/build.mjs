@@ -111,7 +111,7 @@ function buildHere(machine, log, tools) {
   }
   log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
   const source = fetchSource(machine);
-  const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
+  const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
     run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(tools ? [...WINDOWS_CMAKE, `-DCMAKE_MAKE_PROGRAM=${tools.make}`] : []), ...cmakeSettings(core)], source, tools?.env);
     run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
