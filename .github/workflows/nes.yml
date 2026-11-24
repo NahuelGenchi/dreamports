@@ -7,7 +7,8 @@ name: Mac and Windows (NES)
 # Mac, and on Windows with w64devkit's, which the tools get once and keep (#1957). GitHub's Windows has a gcc of its
 # own on the PATH, which a person's seldom has, so that job takes it off the PATH first, and the tools get their own.
 # Then each builds the NES's reference emulator, FCEUmm, from its makers' source, as setup does on a person's computer,
-# and runs test:real-console, which proves a program of the project's own on it in the computer's own browser (#1967).
+# and runs test:real-console, which proves a program of the project's own on it in the computer's own browser (#1967),
+# and test:part-tasks, a game whose parts are its tasks, as far as the NES's tools reach (#1970).
 # Linux runs it in Check. Nothing from any game's copy is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
@@ -29,6 +30,8 @@ on:
       - 'tools/test/nes-*'
       - 'tools/test/nes-twin/**'
       - 'tools/test/real-console.mjs'
+      - 'tools/test/part-tasks*'
+      - 'tools/test/part-tasks/**'
       - '!tools/**/*.md'
   push:
     branches: [main]
@@ -47,6 +50,8 @@ on:
       - 'tools/test/nes-*'
       - 'tools/test/nes-twin/**'
       - 'tools/test/real-console.mjs'
+      - 'tools/test/part-tasks*'
+      - 'tools/test/part-tasks/**'
       - '!tools/**/*.md'
   schedule:
     - cron: '17 7 * * 1'
@@ -90,6 +95,7 @@ jobs:
       - run: npm run test:nes-twin
       - run: npm run dp -- setup nes
       - run: npm run test:real-console
+      - run: npm run test:part-tasks -- nes
 
   windows:
     name: Windows (NES)
@@ -120,3 +126,4 @@ jobs:
           if (-not (Test-Path "$env:ProgramData\dreamports-compiler\w64devkit\bin\gcc.exe")) { throw 'the tools kept no compiler' }
       - run: npm run dp -- setup nes
       - run: npm run test:real-console
+      - run: npm run test:part-tasks -- nes
