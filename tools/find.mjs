@@ -205,7 +205,8 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   } else if (found.do === 'take') {
     console.log(`Take ${name(found.piece)}.`);
     console.log(`  Its version: ${version(pieceOf(found.piece).language)}, in ${called}`);
-    console.log(`  To claim it: gh issue comment ${found.piece.number} --repo ${claims.repository} --body "/claim"`);
+    // claim sends /claim and waits for the bot's answer to it, however long the bot takes (#1869)
+    console.log(`  To claim it: npm run dp -- claim ${found.piece.number}${claims.repository === UPSTREAM ? '' : ` --repo ${claims.repository}`}`);
     for (const below of buildsOn(found.piece)) console.log(`  Its branch starts on top of #${below.pull}, which has #${below.number} ${below.name} in review.`);
   } else if (found.do === 'start-version') {
     console.log(`It has no version in ${called} yet. npm run dp -- new ${version(found.language)} starts it, and npm run dp -- tasks ${version(found.language)} --yes opens its tasks: run both, then ask again.`);

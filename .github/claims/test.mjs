@@ -215,3 +215,103 @@ test('a task under a stretch\'s issue is claimed as any task, and the stretch\'s
   assert.deepEqual(stretch.assignees, []);
   assert.match(stretch.comments.find(c => c.user.login === BOT).body, /holds the tasks of a stretch of a game's code, each under it, and isn't a task itself/);
 });
+
+// A claim and the bot's answer to it, as `npm run dp -- claim` waits for it (tools/lib/claim-answer.mjs, #1869): the
+// bot is this workflow, which GitHub starts when it can, so here it runs only once the tool has waited some time, by a
+// clock the test moves. Nothing waits for real.
+const { LIMIT, RUN, answerTo, claim } = await import('../../tools/lib/claim-answer.mjs');
+const START = Date.parse('2026-01-02T00:00:00Z');
+// a site with one task, and the tool's way to it as `who`, with the bot answering `after` this long, or never
+async function claiming(issues = [lead, { number: 2, ...functions(0x080001C4, 0x0800024C) }], number = 2) {
+  const site = newSite(issues);
+  if (number === 2) await runClaims(site, 2, folder, { files: madeByFunctions });
+  const { request } = standIn(site, { files: madeByFunctions });
+  const clock = { now: START, slept: 0, botAt: Infinity };
+  const hooks = who => ({
+    api: (path, { method = 'GET', body } = {}) => {
+      const { status, body: answer } = request(method, path.slice(`repos/${site.repository}`.length), body, who);
+      return status === 404 ? null : answer;
+    },
+    now: () => clock.now,
+    sleep: async ms => {
+      clock.now += ms;
+      clock.slept += ms;
+      if (clock.now >= clock.botAt) {
+        clock.botAt = Infinity;
+        await runClaims(site, number, folder, { files: madeByFunctions });
+      }
+    },
+  });
+  const asked = () => site.issues.find(i => i.number === number).comments.filter(c => c.body === '/claim');
+  return { site, request, clock, hooks, asked, ask: (who, about = null) => claim({ repository: site.repository, number, about }, hooks(who)) };
+}
+
+test('a claim learns the bot\'s answer to its own comment four and a half minutes later, a run at a time, and claims once (#1869)', async () => {
+  const { site, clock, ask, asked } = await claiming();
+  clock.botAt = START + 270_000;
+  const first = await ask('sam');
+  assert.deepEqual([first.state, first.about, clock.slept], ['waiting', String(asked()[0].id), RUN], 'one run waits under what an agent gives a command');
+  const second = await ask('sam', first.about);
+  assert.deepEqual([second.state, second.about], ['waiting', first.about]);
+  const third = await ask('sam', first.about);
+  assert.deepEqual([third.state, third.holders, asked().length], ['theirs', ['sam'], 1]);
+  assert.match(third.text, /^@sam, this task is yours/);
+  assert.doesNotMatch(third.text, /dreamports-claims/, 'the marker isn\'t part of what it said');
+  assert.ok(clock.slept >= 270_000 && clock.slept < 280_000, 'it stopped waiting when the answer came');
+  assert.deepEqual(site.issues.find(i => i.number === 2).assignees, [{ login: 'sam' }]);
+});
+
+test('of two people who claim a task at once, each is told the answer to their own claim, and only one has it', async () => {
+  const { request, clock, ask } = await claiming();
+  // pat's comment lands first, and the bot answers both in one run, some time later
+  const pats = request('POST', '/issues/2/comments', { body: '/claim' }, 'pat').body;
+  clock.botAt = START + 40_000;
+  const sams = await ask('sam');
+  assert.deepEqual([sams.state, sams.holders], ['taken', ['pat']]);
+  assert.match(sams.text, /^@sam, @pat has had this task/, 'not the answer to pat, which came first');
+  const pat = await ask('pat', String(pats.id));
+  assert.deepEqual([pat.state, pat.who], ['theirs', 'pat']);
+  assert.match(pat.text, /^@pat, this task is yours/);
+});
+
+test('an older answer on the issue, to someone else or to another claim, is never taken for this one\'s', async () => {
+  const { site, request, clock, ask } = await claiming();
+  request('POST', '/issues/2/comments', { body: '/claim' }, 'pat');
+  await runClaims(site, 2, folder, { files: madeByFunctions });
+  // the bot never runs again: half a minute in, the last two comments are pat's claim's answer and sam's claim
+  const found = await ask('sam');
+  assert.equal(found.state, 'waiting');
+  const comments = site.issues.find(i => i.number === 2).comments;
+  assert.equal(answerTo(comments, found.about), null);
+  // nor a comment by anyone but the bot that carries the marker
+  request('POST', '/issues/2/comments', { body: `@sam, this task is yours.\n\n<!-- dreamports-claims: answers=${found.about} granted=sam -->` }, 'pat');
+  assert.equal(answerTo(comments, found.about), null);
+  assert.equal((await ask('sam', found.about)).state, 'waiting');
+});
+
+test('a claim the bot never answers stops waiting at its limit, and isn\'t theirs', async () => {
+  const { site, clock, ask, asked } = await claiming();
+  let found = await ask('sam'), runs = 1;
+  for (; found.state === 'waiting' && runs < 20; runs++) found = await ask('sam', found.about);
+  assert.deepEqual([found.state, runs, clock.slept, asked().length], ['unanswered', LIMIT / RUN, LIMIT, 1]);
+  // an answer that comes after the limit is still read by the same command, with no more waiting
+  clock.now += 3_600_000;
+  await runClaims(site, 2, folder, { files: madeByFunctions });
+  assert.deepEqual([(await ask('sam', found.about)).state, clock.slept, asked().length], ['theirs', LIMIT, 1]);
+});
+
+test('a New Dreamport issue claims its game by being opened, and its answer is the one to the issue', async () => {
+  const opened = { number: 1, title: 'Dreamport: One', body: `${game('one')}\n### Your copy\n\n- [X] I have my own legal copy of the game.\n`, labels: [{ name: 'new-dreamport' }], user: { login: 'sam' }, created_at: '2026-01-02T00:00:00Z' };
+  const { clock, ask, asked } = await claiming([opened], 1);
+  clock.botAt = START + 30_000;
+  const found = await ask('sam', 'issue');
+  assert.deepEqual([found.state, found.about, found.holders, asked().length], ['theirs', 'issue', ['sam'], 0], found.text);
+  assert.match(found.text, /^@sam, One Dreamport is yours to lead/);
+});
+
+test('a claim on an issue that isn\'t there, or a comment that isn\'t, says so and waits for nothing', async () => {
+  const { site, clock, hooks } = await claiming();
+  await assert.rejects(claim({ repository: site.repository, number: 99, about: null }, hooks('sam')), /has no issue #99 to claim/);
+  await assert.rejects(claim({ repository: site.repository, number: 2, about: '123' }, hooks('sam')), /has no comment 123/);
+  assert.equal(clock.slept, 0);
+});
