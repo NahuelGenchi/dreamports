@@ -8,7 +8,10 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
-export const WINDOWS_BUILD = join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-build');
+// Each build clears the folder before it starts and after it ends, so two at the same time on one computer, as two
+// checkouts of the repository make, would clear each other's: the environment's DREAMPORTS_BUILD names another folder
+// for a build, which has to have a plain name too.
+export const WINDOWS_BUILD = process.env.DREAMPORTS_BUILD || join(process.env.ProgramData ?? 'C:\\ProgramData', 'dreamports-build');
 
 const COMPILER = {
   name: 'w64devkit 2.10.1',
