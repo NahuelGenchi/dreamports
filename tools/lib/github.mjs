@@ -7,9 +7,14 @@ import { fileURLToPath } from 'node:url';
 /** The repository Dreamports are made in. */
 export const UPSTREAM = 'NahuelGenchi/dreamports';
 
+// The tools' own tests give a stand-in for the GitHub CLI, a script for Node.js, by its path in DREAMPORTS_GH. A
+// script named gh put first on the PATH isn't enough: Windows starts no script by a name with no ending, and would
+// start the person's own GitHub CLI, which asks the real GitHub (#1912).
+const STAND_IN = process.env.DREAMPORTS_GH || null;
+
 function gh(args, input) {
   try {
-    return execFileSync('gh', args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
+    return execFileSync(STAND_IN ? process.execPath : 'gh', STAND_IN ? [STAND_IN, ...args] : args, { encoding: 'utf8', input, stdio: ['pipe', 'pipe', 'pipe'], maxBuffer: 64 << 20 });
   } catch (error) {
     if (error.code === 'ENOENT') throw new Error('share needs the GitHub CLI: install it from https://cli.github.com, then sign in with gh auth login.');
     const message = (error.stderr || error.message).trim();
