@@ -22,6 +22,10 @@ A game defines `game_start()`, run once, `game_step(buttons)`, run every frame, 
 
 The chips finish at once. A task the RSP is started on runs whole as SP_STATUS lets it go, a list sent to the RDP is drawn as DPC_END is written, and a DMA is done when its length is: each raises its interrupt as it ends, in MI_INTR, so a wait for one is a read that finds it done. `game_step` starts as the video interface's interrupt does, which is raised for it. `npm run dp -- new <game>/c` writes a game that sets up a screen of 320 by 240 and has the RDP fill it.
 
+## A twin on it
+
+A function of a game made a function at a time is a twin: the same C is proven against the original by the function check and plays in the game. The check's build has `n64_read32`, `n64_write32` and the others as the processor's own loads and stores at the address, with no chip behind them, and its pass over the built module sends each to where the console has that address, highest byte first, as it does a twin that names an address itself ([The function check on the Nintendo 64](../../../tools/README.md#the-function-check-on-the-nintendo-64)). So a twin written with the kit's reads and writes leaves in the check's memory what its original leaves, a register's last value included, and in the game the chips do their work with the same calls. `npm run test:n64-parts` proves four such twins and plays them ([#1932](https://github.com/NahuelGenchi/dreamports/issues/1932)).
+
 ## What the chips do so far
 
 - **The RSP** runs any microcode: every instruction of its scalar unit, with their delay slots, its DMA both ways, its status, signals and semaphore, and every instruction of its vector unit, loads and stores of every size among them. It does what cxd4 does, the RSP the proof tools' emulator runs, sum for sum: where cxd4 and the console's documentation part, as for VABS of -32768 or loads and stores with an element the console doesn't expect, cxd4's way is kept, so a proof can compare the two.

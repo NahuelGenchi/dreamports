@@ -1,0 +1,216 @@
+name: Linux, Mac and Windows (Super Nintendo and Nintendo 64)
+
+# The Super Nintendo's proof tools on a Mac and on Windows, as a person making a Dreamport on one has them (#1908), on
+# GitHub's own computers: on a Mac with Apple's chip, with Homebrew's Node.js and Apple's own compiler, and on Windows
+# with only git and Node.js, where each build gets its own compiler (tools/gba/windows.mjs). Each runs
+# npm run test:snes-call, which builds the program that runs one function of a cartridge in Snes9x's own 65816 and
+# tries it, and npm run test:snes-twin, the function check on a made-up cartridge's twins, with each proof kept, going
+# stale and held by proofs --check. Linux runs both in Check. Then each of the three, Linux too, runs
+# npm run test:snes-parts (#1921): a made-up game whose tasks are its parts, each made a function at a time, from
+# proofs --start --parts to ready --task passing, with Snes9x built there with the tools' change to it, each twin
+# proven and every frame compared in the computer's own browser. It's here and not in Check, whose jobs have 15
+# minutes each, as it runs ready whole three times. Nothing from any game's copy is needed, and nothing is sent
+# anywhere: GitHub is a stand-in the test starts.
+#
+# The Nintendo 64's (#1929): npm run test:n64-call, which builds the program that runs one function of a cartridge in
+# Parallel N64's own processor and tries it, and npm run test:n64-twin, the function check on a made-up program's
+# twins, with each proof kept, going stale and held by proofs --check, on a Mac and on Windows; and on the Mac
+# npm run test:n64-match, which builds IDO from its translation's source with Homebrew's GNU make and has match keep
+# its proofs. IDO isn't built on Windows yet, so match isn't tried there. Linux runs all three in Check. And on all
+# three, Linux too, npm run test:n64-parts (#1932): the same steps as the Super Nintendo's with a made-up Nintendo 64
+# program, played in Parallel N64 built with the tools' change to it, which says which functions ran in each frame.
+#
+# It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
+# what those tools are made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and
+# by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/snes-n64.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/snes/**'
+      - 'kit/n64/**'
+      - 'src/lib/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/*.mjs'
+      - 'tools/lib/**'
+      - 'tools/libretro/**'
+      - 'tools/gba/**'
+      - 'tools/snes/**'
+      - 'tools/n64/**'
+      - 'tools/test/made-up-snes.mjs'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/made-up-n64.mjs'
+      - 'tools/test/snes-*'
+      - 'tools/test/snes-*/**'
+      - 'tools/test/n64-*'
+      - 'tools/test/n64-*/**'
+      - '!tools/**/*.md'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/snes-n64.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/snes/**'
+      - 'kit/n64/**'
+      - 'src/lib/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/*.mjs'
+      - 'tools/lib/**'
+      - 'tools/libretro/**'
+      - 'tools/gba/**'
+      - 'tools/snes/**'
+      - 'tools/n64/**'
+      - 'tools/test/made-up-snes.mjs'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/made-up-n64.mjs'
+      - 'tools/test/snes-*'
+      - 'tools/test/snes-*/**'
+      - 'tools/test/n64-*'
+      - 'tools/test/n64-*/**'
+      - '!tools/**/*.md'
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snes-n64-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-snes:
+    name: Linux (Super Nintendo)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:snes-parts
+
+  linux-n64:
+    name: Linux (Nintendo 64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      # OpenGL's headers, which Parallel N64's source includes though nothing of them is linked
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libgl-dev
+      - run: npm run test:n64-parts
+
+  mac-snes:
+    name: Mac (Super Nintendo)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Mac has or installs: Apple's command line tools give git and the C and C++ compilers, and
+      # Homebrew gives Node.js, and Chrome is there
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          c++ --version | head -1
+          git --version
+          brew install --quiet node
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      - name: The tools' packages
+        run: |
+          node --version
+          npm ci
+      - run: npm run test:snes-call
+      - run: npm run test:snes-twin
+      - run: npm run test:snes-parts
+
+  mac-n64:
+    name: Mac (Nintendo 64)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # as a person's Mac has them, with GNU make, which IDO's translation is built with, as a Mac's own is too old
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          cc --version | head -1
+          brew install --quiet node make
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      - name: The tools' packages
+        run: |
+          node --version
+          npm ci
+      - run: npm run test:n64-call
+      - run: npm run test:n64-twin
+      - run: npm run test:n64-match
+      - run: npm run test:n64-parts
+
+  windows-snes:
+    name: Windows (Super Nintendo)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js. Each build gets the compiler itself
+      # (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:snes-call
+      - run: npm run test:snes-twin
+      - run: npm run test:snes-parts
+
+  windows-n64:
+    name: Windows (Nintendo 64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:n64-call
+      - run: npm run test:n64-twin
+      - run: npm run test:n64-parts

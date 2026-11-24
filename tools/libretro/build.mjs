@@ -122,9 +122,13 @@ function buildHere(machine, log, tools) {
     run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(WINDOWS ? ['-G', 'MinGW Makefiles'] : []), ...cmakeSettings(core)], source, tools?.env);
     run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
+    // on Windows a core's Makefile is told so, as every libretro core's takes it: it reads the computer's kind from
+    // uname, and the compiler the tools get says Windows_NT there, which the Makefiles take for Linux, linking a .so
+    // with settings Windows' linker doesn't have
+    const settings = [...(core.make ?? []), ...(WINDOWS ? ['platform=win'] : [])];
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
-    run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
-    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
   }
   // its own files first, whole, so a built emulator always has them
   if (core.data) {

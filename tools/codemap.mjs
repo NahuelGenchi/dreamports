@@ -40,6 +40,7 @@ import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
 import * as gamecubeFunctions from './gamecube/functions.mjs';
+import { layoutOf, readCartridge } from './snes/cartridge.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -73,6 +74,8 @@ const FINDERS = {
     play: true,
     name: (value, copy) => snesFunctions.snesNames(value, snesFunctions.snesProgram(copy).map)[0]?.[1],
     fromPlay: (copy, functions, sent) => snesFunctions.fromPlay(copy, functions, sent),
+    // how the cartridge is laid out, kept in the code map, so a label finds its function with no copy (lib/proofs.mjs)
+    layout: copy => layoutOf(readCartridge(copy)),
   },
   // a PlayStation or PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
   ps1: {
@@ -87,6 +90,8 @@ const FINDERS = {
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
     address: address => address,
+    // where the code loads, kept in the code map, so the function the cartridge starts is known with no copy (lib/proofs.mjs)
+    layout: cartridge => ({ load: hex(n64Functions.programOf(cartridge).load) }),
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
   // is of the program the disc boots
@@ -181,7 +186,7 @@ export async function run(args) {
     from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
-  writeCodeMap(game, { original: original.sha1, from, functions, copies });
+  writeCodeMap(game, { original: original.sha1, from, functions, copies, layout: finder?.layout?.(theCopy) ?? null });
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));

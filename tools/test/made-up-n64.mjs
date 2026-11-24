@@ -423,3 +423,52 @@ export function madeUpKitCartridge() {
   words.forEach((word, n) => cartridge.writeUInt32BE(word, 0x1000 + n * 4));
   return cartridge;
 }
+
+// A third program, for the test of a game whose tasks are its parts (n64-parts.mjs): it sets the video interface up as
+// the kit's program does, and every frame waits for the video interface's interrupt and calls step. step calls count,
+// which adds one to the frame's count, a word of the console's memory, and then red while the count is under 60 and
+// blue from then on. Each fills the picture's first four rows with a colour whose level is the count's low five bits.
+// Its start, with the loop in it, never comes back, and the other four functions do.
+
+/** Where the parts program keeps its count, how many pixels red and blue fill, and the count blue starts at. */
+export const PARTS = { COUNT: 0x80200000, PIXELS: 1280, TURN: 60 };
+const fillWith = (name, shift) => [
+  here(name), lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), andi('t1', 't1', 31), sll('t1', 't1', shift), ori('t1', 't1', 1),
+  lui('t2', (0xA0000000 + FRAMEBUFFER) >>> 16), addiu('t3', 'zero', PARTS.PIXELS),
+  here(`${name}_loop`), sh('t1', 0, 't2'), addiu('t3', 't3', -1), bne('t3', 'zero', `${name}_loop`), addiu('t2', 't2', 2),
+  jr('ra'), nop,
+];
+const PARTS_PROGRAM = [
+  here('start'), lui('sp', STACK >>> 16), ori('sp', 'sp', STACK & 0xFFFF),
+  lui('t0', 0xA440), ...VI_REGISTERS.flatMap(([offset, value]) => [...li32('t1', value), sw('t1', offset, 't0')]),
+  lui('t0', PARTS.COUNT >>> 16), sw('zero', 0, 't0'),
+  here('frame'),
+  // the video interface's interrupt, and then it's told it was seen
+  lui('t0', 0xA430), here('waiting'), lw('t1', 0x08, 't0'), andi('t1', 't1', 0x08), beq('t1', 'zero', 'waiting'), nop,
+  lui('t0', 0xA440), sw('zero', 0x10, 't0'),
+  jal('step'), nop, b('frame'), nop,
+  here('step'), addiu('sp', 'sp', -24), sw('ra', 20, 'sp'), jal('count'), nop,
+  lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), sltiu('t2', 't1', PARTS.TURN), beq('t2', 'zero', 'later'), nop,
+  jal('red'), nop, b('done'), nop,
+  here('later'), jal('blue'), nop,
+  here('done'), lw('ra', 20, 'sp'), jr('ra'), addiu('sp', 'sp', 24),
+  here('count'), lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), addiu('t1', 't1', 1), jr('ra'), sw('t1', 0, 't0'),
+  // red in the colour's top five bits, blue in the five above its lowest, which is the pixel's coverage
+  ...fillWith('red', 11), ...fillWith('blue', 1),
+  here('end'),
+];
+
+/** The parts program as a cartridge the console boots: { cartridge, labels }, `labels` the address of start, step,
+ *  count, red and blue. */
+export function madeUpPartsCartridge() {
+  const { words, labels } = assemble(PARTS_PROGRAM, LOAD);
+  const cartridge = Buffer.alloc(0x1000 + 0x2000);
+  cartridge.writeUInt32BE(0x80371240, 0x00);
+  cartridge.writeUInt32BE(0x0000000F, 0x04);
+  cartridge.writeUInt32BE(LOAD, 0x08);
+  cartridge.write('DREAMPORTS PARTS'.padEnd(20), 0x20, 'latin1');
+  cartridge.write('NDRE', 0x3B, 'latin1');
+  assemble(bootFor(0x2000), 0xA4000040).words.forEach((word, n) => cartridge.writeUInt32BE(word, 0x40 + n * 4));
+  words.forEach((word, n) => cartridge.writeUInt32BE(word, 0x1000 + n * 4));
+  return { cartridge, labels };
+}
