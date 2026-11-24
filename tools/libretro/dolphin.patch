@@ -2,7 +2,7 @@ Dolphin (https://github.com/libretro/dolphin, the libretro front of https://gith
 GPL-2.0-or-later, Copyright the Dolphin Emulator Project) runs the GameCube. The tools apply this change of Dreamports'
 own to its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so
 that its software renderer, which draws on the processor in whole numbers, the same picture on every computer, runs
-with no window and no graphics card.
+with no window and no graphics card, and so that the sound the tools hear is the console's own samples.
 
 As its makers publish it, the libretro front starts each renderer when the graphics context it asked whoever runs it
 for arrives. The software renderer asks for none, so nothing starts it, and when it is started it still wants an OpenGL
@@ -11,13 +11,100 @@ before the console boots, as the others are; the renderer makes no OpenGL contex
 shows is handed to whoever runs the core as it is in memory, the stretch of it that's shown, with a pixel's colours in
 the order libretro's XRGB8888 has them, where the renderer's texture has red first.
 
+Dolphin's mixer makes the computer's sound from the console's, at another rate, in floats, stretched as the computer's
+speed asks. With this change the samples the console's audio interface takes from its memory by DMA are handed on as
+they are, 8 at a time, at the interface's own rate, which whoever runs the core is told each time a game changes it.
+Sound a game streams from its disc isn't among them yet.
+
 It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
 Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
 kept the program from ending on Windows.
 
-Nothing of the console changes: the processor, the video interface and the renderer's drawing are as Dolphin has them.
-Nothing of Dolphin is in the repository but the lines of its own this change sits between.
+Nothing of the console changes: the processor, the video interface, the renderer's drawing and the audio interface are
+as Dolphin has them. Nothing of Dolphin is in the repository but the lines of its own this change sits between.
 
+diff --git a/Source/Core/AudioCommon/AudioCommon.cpp b/Source/Core/AudioCommon/AudioCommon.cpp
+index 86cd50b..5d44598 100644
+--- a/Source/Core/AudioCommon/AudioCommon.cpp
++++ b/Source/Core/AudioCommon/AudioCommon.cpp
+@@ -23,6 +23,7 @@
+ #include "Core/ConfigManager.h"
+ #include "Core/System.h"
+ #ifdef __LIBRETRO__
++#include "Core/HW/AudioInterface.h"
+ #include "DolphinLibretro/Audio.h"
+ #endif
+ 
+@@ -226,7 +227,10 @@ void SendAIBuffer(Core::System& system, const short* samples, unsigned int num_s
+   {
+     mixer->PushSamples(samples, num_samples);
+ #ifdef __LIBRETRO__
+-    const_cast<SoundStream*>(sound_stream)->Update(num_samples);
++    // Dreamports: the samples the audio interface takes from the console's memory go to whoever runs the core as they
++    // are, at the interface's own rate, in place of what Dolphin's mixer would make of them
++    Libretro::Audio::PushConsoleSamples(samples, num_samples,
++                                        system.GetAudioInterface().GetAIDSampleRateDivisor());
+ #endif
+   }
+ }
+diff --git a/Source/Core/DolphinLibretro/Audio.cpp b/Source/Core/DolphinLibretro/Audio.cpp
+index 04deefa..f65c8bb 100644
+--- a/Source/Core/DolphinLibretro/Audio.cpp
++++ b/Source/Core/DolphinLibretro/Audio.cpp
+@@ -1,3 +1,5 @@
++#include <cstdint>
++#include <vector>
+ #include <libretro.h>
+ #include "Audio.h"
+ #include "Common/Logging/Log.h"
+@@ -75,6 +77,34 @@ unsigned int GetActiveSampleRate()
+   return GetRetroSampleRate();
+ }
+ 
++// Dreamports: the samples the console's audio interface takes by DMA, 8 at a time, handed on as they are: each a pair,
++// right and then left, highest byte first, turned to libretro's left and right in the computer's order. The interface
++// plays them at one of two rates, 108,000,000 over its divisor, 48,042.7 or 32,028.5 a second on a GameCube, which
++// whoever runs the core is told each time it changes. Sound a game streams from its disc isn't among them yet.
++void PushConsoleSamples(const short* samples, unsigned int num_samples, unsigned int rate_divisor)
++{
++  static unsigned int told_divisor = 0;
++  static std::vector<int16_t> pairs;
++  if (!batch_cb || !samples || !num_samples)
++    return;
++  if (rate_divisor && rate_divisor != told_divisor)
++  {
++    told_divisor = rate_divisor;
++    retro_system_av_info info;
++    retro_get_system_av_info(&info);
++    info.timing.sample_rate = 108000000.0 / rate_divisor;
++    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &info);
++  }
++  pairs.resize(static_cast<size_t>(num_samples) * 2);
++  for (unsigned int i = 0; i < num_samples; i++)
++  {
++    const uint16_t right = static_cast<uint16_t>(samples[i * 2]), left = static_cast<uint16_t>(samples[i * 2 + 1]);
++    pairs[i * 2] = static_cast<int16_t>(static_cast<uint16_t>((left >> 8) | (left << 8)));
++    pairs[i * 2 + 1] = static_cast<int16_t>(static_cast<uint16_t>((right >> 8) | (right << 8)));
++  }
++  batch_cb(pairs.data(), num_samples);
++}
++
+ void Reset()
+ {
+   g_use_call_back_audio = Libretro::Options::GetCached<int>(Libretro::Options::audio::CALL_BACK_AUDIO,
+diff --git a/Source/Core/DolphinLibretro/Audio.h b/Source/Core/DolphinLibretro/Audio.h
+index 4aa4f14..b46677d 100644
+--- a/Source/Core/DolphinLibretro/Audio.h
++++ b/Source/Core/DolphinLibretro/Audio.h
+@@ -18,6 +18,8 @@ static constexpr unsigned int DEFAULT_SAMPLE_RATE = 48000;
+ static constexpr unsigned int LEGACY_DEFAULT_SAMPLE_RATE = 32000;
+ 
+ void Reset();
++// Dreamports: the console's own samples, as its audio interface takes them (Audio.cpp)
++void PushConsoleSamples(const short* samples, unsigned int num_samples, unsigned int rate_divisor);
+ void Init();
+ unsigned int GetCoreSampleRate();
+ unsigned int GetRetroSampleRate();
 diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
 index 4ced7bf..024afc9 100644
 --- a/Source/Core/DolphinLibretro/Input.cpp
