@@ -12,6 +12,7 @@
 #include "console.h"
 #include "animation.h"
 #include "background.h"
+#include "bg_anim.h"
 #include "bg_triangles.h"
 #include "core.h"
 #include "language.h"
