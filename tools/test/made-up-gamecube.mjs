@@ -20,6 +20,14 @@
 //   square   draws the square, r3 pixels from the left edge, its even lines in the colour in r4 and its odd in r5
 //   bits     draws the 32 bits of r3 as blocks, the highest first, from r4 in the framebuffer
 //   wait     comes back once the beam is at line LINE of either field, having left it first
+// and after them, for the function check, which nothing of the program calls:
+//   sum      r3 + r4
+//   compare  -1, 0 or 1, as r3 is less than r4, the same or more, each a number with a sign
+//   shift    r3 shifted left by r4, right by it and right by it keeping its sign, the three put together with xor, as
+//            the processor shifts, by six bits of r4, so 32 and more shift everything out
+//   divide   r3 over r4, each with a sign, as the processor divides, with -1 or 0 for what it can't
+//   wide     the 64-bit sum of r3 and r4 and of r5 and r6, high words first, in r3 and r4
+//   pick     a switch on r3, through a table of its cases in the program's values
 //
 // The disc holds the program as a DOL, a small apploader of its own, which tells the console where each of the DOL's
 // sections goes, as every disc's does, and a file system with a few files of made-up bytes, one in a folder.
@@ -63,6 +71,15 @@ const cmplwi = (ra, imm) => d(10, 0, ra, imm);
 const x = (rt, ra, rb, xo) => ((31 << 26) | (rt << 21) | (ra << 16) | (rb << 11) | (xo << 1)) >>> 0;
 const add = (rt, ra, rb) => x(rt, ra, rb, 266);
 const cmpw = (ra, rb) => x(0, ra, rb, 0);
+const xor = (ra, rs, rb) => x(rs, ra, rb, 316);
+const slw = (ra, rs, rb) => x(rs, ra, rb, 24);
+const srw = (ra, rs, rb) => x(rs, ra, rb, 536);
+const sraw = (ra, rs, rb) => x(rs, ra, rb, 792);
+const divw = (rt, ra, rb) => x(rt, ra, rb, 491);
+const addc = (rt, ra, rb) => x(rt, ra, rb, 10);
+const adde = (rt, ra, rb) => x(rt, ra, rb, 138);
+const lwzx = (rt, ra, rb) => x(rt, ra, rb, 23);
+const bctr = 0x4E800420;
 const mr = (ra, rs) => x(rs, ra, rs, 444);
 const slwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | (n << 11) | (0 << 6) | ((31 - n) << 1)) >>> 0;
 const srwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | ((32 - n) << 11) | (n << 6) | (31 << 1)) >>> 0;
@@ -72,7 +89,7 @@ const mtctr = rs => (0x7C0903A6 | (rs << 21)) >>> 0;
 const blr = 0x4E800020;
 // what needs to know where things are: a branch to a label, on a condition or not, and a call
 const conditional = (bo, bi) => label => ({ at: (labels, pc) => ((16 << 26) | (bo << 21) | (bi << 16) | ((labels[label] - pc) & 0xFFFC)) >>> 0 });
-const beq = conditional(12, 2), bne = conditional(4, 2), blt = conditional(12, 0), bge = conditional(4, 0), bdnz = conditional(16, 0);
+const beq = conditional(12, 2), bne = conditional(4, 2), blt = conditional(12, 0), bge = conditional(4, 0), bgt = conditional(12, 1), bdnz = conditional(16, 0);
 const b = label => ({ at: (labels, pc) => ((18 << 26) | ((labels[label] - pc) & 0x3FFFFFC)) >>> 0 });
 const bl = label => ({ at: (labels, pc) => ((18 << 26) | ((labels[label] - pc) & 0x3FFFFFC) | 1) >>> 0 });
 // a whole address in a register, in two instructions
@@ -130,7 +147,9 @@ function values() {
   // the tone starts where 32 bytes do, as the audio interface's DMA counts in blocks of 32
   const before = Buffer.alloc(Math.ceil(table.length / 32) * 32);
   table.copy(before);
-  return { bytes: Buffer.concat([before, tone()]), tone: VALUES + before.length };
+  // after the tone, the table of pick's four cases, which the program fills in once it knows where they are
+  const cases = Buffer.alloc(16), sound = tone();
+  return { bytes: Buffer.concat([before, sound, cases]), tone: VALUES + before.length, cases: VALUES + before.length + sound.length, casesAt: before.length + sound.length };
 }
 
 /**
@@ -217,13 +236,40 @@ export function madeUpGameCube() {
     lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('reached'), cmpwi(7, SECOND_LINE), bne('reach'),
     'reached',
     blr,
+
+    'sum',
+    add(3, 3, 4), blr,
+
+    'compare',
+    cmpw(3, 4), blt('less'), bgt('more'), li(3, 0), blr,
+    'less', li(3, -1), blr,
+    'more', li(3, 1), blr,
+
+    'shift',
+    slw(5, 3, 4), srw(6, 3, 4), sraw(7, 3, 4), xor(3, 5, 6), xor(3, 3, 7), blr,
+
+    'divide',
+    divw(3, 3, 4), blr,
+
+    'wide',
+    addc(4, 4, 6), adde(3, 3, 5), blr,
+
+    'pick',
+    cmplwi(3, 3), bgt('pick-none'),
+    address(4, data.cases), slwi(5, 3, 2), lwzx(4, 4, 5), mtctr(4), bctr,
+    'pick-0', li(3, 10), blr,
+    'pick-1', li(3, 20), blr,
+    'pick-2', li(3, 35), blr,
+    'pick-3', li(3, 47), blr,
+    'pick-none', li(3, -1), blr,
     'end',
   ];
   const { bytes: text, labels } = assemble(lines, LOAD);
-  const names = ['start', 'setup', 'fill', 'square', 'bits', 'wait', 'end'];
+  for (let n = 0; n < 4; n++) data.bytes.writeUInt32BE(labels[`pick-${n}`], data.casesAt + n * 4);
+  const names = ['start', 'setup', 'fill', 'square', 'bits', 'wait', 'sum', 'compare', 'shift', 'divide', 'wide', 'pick', 'end'];
   const functions = Object.fromEntries(names.slice(0, -1).map((name, n) => [name, { address: labels[name], size: labels[names[n + 1]] - labels[name] }]));
   const sections = { text: { address: LOAD, bytes: text }, data: { address: VALUES, bytes: data.bytes } };
-  return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions, tone: data.tone };
+  return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions, tone: data.tone, cases: data.cases };
 }
 
 /** A DOL of one section of code and one of values, each from where 32 bytes start, as the console's own tools write them. */

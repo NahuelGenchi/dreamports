@@ -20,6 +20,8 @@ const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
 const RAN = join(HERE, 'ran.h'), RAN_PS2 = join(HERE, 'ran-ps2.h');
 // and what the console holds, its memory and its memory cards (held.h)
 const HELD = join(HERE, 'held.h');
+// and a function of the console's program run by itself, for the function check (calls.h)
+const CALLS = join(HERE, 'calls.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
 // On a Mac the host and the emulator are built for the processor Node.js runs as, arm64 on Apple's chip, named to the
@@ -104,7 +106,7 @@ export function fetchSource({ core, name }) {
 
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD, CALLS]);
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
@@ -142,7 +144,7 @@ export function buildReference(machine, log) {
   // said before a build of several minutes that couldn't run here
   if (core.graphics && process.platform === 'win32') throw new Error(`${name} can't run in the tools on Windows yet: its emulator draws with OpenGL, and the tools give it a context only on Linux and macOS so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
-  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD, CALLS]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });

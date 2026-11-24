@@ -16,6 +16,13 @@ speed asks. With this change the samples the console's audio interface takes fro
 they are, 8 at a time, at the interface's own rate, which whoever runs the core is told each time a game changes it.
 Sound a game streams from its disc isn't among them yet.
 
+For the function check, the front has an entry of its own, dreamports_call, which runs one function of the console's
+program by itself on the interpreter, from the registers and memory it's given, until it comes back, telling of each
+instruction it runs and each read it makes. Each call starts from the processor as the program left it after its
+frames, and ends at the first exception it meets, which is left for it to tell. While it runs, no time passes for the rest of the console, the hardware's
+registers are memory of their own, read and written as they're kept, and the graphics chip's FIFO and the embedded
+framebuffer stop the call; nothing of that changes how a game plays, as the entry runs only when the check asks.
+
 It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
 Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
 kept the program from ending on Windows.
@@ -46,6 +53,193 @@ index 86cd50b..5d44598 100644
 +                                        system.GetAudioInterface().GetAIDSampleRateDivisor());
  #endif
    }
+ }
+diff --git a/Source/Core/Core/PowerPC/DreamportsCall.h b/Source/Core/Core/PowerPC/DreamportsCall.h
+new file mode 100644
+index 0000000..777ef32
+--- /dev/null
++++ b/Source/Core/Core/PowerPC/DreamportsCall.h
+@@ -0,0 +1,17 @@
++// Dreamports: what a call of the function check needs of the memory (MMU.cpp, DolphinLibretro/Main.cpp), in a header
++// of its own so that nothing else is built again for it.
++
++#pragma once
++
++#include "Common/CommonTypes.h"
++
++struct DreamportsCallState
++{
++  bool on = false;
++  u8 hardware[0x10000]{};
++  bool used_hardware = false;
++  bool elsewhere = false;
++  u32 elsewhere_at = 0;
++  void (*read)(u32 address, u32 bytes, u64 value) = nullptr;
++};
++extern DreamportsCallState DreamportsCall;
+diff --git a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
+index 5ff6fa0..4cfca9f 100644
+--- a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
++++ b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
+@@ -20,6 +20,7 @@
+ #include "Core/HW/CPU.h"
+ #include "Core/PowerPC/Interpreter/ExceptionUtils.h"
+ #include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/DreamportsCall.h"
+ #include "Core/PowerPC/PPCTables.h"
+ #include "Core/PowerPC/PowerPC.h"
+ #include "Core/System.h"
+@@ -147,17 +148,21 @@ int Interpreter::SingleStepInner()
+     Trace(m_prev_inst);
+   }
+ 
++  // Dreamports: in a call of the function check an exception is left for the call to tell, as it ends there, and a
++  // word of nothing the processor fetched is the illegal instruction it is
++  const bool dreamports_call = DreamportsCall.on;
+   if (m_prev_inst.hex != 0)
+   {
+     if (IsInvalidPairedSingleExecution(m_prev_inst))
+     {
+       GenerateProgramException(m_ppc_state, ProgramExceptionCause::IllegalInstruction);
+-      CheckExceptions();
++      if (!dreamports_call)
++        CheckExceptions();
+     }
+     else if (m_ppc_state.msr.FP)
+     {
+       RunInterpreterOp(*this, m_prev_inst);
+-      if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0)
++      if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0 && !dreamports_call)
+       {
+         CheckExceptions();
+       }
+@@ -168,18 +173,24 @@ int Interpreter::SingleStepInner()
+       if ((opinfo->flags & FL_USE_FPU) != 0)
+       {
+         m_ppc_state.Exceptions |= EXCEPTION_FPU_UNAVAILABLE;
+-        CheckExceptions();
++        if (!dreamports_call)
++          CheckExceptions();
+       }
+       else
+       {
+         RunInterpreterOp(*this, m_prev_inst);
+-        if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0)
++        if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0 && !dreamports_call)
+         {
+           CheckExceptions();
+         }
+       }
+     }
+   }
++  else if (dreamports_call)
++  {
++    if (m_ppc_state.Exceptions == 0)
++      GenerateProgramException(m_ppc_state, ProgramExceptionCause::IllegalInstruction);
++  }
+   else
+   {
+     // Memory exception on instruction fetch
+diff --git a/Source/Core/Core/PowerPC/MMU.cpp b/Source/Core/Core/PowerPC/MMU.cpp
+index 940e93c..8570bf8 100644
+--- a/Source/Core/Core/PowerPC/MMU.cpp
++++ b/Source/Core/Core/PowerPC/MMU.cpp
+@@ -24,6 +24,10 @@
+  */
+ 
+ #include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/DreamportsCall.h"
++
++// Dreamports: the function check's call (DreamportsCall.h)
++DreamportsCallState DreamportsCall;
+ 
+ #include <algorithm>
+ #include <bit>
+@@ -189,6 +193,17 @@ static void EFB_Write(u32 data, u32 addr)
+   }
+ }
+ 
++// Dreamports: what a call of the function check (DolphinLibretro/Main.cpp) needs of the memory: while it's on, the
++// hardware's registers, 64 KB from 0x0C000000, are memory of their own, highest byte first, read and written as they're
++// kept and doing nothing else, every read the processor makes is told to the check, and a read or a write of anything
++// else, the embedded framebuffer, the graphics chip's FIFO or what's past the console's 24 MB, which Dolphin sees as the
++// memory again, stops the call, with where.
++
++static bool DreamportsHardware(u32 address, u32 size)
++{
++  return address >= 0x0C000000 && address + size <= 0x0C010000;
++}
++
+ template <XCheckTLBFlag flag, std::unsigned_integral T, bool never_translate>
+ T MMU::ReadFromHardware(u32 em_address)
+ {
+@@ -230,6 +245,29 @@ T MMU::ReadFromHardware(u32 em_address)
+     wi = translated_addr.wi;
+   }
+ 
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) != 0x08000000 &&
++      em_address >= m_memory.GetRamSizeReal())
++  {
++    DreamportsCall.elsewhere = true;
++    DreamportsCall.elsewhere_at = em_address;
++    return 0;
++  }
++
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) == 0x08000000)
++  {
++    if (!DreamportsHardware(em_address, sizeof(T)))
++    {
++      DreamportsCall.elsewhere = true;
++      DreamportsCall.elsewhere_at = em_address;
++      return 0;
++    }
++    T value = 0;
++    for (u32 i = 0; i < sizeof(T); i++)
++      value = static_cast<T>((value << 8) | DreamportsCall.hardware[(em_address & 0xFFFF) + i]);
++    DreamportsCall.used_hardware = true;
++    return value;
++  }
++
+   if (flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) == 0x08000000)
+   {
+     if (em_address < 0x0c000000)
+@@ -367,6 +405,28 @@ void MMU::WriteToHardware(u32 em_address, const u32 data, const u32 size)
+   // not all zero will result in incorrect data in the buffer." So, it's possible that in some cases
+   // writes which do not exactly match the masking behave differently, but Pac-Man World 3's writes
+   // happen to behave correctly.
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Write && (em_address & 0xF8000000) != 0x08000000 &&
++      em_address >= m_memory.GetRamSizeReal())
++  {
++    DreamportsCall.elsewhere = true;
++    DreamportsCall.elsewhere_at = em_address;
++    return;
++  }
++
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Write && (em_address & 0xF8000000) == 0x08000000)
++  {
++    if (!DreamportsHardware(em_address, size) || (em_address & 0xFFFFF000) == GPFifo::GATHER_PIPE_PHYSICAL_ADDRESS)
++    {
++      DreamportsCall.elsewhere = true;
++      DreamportsCall.elsewhere_at = em_address;
++      return;
++    }
++    for (u32 i = 0; i < size; i++)
++      DreamportsCall.hardware[(em_address & 0xFFFF) + i] = static_cast<u8>(data >> ((size - 1 - i) * 8));
++    DreamportsCall.used_hardware = true;
++    return;
++  }
++
+   if (flag == XCheckTLBFlag::Write &&
+       (em_address & 0xFFFFF000) == GPFifo::GATHER_PIPE_PHYSICAL_ADDRESS)
+   {
+@@ -639,6 +699,8 @@ template <std::unsigned_integral T>
+ T MMU::Read(const u32 address)
+ {
+   T var = ReadFromHardware<XCheckTLBFlag::Read, T>(address);
++  if (DreamportsCall.on && DreamportsCall.read)
++    DreamportsCall.read(address, sizeof(T), static_cast<u64>(var));
+   Memcheck(address, var, false, sizeof(T));
+   return var;
  }
 diff --git a/Source/Core/DolphinLibretro/Audio.cpp b/Source/Core/DolphinLibretro/Audio.cpp
 index 04deefa..f65c8bb 100644
@@ -120,10 +314,161 @@ index 4ced7bf..024afc9 100644
    Pad::InitializeGBA();
    Keyboard::Initialize();
 diff --git a/Source/Core/DolphinLibretro/Main.cpp b/Source/Core/DolphinLibretro/Main.cpp
-index 97ba667..392c7d7 100644
+index 97ba667..237ad69 100644
 --- a/Source/Core/DolphinLibretro/Main.cpp
 +++ b/Source/Core/DolphinLibretro/Main.cpp
-@@ -283,6 +283,11 @@ void retro_run(void)
+@@ -36,6 +36,11 @@
+ #include "Core/PatchEngine.h"
+ #include "Core/State.h"
+ #include "Core/System.h"
++#include "Core/PowerPC/DreamportsCall.h"
++#include "Core/PowerPC/Interpreter/Interpreter.h"
++#include "Core/PowerPC/JitInterface.h"
++#include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/PowerPC.h"
+ #include "DolphinLibretro/Audio.h"
+ #include "DolphinLibretro/Input.h"
+ #include "DolphinLibretro/Common/Options.h"
+@@ -242,6 +247,138 @@ void retro_reset(void)
+   Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
+ }
+ 
++// Dreamports: one function of the console's program run by itself on Dolphin's own interpreter, the processor `prove`
++// runs a game on, for the function check (tools/libretro/host.c, its call mode). Whoever runs the core has booted a
++// program and stopped between frames; it gives the registers a call starts with, and the interpreter runs an
++// instruction at a time from `pc` until the processor comes back to `sentinel`, which the link register is set to,
++// runs `most` instructions, meets an exception, or reaches what the check can't follow. No time passes for the rest of
++// the console meanwhile, the hardware's registers are memory of their own (Core/PowerPC/MMU.cpp), and the data cache is
++// written back to memory and emptied as the call ends, so what the function stored is in memory either way and the
++// next call starts as this one did.
++//
++// `state` holds, in 32-bit words: the 32 general registers; the 32 floating-point registers' first halves, then their
++// second halves, two words each, the high one first; CR, XER, LR, CTR, FPSCR and the eight GQRs. It's read as the call
++// starts and written as it ends. `hardware` is the 64 KB of the hardware's registers, read and written. `ran` is told
++// of each instruction as it runs: its address, and for a conditional branch 1 when it went to its target and 2 when it
++// went on past it; `read` of each read: its address, how many bytes and the value. Returns how the call ended: 0 it
++// came back, 1 it ran out of instructions, 2 an exception, with `detail` the exceptions' bits, 3 it reached what the
++// check can't follow, with `detail` the address; and `at` where it was, `steps` how many instructions ran, and
++// `used` whether it read or wrote the hardware's registers.
++extern "C" RETRO_API int dreamports_call(uint32_t pc, uint32_t sentinel, uint32_t most, uint32_t* state,
++                                         uint8_t* hardware, void (*ran)(uint32_t, uint32_t),
++                                         void (*read)(uint32_t, uint32_t, uint64_t), uint32_t* detail,
++                                         uint32_t* at, uint32_t* steps, uint32_t* used)
++{
++  auto& system = Core::System::GetInstance();
++  auto& ppc = system.GetPPCState();
++  auto& memory = system.GetMemory();
++  auto& mmu = system.GetMMU();
++  auto& interpreter = system.GetInterpreter();
++  // the processor's state as the program left it after its frames, which every call starts from: its machine state,
++  // its special registers and its segments, so that what one call did to them, or an exception it met, isn't the next
++  // one's start
++  static bool kept = false;
++  static u32 kept_msr, kept_spr[1024], kept_sr[16];
++  if (!kept)
++  {
++    kept = true;
++    kept_msr = ppc.msr.Hex;
++    std::memcpy(kept_spr, ppc.spr, sizeof kept_spr);
++    std::memcpy(kept_sr, ppc.sr.data(), sizeof kept_sr);
++  }
++  ppc.msr.Hex = kept_msr;
++  std::memcpy(ppc.spr, kept_spr, sizeof kept_spr);
++  std::memcpy(ppc.sr.data(), kept_sr, sizeof kept_sr);
++  mmu.DBATUpdated();
++  mmu.IBATUpdated();
++  for (int i = 0; i < 32; i++)
++    ppc.gpr[i] = state[i];
++  for (int i = 0; i < 32; i++)
++  {
++    ppc.ps[i].SetPS0((u64(state[32 + i * 2]) << 32) | state[33 + i * 2]);
++    ppc.ps[i].SetPS1((u64(state[96 + i * 2]) << 32) | state[97 + i * 2]);
++  }
++  ppc.cr.Set(state[160]);
++  ppc.SetXER(UReg_XER(state[161]));
++  LR(ppc) = sentinel;
++  CTR(ppc) = state[163];
++  ppc.fpscr.Hex = state[164];
++  for (int i = 0; i < 8; i++)
++    ppc.spr[SPR_GQR0 + i] = state[165 + i];
++  // the caches emptied, as memory is what the check just gave it, and the floating-point unit on, as a game's code
++  // runs with it
++  ppc.dCache.Reset();
++  ppc.iCache.Reset(system.GetJitInterface());
++  ppc.msr.FP = 1;
++  ppc.pc = pc;
++  ppc.npc = pc + 4;
++  ppc.Exceptions = 0;
++  std::memcpy(DreamportsCall.hardware, hardware, sizeof DreamportsCall.hardware);
++  DreamportsCall.used_hardware = false;
++  DreamportsCall.elsewhere = false;
++  DreamportsCall.read = read;
++  DreamportsCall.on = true;
++  int end = 1;
++  uint32_t count = 0;
++  *detail = 0;
++  while (count < most)
++  {
++    if (ppc.pc == sentinel)
++    {
++      end = 0;
++      break;
++    }
++    const u32 here = ppc.pc;
++    const u32 word = mmu.Read_Opcode(here);
++    interpreter.SingleStepInner();
++    count++;
++    const u32 op = word >> 26, xo = (word >> 1) & 0x3FF;
++    const bool conditional = (op == 16 || (op == 19 && (xo == 16 || xo == 528))) && ((word >> 21) & 0x14) != 0x14;
++    if (ran)
++      ran(here, conditional ? (ppc.pc == here + 4 ? 2 : 1) : 0);
++    if (DreamportsCall.elsewhere)
++    {
++      end = 3;
++      *detail = DreamportsCall.elsewhere_at;
++      ppc.pc = here;
++      break;
++    }
++    if (ppc.Exceptions != 0)
++    {
++      end = 2;
++      *detail = ppc.Exceptions;
++      ppc.Exceptions = 0;
++      ppc.pc = here;
++      break;
++    }
++  }
++  DreamportsCall.on = false;
++  DreamportsCall.read = nullptr;
++  *at = ppc.pc;
++  *steps = count;
++  *used = DreamportsCall.used_hardware ? 1 : 0;
++  ppc.dCache.FlushAll(memory);
++  ppc.dCache.Reset();
++  std::memcpy(hardware, DreamportsCall.hardware, sizeof DreamportsCall.hardware);
++  for (int i = 0; i < 32; i++)
++    state[i] = ppc.gpr[i];
++  for (int i = 0; i < 32; i++)
++  {
++    state[32 + i * 2] = u32(ppc.ps[i].PS0AsU64() >> 32);
++    state[33 + i * 2] = u32(ppc.ps[i].PS0AsU64());
++    state[96 + i * 2] = u32(ppc.ps[i].PS1AsU64() >> 32);
++    state[97 + i * 2] = u32(ppc.ps[i].PS1AsU64());
++  }
++  state[160] = ppc.cr.Get();
++  state[161] = ppc.GetXER().Hex;
++  state[162] = LR(ppc);
++  state[163] = CTR(ppc);
++  state[164] = ppc.fpscr.Hex;
++  for (int i = 0; i < 8; i++)
++    state[165 + i] = ppc.spr[SPR_GQR0 + i];
++  return end;
++}
++
+ void retro_run(void)
+ {
+   Libretro::Input::InitSensors();
+@@ -283,6 +420,11 @@ void retro_run(void)
    if (Core::GetState(system) == Core::State::Starting &&
        !Libretro::g_emuthread_launched)
    {
@@ -135,7 +480,7 @@ index 97ba667..392c7d7 100644
      WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
      if (system.IsDualCoreMode())
      {
-@@ -299,12 +304,7 @@ void retro_run(void)
+@@ -299,12 +441,7 @@ void retro_run(void)
  
      Libretro::g_emuthread_launched = true;
  
@@ -149,7 +494,7 @@ index 97ba667..392c7d7 100644
      {
        g_gfx.reset();
        g_gfx = std::make_unique<Libretro::Video::NullGfx>();
-@@ -527,7 +527,9 @@ void retro_run(void)
+@@ -527,7 +664,9 @@ void retro_run(void)
      Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
        Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
        Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");

@@ -4,6 +4,7 @@
 // host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM route SPEC [KEY=VALUE…]
+// host CORE ROM call [KEY=VALUE…]
 //
 // BUTTONS holds each frame's buttons, 32 bits each, PICTURES the frames whose picture is wanted, SETS the values to write
 // to the console's work memory ({ frame, address, bytes, value }, 32 bits each) and KEY=VALUE the core's settings. For
@@ -49,6 +50,9 @@
 // can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
+//
+// `call` runs one function of the console's program at a time, on a core that can, for the function check: calls.h says
+// how it's asked and what it answers.
 //
 // The environment's DP_LEAVE, when it's set, has the program end the moment its work is written, without the core's own
 // ending, for a core whose ending can fail or never come, as Dolphin's does on Windows: nothing of a run is kept past
@@ -167,6 +171,7 @@ static size_t sizeCount, sizeRoom;
 #include "ran-ps2.h"
 #include "held.h"
 #include "starts.h"
+#include "calls.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -662,9 +667,9 @@ int main(int argc, char** argv) {
 }
 
 static int run(int argc, char** argv) {
-	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
-	if (argc < (live ? 6 : route ? 5 : 12)) {
-		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n");
+	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route"), calls = argc >= 4 && !strcmp(argv[3], "call");
+	if (argc < (live ? 6 : route ? 5 : calls ? 4 : 12)) {
+		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n       host CORE ROM call [KEY=VALUE…]\n");
 		return 2;
 	}
 	// what the core prints goes nowhere: stdout is for the tools alone
@@ -680,10 +685,10 @@ static int run(int argc, char** argv) {
 	static char outBuffer[1 << 16];
 	setvbuf(out, outBuffer, _IOFBF, sizeof outBuffer);
 
-	// a search shows no picture, so it's given no size for one
-	int at = live ? 4 : route ? 3 : 10;
-	wantedW = route ? 0 : atoi(argv[at]);
-	wantedH = route ? 0 : atoi(argv[at + 1]);
+	// a search and a call show no picture, so they're given no size for one
+	int at = live ? 4 : route ? 3 : calls ? 2 : 10;
+	wantedW = route || calls ? 0 : atoi(argv[at]);
+	wantedH = route || calls ? 0 : atoi(argv[at + 1]);
 	settings = (const char**) argv + at + 2;
 	settingCount = argc - at - 2;
 	picture = malloc(wantedW * wantedH * 2 + 2);
@@ -725,7 +730,7 @@ static int run(int argc, char** argv) {
 
 	// what ran, from a core that tells of every instruction, only when something of it is asked for, told before the game
 	// loads, as the PlayStation 2's core starts the console as it does
-	if (!live && !route) {
+	if (!live && !route && !calls) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
 		ps2Watch watch = dlsym(library, "dreamports_watch");
@@ -750,7 +755,7 @@ static int run(int argc, char** argv) {
 	}
 
 	// the memory cards the game starts from, before it loads (held.h)
-	if (!live && !route) heldStart(dlsym(library, "dreamports_memory_card"));
+	if (!live && !route && !calls) heldStart(dlsym(library, "dreamports_memory_card"));
 
 	struct system_info info = { 0 };
 	retro_get_system_info(&info);
@@ -775,6 +780,7 @@ static int run(int argc, char** argv) {
 		graphics->contextReset();
 	}
 	wantedRate = getenv("DP_SOUND_RATE") ? atof(getenv("DP_SOUND_RATE")) : 0;
+	if (calls) return callServe(library);
 
 	if (route) {
 		// what the search says goes where the tools read it, which the core's own words never reach
