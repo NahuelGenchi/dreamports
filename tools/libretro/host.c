@@ -657,12 +657,16 @@ static void searchThread(void* console, int plays) {
 //              image it is and how far its mirrors reach from it, then a mask every address is cut to first, then the
 //              bytes of every place in turn. They're written into the console's memory. Answers 'k'.
 //   'C' call   the function's address, how many bytes long it is, how many instructions it may run, where it comes back
-//              to, the 32 registers with hi and lo, the changes to the image, a count then each one's address, bytes
-//              and value, and the places that stop a call, a count then each. Answers how it ended, where, the pc, how
-//              many instructions ran and the registers it left, 38 words; a byte for each instruction of the function;
+//              to, the 32 registers with hi and lo, the floating-point unit's 32 and its control register, the changes
+//              to the image, a count then each one's address, bytes and value, and the places that stop a call, a count
+//              then each. Answers how it ended, where, the pc, how many instructions ran and the registers it left, 71
+//              words; a byte for each instruction of the function;
 //              each place it read, the first time, a count then each's address, bytes and value; and each 256 bytes of
 //              the image it wrote, a count then each's number and the bytes it left. Then the memory is as it was.
 //   'Q'        ends it.
+// what a call is given and what it leaves, in words: four of its own, the 32 registers, hi and lo, and the
+// floating-point unit's 32 registers and its control register
+#define CALL_HEAD 71
 struct callPlace { uint32_t address, bytes, span, at; };
 static struct callPlace callPlaces[16];
 static uint32_t callPlaceCount, callMask, callImageBytes;
@@ -767,27 +771,27 @@ static int serveCalls(void* library) {
 			fprintf(err, "The function check asked for something it doesn't have: %d\n", command);
 			return 2;
 		}
-		uint32_t head[38], count;
-		if (!callWords(head, 38) || !callWords(&count, 1)) return 2;
+		uint32_t head[CALL_HEAD], count;
+		if (!callWords(head, CALL_HEAD) || !callWords(&count, 1)) return 2;
 		uint32_t* changes = malloc((count ? count : 1) * 12);
 		if (!callWords(changes, count * 3)) return 2;
 		uint32_t stopCount;
 		if (!callWords(&stopCount, 1)) return 2;
-		if (39 + stopCount > inRoom) in = realloc(in, (inRoom = 39 + stopCount) * 4);
-		memcpy(in, head, 38 * 4);
-		in[38] = stopCount;
-		if (!callWords(in + 39, stopCount)) return 2;
+		if (CALL_HEAD + 1 + stopCount > inRoom) in = realloc(in, (inRoom = CALL_HEAD + 1 + stopCount) * 4);
+		memcpy(in, head, CALL_HEAD * 4);
+		in[CALL_HEAD] = stopCount;
+		if (!callWords(in + CALL_HEAD + 1, stopCount)) return 2;
 		for (uint32_t i = 0; i < count; i++) {
 			uint8_t* to = (uint8_t*) callMemory(0, changes[i * 3], changes[i * 3 + 1]);
 			for (uint32_t b = 0; to && b < changes[i * 3 + 1]; b++) to[b] = (uint8_t) (changes[i * 3 + 2] >> (b * 8));
 		}
-		uint32_t span = head[1], result[38];
+		uint32_t span = head[1], result[CALL_HEAD];
 		uint8_t* ran = calloc(span / 4 + 1, 1);
 		callReadCount = 0;
 		callChunkCount = 0;
 		memset(callSeen, 0, sizeof callSeen);
 		call(in, result, ran, callNoted);
-		fwrite(result, 4, 38, out);
+		fwrite(result, 4, CALL_HEAD, out);
 		fwrite(ran, 1, span / 4, out);
 		uint32_t reads = (uint32_t) callReadCount, chunks = (uint32_t) callChunkCount;
 		fwrite(&reads, 4, 1, out);

@@ -59,3 +59,83 @@ uint32_t system_time(void) {
 float half(float x) {
   return x / 2;
 }
+
+/** @SCALE@: x times y, as the floating-point unit multiplies */
+float scale(float x, float y) {
+  return psp_mul_s(x, y);
+}
+
+/** @WHOLE@: round.w.s */
+int whole(float x) {
+  return psp_round_w_s(x);
+}
+
+/** @CUT@: trunc.w.s */
+int cut(float x) {
+  return psp_trunc_w_s(x);
+}
+
+/** @FLOOR_OF@: floor.w.s */
+int floor_of(float x) {
+  return psp_floor_w_s(x);
+}
+
+/** @CEIL_OF@: ceil.w.s */
+int ceil_of(float x) {
+  return psp_ceil_w_s(x);
+}
+
+/** @NEAREST@: cvt.w.s, as the console starts a program rounding */
+int nearest(float x) {
+  return psp_cvt_w_s(x, PSP_FPU_NEAREST);
+}
+
+/** @LESS@: whether x is less than y */
+int less(float x, float y) {
+  return x < y;
+}
+
+/** @ROOT@: the square root */
+float root(float x) {
+  return __builtin_sqrtf(x);
+}
+
+/** @FROM_WHOLE@: a whole number as a float */
+float from_whole(int n) {
+  return (float)n;
+}
+
+/** @LEADING@: how many top bits are 0 */
+unsigned leading(unsigned x) {
+  return psp_clz(x);
+}
+
+/** @SWAPPED@: each half's bytes swapped */
+unsigned swapped(unsigned x) {
+  return psp_wsbh(x);
+}
+
+/** @REVERSED@: the bits the other way round */
+unsigned reversed(unsigned x) {
+  return psp_bitrev(x);
+}
+
+/** @QUOTIENT@: a over b */
+int quotient(int a, int b) {
+  return (int)psp_div(a, b).lo;
+}
+
+/** @REST@: what's left of a over b */
+int rest(int a, int b) {
+  return (int)psp_div(a, b).hi;
+}
+
+/** @DOT@: a times b plus c times d, the low word */
+int dot(int a, int b, int c, int d) {
+  return (int)psp_madd(psp_mult(a, b), c, d).lo;
+}
+
+/** @TURNED@: x turned right by n */
+unsigned turned(unsigned x, unsigned n) {
+  return psp_rotr(x, n);
+}

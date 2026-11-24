@@ -11,7 +11,23 @@
 //   bigger(a, b)         the Allegrex's own max
 //   middle(x)            the Allegrex's own ext: x's bits 4 to 11
 //   clock()              the system's time, through one of the system's functions
-//   half(x)              a float's, which the check doesn't give yet
+//   half(x)              a float times a half, in the floating-point unit's f0
+//   scale(x, y)          x times y, which is the console's not-a-number for infinity by zero
+//   whole(x)             round.w.s: the whole number below x and a half
+//   cut(x)               trunc.w.s
+//   floor_of(x)          floor.w.s
+//   ceil_of(x)           ceil.w.s
+//   nearest(x)           cvt.w.s, in the rounding the control register names
+//   less(x, y)           1 when x is less than y, by c.lt.s and bc1t, and 0 when it isn't
+//   root(x)              sqrt.s
+//   from_whole(n)        cvt.s.w: a whole number as a float
+//   leading(x)           clz: how many top bits are 0
+//   swapped(x)           wsbh: each half's bytes swapped
+//   reversed(x)          bitrev: the bits the other way round
+//   quotient(a, b)       div, with what the console gives for a division by zero
+//   rest(a, b)           div's remainder, in HI
+//   dot(a, b, c, d)      a times b plus c times d, by mult and the Allegrex's madd, the low word
+//   turned(x, n)         rotrv: x turned right by n
 //   start                the program's start, which comes straight back
 
 import { A0, A1, A2, NOP, RA, SP, T0, T1, T2, V0, ZERO, addiu, addu, beq, call, here, jal, jr, la, lw, pspProgram, sll, sw } from './made-up-psp.mjs';
@@ -22,9 +38,29 @@ const sltiu = (rt, rs, value) => word(0x0B, rs, rt, value);
 const max = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x2C) >>> 0;
 const ext = (rt, rs, position, size) => (0x1F << 26 | rs << 21 | rt << 16 | (size - 1) << 11 | position << 6) >>> 0;
 const b = name => beq(ZERO, ZERO, name);
+const special = (rs, rt, rd, sa, funct) => (rs << 21 | rt << 16 | rd << 11 | sa << 6 | funct) >>> 0;
+const clz = (rd, rs) => special(rs, 0, rd, 0, 0x16);
+const div = (rs, rt) => special(rs, rt, 0, 0, 0x1A), mult = (rs, rt) => special(rs, rt, 0, 0, 0x18), madd = (rs, rt) => special(rs, rt, 0, 0, 0x1C);
+const mflo = rd => special(0, 0, rd, 0, 0x12), mfhi = rd => special(0, 0, rd, 0, 0x10);
+const rotrv = (rd, rt, rs) => special(rs, rt, rd, 1, 0x06);
+const bshfl = (rd, rt, kind) => (0x1F << 26 | rt << 16 | rd << 11 | kind << 6 | 0x20) >>> 0;
+const wsbh = (rd, rt) => bshfl(rd, rt, 0x02), bitrev = (rd, rt) => bshfl(rd, rt, 0x14);
+// the floating-point unit's: moves to and from it, its sums on single floats, its conversions and its comparison
+const COP1 = 0x11 << 26;
+const mtc1 = (rt, fs) => (COP1 | 4 << 21 | rt << 16 | fs << 11) >>> 0, mfc1 = (rt, fs) => (COP1 | rt << 16 | fs << 11) >>> 0;
+const single = (funct, fd, fs, ft = 0) => (COP1 | 16 << 21 | ft << 16 | fs << 11 | fd << 6 | funct) >>> 0;
+const mul = (fd, fs, ft) => single(2, fd, fs, ft), sqrt = (fd, fs) => single(4, fd, fs);
+const roundW = (fd, fs) => single(12, fd, fs), truncW = (fd, fs) => single(13, fd, fs), ceilW = (fd, fs) => single(14, fd, fs), floorW = (fd, fs) => single(15, fd, fs);
+const cvtWS = (fd, fs) => single(36, fd, fs), cvtSW = (fd, fs) => (COP1 | 20 << 21 | fs << 11 | fd << 6 | 32) >>> 0;
+const cLt = (fs, ft) => single(0x3C, 0, fs, ft);
+const bc1t = name => ({ op: 0x11, rs: 8, rt: 1, name });
+const F0 = 0, F1 = 1, F12 = 12, F13 = 13, A3 = 7;
 
 /** The functions, by name, in the order they're in the program. */
-export const NAMES = ['start', 'sum', 'fill', 'lookup', 'twice', 'pick', 'bigger', 'middle', 'clock', 'half'];
+export const NAMES = ['start', 'sum', 'fill', 'lookup', 'twice', 'pick', 'bigger', 'middle', 'clock', 'half', 'scale', 'whole', 'cut', 'floor_of', 'ceil_of',
+  'nearest', 'less', 'root', 'from_whole', 'leading', 'swapped', 'reversed', 'quotient', 'rest', 'dot', 'turned'];
+/** Those that use the floating-point unit or the Allegrex's own instructions. */
+export const UNITS = NAMES.slice(NAMES.indexOf('half'));
 /** The table `lookup` reads. */
 export const VALUES = [11, 22, 33, 44];
 
@@ -89,8 +125,24 @@ export function madeUpPspTwin() {
     here('bigger'), jr(RA), max(V0, A0, A1),
     here('middle'), jr(RA), ext(V0, A0, 4, 8),
     here('clock'), addiu(SP, SP, -16), sw(RA, 0, SP), ...call('sceKernelGetSystemTimeLow'), lw(RA, 0, SP), jr(RA), addiu(SP, SP, 16),
-    // half: mov.s $f0, $f12 then a multiply by a half would do it; the check never calls it, so it only comes back
-    here('half'), jr(RA), NOP,
+    here('half'), word(0x0F, 0, T0, 0x3F00), mtc1(T0, F1), jr(RA), mul(F0, F12, F1),
+    here('scale'), jr(RA), mul(F0, F12, F13),
+    here('whole'), roundW(F0, F12), jr(RA), mfc1(V0, F0),
+    here('cut'), truncW(F0, F12), jr(RA), mfc1(V0, F0),
+    here('floor_of'), floorW(F0, F12), jr(RA), mfc1(V0, F0),
+    here('ceil_of'), ceilW(F0, F12), jr(RA), mfc1(V0, F0),
+    here('nearest'), cvtWS(F0, F12), jr(RA), mfc1(V0, F0),
+    here('less'), cLt(F12, F13), bc1t('less yes'), addiu(V0, ZERO, 1), jr(RA), addiu(V0, ZERO, 0),
+    here('less yes'), jr(RA), NOP,
+    here('root'), jr(RA), sqrt(F0, F12),
+    here('from_whole'), mtc1(A0, F0), jr(RA), cvtSW(F0, F0),
+    here('leading'), jr(RA), clz(V0, A0),
+    here('swapped'), jr(RA), wsbh(V0, A0),
+    here('reversed'), jr(RA), bitrev(V0, A0),
+    here('quotient'), div(A0, A1), jr(RA), mflo(V0),
+    here('rest'), div(A0, A1), jr(RA), mfhi(V0),
+    here('dot'), mult(A0, A1), madd(A2, A3), jr(RA), mflo(V0),
+    here('turned'), jr(RA), rotrv(V0, A0, A1),
   ];
   return pspProgram({
     code, name: 'twins', relocatable: true, sections: true,

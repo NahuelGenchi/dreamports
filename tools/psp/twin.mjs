@@ -13,18 +13,21 @@
 // gives, or the one in its label.
 //
 // A call is made as the console's compiler makes one, under the EABI the console's programs are built for: the first
-// eight arguments in a0 to a3 and t0 to t3, each spread to 32 bits as its type says; sp, ra and gp as the program has
-// them; and any value in every other register, so a function that reads one it wasn't given differs. A function gives
-// back what its C says in v0. A function that takes or gives a float, which the floating-point unit's registers carry,
-// or more than eight arguments, isn't checked yet. The original's own saves below its stack aren't compared, as a twin
-// keeps those in its own stack.
+// eight whole numbers and pointers in a0 to a3 and t0 to t3, each spread to 32 bits as its type says, and the first
+// eight floats in the floating-point unit's f12 to f19, as their bits; sp, ra and gp as the program has them; the
+// floating-point unit's control register as the console starts a program, rounding to the nearest; and any value in
+// every other register, so a function that reads one it wasn't given differs. A function gives back what its C says
+// in v0, or a float in f0, and keeps s0 to s7, gp, sp, fp and f20 to f31 for its caller. What a twin takes and gives
+// is the compiler's word on its C (../ps2/twin.mjs, wrapOf), so a float crosses as its bits. A function that takes
+// more than eight of either, or a value of 64 bits, which the console carries in two registers, isn't checked yet. The
+// original's own saves below its stack aren't compared, as a twin keeps those in its own stack.
 //
 // What a function is given decides which of its paths run, so the check learns as it goes: the original says what each
 // call read, and later calls change a few of those values. A function counts as proven only when every instruction ran
 // and each branch went both ways (../lib/played.mjs). A call that reaches one of the system's functions ends there, as
 // a twin asks the kit for those, and isn't compared.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
@@ -40,8 +43,9 @@ import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { decode } from '../lib/mips.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { KEPT_FROM, openBuild } from '../gba/twin.mjs';
+import { TYPES, signatureOf, typeOf, wrapOf } from '../ps2/twin.mjs';
 import { findFunctions, programOf, pspProgram } from './functions.mjs';
-import { addressAt, CAME_BACK, ELSEWHERE, endText, EXCEPTION, inImage, OUT_OF_STEPS, Original, RAM, regionsOf, REGISTERS, SYSTEM } from './original.mjs';
+import { addressAt, CAME_BACK, ELSEWHERE, endText, EXCEPTION, FCR31, inImage, OUT_OF_STEPS, Original, RAM, regionsOf, REGISTERS, SYSTEM } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 const NO_CODE = '__twin_no_code';
@@ -69,6 +73,10 @@ export function foldTable() {
   return table;
 }
 
+/** A version's C ready to be built for the check, as openBuild (../gba/twin.mjs) has it, on the console's kit and laid out as
+ *  a game's build is, each twin called with what the compiler says it takes and gives (../ps2/twin.mjs, wrapOf). */
+export const openPspBuild = options => openBuild({ ...options, console: 'psp', layout: LAYOUT, signature: signatureOf, wrap: wrapOf });
+
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
   calls: 2000,
@@ -80,10 +88,15 @@ const TRIES = 4;
 // where a call comes back to, in the kernel's memory, where no game has code; how far below its stack the original's
 // own saves may go; and where the game's memory starts
 const BACK = 0x08000100, SAVES = 0x10000, GAME = 0x08800000;
-// the registers a function keeps for its caller: s0 to s7, gp, sp and fp
-const KEPT = [16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30];
-// the registers the first eight arguments go in
-const ARGUMENTS = [4, 5, 6, 7, 8, 9, 10, 11];
+// the registers a function keeps for its caller: s0 to s7, gp, sp and fp, and the floats f20 to f31
+const KEPT = [16, 17, 18, 19, 20, 21, 22, 23, 28, 29, 30], KEPT_FLOATS = [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
+// the registers the first eight whole numbers go in, and the first of the eight the floats go in
+const ARGUMENTS = [4, 5, 6, 7, 8, 9, 10, 11], FLOAT_ARGUMENTS = 12;
+// floats at the edges, as their bits: zeros, ones, halves, a half and a whole and a half more, the float just under a
+// half, two, the smallest and largest ordinary ones, the tiniest of all, the largest whole number of 32 bits a float
+// holds and the first it doesn't, both ways, infinities and not a number
+const FLOAT_EDGES = [0, 0x80000000, 0x3F800000, 0xBF800000, 0x3F000000, 0xBF000000, 0x3FC00000, 0x40200000, 0xC0200000, 0x3EFFFFFF, 0x40000000,
+  0x00800000, 0x80800000, 0x7F7FFFFF, 0xFF7FFFFF, 0x00000001, 0x4EFFFFFF, 0x4F000000, 0xCF000000, 0xCF000001, 0x7F800000, 0xFF800000, 0x7FC00000];
 const EDGES = [0, 1, 2, 3, 4, 7, 8, 0xF, 0x10, 0x7F, 0x80, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF];
 
 const count = n => n.toLocaleString('en-US');
@@ -110,6 +123,9 @@ export function chooser(seed, top) {
     next, below,
     value(type, pointers) {
       if (type.pointer) return place(pointers);
+      if (type.boolean) return below(2);
+      // a float as its bits: one at an edge, any bits at all, or an ordinary one between a 64th and 64
+      if (type.float) return [() => FLOAT_EDGES[below(FLOAT_EDGES.length)], next, () => (0x3C800000 + below(0x6000000)) >>> 0][below(3)]() >>> 0;
       const value = number();
       if (type.bits === 32) return value;
       return (type.signed ? (value << (32 - type.bits)) >> (32 - type.bits) : value & (2 ** type.bits - 1)) >>> 0;
@@ -168,6 +184,11 @@ class Runner {
     return answer;
   }
 
+  /** The compiler's word on each of a twin's types, its arguments' and then what it gives back (wrapOf). */
+  async types(name, count) {
+    return (await this.ask({ types: `${name}${TYPES}`, count })).types;
+  }
+
   async set(image, regions) {
     this.image = image;
     this.regions = regions;
@@ -192,14 +213,6 @@ class Runner {
   }
 }
 
-// whether a function of a file of C takes or gives a float, which the floating-point unit's registers carry and the
-// check doesn't give yet
-function takesFloat(text, name) {
-  const code = text.replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, ' ');
-  const found = new RegExp(`(?:^|[;}\\n])([^;{}()=#]*)\\b${name}\\s*\\(([^)]*)\\)\\s*\\{`).exec(code);
-  return !!found && /\b(float|double)\b/.test(`${found[1]} ${found[2]}`);
-}
-
 async function checkFunction({ f, original, runner, program, regions, options, choose }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
   const top = RAM + regions[0].bytes, stack = (top - 0x100) >>> 0;
@@ -220,15 +233,19 @@ async function checkFunction({ f, original, runner, program, regions, options, c
         changes.push([address, bytes, choose.sized(bytes, pointers)]);
       }
     }
+    // whole numbers and pointers in a0 on, floats in f12 on, each in the order it's taken
+    const integers = [], floats = [];
+    f.params.forEach((type, i) => (type.float ? floats : integers).push(args[i]));
     const registers = REGISTERS.map((name, i) => {
       if (name === 'zero') return 0;
       if (name === 'sp') return stack;
       if (name === 'ra') return BACK;
       if (name === 'gp') return program.gp;
       const argument = ARGUMENTS.indexOf(i);
-      return argument >= 0 && argument < args.length ? args[argument] : choose.next();
+      return argument >= 0 && argument < integers.length ? integers[argument] : choose.next();
     });
-    const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, back: BACK, registers, changes, stops });
+    const fprs = Array.from({ length: 32 }, (_, i) => (i >= FLOAT_ARGUMENTS && i - FLOAT_ARGUMENTS < floats.length ? floats[i - FLOAT_ARGUMENTS] : choose.next()));
+    const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, back: BACK, registers, floats: fprs, control: FCR31, changes, stops });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
       if (!read(address) || (bytes === 4 && value >= f.code.from && value < f.code.to)) continue;
@@ -242,10 +259,10 @@ async function checkFunction({ f, original, runner, program, regions, options, c
       aside[`${reason}Text`] ??= endText(answer);
       continue;
     }
-    const changed = KEPT.find(i => answer.registers[i] >>> 0 !== registers[i] >>> 0);
-    if (changed !== undefined) {
+    const changed = KEPT.find(i => answer.registers[i] >>> 0 !== registers[i] >>> 0), changedFloat = KEPT_FLOATS.find(i => answer.floats[i] >>> 0 !== fprs[i] >>> 0);
+    if (changed !== undefined || changedFloat !== undefined) {
       aside.kept = (aside.kept ?? 0) + 1;
-      aside.keptText ??= `$${REGISTERS[changed]}`;
+      aside.keptText ??= changed !== undefined ? `${REGISTERS[changed]}` : `$f${changedFloat}`;
       continue;
     }
     const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
@@ -261,8 +278,12 @@ async function checkFunction({ f, original, runner, program, regions, options, c
       continue;
     }
     if (twin.stopped) return { compared, aside, ran, result: { kind: 'stopped', why: twin.stopped, ...call } };
-    const v0 = answer.registers[2] >>> 0;
-    if (f.returns && twin.gave !== v0) return { compared, aside, ran, result: { kind: 'differs', gave: { ours: twin.gave, theirs: v0 }, ...call } };
+    if (f.returns) {
+      // a float in f0, as its bits, or a whole number in v0, spread to 32 bits as its type says
+      const theirs = f.returns.float ? answer.floats[0] >>> 0 : answer.registers[2] >>> 0, low = Number(twin.gave & 0xFFFFFFFFn);
+      const ours = f.returns.float || f.returns.bits === 32 ? low >>> 0 : f.returns.signed ? ((low << (32 - f.returns.bits)) >> (32 - f.returns.bits)) >>> 0 : (low & (2 ** f.returns.bits - 1)) >>> 0;
+      if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(f.returns.float) }, ...call } };
+    }
     if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(regions, twin.differs.at), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
@@ -280,7 +301,7 @@ export function callText(name, { number, args, changes }) {
 export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   const byte = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
   if (result?.kind === 'differs') {
-    const gave = result.gave ? `the twin gave back ${at(result.gave.ours)} and the original ${at(result.gave.theirs)}` : null;
+    const gave = result.gave ? `the twin gave back ${at(result.gave.ours)} and the original ${at(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
     const memory = result.memory ? `at ${at(result.memory.address)}, in ${result.memory.name}, the twin left ${byte(result.memory.ours)} and the original ${byte(result.memory.theirs)}` : null;
     return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, gave].filter(Boolean).join(', and ')}.` };
   }
@@ -335,11 +356,17 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: 'no function of the code map starts there' });
         continue;
       }
-      if (call.params.length > ARGUMENTS.length || takesFloat(readFileSync(file, 'utf8'), call.name)) {
-        functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: call.params.length > ARGUMENTS.length ? 'it takes more than eight arguments, which the check doesn\'t give yet' : 'it takes or gives a float, which the floating-point unit\'s registers carry and the check doesn\'t give yet' });
+      // what it takes and gives, as the compiler says
+      const types = (await runner.types(call.call, call.params.length + (call.returns ? 1 : 0))).map(typeOf);
+      const params = types.slice(0, call.params.length), returns = call.returns ? types.at(-1) : null;
+      const why = types.some(type => !type) ? 'it takes or gives something no register carries, as a struct as it is'
+        : types.some(type => type.bits === 64) ? 'it takes or gives a value of 64 bits, which the console carries in two registers and the check doesn\'t give yet'
+          : params.filter(type => !type.float).length > ARGUMENTS.length || params.filter(type => type.float).length > 8 ? 'it takes more than eight whole numbers or eight floats, which the check doesn\'t give yet' : null;
+      if (why) {
+        functions.push({ name: call.name, address: call.address, kind: 'unchecked', line: why });
         continue;
       }
-      const f = { ...call, size, code: { from: call.address, to: call.address + size } };
+      const f = { ...call, params, returns, size, code: { from: call.address, to: call.address + size } };
       const checked = await checkFunction({ f, original, runner, program, regions, options: all, choose });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(program, f), f.address, checked.ran, ruledOut);
@@ -385,7 +412,7 @@ export async function twin(asked, options = {}, log = console.log) {
   const sizes = new Map(codeMap.functions.filter(f => !f.bytes).map(f => [f.address, f.size]));
   const found = new Map(findFunctions(elf).map(f => [f.address, f.size]));
   const header = await twinsFolder(folder);
-  const build = openBuild({ root: folder, files, shifts, givenOf, console: 'psp', layout: LAYOUT, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
+  const build = openPspBuild({ root: folder, files, shifts, givenOf, includes: [...(existsSync(join(folder, 'src')) ? [join(folder, 'src')] : []), ...(header ? [header.folder] : [])] });
   const { ways: ruledOut } = readUnreachable(game);
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   const proven = [], differing = [];

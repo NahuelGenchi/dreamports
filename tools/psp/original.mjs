@@ -25,6 +25,8 @@ const CHUNK = 256;
 /** The registers by the names MIPS code gives them, in the processor's order, then hi and lo. */
 export const REGISTERS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
   's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra', 'hi', 'lo'];
+/** The floating-point unit's control register as the console starts a program: rounding to the nearest. */
+export const FCR31 = 0;
 /** How a call ended. */
 export const CAME_BACK = 0, OUT_OF_STEPS = 1, EXCEPTION = 2, ELSEWHERE = 3, SYSTEM = 4;
 export const hex = n => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
@@ -141,16 +143,17 @@ export class Original {
 
   /**
    * Runs the function at `address`, `span` bytes long, from the image with `changes`, each [address, bytes, value],
-   * and with `registers`, 34 numbers in the order of REGISTERS, `back` the address ra points at, where it comes back
-   * to. `limit` is how many instructions it may run, and `stops` the addresses that are the system's. Answers { end,
-   * detail, pc, steps, registers, ran, reads, chunks }: `ran` a byte for each instruction of the function, 1 ran, 2
+   * and with `registers`, 34 numbers in the order of REGISTERS, `floats`, the floating-point unit's 32 registers as
+   * their bits, and `control`, its control register, `back` the address ra points at, where it comes back to. `limit`
+   * is how many instructions it may run, and `stops` the addresses that are the system's. Answers { end, detail, pc,
+   * steps, registers, floats, control, ran, reads, chunks }: `ran` a byte for each instruction of the function, 1 ran, 2
    * went to its target, 4 went on; `reads` each place read, { address, bytes, value }; `chunks` each 256 bytes of the
    * image the function wrote, { at, bytes }.
    */
-  async call({ address, span, limit = 1000000, back, registers, changes = [], stops = [] }) {
-    const words = [address, span, limit, back, ...registers, changes.length, ...changes.flat(), stops.length, ...stops];
+  async call({ address, span, limit = 1000000, back, registers, floats = new Array(32).fill(0), control = FCR31, changes = [], stops = [] }) {
+    const words = [address, span, limit, back, ...registers, ...floats, control, changes.length, ...changes.flat(), stops.length, ...stops];
     this.child.stdin.write(Buffer.concat([Buffer.from('C'), ...words.map(word)]));
-    const [end, detail, pc, steps, ...left] = await this.words(38);
+    const [end, detail, pc, steps, ...left] = await this.words(71);
     const ran = new Uint8Array(await this.take(Math.floor(span / 4)));
     const [readCount] = await this.words(1);
     const flat = await this.words(readCount * 3);
@@ -161,7 +164,7 @@ export class Original {
       const [index] = await this.words(1);
       chunks.push({ at: index * CHUNK, bytes: Uint8Array.from(await this.take(CHUNK)) });
     }
-    return { end, detail, pc, steps, registers: left, ran, reads, chunks };
+    return { end, detail, pc, steps, registers: left.slice(0, 34), floats: left.slice(34, 66), control: left[66], ran, reads, chunks };
   }
 
   close() {

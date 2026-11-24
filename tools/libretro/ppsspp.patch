@@ -117,6 +117,68 @@ index 12a2c0a..f29c93b 100644
  	rtcBaseTime.tv_sec = tv.tv_sec;
  	rtcBaseTime.tv_usec = 0;
  	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
+diff --git a/Core/MIPS/MIPSInt.cpp b/Core/MIPS/MIPSInt.cpp
+index ba926a7..370d540 100644
+--- a/Core/MIPS/MIPSInt.cpp
++++ b/Core/MIPS/MIPSInt.cpp
+@@ -874,6 +874,15 @@ namespace MIPSInt
+ 		PC += 4;
+ 	}
+ 
++	// Dreamports: a float made a whole number, at the most or the least 32 bits hold where it's past them, as an ARM
++	// processor gives it and as the console gives an infinity, where C leaves it to the processor and x86's gives the
++	// least either way, so every computer gives the same
++	static inline s32 DreamportsWhole(double value) {
++		if (value >= 2147483648.0) return 0x7FFFFFFF;
++		if (value < -2147483648.0) return (s32)0x80000000;
++		return (s32)value;
++	}
++
+ 	void Int_FPU2op(MIPSOpcode op)
+ 	{
+ 		int fs = _FS;
+@@ -896,21 +905,21 @@ namespace MIPSInt
+ 			}
+ 			switch (op & 0x3f)
+ 			{
+-			case 12: FsI(fd) = (int)floorf(F(fs)+0.5f); break; //round.w.s
++			case 12: FsI(fd) = DreamportsWhole(floorf(F(fs)+0.5f)); break; //round.w.s
+ 			case 13: //trunc.w.s
+ 				if (F(fs) >= 0.0f) {
+-					FsI(fd) = (int)floorf(F(fs));
++					FsI(fd) = DreamportsWhole(floorf(F(fs)));
+ 					// Overflow, but it was positive.
+ 					if (FsI(fd) == -2147483648LL) {
+ 						FsI(fd) = 2147483647LL;
+ 					}
+ 				} else {
+ 					// Overflow happens to be the right value anyway.
+-					FsI(fd) = (int)ceilf(F(fs));
++					FsI(fd) = DreamportsWhole(ceilf(F(fs)));
+ 				}
+ 				break;
+-			case 14: FsI(fd) = (int)ceilf (F(fs)); break; //ceil.w.s
+-			case 15: FsI(fd) = (int)floorf(F(fs)); break; //floor.w.s
++			case 14: FsI(fd) = DreamportsWhole(ceilf (F(fs))); break; //ceil.w.s
++			case 15: FsI(fd) = DreamportsWhole(floorf(F(fs))); break; //floor.w.s
+ 			}
+ 			break;
+ 		case 32: F(fd) = (float)FsI(fs); break; //cvt.s.w
+@@ -923,10 +932,10 @@ namespace MIPSInt
+ 			}
+ 			switch (currentMIPS->fcr31 & 3)
+ 			{
+-			case 0: FsI(fd) = (int)round_ieee_754(F(fs)); break;  // RINT_0
+-			case 1: FsI(fd) = (int)F(fs); break;  // CAST_1
+-			case 2: FsI(fd) = (int)ceilf(F(fs)); break;  // CEIL_2
+-			case 3: FsI(fd) = (int)floorf(F(fs)); break;  // FLOOR_3
++			case 0: FsI(fd) = DreamportsWhole(round_ieee_754(F(fs))); break;  // RINT_0
++			case 1: FsI(fd) = DreamportsWhole(F(fs)); break;  // CAST_1
++			case 2: FsI(fd) = DreamportsWhole(ceilf(F(fs))); break;  // CEIL_2
++			case 3: FsI(fd) = DreamportsWhole(floorf(F(fs))); break;  // FLOOR_3
+ 			}
+ 			break; //cvt.w.s
+ 		default:
 diff --git a/Core/MIPS/MIPSTables.cpp b/Core/MIPS/MIPSTables.cpp
 index 4e3e820..f03ac5c 100644
 --- a/Core/MIPS/MIPSTables.cpp
@@ -206,7 +268,7 @@ index 09396da..11f9550 100644
  	gstate_c.UpdateUVScaleOffset();
  	drawEngine_->transformUnit.SetDirty(dirtyFlags_);
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..295ea05 100644
+index 3b2f103..c8f0b98 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
 @@ -32,6 +32,8 @@
@@ -262,7 +324,7 @@ index 3b2f103..295ea05 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
-@@ -2046,6 +2066,118 @@ inline int16_t Clamp16(int32_t sample) {
+@@ -2046,6 +2066,126 @@ inline int16_t Clamp16(int32_t sample) {
     return sample;
  }
  
@@ -312,13 +374,18 @@ index 3b2f103..295ea05 100644
 +// `ran` a byte for each instruction of the function: 1 ran, 2 a branch there went to its target, 4 went on.
 +extern "C" RETRO_API void dreamports_call(const uint32_t *in, uint32_t *out, uint8_t *ran, void (*noted)(uint32_t address, uint32_t bytes, uint32_t how)) {
 +   MIPSState *m = currentMIPS;
-+   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[38];
-+   const uint32_t *stops = in + 39;
++   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[71];
++   const uint32_t *stops = in + 72;
 +   for (int i = 0; i < 32; i++)
 +      m->r[i] = in[4 + i];
 +   m->r[0] = 0;
 +   m->hi = in[36];
 +   m->lo = in[37];
++   // the floating-point unit's registers, and its control register with its condition
++   for (int i = 0; i < 32; i++)
++      m->fi[i] = in[38 + i];
++   m->fcr31 = in[70] & 0x0181FFFF;
++   m->fpcond = (in[70] >> 23) & 1;
 +   m->pc = address;
 +   m->nextPC = 0;
 +   m->inDelaySlot = false;
@@ -374,6 +441,9 @@ index 3b2f103..295ea05 100644
 +      out[4 + i] = m->r[i];
 +   out[36] = m->hi;
 +   out[37] = m->lo;
++   for (int i = 0; i < 32; i++)
++      out[38 + i] = m->fi[i];
++   out[70] = (m->fcr31 & ~(1u << 23)) | ((m->fpcond & 1u) << 23);
 +   m->inDelaySlot = false;
 +   coreState = was;
 +}

@@ -147,4 +147,131 @@ int sceAudioOutputPanned(int channel, int left, int right, uint32_t samples);
 int sceAudioOutputPannedBlocking(int channel, int left, int right, uint32_t samples);
 int sceAudioGetChannelRestLen(int channel);
 
+// ---- the processor's own instructions -------------------------------------------------------------------------------
+//
+// What the Allegrex's instructions give where C has no word for them, or where C leaves what they give to the computer
+// it runs on, as the console's emulator in the proof tools gives it with its interpreter: a twin calls one where its
+// original runs the instruction. The rest, its sums, shifts, comparisons, loads and stores, and the floating-point
+// unit's sums, square roots and comparisons, are C's own, which gives what the console gives.
+
+/** How many of its top bits are 0 (clz), or 1 (clo): 32 for a word of none. */
+static inline uint32_t psp_clz(uint32_t x) { return x ? (uint32_t)__builtin_clz(x) : 32; }
+static inline uint32_t psp_clo(uint32_t x) { return psp_clz(~x); }
+/** Its bits the other way round (bitrev). */
+static inline uint32_t psp_bitrev(uint32_t x) {
+  uint32_t out = 0;
+  for (int i = 0; i < 32; i++) if (x & (1u << i)) out |= 0x80000000u >> i;
+  return out;
+}
+/** Each half's two bytes swapped (wsbh), and all four the other way round (wsbw). */
+static inline uint32_t psp_wsbh(uint32_t x) { return ((x & 0xFF00FF00u) >> 8) | ((x & 0x00FF00FFu) << 8); }
+static inline uint32_t psp_wsbw(uint32_t x) { return __builtin_bswap32(x); }
+/** Turned right by `by`, of which only the low five bits count (rotr, rotrv). */
+static inline uint32_t psp_rotr(uint32_t x, uint32_t by) {
+  by &= 31;
+  return by ? (x >> by) | (x << (32 - by)) : x;
+}
+/** `size` bits of x from bit `at` (ext), and x with them put in `into` there (ins). */
+static inline uint32_t psp_ext(uint32_t x, int at, int size) { return (x >> at) & (0xFFFFFFFFu >> (32 - size)); }
+static inline uint32_t psp_ins(uint32_t into, uint32_t x, int at, int size) {
+  uint32_t mask = 0xFFFFFFFFu >> (32 - size);
+  return (into & ~(mask << at)) | ((x & mask) << at);
+}
+
+/** HI and LO, which multiplying and dividing leave. */
+typedef struct { uint32_t hi, lo; } psp_hilo;
+static inline psp_hilo psp_hilo_of(uint64_t v) { return (psp_hilo){ (uint32_t)(v >> 32), (uint32_t)v }; }
+static inline uint64_t psp_hilo_value(psp_hilo h) { return (uint64_t)h.hi << 32 | h.lo; }
+static inline psp_hilo psp_mult(int32_t a, int32_t b) { return psp_hilo_of((uint64_t)((int64_t)a * b)); }
+static inline psp_hilo psp_multu(uint32_t a, uint32_t b) { return psp_hilo_of((uint64_t)a * b); }
+/** HI and LO with a product added (madd, maddu) or taken away (msub, msubu). */
+static inline psp_hilo psp_madd(psp_hilo h, int32_t a, int32_t b) { return psp_hilo_of(psp_hilo_value(h) + (uint64_t)((int64_t)a * b)); }
+static inline psp_hilo psp_maddu(psp_hilo h, uint32_t a, uint32_t b) { return psp_hilo_of(psp_hilo_value(h) + (uint64_t)a * b); }
+static inline psp_hilo psp_msub(psp_hilo h, int32_t a, int32_t b) { return psp_hilo_of(psp_hilo_value(h) - (uint64_t)((int64_t)a * b)); }
+static inline psp_hilo psp_msubu(psp_hilo h, uint32_t a, uint32_t b) { return psp_hilo_of(psp_hilo_value(h) - (uint64_t)a * b); }
+/** The quotient in LO and the remainder in HI (div, divu), with what the console gives for a division by zero, and for
+ *  the least whole number by -1, where C gives nothing. */
+static inline psp_hilo psp_div(int32_t a, int32_t b) {
+  if (a == (int32_t)0x80000000 && b == -1) return (psp_hilo){ 0xFFFFFFFFu, 0x80000000u };
+  if (b == 0) return (psp_hilo){ (uint32_t)a, a < 0 ? 1u : 0xFFFFFFFFu };
+  return (psp_hilo){ (uint32_t)(a % b), (uint32_t)(a / b) };
+}
+static inline psp_hilo psp_divu(uint32_t a, uint32_t b) {
+  if (b == 0) return (psp_hilo){ a, a <= 0xFFFF ? 0xFFFFu : 0xFFFFFFFFu };
+  return (psp_hilo){ a % b, a / b };
+}
+
+// The floating-point unit's conversions to whole numbers: each as its instruction rounds, or as the control register
+// says for cvt.w.s, PSP_FPU_NEAREST unless a game set another. Not a number, or infinity, gives the most a whole number
+// of 32 bits holds, or the least for minus infinity, and a number past them gives the nearest of them, as the tools'
+// patch to the emulator has it give on every computer.
+enum { PSP_FPU_NEAREST, PSP_FPU_TOWARD_ZERO, PSP_FPU_UP, PSP_FPU_DOWN };
+static inline int psp_fpu_special(float x, int32_t *out) {
+  uint32_t bits;
+  __builtin_memcpy(&bits, &x, 4);
+  if ((bits & 0x7F800000u) != 0x7F800000u) return 0;
+  *out = bits == 0xFF800000u ? (int32_t)0x80000000 : 0x7FFFFFFF;
+  return 1;
+}
+static inline int32_t psp_fpu_whole(double x) {
+  if (x >= 2147483648.0) return 0x7FFFFFFF;
+  if (x < -2147483648.0) return (int32_t)0x80000000;
+  return (int32_t)x;
+}
+/** round.w.s: the whole number below x and a half. */
+static inline int32_t psp_round_w_s(float x) {
+  int32_t out;
+  return psp_fpu_special(x, &out) ? out : psp_fpu_whole(__builtin_floorf(x + 0.5f));
+}
+/** trunc.w.s: x without what's after its point. */
+static inline int32_t psp_trunc_w_s(float x) {
+  int32_t out;
+  if (psp_fpu_special(x, &out)) return out;
+  if (x >= 0.0f) {
+    out = psp_fpu_whole(__builtin_floorf(x));
+    return out == (int32_t)0x80000000 ? 0x7FFFFFFF : out;
+  }
+  return psp_fpu_whole(__builtin_ceilf(x));
+}
+/** ceil.w.s and floor.w.s. */
+static inline int32_t psp_ceil_w_s(float x) {
+  int32_t out;
+  return psp_fpu_special(x, &out) ? out : psp_fpu_whole(__builtin_ceilf(x));
+}
+static inline int32_t psp_floor_w_s(float x) {
+  int32_t out;
+  return psp_fpu_special(x, &out) ? out : psp_fpu_whole(__builtin_floorf(x));
+}
+/** cvt.w.s, in the rounding the control register's low two bits name: to the nearest, a half to the even one. */
+static inline int32_t psp_cvt_w_s(float x, uint32_t control) {
+  int32_t out;
+  if (psp_fpu_special(x, &out)) return out;
+  switch (control & 3) {
+  case PSP_FPU_NEAREST: {
+    // as the emulator works it out, partly in doubles
+    double d = x;
+    float below = (float)__builtin_floor(d), half;
+    d -= below;
+    if (d < 0.5f) return psp_fpu_whole(below);
+    if (d > 0.5f) return psp_fpu_whole(below + 1.0f);
+    half = __builtin_truncf(below / 2.0f);
+    return psp_fpu_whole(2.0f * half == below ? below : below + 1.0f);
+  }
+  case PSP_FPU_TOWARD_ZERO: return psp_fpu_whole(x);
+  case PSP_FPU_UP: return psp_fpu_whole(__builtin_ceilf(x));
+  default: return psp_fpu_whole(__builtin_floorf(x));
+  }
+}
+/** mul.s: infinity by zero is the console's own not-a-number, with no sign, where a computer's processor may give one
+ *  with a sign. Every other product is C's. */
+static inline float psp_mul_s(float a, float b) {
+  if ((__builtin_isinf(a) && b == 0.0f) || (__builtin_isinf(b) && a == 0.0f)) {
+    uint32_t bits = 0x7FC00000u;
+    float out;
+    __builtin_memcpy(&out, &bits, 4);
+    return out;
+  }
+  return a * b;
+}
+
 #endif

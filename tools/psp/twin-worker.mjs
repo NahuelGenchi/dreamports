@@ -7,10 +7,12 @@
 // (../ps1/twin-worker.mjs):
 //
 //   { set: image, regions }   the memory every call starts from, and where each of its places is. Answers { done }.
+//   { types: name, count }    the compiler's word on each of a twin's types (../ps2/twin.mjs, wrapOf). Answers { types }.
 //   { call: name, args, changes, chunks, skip }
 //                             lays `changes` over the image, calls the function with `args`, and compares what it left
 //                             with the image the original left, the image with `changes` and the original's `chunks`
-//                             laid over it, but in the `skip` stretches of the image. Answers { gave, differs }, or
+//                             laid over it, but in the `skip` stretches of the image. Each argument crosses as 64 bits,
+//                             and what the twin gives back too, as a BigInt. Answers { gave, differs }, or
 //                             { stopped: why }. Then the memory is the image again.
 //
 // The console's memory is tens of megabytes, so it's compared and put back 64 KB at a time, and a block a call didn't
@@ -96,6 +98,10 @@ parentPort.on('message', message => {
     parentPort.postMessage({ done: true });
     return;
   }
+  if (message.types) {
+    parentPort.postMessage({ types: Array.from({ length: message.count }, (_, k) => exports[message.types](k) >>> 0) });
+    return;
+  }
   if (own) memory.set(before, own.from);
   if (stack !== undefined) exports.__stack_pointer.value = stack;
   for (const [where, bytes, value] of message.changes) {
@@ -108,7 +114,7 @@ parentPort.on('message', message => {
   }
   let gave = null, stopped = null;
   try {
-    gave = exports[message.call](...message.args) >>> 0;
+    gave = BigInt.asUintN(64, BigInt(exports[message.call](...message.args.map(arg => BigInt(arg)))));
   } catch (error) {
     if (error instanceof Unbuilt) stopped = { stopped: 'unbuilt', unbuilt: error.message };
     else if (error instanceof WebAssembly.RuntimeError && /signature mismatch/.test(error.message)) stopped = { stopped: 'mismatch' };
