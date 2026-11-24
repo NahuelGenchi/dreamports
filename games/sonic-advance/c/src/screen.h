@@ -34,6 +34,13 @@ bool32 ProcessVramGraphicsCopyQueue(void);
 void ProcessOamBuffers(void);
 /** The BIOS's fast copier: copies or fills `control`'s count of words, eight at a time, from `src` to `dest`. */
 void CpuFastSet(const void *src, void *dest, u32 control);
+#define CPU_FAST_SET_SRC_FIXED 0x01000000
+/** Fills `size` bytes at `dest` with the 32-bit `value`, through the BIOS's fast copier. */
+#define CpuFastFill(value, dest, size) \
+  { \
+    vu32 tmp = (vu32)(value); \
+    CpuFastSet((void *)&tmp, dest, CPU_FAST_SET_SRC_FIXED | ((size) / 4 & 0x1FFFFF)); \
+  }
 void m4aSoundVSync(void);
 void m4aMPlayAllStop(void);
 void m4aSoundVSyncOff(void);
