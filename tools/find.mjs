@@ -9,7 +9,9 @@
 // lead's own, such as one of an organisation's. It lists the first few free and waiting pieces of each kind, with how
 // many more there are, and --all lists every one. --take says only which task whoever is signed in takes next, by
 // /dreamport's rules (lib/take.mjs): the piece --piece names when it can be taken, one that's theirs already, or the
-// first free one, in C unless the language is named, with what to run when nothing is free.
+// first free one, in C unless the language is named, with what to run when nothing is free. It leaves a note of the
+// task for this folder's session (lib/taking.mjs), so another session on this computer, the same person to GitHub,
+// is handed the next one, and one started in the same folder is told the folder is in use.
 //
 // A version that keeps its proofs is made a function at a time (lib/proofs.mjs), and there find goes by each
 // function's proof, not by a part's recording: its tasks are groups of functions, one whose functions are all proven
@@ -18,6 +20,7 @@
 
 import { UPSTREAM, pagesOf, signedInAs } from './lib/github.mjs';
 import { whatToTake } from './lib/take.mjs';
+import { sessions } from './lib/taking.mjs';
 import { missingParts } from './tasks.mjs';
 import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
 import { readOriginal, readPartsFile } from './lib/proof-files.mjs';
@@ -195,8 +198,26 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
     const proven = new Set((versions.find(v => v.language === wanted)?.proof?.gameplay?.parts ?? []).filter(part => part.proven).map(part => nameKey(part.name)));
     return has(wanted) ? missingParts(planOf(readPartsFile(game)), pieces, wanted, proven, main).length : 0;
   };
-  const found = whatToTake({ pieces, free, waiting, reviewing, login, language, languageNamed, named, has, missing });
   const name = t => `#${t.number} ${pieceName(t)}`;
+  // what other sessions on this computer are making, which a claim can't tell from this one's (lib/taking.mjs)
+  const nearby = sessions({ over: (repository, number) => repository === claims.repository && (reviewing.has(number) || pieces.some(t => t.number === number && t.state !== 'open')) });
+  const inUse = () => {
+    const number = nearby.here();
+    if (number === null) return false;
+    const piece = pieces.find(t => t.number === number);
+    console.log(`Nothing can be taken in this folder now: another session on this computer is making ${piece ? name(piece) : `#${number}`} here, and two can't share a folder's files. Start this one in a folder of its own, or once that one has finished.`);
+    return true;
+  };
+  if (inUse()) return 0;
+  const busy = nearby.busy(claims.repository);
+  const ask = () => whatToTake({ pieces, free, waiting, reviewing, login, language, languageNamed, named, has, missing, busy });
+  let found = ask();
+  // of two sessions handed a task at once, one leaves its note first, and the other goes on to the next
+  while (found.piece && !nearby.take(claims.repository, found.piece.number)) {
+    if (inUse()) return 0;
+    busy.add(found.piece.number);
+    found = ask();
+  }
   const called = LANGUAGES[found.piece ? pieceOf(found.piece).language : found.language ?? language].name;
   for (const note of found.notes) console.log(note);
   if (found.do === 'carry-on') {
