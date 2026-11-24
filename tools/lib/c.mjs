@@ -1,7 +1,8 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
 // with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
-// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
+// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/, the Nintendo 64 kit/n64/c/ and
+// the GameCube kit/gamecube/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
@@ -71,6 +72,7 @@ const OWN = {
     // (wasm-fold.mjs)
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
   },
+  gamecube: { folder: fileURLToPath(new URL('../../kit/gamecube/c/', import.meta.url)), sources: ['gamecube.c', 'vi.c', 'audio.c', 'si.c'], header: true },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');

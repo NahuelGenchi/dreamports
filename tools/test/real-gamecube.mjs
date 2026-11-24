@@ -2,7 +2,8 @@
 // the commit tools/consoles.mjs fixes, running a small program written here (made-up-gamecube.mjs) twice as a program
 // alone and once from the disc that boots it. Every run must show the same pictures and give the same sound, at the
 // numbers kit/consoles.js says, and the pictures must be the ones the program draws: its square where each field puts
-// it, on its background. It isn't part of Check, as the emulator takes a long time to build: the GameCube's workflow runs
+// it, on its background, in the colour of the lines that field shows, the first controller's two words as the buttons
+// held give them, and its tone, louder on the left. It isn't part of Check, as the emulator takes a long time to build: the GameCube's workflow runs
 // it on Linux, macOS and Windows (.github/workflows/gamecube.yml), each with --write <file>, which keeps every frame's
 // picture and sound as hashes, and then with --compare <file> <file>..., which finds them the same on every computer.
 // --core says the name the tools give the built emulator, for the workflow to keep it by.
@@ -14,11 +15,14 @@ import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { coreFile } from '../libretro/build.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
-import { BACKGROUND, HEIGHT, LOUD, PERIOD, SQUARE, SQUARE_SIZE, SQUARE_Y, STEP, TRAVEL, WIDTH, madeUpGameCube, madeUpGameCubeDisc } from './made-up-gamecube.mjs';
+import { BACKGROUND, BITS_GAP, BITS_X, BITS_Y, BIT_WIDTH, HEIGHT, LOUD, OFF, ON, PERIOD, SQUARE, SQUARE_ODD, SQUARE_SIZE, SQUARE_Y, STEP, TRAVEL, WIDTH, madeUpGameCube, madeUpGameCubeDisc } from './made-up-gamecube.mjs';
 
 const FRAMES = 600;
 // frames whose picture is looked at, some after the square has gone back to the left edge
-const LOOKED_AT = [2, 3, 60, 256, 257, 258, 400, FRAMES - 1];
+const LOOKED_AT = [2, 3, 60, 101, 201, 256, 257, 258, 301, 400, FRAMES - 1];
+// what's held, and from which frame, and what the controller's two words are in the picture a frame later: A, the
+// main stick left and the C stick up together, and the left trigger to its click
+const HELD = [[100, ['A'], 0x01808080, 0x80800000], [200, ['STICK_LEFT', 'C_UP'], 0x00800180, 0x80FF0000], [300, ['L'], 0x00C08080, 0x8080FF00]];
 const WORK = join(LOCAL, 'test-real-gamecube');
 // The console shows a field at a time, every other line of the framebuffer, so a picture has half the framebuffer's
 // lines, and the square is on the same rows of both fields
@@ -51,27 +55,45 @@ async function main() {
   reference.ensureOriginal(message => console.log(message));
 
   console.log(`A small program on ${machine.name}'s real emulator, ${FRAMES} frames, twice alone and once from its disc`);
-  const run = copy => reference.runOriginal({ copy, frames: FRAMES, buttons: new Array(FRAMES).fill(0), pictures: LOOKED_AT, sound: true });
+  // each press for one frame; the disc's a frame sooner, as its program starts a frame sooner
+  const buttonsAt = sooner => Array.from({ length: FRAMES }, (_, frame) => HELD.find(([at]) => at - sooner === frame)?.[1].reduce((mask, name) => mask | machine.keys[name], 0) ?? 0);
+  const run = (copy, sooner) => reference.runOriginal({ copy, frames: FRAMES, buttons: buttonsAt(sooner), pictures: LOOKED_AT, sound: true });
   // runOriginal stops if the emulator's sound rate or frame rate isn't what kit/consoles.js says
-  const first = await run(dol), second = await run(dol), booted = await run(iso);
+  const first = await run(dol, 0), second = await run(dol, 0), booted = await run(iso, 1);
   const sizes = first.outside.sizes.filter(([frame]) => frame >= LOOKED_AT[0]);
   check(first.outside.sizes.length && first.outside.sizes.at(-1).slice(1).join() === `${WIDTH},${FIELD}` && sizes.length <= 1, `its screen is ${WIDTH} by ${FIELD}, a field of its ${HEIGHT} lines: ${JSON.stringify(first.outside.sizes)}`);
   check(machine.screen.join() === `${WIDTH},${FIELD}`, 'which is the screen kit/consoles.js has for the console');
   check(first.hashes.every((hash, frame) => hash === second.hashes[frame]), 'both runs show the same pictures');
   check(sameSound(first.sound, second.sound), 'both runs give the same sound, each sample in the same frame');
 
-  // the square moves a step each field and goes back to the left edge, so it's in TRAVEL / STEP places
-  const places = new Set(first.hashes.slice(LOOKED_AT[0])).size;
-  check(places === TRAVEL / STEP, `the square is in ${TRAVEL / STEP} places, round and round: ${places} different pictures from frame ${LOOKED_AT[0]}`);
-  const square = fifteen(SQUARE), background = fifteen(BACKGROUND);
-  const squareAt = picture => picture.subarray((ROW + 1) * WIDTH, (ROW + 2) * WIDTH).indexOf(square);
+  // the square moves a step each field and goes back to the left edge, the same picture TRAVEL / STEP fields later
+  const repeats = first.hashes.slice(LOOKED_AT[0], 90).every((hash, n) => hash === first.hashes[LOOKED_AT[0] + n + TRAVEL / STEP]);
+  check(repeats && new Set(first.hashes.slice(LOOKED_AT[0], 90)).size === 90 - LOOKED_AT[0], `the square is somewhere else each field, and in the same place ${TRAVEL / STEP} fields later`);
+  const square = fifteen(SQUARE), odd = fifteen(SQUARE_ODD), background = fifteen(BACKGROUND);
+  const squareAt = picture => picture.subarray((ROW + 1) * WIDTH, (ROW + 2) * WIDTH).findIndex(c => c === square || c === odd);
   const start = squareAt(first.pictures.get(LOOKED_AT[0]));
-  check(start >= 0 && start % STEP === 0, `frame ${LOOKED_AT[0]} shows the square, in the colour the console's video encoder gives its Y, Cb and Cr: at ${start}`);
+  check(start >= 0 && start % STEP === 0, `frame ${LOOKED_AT[0]} shows the square, in a colour the console's video encoder gives its Y, Cb and Cr: at ${start}`);
+  // a word of the controller's, from its blocks: null where a block is neither colour
+  const word = (picture, line) => {
+    let value = 0;
+    for (let bit = 0; bit < 32; bit++) {
+      const colour = picture[line * WIDTH + BITS_X + bit * BIT_WIDTH + BIT_WIDTH / 2];
+      if (colour !== fifteen(ON) && colour !== fifteen(OFF)) return null;
+      value = (value * 2 + (colour === fifteen(ON) ? 1 : 0)) >>> 0;
+    }
+    return value;
+  };
+  const hexOf = value => (value === null ? 'none' : `0x${value.toString(16).toUpperCase().padStart(8, '0')}`);
   for (const frame of LOOKED_AT) {
     const picture = first.pictures.get(frame), x = (start + (frame - LOOKED_AT[0]) * STEP) % TRAVEL, row = (ROW + 1) * WIDTH;
-    const rows = [ROW, ROW + ROWS - 1].every(y => picture[y * WIDTH + x] === square) && picture[(ROW - 1) * WIDTH + x] === background && picture[(ROW + ROWS) * WIDTH + x] === background;
-    const across = picture[row + x + SQUARE_SIZE - 1] === square && picture[row + x + SQUARE_SIZE] === background && (x === 0 || picture[row + x - 1] === background);
-    check(squareAt(picture) === x && rows && across, `frame ${frame} shows the square at ${x}, ${ROW}, ${SQUARE_SIZE} across and ${ROWS} down, on the background`);
+    // a frame with an odd number shows the top field, the framebuffer's even lines, and one with an even number the bottom
+    const colour = frame % 2 ? square : odd;
+    const rows = [ROW, ROW + ROWS - 1].every(y => picture[y * WIDTH + x] === colour) && picture[(ROW - 1) * WIDTH + x] === background && picture[(ROW + ROWS) * WIDTH + x] === background;
+    const across = picture[row + x + SQUARE_SIZE - 1] === colour && picture[row + x + SQUARE_SIZE] === background && (x === 0 || picture[row + x - 1] === background);
+    check(squareAt(picture) === x && rows && across, `frame ${frame} shows the square at ${x}, ${ROW}, ${SQUARE_SIZE} across and ${ROWS} down, on the background, in the ${frame % 2 ? 'top' : 'bottom'} field's colour`);
+    const [, held, hi, lo] = HELD.find(([at]) => at + 1 === frame) ?? [0, [], 0x00808080, 0x80800000];
+    const shown = [word(picture, BITS_Y / 2 + 1), word(picture, (BITS_Y + BITS_GAP) / 2 + 1)];
+    check(shown[0] === hi && shown[1] === lo, `and the first controller's words with ${held.join(' and ') || 'nothing'} held the frame before: ${hexOf(shown[0])} ${hexOf(shown[1])}, for ${hexOf(hi)} ${hexOf(lo)}`);
   }
 
   // the tone: a square wave, as loud as the program's samples, with as many samples a frame as a frame lasts
@@ -79,18 +101,20 @@ async function main() {
   const samples = lengths.reduce((a, b) => a + b, 0);
   check(Math.abs(samples - FRAMES * perFrame) <= perFrame * 2, `the sound lasts what the frames do: ${samples} samples for ${FRAMES * perFrame}`);
   const heard = Int16Array.from(first.sound.read(400)), loud = LOUD >> 6;
-  const high = heard.filter(sample => Math.abs(sample - loud) <= 1).length, low = heard.filter(sample => Math.abs(sample + loud) <= 1).length;
-  check(heard.length > 0 && high + low >= heard.length * 0.9 && Math.abs(high - low) <= PERIOD * 2, `frame 400's sound is the tone, half its samples ${loud} and half ${-loud}: ${high} and ${low} of ${heard.length}`);
+  for (const [side, level] of [['left', loud], ['right', loud >> 1]]) {
+    const own = heard.filter((_, i) => i % 2 === (side === 'left' ? 0 : 1));
+    const high = own.filter(sample => Math.abs(sample - level) <= 1).length, low = own.filter(sample => Math.abs(sample + level) <= 1).length;
+    check(own.length > 0 && high + low >= own.length * 0.9 && Math.abs(high - low) <= PERIOD, `frame 400's sound is the tone, on the ${side} half its samples ${level} and half ${-level}: ${high} and ${low} of ${own.length}`);
+  }
   let turns = 0;
   for (let i = 2; i < heard.length; i += 2) if (heard[i] > 0 !== heard[i - 2] > 0) turns++;
   const wanted = heard.length / 2 / (PERIOD / 2);
   check(Math.abs(turns - wanted) <= 2, `and it turns over every ${PERIOD / 2} samples: ${turns} times in the frame, for ${wanted.toFixed(1)}`);
 
-  // the same program booted from its disc, through the disc's own apploader: the same pictures, a frame or so apart,
-  // as the console starts a disc's program at another moment of the field than one given to it alone
-  const from = LOOKED_AT[0] + 8, apart = booted.hashes.indexOf(first.hashes[from]) - from;
-  const same = Math.abs(apart) <= 4 && first.hashes.slice(from, FRAMES - 8).every((hash, n) => hash === booted.hashes[from + apart + n]);
-  check(same, `booted from its disc it shows the same pictures, ${Math.abs(apart)} ${Math.abs(apart) === 1 ? 'frame' : 'frames'} ${apart < 0 ? 'sooner' : 'later'}`);
+  // the same program booted from its disc, through the disc's own apploader, starts a frame sooner, its presses with it:
+  // each frame of it shows what the program alone shows a frame later, field and words and all
+  const same = booted.hashes.slice(1, FRAMES - 1).every((hash, n) => hash === first.hashes[n + 2]);
+  check(same, 'booted from its disc it shows the same pictures, a frame sooner, the same field and the same words in each');
 
   // every frame's picture and sound, for the other computers to be held to
   const write = process.argv.indexOf('--write');

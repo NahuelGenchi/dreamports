@@ -4,9 +4,11 @@
 //
 // The program sets the video interface up for the picture every American and Japanese console shows, 640 by 480 in two
 // fields, and gives it a framebuffer of its own, which it writes straight into, in the YUV pairs the console shows: a
-// background, and a square that moves STEP pixels to the right each field and goes back to the left edge past 512. It
-// plays a tone too, a square wave it hands the audio interface by DMA, round and round, with no program on the sound
-// processor. It waits for line LINE of each field before it draws, so a picture is never shown half drawn. It writes
+// background, and a square that moves STEP pixels to the right each field and goes back to the left edge past 512,
+// its even lines in one colour and its odd lines in another, so each field, which shows every other line, has its own.
+// It plays a tone too, a square wave it hands the audio interface by DMA, round and round, with no program on the sound
+// processor, as loud as LOUD on the left and half that on the right. Each field it reads the first controller, the two
+// words the serial interface last polled it for, and draws their 64 bits as blocks, light for a 1 and dark for a 0. It waits for line LINE of each field before it draws, so a picture is never shown half drawn. It writes
 // its picture through the addresses that go round the processor's data cache, at 0xC0000000, as the video interface
 // reads the memory itself and never sees what the cache still holds.
 //
@@ -15,7 +17,8 @@
 //   setup    writes the video interface's registers from the table in the program's values, fills the framebuffer
 //            with the background, draws the square at the left edge and starts the tone
 //   fill     writes r5 words of r4 from r3, in a loop
-//   square   draws the square, r3 pixels from the left edge, in the colour in r4
+//   square   draws the square, r3 pixels from the left edge, its even lines in the colour in r4 and its odd in r5
+//   bits     draws the 32 bits of r3 as blocks, the highest first, from r4 in the framebuffer
 //   wait     comes back once the beam is at line LINE of either field, having left it first
 //
 // The disc holds the program as a DOL, a small apploader of its own, which tells the console where each of the DOL's
@@ -30,12 +33,18 @@ export const WIDTH = 640, HEIGHT = 480, STEP = 2, SQUARE_Y = 200, SQUARE_SIZE = 
 // the video interface counts the lines of both fields in one go, 525 of them, so the second field's line LINE is this one
 const SECOND_LINE = LINE + 263;
 /** Its two colours, each as the word two pixels side by side take in the framebuffer: Y, Cb, Y, Cr. */
-export const BACKGROUND = 0x40804080, SQUARE = 0xC060C0A0;
+export const BACKGROUND = 0x40804080, SQUARE = 0xC060C0A0, SQUARE_ODD = 0x60A06040;
+/** The controller's bits: the colour of a 1 and of a 0, each block's width and lines, and where the two words' blocks
+ *  start in the framebuffer, the first word's lines and then the second's, BITS_GAP lines further down. */
+export const ON = 0xEB80EB80, OFF = 0x10801080, BIT_WIDTH = 8, BIT_LINES = 8, BITS_X = 64, BITS_Y = 40, BITS_GAP = 16;
+/** What the program asks the serial interface for: the standard controller's poll, and polls of every 120 lines, two
+ *  a field, on the first channel. */
+export const PAD_COMMAND = 0x00400300, PAD_POLL = 0x00780280;
 /** Its tone: a square wave of PERIOD samples, this loud, at the faster of the audio interface's two rates, which the
  *  program sets, as the console starts it at the slower. */
 export const PERIOD = 96, LOUD = 0x2000;
 
-const VI = 0xCC002000, DSP = 0xCC005000, AI = 0xCC006C00;
+const VI = 0xCC002000, DSP = 0xCC005000, SI = 0xCC006400, AI = 0xCC006C00;
 
 const d = (op, rt, ra, imm) => ((op << 26) | (rt << 21) | (ra << 16) | (imm & 0xFFFF)) >>> 0;
 const addi = (rt, ra, imm) => d(14, rt, ra, imm);
@@ -55,6 +64,7 @@ const x = (rt, ra, rb, xo) => ((31 << 26) | (rt << 21) | (ra << 16) | (rb << 11)
 const add = (rt, ra, rb) => x(rt, ra, rb, 266);
 const cmpw = (ra, rb) => x(0, ra, rb, 0);
 const mr = (ra, rs) => x(rs, ra, rs, 444);
+const slwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | (n << 11) | (0 << 6) | ((31 - n) << 1)) >>> 0;
 const srwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | ((32 - n) << 11) | (n << 6) | (31 << 1)) >>> 0;
 const mflr = rt => (0x7C0802A6 | (rt << 21)) >>> 0;
 const mtlr = rs => (0x7C0803A6 | (rs << 21)) >>> 0;
@@ -89,7 +99,8 @@ export function assemble(lines, base) {
 // the video interface's registers for 640 by 480 in two fields at the American and Japanese rate, each 16 bits, as the
 // console's own programs set them: where each is, and its value
 const fieldBase = at => 0x10000000 | ((at & 0x00FFFFFF) >>> 5);
-const VIDEO = [
+/** The video interface's registers the program writes, each where it is and its value, in order. */
+export const VIDEO = [
   [0x00, 0x0F06], [0x04, 0x4769], [0x06, 0x01AD], [0x08, 0x02EA], [0x0A, 0x5140], [0x0C, 0x0003], [0x0E, 0x0018],
   [0x10, 0x0002], [0x12, 0x0019], [0x14, 0x410C], [0x16, 0x410C], [0x18, 0x40ED], [0x1A, 0x40ED],
   [0x1C, fieldBase(FRAMEBUFFER) >>> 16], [0x1E, fieldBase(FRAMEBUFFER) & 0xFFFF],
@@ -97,12 +108,13 @@ const VIDEO = [
   [0x48, 0x2850], [0x4A, 0x0100], [0x6C, 0x0000], [0x02, 0x0001],
 ];
 
-/** The tone's samples, one period, left and right the same, as the audio interface takes them. */
+/** The tone's samples, one period, as the audio interface takes them: each pair the right side's and then the left's,
+ *  the right half as loud. */
 export function tone() {
   const bytes = Buffer.alloc(PERIOD * 4);
   for (let n = 0; n < PERIOD; n++) {
     const sample = n < PERIOD / 2 ? LOUD : -LOUD;
-    bytes.writeInt16BE(sample, n * 4);
+    bytes.writeInt16BE(sample / 2, n * 4);
     bytes.writeInt16BE(sample, n * 4 + 2);
   }
   return bytes;
@@ -127,19 +139,24 @@ function values() {
  */
 export function madeUpGameCube() {
   const data = values();
+  const BITS_AT = (FRAMEBUFFER | UNCACHED) + BITS_Y * WIDTH * 2 + BITS_X * 2;
   const lines = [
     'start',
     address(1, STACK),
     bl('setup'),
     li(31, 0),                     // r31: where the square is
+    address(29, SI),               // r29: the serial interface
     'next',
     bl('wait'),
-    mr(3, 31), address(4, BACKGROUND), bl('square'),
+    // the first controller's two words, as the serial interface last polled it
+    lwz(3, 4, 29), address(4, BITS_AT), bl('bits'),
+    lwz(3, 8, 29), address(4, BITS_AT + BITS_GAP * WIDTH * 2), bl('bits'),
+    mr(3, 31), address(4, BACKGROUND), mr(5, 4), bl('square'),
     addi(31, 31, STEP),
     cmpwi(31, TRAVEL), blt('show'),
     li(31, 0),
     'show',
-    mr(3, 31), address(4, SQUARE), bl('square'),
+    mr(3, 31), address(4, SQUARE), address(5, SQUARE_ODD), bl('square'),
     b('next'),
 
     'setup',
@@ -150,7 +167,9 @@ export function madeUpGameCube() {
     lhz(9, 2, 7), add(8, 8, 6), sth(9, 0, 8), addi(7, 7, 4), b('register'),
     'registers-done',
     address(3, FRAMEBUFFER | UNCACHED), address(4, BACKGROUND), address(5, WIDTH * HEIGHT / 2), bl('fill'),
-    li(3, 0), address(4, SQUARE), bl('square'),
+    li(3, 0), address(4, SQUARE), address(5, SQUARE_ODD), bl('square'),
+    // the first controller: the command it's polled with, and how often
+    address(6, SI), address(7, PAD_COMMAND), stw(7, 0, 6), address(7, PAD_POLL), stw(7, 0x30, 6),
     // the tone: the audio interface's faster rate, a zero in its control register, then where the tone is, how many
     // blocks of 32 bytes, and the bit that starts it
     address(6, AI), li(8, 0), stw(8, 0, 6),
@@ -173,7 +192,21 @@ export function madeUpGameCube() {
     li(9, SQUARE_SIZE / 2), mtctr(9), addi(10, 6, -4),
     'pair',
     stwu(4, 4, 10), bdnz('pair'),
+    // the next line in the other colour
+    mr(11, 4), mr(4, 5), mr(5, 11),
     addi(6, 6, WIDTH * 2), addi(8, 8, -1), cmpwi(8, 0), bne('row'),
+    blr,
+
+    'bits',
+    li(9, 32),
+    'bit',
+    address(5, OFF), cmpwi(3, 0), bge('bit-off'), address(5, ON),
+    'bit-off',
+    li(8, BIT_LINES), mr(10, 4),
+    'bit-line',
+    stw(5, 0, 10), stw(5, 4, 10), stw(5, 8, 10), stw(5, 12, 10),
+    addi(10, 10, WIDTH * 2), addi(8, 8, -1), cmpwi(8, 0), bne('bit-line'),
+    addi(4, 4, BIT_WIDTH * 2), slwi(3, 3, 1), addi(9, 9, -1), cmpwi(9, 0), bne('bit'),
     blr,
 
     'wait',
@@ -187,7 +220,7 @@ export function madeUpGameCube() {
     'end',
   ];
   const { bytes: text, labels } = assemble(lines, LOAD);
-  const names = ['start', 'setup', 'fill', 'square', 'wait', 'end'];
+  const names = ['start', 'setup', 'fill', 'square', 'bits', 'wait', 'end'];
   const functions = Object.fromEntries(names.slice(0, -1).map((name, n) => [name, { address: labels[name], size: labels[names[n + 1]] - labels[name] }]));
   const sections = { text: { address: LOAD, bytes: text }, data: { address: VALUES, bytes: data.bytes } };
   return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions, tone: data.tone };
