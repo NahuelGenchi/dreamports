@@ -343,13 +343,28 @@ static int besideTheCode(uint32_t address) {
 	return address == (target & ~3u);
 }
 
-// the source each DMA channel was given, as the program wrote it: mGBA keeps 0 in place of one a DMA can't read
-static uint32_t dmaAsked[4];
+// the source and the destination each DMA channel was given, as the program wrote them: mGBA keeps 0 in place of a
+// source a DMA can't read
+static uint32_t dmaAsked[4], dmaTo[4];
 static void asked(uint32_t address, uint32_t value, int bytes) {
-	if (address < 0x040000B0u || address >= 0x040000E0u || (address - 0x040000B0u) % 12 >= 4) return;
-	uint32_t n = (address - 0x040000B0u) / 12, half = (address - 0x040000B0u) % 12 / 2;
-	if (bytes == 4) dmaAsked[n] = value;
-	else dmaAsked[n] = half ? (dmaAsked[n] & 0xFFFF) | value << 16 : (dmaAsked[n] & 0xFFFF0000u) | (value & 0xFFFF);
+	if (address < 0x040000B0u || address >= 0x040000E0u || (address - 0x040000B0u) % 12 >= 8) return;
+	uint32_t n = (address - 0x040000B0u) / 12, half = (address - 0x040000B0u) % 4 / 2;
+	uint32_t* word = (address - 0x040000B0u) % 12 < 4 ? &dmaAsked[n] : &dmaTo[n];
+	if (bytes == 4) *word = value;
+	else *word = half ? (*word & 0xFFFF) | value << 16 : (*word & 0xFFFF0000u) | (value & 0xFFFF);
+}
+
+// an address of the work memory as the one it shows again: each of its two memories shows all through its stretch
+static uint32_t unmirrored(uint32_t address) {
+	address &= 0x0FFFFFFFu;
+	if (address >> 24 == 2) return 0x02000000u | (address & 0x3FFFF);
+	if (address >> 24 == 3) return 0x03000000u | (address & 0x7FFF);
+	return address;
+}
+// whether an address is in the original's own frames, from its stack pointer up to where the call started it
+static int inFrame(uint32_t address) {
+	address = unmirrored(address);
+	return address >= (uint32_t) cpu->gprs[ARM_SP] && address < stackHigh;
 }
 
 // every read and write the processor, the BIOS and DMA make comes through here
@@ -369,6 +384,14 @@ static void touched(uint32_t address, int bytes, int write) {
 	if (write && gba->performingDMA && !gba->memory.dma[gba->performingDMA >> 1].nextSource && !left) {
 		left = 1;
 		leftFor = dmaAsked[(gba->performingDMA >> 1) & 3];
+	}
+	// a DMA that runs on into the original's own frames, where it keeps the registers it saved and its locals, from a
+	// destination outside them, changes them under the function, which a twin keeps elsewhere: no twin can follow it,
+	// so the call is one a twin can't follow, left for the address in the frame. One the function pointed into its
+	// frame, as a copy into a local of its own is, a twin does into its own local, and is compared
+	if (write && gba->performingDMA && !left && (inFrame(address) || inFrame(address + bytes - 1)) && !inFrame(dmaTo[(gba->performingDMA >> 1) & 3])) {
+		left = 1;
+		leftFor = address;
 	}
 	long at = inImage(address);
 	if (write && at >= 0 && gba->performingDMA && (gba->memory.dma[gba->performingDMA >> 1].reg >> 12 & 3)) clocked = 1;

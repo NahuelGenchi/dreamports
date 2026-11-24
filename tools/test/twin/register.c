@@ -9,7 +9,10 @@
 // so the check holds both as each call starts, and starts some calls outside the V-blank (#1569). A sixth adds 228 to a
 // line of the picture, as m4a's SoundMain does: a call the check starts outside the V-blank starts on one (#1729). A
 // seventh reads the display's control, which the console set at power-on, through the kit's display registers: the
-// check gives those the original's before each call too (#1773).
+// check gives those the original's before each call too (#1773). An eighth has DMA channel 3 copy two words to just
+// below its own frame, so the second lands on a local of its own, which a twin keeps elsewhere: the check sets such a
+// call aside. A ninth has it copy a word into a local of its own, as a twin does into its own: that call is compared
+// (#1874).
 #include "program.h"
 
 #ifdef MATCHING
@@ -101,4 +104,31 @@ void Picture(void) {
 /** Mode, 0x08000A60: the frame the display's control, as the console has it. */
 void Mode(void) {
   gFrame = DISPCNT_READ();
+}
+
+/** Sweep, 0x08000700: two words from the frame copied by DMA channel 3 to just below a local of the function's own,
+ *  so the second lands on it, and the frame what the local holds then. */
+void Sweep(void) {
+  volatile u32 local = 1;
+
+#ifdef MATCHING
+  *(volatile u32 *)0x040000D4 = (u32)&gFrame;
+  *(volatile u32 *)0x040000D8 = (u32)&local - 4;
+  *(volatile u32 *)0x040000DC = 0x84000002;   // on, words, two
+#endif
+  gFrame = local;
+}
+
+/** Into, 0x08000740: the frame copied by DMA channel 3 into a local of the function's own, and the frame one on. */
+void Into(void) {
+  volatile u32 local = 0;
+
+#ifdef MATCHING
+  *(volatile u32 *)0x040000D4 = (u32)&gFrame;
+  *(volatile u32 *)0x040000D8 = (u32)&local;
+  *(volatile u32 *)0x040000DC = 0x84000001;   // on, words, one
+#else
+  local = gFrame;
+#endif
+  gFrame = local + 1;
 }
