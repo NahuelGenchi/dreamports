@@ -164,6 +164,21 @@ static void ranStarted(struct ranFunction* f, uint32_t axys, uint32_t p) {
 	f->held++;
 }
 
+/** A place the PlayStation's processor is at, for a core that tells only where it's about to run, as PCSX ReARMed does
+ *  with the tools' change to it (pcsx.patch, dreamports_watch_pc): its address in the console's 2 MB, which the
+ *  console sees again at 0x80000000 and 0xA0000000, or RAN_NOWHERE outside it, as in the BIOS. */
+static uint32_t ranPlaystationPlace(uint32_t address) {
+	return (address & 0x1FFFFFFF) < 0x200000 ? address & 0x1FFFFF : RAN_NOWHERE;
+}
+
+/** What such a core calls as the processor is about to run the instruction at `pc`: a function of FUNCTIONS whose
+ *  first instruction it is ran in this frame. Nothing more is told of it, so nothing is written for DP_PLAYED. */
+static void ranReachedPc(uint32_t pc) {
+	uint32_t place = ranPlaystationPlace(pc);
+	if (place >= ran.size || !ran.starts[place]) return;
+	ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+}
+
 /** What the emulator calls between reading an instruction and running it: its address, its place in the program or
  *  RAN_NOWHERE, its first byte, A, X, Y and the stack pointer, a byte each from the lowest, and the flags. */
 static void ranInstruction(uint32_t pc, uint32_t place, uint32_t op, uint32_t axys, uint32_t p) {
