@@ -608,9 +608,14 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     // whose tasks are its parts (lib/part-functions.mjs)
     const partsRan = quick || !codeMap || !first.ran ? [] : parts.map(({ name: part, frames: [a, b] }) => {
       const inPart = new Uint8Array(originalHeld.length + 1), ran = new Set();
+      // a frame is compared with the picture of what the original's frame worked out and with its work memory a frame
+      // further on (expectedMemory), so it matches only once what the original ran in the frame after has run too
       for (let frame = Math.max(0, a); frame <= b && frame < frames; frame++) {
-        inPart[originalOf[frame]] = 1;
-        for (const f of first.ran[originalOf[frame]] ?? []) ran.add(codeMap.functions[f].key);
+        for (const at of [originalOf[frame], originalOf[frame] + 1]) {
+          if (at >= inPart.length) continue;
+          inPart[at] = 1;
+          for (const f of first.ran[at] ?? []) ran.add(codeMap.functions[f].key);
+        }
       }
       if (startedInPart) for (const key of startedInPart(inPart)) ran.add(key);
       return [part, [...ran].sort()];

@@ -10,7 +10,8 @@
 // }
 //
 // A part's line is every function of the code map the original ran in the part's frames of its recording
-// (parts.json), whether or not a Dreamport matched them, as it's the original's side alone. Only `prove` writes it,
+// (parts.json) and in the frame after each, which a frame needs run to match the original's work memory (#1899),
+// whether or not a Dreamport matched them, as it's the original's side alone. Only `prove` writes it,
 // as it plays the original, on a computer with the game's copy, and a part it didn't play then keeps its line.
 //
 // With the file, a version that keeps its proofs (lib/proofs.mjs) has its parts for tasks, in the order parts.json
