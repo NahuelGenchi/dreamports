@@ -161,12 +161,13 @@ export function writeCodeMap(game, map) {
 }
 
 /** A code map's text, as writeCodeMap writes it, with the mode each function starts in where the finder knows it, after
- *  the functions, as `modes`, a function's key to its mode. */
-export function formatCodeMap({ original, from, functions, copies = [] }) {
+ *  the functions, as `modes`, a function's key to its mode, and for a Super Nintendo game how its cartridge is laid
+ *  out, `layout` (snes/cartridge.mjs, layoutOf), which says where an address a game's code names is in the ROM. */
+export function formatCodeMap({ original, from, functions, copies = [], layout = null }) {
   const lines = functions.map(f => '    ' + JSON.stringify([functionKey(f), f.size, ...(f.name ? [f.name] : [])]));
   const copied = copies.map(c => '    ' + JSON.stringify([hex(c.ram), hex(c.cartridge), c.size, ...(c.packed ? [c.packed, ...(c.from ? [c.from] : [])] : [])]));
   const modes = functions.filter(f => f.mode).map(f => `    ${JSON.stringify(functionKey(f))}: ${JSON.stringify(f.mode)}`);
-  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}${modes.length ? `,\n  "modes": {\n${modes.join(',\n')}\n  }` : ''}\n}\n`;
+  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}${modes.length ? `,\n  "modes": {\n${modes.join(',\n')}\n  }` : ''}${layout ? `,\n  "layout": ${JSON.stringify(layout)}` : ''}\n}\n`;
 }
 
 // 16 hexadecimal digits, the bytes in order, as two little-endian words

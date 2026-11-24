@@ -12,12 +12,14 @@
 // instructions, waited for an interrupt, stopped the processor, or went where the check can't follow.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
+import { withBuildTools } from '../gba/build.mjs';
+import { WINDOWS_BUILD } from '../gba/windows.mjs';
 import { HARDWARE, mapOf, placeIn, SAVE, WORK, WRAM } from './cartridge.mjs';
 
 const CALL = fileURLToPath(new URL('./call.cpp', import.meta.url));
@@ -94,16 +96,26 @@ export function buildCaller(log = console.log) {
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('snes');
   log(`Getting the Super Nintendo's processor from its emulator's source, at ${machine.core.source}…`);
-  const source = fetchSource(machine);
   mkdirSync(FOLDER, { recursive: true });
   rmSync(program, { force: true });
-  const compiler = process.env.CXX || (process.platform === 'win32' ? 'g++' : 'c++');
-  const include = ['', 'libretro', join('libretro', 'libretro-common', 'include'), 'apu', join('apu', 'bapu')].flatMap(folder => ['-I', join(source, folder)]);
-  const result = spawnSync(compiler, ['-std=gnu++17', '-O2', '-w', ...DEFINES, ...include, '-o', program, CALL, ...PROCESSOR.map(name => join(source, name))], { encoding: 'utf8', maxBuffer: 2 ** 26 });
-  if (result.error?.code === 'ENOENT') throw new Error(`There's no C++ compiler here (${compiler}): tools/README.md says how to get one.`);
-  if (result.status !== 0) throw new Error(`The program that calls the Super Nintendo's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  // on Windows with the compiler the tools get for a build, in its folder with a plain name, where the emulator's
+  // source is fetched too, and with the compiler's own libraries built in, as that folder goes once it's built
+  // (../gba/windows.mjs); anywhere else with the computer's own
+  withBuildTools(log, tools => buildWith(tools, machine, program));
   writeFileSync(stamp, text);
   return program;
+}
+
+function buildWith(tools, machine, program) {
+  const source = fetchSource(machine);
+  const compiler = process.env.CXX || (tools ? join(dirname(tools.gcc), 'g++.exe') : 'c++');
+  const [from, to] = tools ? [join(WINDOWS_BUILD, 'snes-call.cpp'), join(WINDOWS_BUILD, 'snes-call.exe')] : [CALL, program];
+  if (tools) copyFileSync(CALL, from);
+  const include = ['', 'libretro', join('libretro', 'libretro-common', 'include'), 'apu', join('apu', 'bapu')].flatMap(folder => ['-I', join(source, folder)]);
+  const result = spawnSync(compiler, ['-std=gnu++17', '-O2', '-w', ...(tools ? ['-static'] : []), ...DEFINES, ...include, '-o', to, from, ...PROCESSOR.map(name => join(source, name))], { encoding: 'utf8', maxBuffer: 2 ** 26, env: tools?.env });
+  if (result.error?.code === 'ENOENT') throw new Error(`There's no C++ compiler here (${compiler}): tools/README.md says how to get one.`);
+  if (result.status !== 0) throw new Error(`The program that calls the Super Nintendo's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  if (tools) copyFileSync(to, program);
 }
 
 const word = value => {
