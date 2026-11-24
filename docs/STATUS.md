@@ -22,7 +22,7 @@ Every game needs your own copy of the original. The proof tools write this table
 | **[Sonic Battle Dreamport](../games/sonic-battle/)** | [32.2%](../.github/readme/progress/sonic-battle.svg) | [7.81%, the lower of its code, 35.34%, 44,990 of 127,304 instructions and branch ways played, and its content, 7.81%, 29,342 of 375,666 cells of data used, with 6 of 20 parts played through](../.github/readme/progress/sonic-battle.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-battle/) |
 | [Sonic Battle Dreamport in C](../games/sonic-battle/c/) | [31.27%](../.github/readme/progress/sonic-battle-c.svg) | [9.12%, the lower of its code, 44.06%, 56,423 of 128,052 instructions and branch ways played, and its content, 9.12%, 34,261 of 375,666 cells of data used, with 7 of 20 parts played through](../.github/readme/progress/sonic-battle-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
 | **[Sonic Advance Dreamport](../games/sonic-advance/)** | [32.75%](../.github/readme/progress/sonic-advance.svg) | [61.1%, the lower of its code, 63.86%, 205,290 of 321,464 instructions and branch ways played, and its content, 61.1%, 122,822 of 200,999 cells of data used, with 18 of 40 parts played through](../.github/readme/progress/sonic-advance.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | [▶&nbsp;Play](https://dreamports.net/play/sonic-advance/) |
-| [Sonic Advance Dreamport in C](../games/sonic-advance/c/) | [5.12%](../.github/readme/progress/sonic-advance-c.svg) | [2.21%, the lower of its code, 3.54%, 11,254 of 317,119 instructions and branch ways played, and its content, 2.21%, 4,451 of 200,999 cells of data used, with 2 of 40 parts played through](../.github/readme/progress/sonic-advance-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
+| [Sonic Advance Dreamport in C](../games/sonic-advance/c/) | [5.28%](../.github/readme/progress/sonic-advance-c.svg) | [2.21%, the lower of its code, 3.54%, 11,254 of 317,119 instructions and branch ways played, and its content, 2.21%, 4,451 of 200,999 cells of data used, with 2 of 40 parts played through](../.github/readme/progress/sonic-advance-c.svg) | [NahuelGenchi](https://github.com/NahuelGenchi) | Not yet |
 
 <!-- End of the table of Dreamports. -->
 
@@ -32,7 +32,7 @@ Some code is in many games of a console without any of them having written it: t
 
 <!-- The proof tools draw these maps from the kit's shared libraries: npm run dp -- readme. -->
 
-![Game Boy Advance: 99.73% of its known shared code proven, 7,398 of 7,418 bytes and 116 of 118 functions, in 4 libraries, taken by 1 game.](../.github/readme/progress/shared.gba.svg)
+![Game Boy Advance: 99.73% of its known shared code proven, 7,402 of 7,422 bytes and 117 of 119 functions, in 4 libraries, taken by 1 game.](../.github/readme/progress/shared.gba.svg)
 
 ![PlayStation: 0% of its known shared code proven, 0 of 107,560 bytes and 0 of 523 functions, in 10 libraries, taken by 0 games.](../.github/readme/progress/shared.ps1.svg)
 
