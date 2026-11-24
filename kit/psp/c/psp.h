@@ -54,6 +54,28 @@ SceUID sceKernelGetThreadId(void);
 uint32_t sceKernelGetSystemTimeLow(void);
 uint64_t sceKernelGetSystemTimeWide(void);
 
+// ---- semaphores and event flags -------------------------------------------------------------------------------------
+
+// a semaphore that wakes its threads by their priority, not in the order they came; an event flag more than one thread
+// may wait for; and how a wait for an event flag matches and what it clears
+enum { PSP_SEMA_PRIORITY = 0x100, PSP_EVENT_MULTIPLE = 0x200, PSP_EVENT_AND = 0x00, PSP_EVENT_OR = 0x01, PSP_EVENT_CLEAR_ALL = 0x10, PSP_EVENT_CLEAR = 0x20 };
+/** A wait's timeout is the address of a word in the console's memory saying how many microseconds, which the system
+ *  writes what was left of to as the wait ends, or 0 for none. */
+SceUID sceKernelCreateSema(const char *name, uint32_t attributes, int count, int most, uint32_t options);
+int sceKernelDeleteSema(SceUID sema);
+int sceKernelSignalSema(SceUID sema, int count);
+int sceKernelWaitSema(SceUID sema, int count, uint32_t timeout);
+int sceKernelPollSema(SceUID sema, int count);
+int sceKernelReferSemaStatus(SceUID sema, uint32_t info);
+SceUID sceKernelCreateEventFlag(const char *name, uint32_t attributes, uint32_t pattern, uint32_t options);
+int sceKernelDeleteEventFlag(SceUID flag);
+int sceKernelSetEventFlag(SceUID flag, uint32_t bits);
+int sceKernelClearEventFlag(SceUID flag, uint32_t bits);
+int sceKernelCancelEventFlag(SceUID flag, uint32_t pattern, uint32_t waiting);
+int sceKernelWaitEventFlag(SceUID flag, uint32_t bits, uint32_t how, uint32_t out, uint32_t timeout);
+int sceKernelPollEventFlag(SceUID flag, uint32_t bits, uint32_t how, uint32_t out);
+int sceKernelReferEventFlagStatus(SceUID flag, uint32_t info);
+
 // ---- the screen ----------------------------------------------------------------------------------------------------
 
 // a pixel's format, in a framebuffer and in a texture's first four

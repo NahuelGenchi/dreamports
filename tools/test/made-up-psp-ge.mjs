@@ -28,7 +28,7 @@ const G = (command, value = 0) => ((command << 24) | (value & 0xFFFFFF)) >>> 0;
 export const VTYPE = 1 << 23 | 7 << 2 | 2 << 7, VTYPE_565 = 1 << 23 | 4 << 2 | 2 << 7 | 1 << 11;
 const RECTANGLES = 6;
 // a vertex of each format: its colour, then its place, 12 bytes and 8
-const vertex = (color, x, y) => {
+export const vertex = (color, x, y) => {
   const bytes = Buffer.alloc(12);
   bytes.writeUInt32LE(color >>> 0, 0);
   bytes.writeInt16LE(x, 4);
@@ -45,7 +45,7 @@ const vertex565 = (color, x, y) => {
 
 // A list: its commands, each [command, value], with a value given as { at: name } the offset of `name` from the list's
 // start, a label as { here: name }; then its blocks of bytes, each named. { words, at }: the list, and each name's offset.
-function list(commands, blocks) {
+export function list(commands, blocks) {
   const at = {};
   let offset = 0;
   for (const item of commands) {

@@ -39,9 +39,12 @@ uint64_t clock_microseconds(void);
 void clock_spend(int cycles);
 
 // what a thread waits for
-enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL, WAIT_GE_DRAW, WAIT_GE_LIST };
+enum { WAIT_NONE, WAIT_SLEEP, WAIT_DELAY, WAIT_VBLANK, WAIT_AUDIO, WAIT_CTRL, WAIT_GE_DRAW, WAIT_GE_LIST, WAIT_SEMA, WAIT_EVENT_FLAG };
 /** The running thread's number, or 0 when none runs. */
 SceUID thread_current(void);
+/** A thread's priority now, and the next number the system gives a thing it makes, counted with the threads'. */
+int thread_priority(SceUID thread);
+SceUID kernel_new_uid(void);
 /** Puts the running thread to wait for `kind`, `what` of it, keeping `value` for whoever wakes it. */
 void thread_wait(int kind, int what, uint32_t value);
 /** What `thread` waits for, the `what` it was put to wait with, or 0 when it isn't waiting for `kind`. */
@@ -70,6 +73,8 @@ void kernel_run_frame(void);
 /** Starts the program's first thread, at `entry`. */
 void kernel_start(psp_thread_entry entry);
 
+// ---- sync.c: semaphores and event flags ----
+void sync_power(void);
 // ---- display.c ----
 void display_power(void);
 // ---- ge.c: the graphics chip ----

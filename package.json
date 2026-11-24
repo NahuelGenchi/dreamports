@@ -15,7 +15,7 @@
     "test:real-console": "node tools/test/real-console.mjs",
     "test:real-ps2": "node tools/test/real-ps2.mjs",
     "test:real-psp": "node tools/test/real-psp.mjs",
-    "test:psp-kit": "node tools/test/psp-kit.mjs && node tools/test/psp-ge.mjs",
+    "test:psp-kit": "node tools/test/psp-kit.mjs && node tools/test/psp-ge.mjs && node tools/test/psp-sync.mjs",
     "test:psp-twin": "node tools/test/psp-twin.mjs",
     "test:psp-parts": "node tools/test/psp-parts.mjs",
     "test:ps2-ledger": "node tools/test/ps2-ledger.mjs",

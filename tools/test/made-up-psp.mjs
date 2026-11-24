@@ -64,6 +64,9 @@ export const SYSTEM = {
   sceKernelCreateThread: ['ThreadManForUser', 0x446D8DE6], sceKernelStartThread: ['ThreadManForUser', 0xF475845D], sceKernelSleepThread: ['ThreadManForUser', 0x9ACE131E], sceKernelDelayThread: ['ThreadManForUser', 0xCEADEB47],
   sceGeEdramGetAddr: ['sceGe_user', 0xE47E40E4], sceGeListEnQueue: ['sceGe_user', 0xAB49E76A], sceGeListUpdateStallAddr: ['sceGe_user', 0xE0D68148], sceGeListSync: ['sceGe_user', 0x03444EB4], sceGeDrawSync: ['sceGe_user', 0xB287BD61],
   sceKernelDcacheWritebackAll: ['UtilsForUser', 0x79D1C3FA],
+  sceKernelCreateSema: ['ThreadManForUser', 0xD6DA4BA1], sceKernelSignalSema: ['ThreadManForUser', 0x3F53E640], sceKernelWaitSema: ['ThreadManForUser', 0x4E3A1105],
+  sceKernelPollSema: ['ThreadManForUser', 0x58B1F937], sceKernelCreateEventFlag: ['ThreadManForUser', 0x55C20A00], sceKernelSetEventFlag: ['ThreadManForUser', 0x1FB15A32],
+  sceKernelWaitEventFlag: ['ThreadManForUser', 0x402FCF22], sceKernelClearEventFlag: ['ThreadManForUser', 0x812346E4],
 };
 
 /**

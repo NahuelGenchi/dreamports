@@ -101,6 +101,13 @@ static struct thread *thread_of(SceUID uid) {
   return 0;
 }
 SceUID thread_current(void) { return running ? running->uid : 0; }
+/** The priority of `uid`, now, or past the lowest for a thread there isn't. */
+int thread_priority(SceUID uid) {
+  struct thread *thread = thread_of(uid);
+  return thread ? thread->priority : 0x7FFFFFFF;
+}
+/** The next number the system gives a thing it makes, a thread, a semaphore or an event flag, from one count. */
+SceUID kernel_new_uid(void) { return next_uid++; }
 
 static void make_ready(struct thread *thread) {
   if (thread->state == READY) return;
@@ -339,7 +346,7 @@ SceUID sceKernelCreateThread(const char *name, psp_thread_entry entry, int prior
   if (priority < 0x08 || priority > 0x77) return thread_done(PSP_ERROR_ILLEGAL_PRIORITY);
   // a game's thread may ask for the vector unit, the user's memory and a few ways with its stack, and nothing else
   if (attributes & ~0xF8F060FFu) return thread_done(PSP_ERROR_ILLEGAL_ATTR);
-  struct thread *thread = new_thread(next_uid++, entry, priority, stack_size);
+  struct thread *thread = new_thread(kernel_new_uid(), entry, priority, stack_size);
   clock_spend(32000);
   return thread_answer(thread->uid);
 }
