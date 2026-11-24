@@ -43,7 +43,7 @@ import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { asksForProofs, groupNamed, KEEPS_PROOFS, stateOf, stateText } from './lib/proofs.mjs';
-import { leftOf, tasksOf } from './lib/part-functions.mjs';
+import { leftOf, readPartFunctions, tasksOf } from './lib/part-functions.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
@@ -132,6 +132,13 @@ async function openTasks(version, repo, yes, update = false) {
  *  part at a time, as its lead decides when that changes (proofs --start, #1864). */
 export function startsByFunction(console, language, pieces) {
   return language === 'c' && KEEPS_PROOFS.includes(console) && !pieces.some(piece => pieceOf(piece).language === language);
+}
+
+/** Whether a version that keeps its proofs has to take its game's parts for tasks before its first one (#1904): one
+ *  with no task yet, open or closed, in a game that lists its parts and doesn't keep what each runs
+ *  (lib/part-functions.mjs). One that has tasks by address already stays as it is until its lead runs proofs --parts. */
+export function startsByPart(parts, kept, language, pieces) {
+  return parts.length > 0 && !kept && !pieces.some(piece => pieceOf(piece).language === language);
 }
 
 /**
@@ -228,6 +235,9 @@ async function openFunctionTasks(version, repo, yes, update) {
   const where = `the issues of its code's stretches, in its issue for ${LANGUAGES[language].name}, under #${home.number}`;
   const states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
   const pieces = claims.piecesOf(game, entry);
+  if (startsByPart(readPartsFile(game).parts ?? [], readPartFunctions(game), language, pieces)) {
+    throw new Error(`${version} has no task yet, and a new game's tasks are its parts, each with the functions it runs: run npm run dp -- proofs ${version} --parts, commit the file it writes, and run this again, which then opens a task for each part.`);
+  }
   const groups = tasksOf(version, codeMap), byPart = groups.some(group => group.part);
   const played = new Set((dreamport?.language === language ? dreamport.proof : dreamport?.versions.find(v => v.language === language)?.proof)?.gameplay?.parts?.filter(part => part.proven).map(part => part.name) ?? []);
   const { open, wanted, waiting } = functionTasks(groups, states, pieces, language, OPEN_AT_ONCE, played);
