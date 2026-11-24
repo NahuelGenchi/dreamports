@@ -6,8 +6,9 @@ name: GameCube
 # npm run test:real-gamecube, which runs a small program of the project's own on it, alone and from a disc it boots,
 # and checks its pictures and its sound, npm run test:gamecube-kit, which proves the GameCube's kit in C against it with
 # the same program's Dreamport, every frame, picture and sound, npm run test:gamecube-codemap, which makes, names and
-# reads a made-up disc's code map, and npm run test:gamecube-twin, which checks twins in C of the program's functions
-# against Dolphin running each one by itself. Each computer writes every frame's picture and sound, and a last job finds
+# reads a made-up disc's code map, npm run test:gamecube-twin, which checks twins in C of the program's functions
+# against Dolphin running each one by itself, and npm run test:gamecube-parts, which makes another made-up program a
+# game whose tasks are its parts, from its first day to each part done (#1986). Each computer writes every frame's picture and sound, and a last job finds
 # them the same on all three: a proof made on one computer has to be one on every other. Nothing from any game is
 # needed, and nothing is sent anywhere.
 #
@@ -39,6 +40,9 @@ on:
       - 'kit/c/**'
       - 'tools/lib/c.mjs'
       - 'tools/libretro/new-game/**'
+      - 'tools/test/parts-flow.mjs'
+      - 'src/lib/systems.ts'
+      - 'public/systems/gamecube.svg'
   push:
     branches: [main]
     paths:
@@ -63,6 +67,9 @@ on:
       - 'kit/c/**'
       - 'tools/lib/c.mjs'
       - 'tools/libretro/new-game/**'
+      - 'tools/test/parts-flow.mjs'
+      - 'src/lib/systems.ts'
+      - 'public/systems/gamecube.svg'
   schedule:
     - cron: '11 7 * * 1'
   workflow_dispatch:
@@ -135,6 +142,8 @@ jobs:
       - run: npm run test:gamecube-kit
       # each function's twin in C against the same function run by itself on Dolphin's interpreter
       - run: npm run test:gamecube-twin
+      # a game made a part at a time, each part a function at a time, against a stand-in for GitHub
+      - run: npm run test:gamecube-parts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gamecube-same-${{ matrix.system }}
