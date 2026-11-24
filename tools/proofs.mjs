@@ -12,6 +12,11 @@
 //   --start   starts a version's proofs, with none in it: from then on the version is made a function at a time,
 //             its tasks are groups of functions, and `find` and `ready` go by each function's proof. It writes over
 //             nothing. A game's lead decides this for a game that has tasks already, as it changes what they are.
+//   --parts   makes the game's parts the version's tasks (lib/part-functions.mjs, #1871): it starts the game's
+//             proof/part-functions.json, with no part in it, for a version that keeps its proofs, or with --start
+//             as well. `prove` then keeps which functions the original runs in each part's frames, a part's task
+//             is those no part before it runs, and it's done when each has its proof and the part is proven by its
+//             recording. It writes over nothing, and it's the lead's to decide, as --start is.
 //   --check   changes nothing and fails when a line of a proofs.json doesn't hold any more, which `npm run check`
 //             uses for every version that keeps one: a twin that changed since its proof, a twin with a stop, or a
 //             function the code map or the code no longer has. On a computer with the game's copy it also compares
@@ -27,35 +32,37 @@
 // tools' own: nothing writes it in a proof file, and the site doesn't show it.
 
 import { cartridgeOf, hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
-import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, PROOFS, readProofs, startProofs, stateOf, stateText } from './lib/proofs.mjs';
+import { asksForProofs, countsOf, groupNamed, KEEPS_PROOFS, KINDS, PROOFS, readProofs, startProofs, stateOf, stateText } from './lib/proofs.mjs';
 import { accountOf, ACCOUNTED, KINDS as BYTES } from './lib/rebuild.mjs';
 import { followsContent, readUnreachable, usedCells } from './lib/played.mjs';
 import { copyWith } from './lib/copies.mjs';
 import { HEADER } from './gba/header.mjs';
 import { readProof } from './readme.mjs';
+import { PART_FUNCTIONS, startPartFunctions, tasksOf } from './lib/part-functions.mjs';
+import { readParts } from './lib/proof-files.mjs';
 import { percentText } from '../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../src/lib/languages.mjs';
 
-const USAGE = 'Usage: npm run dp -- proofs [<version>] [<function or task>] [--start] [--check] [--task <function or task>] [--bytes [--all]]';
+const USAGE = 'Usage: npm run dp -- proofs [<version>] [<function or task>] [--start] [--parts] [--check] [--task <function or task>] [--bytes [--all]]';
 const count = n => n.toLocaleString('en');
 const plural = (n, word) => `${count(n)} ${word}${n === 1 ? '' : 's'}`;
 
 export async function run(args) {
   const rest = [];
   let task = null;
-  const start = args.includes('--start'), check = args.includes('--check'), bytes = args.includes('--bytes'), all = args.includes('--all');
+  const start = args.includes('--start'), byPart = args.includes('--parts'), check = args.includes('--check'), bytes = args.includes('--bytes'), all = args.includes('--all');
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--task') {
       task = args[++i];
       if (!task) throw new Error(`--task needs a function's address or a task's name.\n${USAGE}`);
-    } else if (!['--start', '--check', '--bytes', '--all'].includes(args[i])) {
+    } else if (!['--start', '--parts', '--check', '--bytes', '--all'].includes(args[i])) {
       if (args[i].startsWith('--')) throw new Error(`proofs has no ${args[i]}.\n${USAGE}`);
       rest.push(args[i]);
     }
   }
   const [version, named] = rest;
-  if (rest.length > 2 || ((start || task || named || bytes) && !version) || (all && !bytes) || (bytes && named)) throw new Error(USAGE);
-  if (start) return begin(version);
+  if (rest.length > 2 || ((start || byPart || task || named || bytes) && !version) || (all && !bytes) || (bytes && named)) throw new Error(USAGE);
+  if (start || byPart) return (start ? begin(version) : 0) || (byPart ? beginParts(version) : 0);
   if (check) return checkAll(version ? [version] : keptVersions().filter(asksForProofs), task);
   if (!version) {
     const keeping = keptVersions().filter(asksForProofs);
@@ -79,12 +86,13 @@ export async function run(args) {
   const width = Math.max(...groups.map(group => group.name.length));
   for (const group of groups) {
     const proven = group.functions.filter(f => states.get(f.key).kind).length;
-    console.log(`  ${group.name.padEnd(width)}  ${proven === group.functions.length ? 'proven' : `${count(proven)} of ${count(group.functions.length)} proven`}`);
+    const stands = group.part && !group.recorded ? 'no recording of the original yet' : proven === group.functions.length ? (group.part ? `each of its ${count(proven)} proven` : 'proven') : `${count(proven)} of ${count(group.functions.length)} proven`;
+    console.log(`  ${group.name.padEnd(width)}  ${stands}`);
   }
   const beyond = why => [...states.values()].filter(state => state.beyond === why).length;
   if (beyond('start')) console.log(`\nThe cartridge's start, ${plural(beyond('start'), 'function')}, is in no task: it runs once before any function is called and never comes back, which is the kit's to do in a Dreamport, and neither proof reaches it yet.`);
   if (beyond('memory')) console.log(`\n${plural(beyond('memory'), 'function')} the game makes in its work memory ${beyond('memory') === 1 ? 'is' : 'are'} in no task: neither proof reaches one yet.`);
-  console.log(`\nnpm run dp -- proofs ${version} <a task's first address> lists a task's functions, each with its twin and its proof.`);
+  console.log(`\nnpm run dp -- proofs ${version} <a task's first address${groups.some(group => group.part) ? ', or a part\'s name in quotes' : ''}> lists a task's functions, each with its twin and its proof.`);
   return 0;
 }
 
@@ -93,7 +101,7 @@ function read(version) {
   const { game } = versionOf(version), codeMap = readCodeMap(version);
   if (!codeMap) throw new Error(`games/${game}/proof/ has no code map yet: npm run dp -- codemap ${game} makes one.`);
   if (!asksForProofs(version)) throw new Error(`${version} keeps no proofs: it's made a part at a time, and its tasks are its parts (npm run dp -- find ${game}). npm run dp -- proofs ${version} --start makes it a version made a function at a time, which is its lead's to decide.`);
-  return { codeMap, states: new Map(stateOf(version, { codeMap }).map(state => [state.key, state])), groups: groupsOf(codeMap) };
+  return { codeMap, states: new Map(stateOf(version, { codeMap }).map(state => [state.key, state])), groups: tasksOf(version, codeMap) };
 }
 
 /**
@@ -166,18 +174,30 @@ export function groupLines(group, states) {
 
 function show(version, group, states) {
   const proven = group.functions.filter(f => states.get(f.key).kind).length;
-  console.log(`${group.name} of ${version}, ${plural(group.functions.length, 'function')}, ${count(proven)} proven:`);
+  if (group.part && !group.recorded) return console.log(`${group.name} of ${version} is a part of the game with no recording of the original yet, so nothing says which functions it runs: tools/README.md#proving-a-part, then npm run dp -- prove ${version}.`);
+  console.log(`${group.name} of ${version}, ${plural(group.functions.length, 'function')}${group.part ? ' the original runs in it that no part before it does' : ''}, ${count(proven)} proven:`);
   for (const line of groupLines(group, states)) console.log(line);
 }
 
 function begin(version) {
   const { game, language } = versionOf(version), original = readOriginal(version);
   if (writtenIn(language) !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
-  if (!['gba', 'nes', 'ps1', 'ps2'].includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES, the PlayStation and the PlayStation 2, and on no other console yet (docs/CONSOLES.md).');
+  if (!KEEPS_PROOFS.includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES, the PlayStation and the PlayStation 2, and on no other console yet (docs/CONSOLES.md).');
   if (!readCodeMap(version)) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
   console.log(startProofs(version)
     ? `Written: games/${version}/proof/${PROOFS}, with no proof in it yet. ${version} is made a function at a time from here on: npm run dp -- tasks ${version} opens its tasks from its code map, and npm run dp -- match and npm run dp -- twin keep each proof they find.`
     : `games/${version}/proof/${PROOFS} is there already, and was left as it is.`);
+  return 0;
+}
+
+// --parts: the game's parts become the tasks of its version that keeps its proofs
+function beginParts(version) {
+  const { game } = versionOf(version);
+  if (!asksForProofs(version)) throw new Error(`${version} keeps no proofs, and a part's task is the functions it runs, each with its proof: npm run dp -- proofs ${version} --start --parts starts both.`);
+  if (!readParts(game).length) throw new Error(`games/${game}/proof/parts.json lists no parts yet, and each would be a task.`);
+  console.log(startPartFunctions(game, readOriginal(version).sha1)
+    ? `Written: games/${game}/proof/${PART_FUNCTIONS}, with no part in it yet. ${version}'s tasks are its game's parts from here on: npm run dp -- prove ${version} keeps the functions the original runs in each part that names its recording and frames, and npm run dp -- tasks ${version} opens the parts' tasks.`
+    : `games/${game}/proof/${PART_FUNCTIONS} is there already, and was left as it is.`);
   return 0;
 }
 
@@ -197,9 +217,10 @@ function checkAll(versions, task) {
       const group = groupNamed(groups, task);
       if (!group) throw new Error(`No task of ${version} goes by "${task}".`);
       const left = group.functions.filter(f => !states.get(f.key).kind);
-      console.log(`${group.name}: ${left.length ? `${count(left.length)} of its ${plural(group.functions.length, 'function')} ${left.length === 1 ? 'has' : 'have'} no proof yet` : `each of its ${plural(group.functions.length, 'function')} has its proof`}.`);
+      if (!(group.part && !group.recorded)) console.log(`${group.name}: ${left.length ? `${count(left.length)} of its ${plural(group.functions.length, 'function')} ${left.length === 1 ? 'has' : 'have'} no proof yet` : `each of its ${plural(group.functions.length, 'function')} has its proof`}.`);
       for (const line of groupLines({ functions: left }, states)) console.log(line);
       if (left.length) wrong.push(`${version}: ${group.name} isn't done until each of its functions has its proof.`);
+      if (group.part && !group.recorded) wrong.push(`${version}: ${group.name} has no recording of the original yet, so nothing says which functions it runs.`);
     }
   }
   if (wrong.length) {

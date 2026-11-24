@@ -1,6 +1,6 @@
 # A task of functions
 
-For the `/dreamport` command, when `find` said the task is functions of the original: it then gave how many, the command that lists them and the one that says the task is done. Such a game is made a function at a time (`docs/STANDARD.md`, Twins and their proof). Its parts stay as names for people and as what its recordings are for, and the task isn't a part.
+For the `/dreamport` command, when `find` said the task is functions of the original: it then gave how many, the command that lists them and the one that says the task is done. Such a game is made a function at a time (`docs/STANDARD.md`, Twins and their proof). Its parts stay as names for people and as what its recordings are for, and the task isn't a part. In a game whose tasks are its parts, each with the functions it runs, `find` says the task is a part of the game, and `tools/commands/parts/part-tasks.md` is the one to follow: it sends you here for how each function is made.
 
 ## Each function, the same every time
 

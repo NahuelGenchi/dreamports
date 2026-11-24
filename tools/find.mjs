@@ -9,7 +9,9 @@
 // lead's own, such as one of an organisation's. It lists the first few free and waiting pieces of each kind, with how
 // many more there are, and --all lists every one. --take says only which task whoever is signed in takes next, by
 // /dreamport's rules (lib/take.mjs): the piece --piece names when it can be taken, one that's theirs already, or the
-// first free one, in C unless the language is named, with what to run when nothing is free.
+// first free one, in C unless the language is named, with what to run when nothing is free. It leaves a note of the
+// task for this folder's session (lib/taking.mjs), so another session on this computer, the same person to GitHub,
+// is handed the next one, and one started in the same folder is told the folder is in use.
 //
 // A version that keeps its proofs is made a function at a time (lib/proofs.mjs), and there find goes by each
 // function's proof, not by a part's recording: its tasks are groups of functions, one whose functions are all proven
@@ -18,6 +20,7 @@
 
 import { UPSTREAM, pagesOf, signedInAs } from './lib/github.mjs';
 import { whatToTake } from './lib/take.mjs';
+import { sessions } from './lib/taking.mjs';
 import { missingParts } from './tasks.mjs';
 import { readClaims, leadOf, teamBuildOf, gatheredIn } from './lib/claims.mjs';
 import { readOriginal, readPartsFile } from './lib/proof-files.mjs';
@@ -29,7 +32,9 @@ import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionOf } from '
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO } from './lib/paths.mjs';
-import { asksForProofs, countsOf, groupNamed, groupsOf, KINDS, stateOf } from './lib/proofs.mjs';
+import { asksForProofs, countsOf, groupNamed, KINDS, stateOf } from './lib/proofs.mjs';
+import { leftOf, tasksOf } from './lib/part-functions.mjs';
+import { readProof } from './readme.mjs';
 import { functionTasks } from './tasks.mjs';
 import { readCodeMap } from './lib/proof-files.mjs';
 
@@ -144,20 +149,22 @@ function list(here, claims) {
 
 /**
  * How a version made a function at a time stands, or null for one made a part at a time: its `groups`, its
- * functions' `states` by key, and `groupOf(piece)`, the group a task is for, by its title.
+ * functions' `states` by key, and `groupOf(piece)`, the group a task is for, by its title. Its groups are its game's
+ * parts where the game keeps what each runs (lib/part-functions.mjs), and `played` names those it has proven.
  */
 function functionsOf(version) {
   if (!asksForProofs(version)) return null;
   const codeMap = readCodeMap(version);
   if (!codeMap) return null;
-  const groups = groupsOf(codeMap), states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
-  return { groups, states, groupOf: piece => groupNamed(groups, pieceOf(piece).name) };
+  const groups = tasksOf(version, codeMap), states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
+  const played = new Set((readProof(version)?.gameplay?.parts ?? []).filter(part => part.proven).map(part => part.name));
+  return { groups, states, played, groupOf: piece => groupNamed(groups, pieceOf(piece).name) };
 }
 
 // a task of functions whose functions all have their proof here: done, and waiting only to be closed
 const provenHere = (piece, made) => {
   const group = made?.groupOf(piece);
-  return Boolean(group) && group.functions.every(f => made.states.get(f.key)?.kind);
+  return Boolean(group) && !leftOf(group, made.states, made.played);
 };
 
 // " in C" after a number of a version in another language than JavaScript, and nothing after JavaScript's
@@ -189,14 +196,32 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   const free = all.free.filter(piece => !provenHere(piece, madeOf(pieceOf(piece).language)));
   const missing = wanted => {
     if (madeOf(wanted)) {
-      const { wanted: groups, waiting: more } = functionTasks(madeOf(wanted).groups, madeOf(wanted).states, pieces, wanted);
+      const { wanted: groups, waiting: more } = functionTasks(madeOf(wanted).groups, madeOf(wanted).states, pieces, wanted, undefined, madeOf(wanted).played);
       return groups.length + more;
     }
     const proven = new Set((versions.find(v => v.language === wanted)?.proof?.gameplay?.parts ?? []).filter(part => part.proven).map(part => nameKey(part.name)));
     return has(wanted) ? missingParts(planOf(readPartsFile(game)), pieces, wanted, proven, main).length : 0;
   };
-  const found = whatToTake({ pieces, free, waiting, reviewing, login, language, languageNamed, named, has, missing });
   const name = t => `#${t.number} ${pieceName(t)}`;
+  // what other sessions on this computer are making, which a claim can't tell from this one's (lib/taking.mjs)
+  const nearby = sessions({ over: (repository, number) => repository === claims.repository && (reviewing.has(number) || pieces.some(t => t.number === number && t.state !== 'open')) });
+  const inUse = () => {
+    const number = nearby.here();
+    if (number === null) return false;
+    const piece = pieces.find(t => t.number === number);
+    console.log(`Nothing can be taken in this folder now: another session on this computer is making ${piece ? name(piece) : `#${number}`} here, and two can't share a folder's files. Start this one in a folder of its own, or once that one has finished.`);
+    return true;
+  };
+  if (inUse()) return 0;
+  const busy = nearby.busy(claims.repository);
+  const ask = () => whatToTake({ pieces, free, waiting, reviewing, login, language, languageNamed, named, has, missing, busy });
+  let found = ask();
+  // of two sessions handed a task at once, one leaves its note first, and the other goes on to the next
+  while (found.piece && !nearby.take(claims.repository, found.piece.number)) {
+    if (inUse()) return 0;
+    busy.add(found.piece.number);
+    found = ask();
+  }
   const called = LANGUAGES[found.piece ? pieceOf(found.piece).language : found.language ?? language].name;
   for (const note of found.notes) console.log(note);
   if (found.do === 'carry-on') {
@@ -205,7 +230,8 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   } else if (found.do === 'take') {
     console.log(`Take ${name(found.piece)}.`);
     console.log(`  Its version: ${version(pieceOf(found.piece).language)}, in ${called}`);
-    console.log(`  To claim it: gh issue comment ${found.piece.number} --repo ${claims.repository} --body "/claim"`);
+    // claim sends /claim and waits for the bot's answer to it, however long the bot takes (#1869)
+    console.log(`  To claim it: npm run dp -- claim ${found.piece.number}${claims.repository === UPSTREAM ? '' : ` --repo ${claims.repository}`}`);
     for (const below of buildsOn(found.piece)) console.log(`  Its branch starts on top of #${below.pull}, which has #${below.number} ${below.name} in review.`);
   } else if (found.do === 'start-version') {
     console.log(`It has no version in ${called} yet. npm run dp -- new ${version(found.language)} starts it, and npm run dp -- tasks ${version(found.language)} --yes opens its tasks: run both, then ask again.`);
@@ -221,7 +247,17 @@ function taken(game, local, claims, team, { language, languageNamed, named }) {
   }
   // a task of functions: what it's made of, and how it's done
   const group = found.piece && madeOf(pieceOf(found.piece).language)?.groupOf(found.piece);
-  if (group) {
+  if (group?.part) {
+    // a part of the game: the functions the original runs in it that no part before it has, and its recording
+    const states = madeOf(pieceOf(found.piece).language).states, left = group.functions.filter(f => !states.get(f.key)?.kind).length;
+    const its = version(pieceOf(found.piece).language), named = JSON.stringify(group.name);
+    if (!group.recorded) {
+      console.log(`  It's a part of the game with no recording of the original yet, which is where it starts: tools/commands/parts/part-tasks.md says how, and then which functions it's made of.`);
+    } else {
+      console.log(`  It's a part of the game, and ${group.functions.length} function${group.functions.length === 1 ? '' : 's'} of the original that it runs and no part before it does, ${left} still to prove: npm run dp -- proofs ${its} ${named} lists them.`);
+    }
+    console.log(`  It's done when npm run dp -- ready ${its} --task ${named} says each has its proof and the part is proven by its recording.`);
+  } else if (group) {
     const states = madeOf(pieceOf(found.piece).language).states, left = group.functions.filter(f => !states.get(f.key)?.kind).length;
     const its = version(pieceOf(found.piece).language);
     console.log(`  It's ${group.functions.length} function${group.functions.length === 1 ? '' : 's'} of the original, ${left} still to prove: npm run dp -- proofs ${its} ${group.first} lists them.`);

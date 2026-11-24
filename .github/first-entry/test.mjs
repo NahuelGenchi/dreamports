@@ -228,6 +228,30 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.equal(readOriginal(`${JSON.stringify({ ...nes, title: 'Buy at romsite.example' }, null, 2)}\n`), null, 'a title that isn\'t the game\'s name');
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'MADE UP' }, null, 2)}\n`));
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'Made Up (USA)' }, null, 2)}\n`), 'the copy\'s own name');
+  // a PlayStation 2 game's code is the name of the program its disc boots, and its functions are in more places than
+  // one: the program, the vector units' code, and the disc's other programs and modules, each in order (#1859)
+  const ps2 = { ...nes, console: 'ps2', code: 'SLUS_200.02' };
+  const disc = [['00100008', 232], ['001000F0', 8], ['003599B8~vu', 2048], ['0035A1C0~vu', 2048], ['00000000@IOPRP254.IMG:CDVDFSV', 216], ['000000D8@IOPRP254.IMG:CDVDFSV', 268], ['00000000@MODULES/PADMAN.IRX', 8], ['00000040@DATA/GAME.ARC:0x1000', 12], ['00000000@DATA/GAME.ARC:0x1000~vu', 64]];
+  assert.equal(entry(map(disc), 'c', ps2).why, undefined);
+  assert.deepEqual(readOriginal(`${JSON.stringify(ps2, null, 2)}\n`), ps2);
+  assert.ok(readOriginal(`${JSON.stringify({ ...ps2, code: '' }, null, 2)}\n`), 'a program with no disc');
+  for (const code of ['SLUS_200.02 ', 'ROMS.EXAMPLE', 'SLUS-20002', 'slus_200.02', 'SLUS_200.02;1']) {
+    assert.equal(readOriginal(`${JSON.stringify({ ...ps2, code }, null, 2)}\n`), null, code);
+  }
+  assert.equal(readOriginal(`${JSON.stringify({ ...nes, code: 'SLUS_200.02' }, null, 2)}\n`), null, 'only a PlayStation 2 game\'s');
+  for (const [what, functions] of Object.entries({
+    'a place out of order': [['001000F0', 8], ['00100008', 232]],
+    'a module out of order': [['00100008', 232], ['000000D8@PADMAN.IRX', 8], ['00000000@PADMAN.IRX', 8]],
+    'a place in two parts': [['00100008', 232], ['003599B8~vu', 2048], ['001000F0', 8]],
+    'a place twice': [['00000000@PADMAN.IRX', 8], ['00000000@PADMAN.IRX', 8]],
+    'words for a place': [['00100008@see https://example.com', 232]],
+    'a place of another form': [['00100008@<b>', 232]],
+    'a mark of another form': [['00100008~words', 232]],
+    'bytes, as only the Game Boy Advance has': [['00100008/E92D4000E3A00001', 232]],
+  })) assert.equal(entry(map(functions), 'c', ps2).why, 'proof', what);
+  assert.equal(entry(map([['00004450', 139], ['00000000@PADMAN.IRX', 8]]), 'c', nes).why, 'proof', 'places, on a console with one');
+  assert.equal(entry(map([['00004450', 139], ['00004500~vu', 8]]), 'c', nes).why, 'proof');
+  assert.equal(readCodeMap(`{"original":"${SHA1}","from":"The tools","functions":[["08000000",4],["080000C0@PADMAN.IRX",200]]}\n`, SHA1), null);
   // a Super Nintendo game's map says the mode each function starts in, and nothing else
   const snes = { ...nes, console: 'snes' };
   const modes = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/snes/functions.mjs)","functions":[["00000000",24],["00000018",72]],"modes":${text}}\n`);

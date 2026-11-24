@@ -1,6 +1,7 @@
 // The engine's start, its loop and its interrupts.
 #include "core.h"
 #include "malloc.h"
+#include "screen.h"
 #include "task.h"
 #include "time.h"
 
@@ -340,6 +341,9 @@ void Dma3Intr(void) { REG_WRITE16(REG_IF, 0x0800); }
 /** Timer0Intr, 0x080013B0: timer 0's interrupt seen to. */
 void Timer0Intr(void) { REG_WRITE16(REG_IF, 0x0008); }
 
+/** Timer1Intr, 0x080013BC: timer 1's interrupt seen to. */
+void Timer1Intr(void) { REG_WRITE16(REG_IF, 0x0010); }
+
 /** Timer2Intr, 0x080013C8: timer 2's interrupt seen to. */
 void Timer2Intr(void) { REG_WRITE16(REG_IF, 0x0020); }
 
@@ -348,6 +352,30 @@ void KeypadIntr(void) { REG_WRITE16(REG_IF, 0x1000); }
 
 /** GamepakIntr, 0x080013E4: the cartridge's interrupt seen to. */
 void GamepakIntr(void) { REG_WRITE16(REG_IF, 0x2000); }
+
+/** DummyFunc, 0x080013F4: nothing, for an interrupt nobody sees to. */
+void DummyFunc(void) {}
+
+/** ClearOamBufferCpuSet, 0x080013F8: ClearOamBufferDma's work through the BIOS's fast copier, for the screens that ask
+ *  for it: no line callbacks, the two buffers of lines' scroll swapped unless the game holds them, and every sprite of
+ *  the next frame's list hidden. (Not timed: no recording asks for the copiers yet.) */
+void ClearOamBufferCpuSet(void) {
+  gNumHBlankCallbacks = 0;
+  gFlags &= ~FLAGS_EXECUTE_HBLANK_CALLBACKS;
+  if (!(gFlags & FLAGS_20)) {
+    if (gBgOffsetsHBlankPrimary == gBgOffsetsBuffer[0]) {
+      gBgOffsetsHBlankPrimary = gBgOffsetsBuffer[1];
+      gBgOffsetsHBlankSecondary = gBgOffsetsBuffer[0];
+    } else {
+      gBgOffsetsHBlankPrimary = gBgOffsetsBuffer[0];
+      gBgOffsetsHBlankSecondary = gBgOffsetsBuffer[1];
+    }
+  }
+  gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
+  CpuFastFill(0x200, gOamBuffer, sizeof(gOamBuffer));
+  gNumVBlankCallbacks = 0;
+  gFlags &= ~FLAGS_EXECUTE_VBLANK_CALLBACKS;
+}
 
 /** AgbMain, 0x08001494: where the cartridge's start hands over. The engine, then the game, then the loop. */
 void AgbMain(void) {

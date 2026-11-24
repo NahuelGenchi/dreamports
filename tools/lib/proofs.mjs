@@ -49,6 +49,9 @@ import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
 export const PROOFS = 'proofs.json';
+/** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
+ *  new game on one is (tasks.mjs, #1864). */
+export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -388,8 +391,8 @@ const groupName = functions => (functions.length === 1 ? `Function ${functions[0
  *  more functions since it was opened and its group ends elsewhere now, means the group its first function is in.
  *  null when none goes by it. */
 export function groupNamed(groups, named) {
-  const said = String(named).trim().replace(/^Task:\s*/i, '').replace(/\s+in\s+\w+$/i, '').toLowerCase();
-  const byName = groups.find(group => group.name.toLowerCase() === said);
+  const whole = String(named).trim().replace(/^Task:\s*/i, '').toLowerCase(), said = whole.replace(/\s+in\s+\w+$/i, '');
+  const byName = groups.find(group => group.name.toLowerCase() === whole) ?? groups.find(group => group.name.toLowerCase() === said);
   if (byName) return byName;
   const digits = /^(?:0x|\$)?([0-9a-f]{4,8})$/i.exec(String(named).trim())?.[1] ?? /^functions? ([0-9a-f]{8})(?: to [0-9a-f]{8})?$/.exec(said)?.[1];
   if (!digits) return null;

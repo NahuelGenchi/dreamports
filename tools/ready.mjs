@@ -12,7 +12,10 @@ import { join } from 'node:path';
 import { REPO, LOCAL } from './lib/paths.mjs';
 import { merging } from './lib/merge-main.mjs';
 import { DIFFERS_AS_BEFORE } from './lib/as-before.mjs';
-import { asksForProofs } from './lib/proofs.mjs';
+import { asksForProofs, groupNamed } from './lib/proofs.mjs';
+import { tasksOf } from './lib/part-functions.mjs';
+import { readCodeMap } from './lib/proof-files.mjs';
+import { readProof } from './readme.mjs';
 import { readRecordings } from './lib/proof-files.mjs';
 
 const KEPT_LINES = 30;
@@ -49,6 +52,12 @@ export async function run(args) {
   const proved = nothingToPlay ? { status: 0 } : spawnSync(...tool('prove', game), { cwd: REPO, stdio: 'inherit' });
   const asBefore = (noWorse || asksForProofs(game)) && proved.status === DIFFERS_AS_BEFORE;
   if (proved.status !== 0 && !asBefore) failed.push('prove');
+  // a task that is a part of the game is done once the part is proven by its recording too (lib/part-functions.mjs)
+  const part = task && readCodeMap(game) ? groupNamed(tasksOf(game, readCodeMap(game)), task) : null;
+  if (part?.part && !readProof(game)?.gameplay?.parts?.some(each => each.name === part.name && each.proven)) {
+    failed.push('the part');
+    console.log(`the part: ${part.name} isn't proven by its recording yet, so its task isn't done: its functions' proofs can go out as they are, in a pull request that names the task with Refs.`);
+  }
   step('check', npm('check'));
   step('build', npm('build'));
   console.log(failed.length ? `Not ready: ${failed.join(', ')}.` : asBefore ? 'Ready: no frame that matched before differs.' : 'Ready.');

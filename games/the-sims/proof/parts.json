@@ -1,0 +1,18 @@
+{
+  "about": "The Sims's parts, in the order a player meets them, then its other modes. Each counts the same, and each is a task of the game's version in C: the functions the original runs in it that no part before it runs, each with its proof, and a recording that plays it from its first frame to its last with every frame matching the original. \"frames\" are the first and last of the recording's frames it covers. A part may end with a press that moves the game on, the way a player leaves it, such as Start on the title screen. Where the screen is one colour between two parts, those frames go with the part before. Get a Life's later homes go by their order here until someone has played far enough to name them.",
+  "parts": [
+    {"name": "Switching on and the logos"},
+    {"name": "The main menu"},
+    {"name": "Making a Sim for Get a Life"},
+    {"name": "Get a Life's first home"},
+    {"name": "Get a Life's second home"},
+    {"name": "Get a Life's third home"},
+    {"name": "Get a Life's fourth home"},
+    {"name": "Get a Life's last home"},
+    {"name": "Play the Sims: the neighbourhood"},
+    {"name": "Play the Sims: making a family"},
+    {"name": "Play the Sims: a family's home"},
+    {"name": "Two players"},
+    {"name": "Options and the memory card"}
+  ]
+}

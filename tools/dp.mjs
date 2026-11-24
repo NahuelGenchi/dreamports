@@ -20,6 +20,7 @@ const TOOLS = {
   libraries: 'Says how much of each console\'s shared code, the libraries its games share, is proven, and with a version where each function it takes from them stands (--check: every library and every version that takes one keeps their rules)',
   share: 'Publishes a preview on GitHub Pages from your fork, with the clips of what the step changed for its pull request',
   find: 'Shows where a game stands: its lead, its numbers, its team build, who has claimed what, its free tasks and what the others wait on',
+  claim: 'Claims a task with /claim on its issue, waits for the claims bot\'s answer to that claim, and says whether it\'s yours (--for: waits on for a claim made before, or for a new game\'s issue)',
   tasks: 'Opens a Task issue for each of a game\'s foundations and parts that has none yet, foundations first, or for each group of functions in a version made a function at a time',
   notes: 'Shows what people found while making a game or its console\'s kit, so nobody has to find it again',
   team: 'The team build, the lead\'s branch with the team\'s finished pieces: start, join, send and add a piece',
@@ -38,6 +39,9 @@ if (!TOOLS[tool]) {
   process.exit(tool ? 1 : 0);
 }
 try {
+  // a session's note of the task it makes in this folder counts while the tools run here (lib/taking.mjs). find reads
+  // the notes, so it doesn't mark one that may be another session's
+  if (!['find', 'help'].includes(tool)) (await import('./lib/taking.mjs')).stillHere();
   const { run } = await import(`./${tool}.mjs`);
   process.exitCode = (await run(args)) ?? 0;
 } catch (error) {
