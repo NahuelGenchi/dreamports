@@ -3,8 +3,8 @@
 // twin of one of the original's, with every value where the console keeps it, and has its proof in
 // proof/proofs.json. src/main.js runs it on the page, built to WebAssembly as src/game.wasm (kit/gba/c/README.md).
 //
-// It plays as far as its twins go: from power-on through its logos, the 1,700 frames of the soft-reset-logos recording
-// the same as the original's (proof/progress.json). The twins are made in the order the game runs them.
+// It plays as far as its twins go: from power-on through its logos and the story's opening to the title screen's
+// first frames, the same as the original's (proof/progress.json). The twins are made in the order the game runs them.
 //
 // Its twins follow SAT-R's decompilation of Sonic Advance (https://github.com/SAT-R/sa1 at fdd8956).
 
@@ -51,11 +51,32 @@ void *memset(void *dest, int c, unsigned long n);
 void console_power_on(void);
 void console_set_keys(u16 keys);
 void console_start(void);
+void Task_LoadGameLogo(void);
+void TaskDestructor_TitleScreen(struct Task *t);
+void IntroOpenTitlescreenSilent(void);
+void TaskDestructor_8065810(struct Task *t);
+void IntroOpenTitlescreenPlayMusic(void);
+void sub_8063B8C(void);
+void sub_8063C4C(void);
+void sub_8063D0C(void);
+void sub_8063DCC(void);
 void sub_8063E8C(u16 arg0);
 void Task_80640C8(void);
 void sub_8064244(void);
+void sub_80645E4(void);
+void sub_80648D4(void);
+void sub_8064BB4(void);
+void sub_8064E84(void);
 void Task_8065058(void);
 void Task_806515C(void);
+void Task_RenderSonic(void);
+void Task_IntroRenderTails(void);
+void Task_IntroRenderKnuckles(void);
+void Task_IntroRenderAmy(void);
+void Task_806562C(void);
+void sub_80656A4(void);
+void sub_806571C(void);
+void sub_8065794(void);
 void Task_IntroChaosEmeraldUpdate(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
