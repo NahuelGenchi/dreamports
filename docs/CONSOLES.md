@@ -89,9 +89,9 @@ PPSSPP runs it, built from [its makers' source](https://github.com/hrydgard/ppss
 
 **Its processor's own instructions.** The kit's `psp.h` gives each of the Allegrex's instructions that C has no word for, and the floating-point unit's conversions to whole numbers, as PPSSPP's interpreter gives them, and the function check gives a function its floats in the unit's registers ([#1978](https://github.com/NahuelGenchi/dreamports/issues/1978)). The tools' patch has PPSSPP convert a float past what a word holds to the nearest it holds on every computer, as ARM's processors do and x86's didn't.
 
-**Its semaphores and event flags.** The kit has them as PPSSPP answers them, with their timeouts as it times them ([#1979](https://github.com/NahuelGenchi/dreamports/issues/1979)).
+**Its semaphores and event flags, mutexes and callbacks.** The kit has semaphores, event flags, mutexes and lightweight mutexes as PPSSPP answers them, with their timeouts as it times them, and the callbacks a game makes as the console's SDK has it start ([#1979](https://github.com/NahuelGenchi/dreamports/issues/1979), [#2001](https://github.com/NahuelGenchi/dreamports/issues/2001)).
 
-**Still to come.** The vector unit in its kit in C ([#1987](https://github.com/NahuelGenchi/dreamports/issues/1987)), and callbacks, mutexes, message boxes, interrupts, timers, files and the system's functions by number ([#1990](https://github.com/NahuelGenchi/dreamports/issues/1990)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
+**Still to come.** The vector unit in its kit in C ([#1987](https://github.com/NahuelGenchi/dreamports/issues/1987)), and a callback a game notifies, message boxes, interrupts, timers, files and the system's functions by number ([#1990](https://github.com/NahuelGenchi/dreamports/issues/1990)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
 
 ## The PlayStation 2
 
