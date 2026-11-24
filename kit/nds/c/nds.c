@@ -10,6 +10,11 @@
 // register turns it off, and black when the screens are off. With its display on, an engine draws its line (video.c).
 // An engine's picture is the one its registers and memory hold once the V-blank's writes are done, as the console
 // draws it in the frame after.
+//
+// A processor takes an interrupt (irq.c) as it next reads or writes once its time has reached it, and where it waits,
+// for the V-blank or halted, at the interrupt's own time: the kit runs the BIOS's way to the game's handler, the
+// handler, and the way back, then goes on. Where one processor can ask for the other's interrupts, through the sync
+// register or the message queue, the waiting one runs beside the other, so it takes the interrupt where it comes.
 
 #include "nds.h"
 #include "nds-kit.h"
@@ -19,9 +24,13 @@
 uint8_t nds_main[0x400000];
 
 static uint64_t t9, t7;            // each processor's time, in ticks from power-on
-static uint64_t wake9, wake7;      // when a program waiting for the V-blank goes on
 static uint64_t window_end;        // the end of the frame being run: the next V-blank's start
 static int done9, done7;           // whether each has reached the end of the frame being run
+#define NEVER UINT64_MAX
+static void (*handlers[2])(void);  // each processor's interrupt handler
+static int handling[2];            // whether each is in its handler
+static int waiting[2], halted[2];  // whether each is waiting, and halted until an interrupt asks for it
+static uint64_t woken_at[2];       // when the other processor woke a waiting one, or NEVER
 static int frame;                  // the frame being run, -1 at power-on
 static uint32_t held;              // the buttons, as console.h's bits
 static int touched, touch_x, touch_y;
@@ -42,6 +51,44 @@ uint64_t nds9_now(void) { return t9; }
 uint64_t nds7_now(void) { return t7; }
 
 void nds_not_yet(void) { __builtin_trap(); }
+
+// The free BIOS's code around a game's own, in ticks of the clock, as melonDS runs it from the BIOS: the way to an
+// interrupt's handler and back, and into a call (swi) and out. They're the kit's reckoning from the BIOS's
+// instructions, which no test has measured yet: a game that reads a timer in its handler sees them.
+#define TO_HANDLER9 20
+#define FROM_HANDLER9 16
+#define TO_HANDLER7 18
+#define FROM_HANDLER7 14
+#define INTO_CALL9 16
+#define OUT_OF_CALL9 12
+#define INTO_CALL7 14
+#define OUT_OF_CALL7 10
+
+void nds9_on_interrupt(void (*handler)(void)) { handlers[0] = handler; }
+void nds7_on_interrupt(void (*handler)(void)) { handlers[1] = handler; }
+
+// whether a processor's interrupts would end its wait: halted, the ARM7 wakes for any it has on and the ARM9 only with
+// IME on as well; waiting for the V-blank, each takes one it has on with IME on
+static int would_wake(int seven) {
+  if (!nds_irq_pending(seven)) return 0;
+  if (halted[seven]) return seven || nds_irq_master(seven);
+  return nds_irq_master(seven) && !handling[seven];
+}
+
+// a processor takes the interrupts its time has reached: the BIOS's way to its handler, the handler, and the way back
+static void interrupts(int seven) {
+  uint64_t *now = seven ? &t7 : &t9;
+  while (!handling[seven]) {
+    nds_irq_run(seven, *now);
+    if (!nds_irq_master(seven) || !nds_irq_pending(seven)) return;
+    if (!handlers[seven]) nds_not_yet();
+    handling[seven] = 1;
+    *now += seven ? TO_HANDLER7 : TO_HANDLER9;
+    handlers[seven]();
+    *now += seven ? FROM_HANDLER7 : FROM_HANDLER9;
+    handling[seven] = 0;
+  }
+}
 
 static void arm9_entry(void) {
   game_arm9();
@@ -71,37 +118,130 @@ static uint64_t next_vblank(uint64_t now) {
   return vblank_of(f);
 }
 
-void nds9_wait_vblank(uint32_t after) {
-  wake9 = next_vblank(t9) + after;
-  while (wake9 >= window_end) {
-    done9 = 1;
-    while (!done7) kit_run_beside(arm7_entry);
-    kit_wait_frame();
-  }
-  done9 = 0;
-  t9 = wake9;
+// a read or write of one processor's that asks for the other's interrupt wakes it where it waits for one: the ARM7
+// runs again this frame, or lets the ARM9 go on from there
+static void woke(int seven) {
+  if (!waiting[seven] || woken_at[seven] != NEVER || !would_wake(seven)) return;
+  woken_at[seven] = seven ? t9 : t7;
+  if (seven) done7 = 0;
+  else kit_wait_beside();
 }
 
-void nds7_wait_vblank(uint32_t after) {
-  wake7 = next_vblank(t7) + after;
-  while (wake7 >= window_end) {
-    done7 = 1;
-    kit_wait_beside();
+// whether the other processor can ask for one of this one's interrupts while it waits
+static int beside(int seven, int halt) {
+  return (nds_irq_enabled(seven) & 0x70000) && (halt || nds_irq_master(seven));
+}
+
+// The ARM9 doing nothing a game sees until `target`, or with `halt`, until an interrupt wakes it, taking those that
+// come meanwhile, as the ARM7 runs up to each, or to the end of the frame.
+static void wait9(uint64_t target, int halt) {
+  waiting[0] = 1, halted[0] = halt;
+  for (;;) {
+    woken_at[0] = NEVER;
+    nds_irq_run(0, t9);
+    if (halt ? would_wake(0) : t9 >= target) break;
+    if (!halt && !handling[0] && nds_irq_master(0) && nds_irq_pending(0)) {
+      waiting[0] = 0;
+      interrupts(0);
+      waiting[0] = 1;
+      continue;
+    }
+    uint64_t next = nds_irq_next(0);
+    if (!halt && target < next) next = target;
+    if (next >= window_end) {
+      done9 = 1;
+      while (!done7 && woken_at[0] == NEVER) kit_run_beside(arm7_entry);
+      done9 = 0;
+      if (woken_at[0] != NEVER) { if (woken_at[0] > t9) t9 = woken_at[0]; continue; }
+      kit_wait_frame();
+      continue;
+    }
+    uint64_t from = t9;
+    t9 = next;
+    if (beside(0, halt)) {
+      while (!done7 && t7 < t9 && woken_at[0] == NEVER) kit_run_beside(arm7_entry);
+      if (woken_at[0] != NEVER) t9 = woken_at[0] > from ? woken_at[0] : from;
+    }
   }
-  done7 = 0;
-  t7 = wake7;
+  waiting[0] = halted[0] = 0;
+}
+
+// The ARM7's the same, as far as the ARM9 has gone where the ARM9 can ask for one of its interrupts.
+static void wait7_until(uint64_t target, int halt) {
+  waiting[1] = 1, halted[1] = halt;
+  woken_at[1] = NEVER;
+  for (;;) {
+    if (woken_at[1] != NEVER) {
+      if (woken_at[1] > t7) t7 = woken_at[1];
+      woken_at[1] = NEVER;
+    }
+    nds_irq_run(1, t7);
+    if (halt ? would_wake(1) : t7 >= target) break;
+    if (!halt && !handling[1] && nds_irq_master(1) && nds_irq_pending(1)) {
+      waiting[1] = 0;
+      interrupts(1);
+      waiting[1] = 1;
+      continue;
+    }
+    uint64_t next = nds_irq_next(1);
+    if (!halt && target < next) next = target;
+    if (next >= window_end) {
+      done7 = 1;
+      kit_wait_beside();
+      continue;
+    }
+    if (beside(1, halt) && !done9 && next > t9) {
+      if (t7 < t9) t7 = t9;
+      kit_wait_beside();
+      continue;
+    }
+    t7 = next;
+  }
+  waiting[1] = halted[1] = 0;
+}
+
+void nds9_wait_vblank(uint32_t after) { wait9(next_vblank(t9) + after, 0); }
+void nds7_wait_vblank(uint32_t after) { wait7_until(next_vblank(t7) + after, 0); }
+
+void nds9_halt(void) {
+  wait9(0, 1);
+  interrupts(0);
+}
+
+// the BIOS's check of the interrupts a game's handler has said it took, at the end of the ARM9's data memory or of the
+// ARM7's own: those wanted are taken from it, with IME off meanwhile and on after
+static int taken(int seven, uint32_t wanted) {
+  uint32_t at = seven ? 0x03FFFFF8 : 0x03003FF8;
+  uint32_t word = seven ? nds7_read32(at) : nds9_read32(at);
+  if (seven) {
+    nds7_write32(0x04000208, 0x04000000);
+    nds7_write32(at, word & ~wanted);
+    nds7_write32(0x04000208, 1);
+  } else {
+    nds9_write32(0x04000208, 0x04000000);
+    nds9_write32(at, word & ~wanted);
+    nds9_write32(0x04000208, 1);
+  }
+  return (word & wanted) != 0;
+}
+
+void nds9_intr_wait(int discard, uint32_t wanted) {
+  nds9_spend(2 * INTO_CALL9);
+  if (discard) taken(0, wanted);
+  do nds9_halt(); while (!taken(0, wanted));
+  nds9_spend(2 * OUT_OF_CALL9);
+}
+
+void nds7_intr_wait(int discard, uint32_t wanted) {
+  nds7_spend(INTO_CALL7);
+  if (discard) taken(1, wanted);
+  do nds7_write8(NDS_HALTCNT, 0x80); while (!taken(1, wanted));
+  nds7_spend(OUT_OF_CALL7);
 }
 
 void nds9_spend(uint32_t cycles) { t9 += (cycles + 1) / 2; }
 void nds7_spend(uint32_t cycles) { t7 += cycles; }
 
-// the display's status, as either processor reads it at `now`: the V-blank's flag from line 192 to 261, the H-blank's
-// for the end of each line
-static uint32_t dispstat(uint64_t now) {
-  uint64_t in_frame = now % NDS_FRAME;
-  uint32_t line = (uint32_t)(in_frame / NDS_LINE), dot = (uint32_t)(in_frame % NDS_LINE);
-  return (line >= 192 && line < 262 ? 1 : 0) | (dot >= 1584 ? 2 : 0);
-}
 static uint32_t vcount(uint64_t now) { return (uint32_t)((now % NDS_FRAME) / NDS_LINE); }
 
 // the ten buttons as the console's register has them, a 0 for each held
@@ -145,8 +285,25 @@ static uint8_t *fast_at(uint32_t address) {
   return 0;
 }
 
+static uint32_t arm9_load(uint32_t address, int bytes);
+static void arm9_store(uint32_t address, uint32_t value, int bytes);
+
 static uint32_t arm9_read(uint32_t address, int bytes) {
   catch_up7();
+  interrupts(0);
+  uint32_t value = arm9_load(address, bytes);
+  woke(1);
+  return value;
+}
+
+static void arm9_write(uint32_t address, uint32_t value, int bytes) {
+  catch_up7();
+  interrupts(0);
+  arm9_store(address, value, bytes);
+  woke(1);
+}
+
+static uint32_t arm9_load(uint32_t address, int bytes) {
   uint8_t *fast = fast_at(address & ~(uint32_t)(bytes - 1));
   if (fast) {
     uint32_t value = 0;
@@ -155,9 +312,10 @@ static uint32_t arm9_read(uint32_t address, int bytes) {
   }
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value)) return value;
+  if (nds_video_read(address, bytes, &value) || nds_ipc_read(0, address, bytes, &value) || nds_irq_read(0, t9, address, bytes, &value)) return value;
   switch (address) {
-  case NDS_DISPSTAT: return bytes == 4 ? dispstat(t9) | vcount(t9) << 16 : dispstat(t9);
+  case NDS_DISPSTAT: return bytes == 4 ? nds_irq_dispstat(0, t9) | vcount(t9) << 16 : bytes == 1 ? nds_irq_dispstat(0, t9) & 0xFF : nds_irq_dispstat(0, t9);
+  case NDS_DISPSTAT + 1: return nds_irq_dispstat(0, t9) >> 8;
   case NDS_DISPSTAT + 2: return vcount(t9);
   case NDS_KEYINPUT: return keyinput();
   case NDS_POWCNT: return powcnt;
@@ -166,15 +324,14 @@ static uint32_t arm9_read(uint32_t address, int bytes) {
   return 0;
 }
 
-static void arm9_write(uint32_t address, uint32_t value, int bytes) {
-  catch_up7();
+static void arm9_store(uint32_t address, uint32_t value, int bytes) {
   uint8_t *fast = fast_at(address & ~(uint32_t)(bytes - 1));
   if (fast) {
     for (int i = 0; i < bytes; i++) fast[i] = (uint8_t)(value >> (8 * i));
     return;
   }
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
-  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes)) return;
+  if (nds_video_write(address, value, bytes) || nds_ipc_write(0, address, value, bytes) || nds_irq_write(0, t9, address, value, bytes)) return;
   if (address == NDS_POWCNT && bytes >= 2) { powcnt = value & 0x820F; return; }
   nds_not_yet();
 }
@@ -199,13 +356,31 @@ static void tsc_write(uint8_t value) {
   }
 }
 
+static uint32_t arm7_load(uint32_t address, int bytes);
+static void arm7_store(uint32_t address, uint32_t value, int bytes);
+
 static uint32_t arm7_read(uint32_t address, int bytes) {
   wait7();
+  interrupts(1);
+  uint32_t value = arm7_load(address, bytes);
+  woke(0);
+  return value;
+}
+
+static void arm7_write(uint32_t address, uint32_t value, int bytes) {
+  wait7();
+  interrupts(1);
+  arm7_store(address, value, bytes);
+  woke(0);
+}
+
+static uint32_t arm7_load(uint32_t address, int bytes) {
   if (address >> 24 == 0x02) return main_read(address, bytes);
   uint32_t value;
-  if (nds_ipc_read(1, address, bytes, &value)) return value;
+  if (nds_ipc_read(1, address, bytes, &value) || nds_irq_read(1, t7, address, bytes, &value)) return value;
   switch (address) {
-  case NDS_DISPSTAT: return bytes == 4 ? dispstat(t7) | vcount(t7) << 16 : dispstat(t7);
+  case NDS_DISPSTAT: return bytes == 4 ? nds_irq_dispstat(1, t7) | vcount(t7) << 16 : bytes == 1 ? nds_irq_dispstat(1, t7) & 0xFF : nds_irq_dispstat(1, t7);
+  case NDS_DISPSTAT + 1: return nds_irq_dispstat(1, t7) >> 8;
   case NDS_DISPSTAT + 2: return vcount(t7);
   case NDS_KEYINPUT: return keyinput();
   case NDS_EXTKEYIN: return extkeyin();
@@ -219,17 +394,23 @@ static uint32_t arm7_read(uint32_t address, int bytes) {
   return 0;
 }
 
-static void arm7_write(uint32_t address, uint32_t value, int bytes) {
-  wait7();
+static void arm7_store(uint32_t address, uint32_t value, int bytes) {
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
   if (address >= 0x04000400 && address < 0x04000520) { nds_sound_write(t7, address, value, bytes); return; }
-  if (nds_ipc_write(1, address, value, bytes)) return;
+  if (nds_ipc_write(1, address, value, bytes) || nds_irq_write(1, t7, address, value, bytes)) return;
   switch (address) {
+  case NDS_HALTCNT:
+    // halted until an interrupt it has on asks for it, which it then takes with IME on
+    if (bytes != 1 || (value & 0xC0) != 0x80) nds_not_yet();
+    wait7_until(0, 1);
+    interrupts(1);
+    return;
   case NDS_SPICNT:
     // turning the bus off lets the chip go
     if ((spicnt & 0x8000) && !(value & 0x8000)) tsc_position = 0;
     spicnt = (spicnt & 0x80) | (value & 0xCF03);
-    if (value & 0x0400) nds_not_yet();
+    // the bus's interrupt at a transfer's end isn't here yet
+    if (value & 0x4400) nds_not_yet();
     return;
   case NDS_SPIDATA:
     if (!(spicnt & 0x8000) || t7 < spi_until) return;
@@ -266,6 +447,9 @@ EXPORT("dp_start") void dp_start(void) {
   nds_sound_power();
   nds_video_power();
   nds_ipc_power();
+  nds_irq_power();
+  handlers[0] = handlers[1] = 0;
+  handling[0] = handling[1] = waiting[0] = waiting[1] = halted[0] = halted[1] = 0;
   for (int i = 0; i < 0x8000; i++) itcm[i] = 0;
   for (int i = 0; i < 0x4000; i++) dtcm[i] = 0;
   t9 = t7 = 0;

@@ -25,6 +25,24 @@ void nds_ipc_power(void);
 int nds_ipc_read(int seven, uint32_t address, int bytes, uint32_t *value);
 int nds_ipc_write(int seven, uint32_t address, uint32_t value, int bytes);
 
+// Each processor's interrupt registers, display status and timers (irq.c), by `seven`, at its time `now`
+void nds_irq_power(void);
+/** A read or a write of them: 1 when it's one of them. */
+int nds_irq_read(int seven, uint64_t now, uint32_t address, int bytes, uint32_t *value);
+int nds_irq_write(int seven, uint64_t now, uint32_t address, uint32_t value, int bytes);
+/** The display's status as the processor reads it. */
+uint32_t nds_irq_dispstat(int seven, uint64_t now);
+/** Raises the processor's interrupts due up to `now`: the V-blank's and the timers'. */
+void nds_irq_run(int seven, uint64_t now);
+/** Raises interrupt `irq` (IF's bit) now, for those another part of the kit raises: the sync register's and the queue's. */
+void nds_irq_raise(int seven, int irq);
+/** When the next interrupt the processor has on in IE comes of the V-blank or a timer, or UINT64_MAX. */
+uint64_t nds_irq_next(int seven);
+/** IE and IF together, IME's bit, and IE. */
+uint32_t nds_irq_pending(int seven);
+int nds_irq_master(int seven);
+uint32_t nds_irq_enabled(int seven);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */

@@ -2,8 +2,9 @@
 // the reference emulator, built as test:real-nds builds it, every frame of both screens and the sound, each with a
 // Dreamport in C in a folder of its own that it removes after, so no game's copy is needed. test:real-nds proves the
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
-// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), and the two
-// processors talking (made-up-nds-ipc.mjs), and finds Dreamports that get them wrong.
+// banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), the two
+// processors talking (made-up-nds-ipc.mjs), and their interrupts and timers (made-up-nds-irq.mjs), and finds Dreamports
+// that get them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -14,6 +15,7 @@ import { writeRecording } from '../lib/recording.mjs';
 import { madeUpNdsBackgrounds } from './made-up-nds-bg.mjs';
 import { madeUpNdsSprites, setupInC } from './made-up-nds-obj.mjs';
 import { madeUpNdsIpc } from './made-up-nds-ipc.mjs';
+import { madeUpNdsIrq } from './made-up-nds-irq.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -126,6 +128,27 @@ async function main() {
   writeTalking({ wramcnt: '2' });
   run = dp('prove', C_GAME, 'talking');
   check(run.status !== 0 && report('talking')?.firstDifference?.frame === 1, `a Dreamport that takes the wrong half of the shared memory is found once the ARM7's first reply shows, at frame 1: ${JSON.stringify(report('talking')?.firstDifference)}`);
+
+  console.log('The interrupts and the timers, with the BIOS waiting for the V-blank');
+  const counting = madeUpNdsIrq(), countingCopy = join(WORK, 'counting.nds');
+  writeFileSync(countingCopy, counting.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP IRQ', code: 'MDQE', sha1: counting.sha1 }, null, 2)}\n`);
+  run = dp('rom', countingCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the fourth program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'talking.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'counting.json'), {
+    about: 'The interrupts counted, with A, B and Start held at times.', frames: FRAMES,
+    held: [[0, []], [30, ['A']], [60, []], [90, ['B']], [120, ['START']], [150, ['B', 'START']], [180, []]],
+  });
+  const writeCounting = ({ timer0 = '0x00C3FC00' } = {}) => writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'interrupts.c'), 'utf8').replace('@TIMER0@', timer0));
+  writeCounting();
+  run = dp('prove', C_GAME, 'counting');
+  const counted = report('counting');
+  check(run.status === 0 && counted?.matched === FRAMES, `the kit's interrupts and timers run as melonDS's do on every frame: the V-blank's and the timers', a timer that counts another's overflows, one stopped and started again, the sync register's and the queue's from the other processor, and the BIOS waiting for the V-blank through them, each timer read in the V-blank's handler to the tick: ${counted?.matched} of ${FRAMES}, ${JSON.stringify(counted?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeCounting({ timer0: '0x00C2FC00' });
+  run = dp('prove', C_GAME, 'counting');
+  check(run.status !== 0 && report('counting')?.firstDifference?.frame === 1, `a Dreamport whose timer counts four times as fast is found in the first frame that shows the counts, frame 1: ${JSON.stringify(report('counting')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

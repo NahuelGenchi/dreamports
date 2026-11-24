@@ -2,9 +2,9 @@
 // as melonDS, the reference emulator, has them (its NDS.cpp): the shared memory, 32 KB at 0x03000000, which its control
 // register gives all to the ARM9, all to the ARM7 or a half to each; the ARM7's own 64 KB, which it sees at 0x03800000
 // and, with none of the shared memory, at 0x03000000 too; the sync register, four bits each way; and the message queue,
-// 16 words each way, with its flags, its error and its clearing. Each processor's side is told apart by `seven`.
-// The queue's and the sync register's interrupts come with the interrupts: until then, a game's asking for one does
-// nothing.
+// 16 words each way, with its flags, its error and its clearing, and their interrupts: the sync register's, asked for
+// by the other's write, and the queue's, as a processor's own queue empties and as a word comes to the other's. Each
+// processor's side is told apart by `seven`.
 
 #include "nds.h"
 #include "nds-kit.h"
@@ -60,6 +60,7 @@ static uint32_t receive(int seven) {
   uint32_t word = queue[from][head[from]];
   head[from] = (head[from] + 1) & 15;
   count[from]--;
+  if (!count[from] && (control[from] & 0x0004)) nds_irq_raise(from, 17);
   return word;
 }
 
@@ -67,7 +68,7 @@ static void send(int seven, uint32_t word) {
   if (!(control[seven] & 0x8000)) return;
   if (count[seven] == 16) { control[seven] |= 0x4000; return; }
   queue[seven][(head[seven] + count[seven]) & 15] = word;
-  count[seven]++;
+  if (!count[seven]++ && (control[!seven] & 0x0400)) nds_irq_raise(!seven, 18);
 }
 
 int nds_ipc_read(int seven, uint32_t address, int bytes, uint32_t *value) {
@@ -97,10 +98,13 @@ int nds_ipc_write(int seven, uint32_t address, uint32_t value, int bytes) {
     uint32_t out = address == 0x04000181 ? value << 8 : value;
     sync[!seven] = (uint16_t)((sync[!seven] & 0xFFF0) | ((out & 0x0F00) >> 8));
     sync[seven] = (uint16_t)((sync[seven] & 0xB0FF) | (out & 0x4F00));
+    if ((out & 0x2000) && (sync[!seven] & 0x4000)) nds_irq_raise(!seven, 16);
     return 1;
   }
   if (address == 0x04000184 && bytes >= 2) {
     if (value & 0x0008) { head[seven] = count[seven] = 0; queue[seven][0] = 0; }
+    if ((value & 0x0004) && !(control[seven] & 0x0004) && !count[seven]) nds_irq_raise(seven, 17);
+    if ((value & 0x0400) && !(control[seven] & 0x0400) && count[!seven]) nds_irq_raise(seven, 18);
     if (value & 0x4000) control[seven] &= ~0x4000;
     control[seven] = (uint16_t)((value & 0x8404) | (control[seven] & 0x4000));
     return 1;

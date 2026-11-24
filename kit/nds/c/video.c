@@ -186,6 +186,8 @@ int nds_video_write(uint32_t address, uint32_t value, int bytes) {
   if ((address >> 12 != 0x04000 && address >> 12 != 0x04001) || (address & 0xFFF) >= 0x70) return 0;
   int engine = address >= 0x04001000;
   uint32_t r = address & 0xFFF;
+  // the display's status and line count, between engine A's registers, are each processor's own (irq.c)
+  if (!engine && r >= 4 && r < 8) return 0;
   if (bytes == 1) { nds_not_yet(); return 1; }
   if (r == 0x000) { dispcnt[engine] = (dispcnt[engine] & 0xFFFF0000u) | value; check_engine(engine); return 1; }
   if (r == 0x002) { dispcnt[engine] = (dispcnt[engine] & 0xFFFF) | value << 16; check_engine(engine); return 1; }

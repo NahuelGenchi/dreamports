@@ -61,6 +61,24 @@ void nds7_spend(uint32_t cycles);
 void nds9_wait_vblank(uint32_t after);
 void nds7_wait_vblank(uint32_t after);
 
+// The interrupts, as the console's BIOS takes them to a game's handler, here melonDS's free BIOS, which the proof
+// tools start every game with. A game that keeps its handler's address at the end of the ARM9's data memory
+// (0x03003FFC) or of the ARM7's own (0x0380FFFC) gives the kit its handler, which does the handler's work through the
+// processor's reads and writes and says what it took in IF and in the BIOS's word before it (0x03003FF8, 0x0380FFF8),
+// as the original's does. The kit takes an interrupt with IME, IE and IF as the original's writes leave them: as the
+// processor next reads or writes once its time has reached it, and at its own time where the processor waits.
+
+/** The processor's interrupt handler, in place of the address the original keeps for it. */
+void nds9_on_interrupt(void (*handler)(void));
+void nds7_on_interrupt(void (*handler)(void));
+/** The BIOS's IntrWait (swi 4): waits, halted, until the handler has said it took one of the interrupts `wanted`,
+ *  forgetting those it had said before with `discard`. VBlankIntrWait (swi 5) is nds9_intr_wait(1, 1). */
+void nds9_intr_wait(int discard, uint32_t wanted);
+void nds7_intr_wait(int discard, uint32_t wanted);
+/** The ARM9's halt, as the BIOS's Halt (swi 6) or the system control coprocessor's wait for an interrupt has it, until
+ *  one it has on asks for it with IME on, which it then takes. The ARM7 halts with a write of 0x80 to NDS_HALTCNT. */
+void nds9_halt(void);
+
 /** How many frames have run before this one, counted from power-on as the proof tools count them. */
 int nds_frame(void);
 /** Where a processor's time is, in ticks from power-on. */
@@ -70,10 +88,18 @@ uint64_t nds7_now(void);
 // The hardware's addresses a game names, as the console's documents name them
 #define NDS_DISPCNT_A 0x04000000
 #define NDS_DISPSTAT 0x04000004
+#define NDS_TIMER(n) (0x04000100 + 4 * (n))
 #define NDS_KEYINPUT 0x04000130
 #define NDS_EXTKEYIN 0x04000136
 #define NDS_SPICNT 0x040001C0
 #define NDS_SPIDATA 0x040001C2
+#define NDS_IPCSYNC 0x04000180
+#define NDS_IPCFIFOCNT 0x04000184
+#define NDS_IPCFIFOSEND 0x04000188
+#define NDS_IME 0x04000208
+#define NDS_IE 0x04000210
+#define NDS_IF 0x04000214
+#define NDS_HALTCNT 0x04000301
 #define NDS_POWCNT 0x04000304
 #define NDS_DISPCNT_B 0x04001000
 #define NDS_SOUND(channel) (0x04000400 + 16 * (channel))
@@ -81,5 +107,6 @@ uint64_t nds7_now(void);
 #define NDS_SOUNDBIAS 0x04000504
 #define NDS_PALETTE_A 0x05000000
 #define NDS_PALETTE_B 0x05000400
+#define NDS_IPCFIFORECV 0x04100000
 
 #endif
