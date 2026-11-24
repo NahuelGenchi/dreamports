@@ -453,10 +453,21 @@ void console_cpu_set(const void *src, void *dest, u32 control) {
   for (i = 0; i < count; i++) cpu_set_unit(i);
 }
 
+// where the build keeps the Dreamport's own values, from the linker, and whether an address is one of them
+extern u8 __global_base, __heap_base;
+static int own_value(u32 address) {
+  return address >= (u32)&__global_base && address < (u32)&__heap_base;
+}
+
 /** CpuFastSet's work: words alone, as many as `control` says rounded up to eight, the BIOS's blocks. (Not in the
  *  console's time yet: the kit's clock has no swi 0x0C, and no recording asks for it.) */
 void console_cpu_fast_set(const void *src, void *dest, u32 control) {
   u32 count = ((control & 0x1FFFFF) + 7) & ~7u, i;
+  // the BIOS copies nothing from its own memory, which is every address below the work memory. A value of the
+  // Dreamport's own, as a fill's, can be kept that low too, between what the build says are its first and last
+  if ((u32)src < 0x02000000u && !own_value((u32)src)) return;
+  // and a copy to what can't be written, the BIOS or the cartridge, changes nothing
+  if (((u32)dest < 0x02000000u || ((u32)dest >= 0x08000000u && (u32)dest < 0x0E000000u)) && !own_value((u32)dest)) return;
   cpu_set.wide = 4;
   cpu_set.fixed = control >> 24 & 1;
   cpu_set.from = (u32)src & ~3u;
