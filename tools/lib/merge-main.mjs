@@ -53,13 +53,19 @@ function bothProgress(ours, theirs) {
 /**
  * Both sides' proofs, a function to a line: each side proved its own functions, so a line only one side has stays,
  * and where both have one the branch's does, as it's of the branch's own code. A line that no longer holds once the
- * two are together is found by `npm run dp -- proofs --check`, which `ready` runs after the merge.
+ * two are together is found by `npm run dp -- proofs --check`, which `ready` runs after the merge. The functions
+ * that start as the original's do, its "starts", are kept the same way (#1916), with none for a function the two
+ * together prove by the same bytes, as `match` keeps none there. The text is as lib/proofs.mjs writes it.
  */
 function bothProofs(ours, theirs) {
   const mine = JSON.parse(ours), main = JSON.parse(theirs);
-  const lines = new Map([...(main.functions ?? []), ...(mine.functions ?? [])].map(line => [line[0], line]));
-  const text = [...lines.values()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(line => `    ${JSON.stringify(line)}`);
-  return `{\n  "original": ${JSON.stringify(main.original)},\n  "from": ${JSON.stringify(main.from)},\n  "functions": [${text.length ? `\n${text.join(',\n')}\n  ` : ''}]\n}\n`;
+  const both = name => new Map([...(main[name] ?? []), ...(mine[name] ?? [])].map(line => [line[0], line]));
+  const written = lines => [...lines.values()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(line => `    ${JSON.stringify(line)}`);
+  const lines = both('functions'), starts = both('starts');
+  for (const key of [...starts.keys()]) if (lines.get(key)?.[1] === 'bytes') starts.delete(key);
+  const text = written(lines), started = written(starts);
+  const after = started.length ? `,\n  "starts": [\n${started.join(',\n')}\n  ]` : '';
+  return `{\n  "original": ${JSON.stringify(main.original)},\n  "from": ${JSON.stringify(main.from)},\n  "functions": [${text.length ? `\n${text.join(',\n')}\n  ` : ''}]${after}\n}\n`;
 }
 
 /** docs/STATUS.md with main's table and whichever side changed the words around it, or null when both did. */
