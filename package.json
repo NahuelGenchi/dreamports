@@ -17,6 +17,7 @@
     "test:real-psp": "node tools/test/real-psp.mjs",
     "test:psp-kit": "node tools/test/psp-kit.mjs",
     "test:psp-twin": "node tools/test/psp-twin.mjs",
+    "test:psp-parts": "node tools/test/psp-parts.mjs",
     "test:ps2-ledger": "node tools/test/ps2-ledger.mjs",
     "test:ps2-memory": "node tools/test/ps2-memory.mjs",
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",

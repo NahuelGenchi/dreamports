@@ -117,8 +117,53 @@ index 12a2c0a..f29c93b 100644
  	rtcBaseTime.tv_sec = tv.tv_sec;
  	rtcBaseTime.tv_usec = 0;
  	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
+diff --git a/Core/MIPS/MIPSTables.cpp b/Core/MIPS/MIPSTables.cpp
+index 4e3e820..f03ac5c 100644
+--- a/Core/MIPS/MIPSTables.cpp
++++ b/Core/MIPS/MIPSTables.cpp
+@@ -968,6 +968,18 @@ void MIPSInterpret(MIPSOpcode op) {
+ #define _RD   ((op>>11) & 0x1F)
+ #define R(i)   (curMips->r[i])
+ 
++// Dreamports: told of each instruction the interpreter runs, when the tools ask (libretro/libretro.cpp,
++// retro_dreamports_ran_mips): where it was, its word, and for a conditional branch which way it went, 1 to its target
++// and 2 on, or 0, for what ran in each frame (tools/libretro/ran.h).
++void (*dreamports_ran)(u32 pc, u32 op, u32 way);
++
++static inline void DreamportsRan(u32 pc, MIPSOpcode op, const MIPSInstruction *instr, bool wasInDelaySlot, bool inDelaySlot) {
++	u32 way = 0;
++	if (instr && (instr->flags & IS_CONDBRANCH))
++		way = !wasInDelaySlot && inDelaySlot ? 1 : 2;
++	dreamports_ran(pc, op.encoding, way);
++}
++
+ static inline void RunUntilFast() {
+ 	MIPSState *curMips = currentMIPS;
+ 	// NEVER stop in a delay slot!
+@@ -978,7 +990,10 @@ static inline void RunUntilFast() {
+ 
+ 			bool wasInDelaySlot = curMips->inDelaySlot;
+ 			const MIPSInstruction *instr = MIPSGetInstruction(op);
++			const u32 dreamportsPc = curMips->pc;
+ 			Interpret(instr, op);
++			if (dreamports_ran)
++				DreamportsRan(dreamportsPc, op, instr, wasInDelaySlot, curMips->inDelaySlot);
+ 			curMips->downcount -= GetInstructionCycleEstimate(instr);
+ 
+ 			// The reason we have to check this is the delay slot hack in Int_Syscall.
+@@ -1028,7 +1043,10 @@ static void RunUntilWithChecks(u64 globalTicks) {
+ 			}
+ 
+ 			bool wasInDelaySlot = curMips->inDelaySlot;
++			const u32 dreamportsPc = curMips->pc;
+ 			Interpret(instr, op);
++			if (dreamports_ran)
++				DreamportsRan(dreamportsPc, op, instr, wasInDelaySlot, curMips->inDelaySlot);
+ 			curMips->downcount -= GetInstructionCycleEstimate(instr);
+ 
+ 			// The reason we have to check this is the delay slot hack in Int_Syscall.
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..b33273f 100644
+index 3b2f103..8e30731 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
 @@ -32,6 +32,8 @@
@@ -168,7 +213,7 @@ index 3b2f103..b33273f 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
-@@ -2046,6 +2063,101 @@ inline int16_t Clamp16(int32_t sample) {
+@@ -2046,6 +2063,108 @@ inline int16_t Clamp16(int32_t sample) {
     return sample;
  }
  
@@ -180,6 +225,13 @@ index 3b2f103..b33273f 100644
 +   *count = dreamportsSoundCount;
 +   dreamportsSoundHash = 0x811C9DC5;
 +   dreamportsSoundCount = 0;
++}
++
++// Dreamports: what the interpreter runs, each instruction, for the tools' count of what ran in each frame
++// (tools/libretro/ran.h): where, its word, and for a conditional branch which way it went (Core/MIPS/MIPSTables.cpp).
++extern void (*dreamports_ran)(u32 pc, u32 op, u32 way);
++extern "C" RETRO_API void retro_dreamports_ran_mips(void (*ran)(uint32_t pc, uint32_t op, uint32_t way)) {
++   dreamports_ran = ran;
 +}
 +
 +// Dreamports: the console's memory by address, whichever of its mirrors the address is in, or nullptr where it has
@@ -271,16 +323,17 @@ index 3b2f103..b33273f 100644
     // We ignore volume here, because it's handled by libretro presumably.
  
 diff --git a/libretro/libretro.osx.def b/libretro/libretro.osx.def
-index 53a556a..3df10b5 100644
+index 53a556a..19b223d 100644
 --- a/libretro/libretro.osx.def
 +++ b/libretro/libretro.osx.def
-@@ -1,6 +1,9 @@
+@@ -1,6 +1,10 @@
  #LIBRARY "libretro"
  #EXPORTS
  _retro_set_environment
 +_dreamports_sound_list
 +_dreamports_memory
 +_dreamports_call
++_retro_dreamports_ran_mips
  _retro_set_video_refresh
  _retro_set_audio_sample
  _retro_set_audio_sample_batch

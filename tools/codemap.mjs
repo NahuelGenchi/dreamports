@@ -95,6 +95,7 @@ const FINDERS = {
     file: 'tools/psp/functions.mjs',
     read: pspFunctions.pspProgram,
     address: address => address,
+    start: elf => pspFunctions.programOf(elf).entry,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
   // is of the program the disc boots
@@ -178,7 +179,9 @@ export async function run(args) {
     from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
-  writeCodeMap(game, { original: original.sha1, from, functions, copies });
+  // where the program starts, on a console whose finder says it: a function that never comes back (lib/proofs.mjs)
+  const start = finder?.start ? finder.start(theCopy) : null;
+  writeCodeMap(game, { original: original.sha1, from, functions, copies, ...(start !== null && functions.some(f => f.address === start) ? { start } : {}) });
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));

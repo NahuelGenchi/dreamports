@@ -71,10 +71,14 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
  * aren't C the console's compiler built. In a Dreamport that work is the kit's. A PlayStation 2 function of another
  * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
- * have their proof by `twin` (ps2/twin.mjs).
+ * have their proof by `twin` (ps2/twin.mjs). On the PlayStation Portable it's 'start' for the program's start, which its
+ * code map names: the console starts its first thread there, and it goes round the game's loop and never comes back.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
+  // a PlayStation Portable program's start, which its code map names: the console starts the program's first thread
+  // there, and it goes round the game's loop and never comes back
+  if (codeMap.console === 'psp') return codeMap.start && functionKey(f) === codeMap.start ? 'start' : null;
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }

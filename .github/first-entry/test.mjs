@@ -259,6 +259,10 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.ok(readOriginal(`${JSON.stringify({ ...psp, code: '' }, null, 2)}\n`), 'a program or a download');
   assert.ok(readOriginal(`${JSON.stringify({ ...psp, code: 'NPJH50001', keysAfterVBlank: true }, null, 2)}\n`));
   for (const code of ['ULUS-10041|', 'ulus-10041', 'ROMS EXAMPLE', 'SLUS_200.02']) assert.equal(readOriginal(`${JSON.stringify({ ...psp, code }, null, 2)}\n`), null, code);
+  // its code map says where the program starts, a function no call can prove
+  const started = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/psp/functions.mjs)","functions":[["08804000",140],["0880408C",24]],${text}}\n`);
+  assert.equal(entry(started('"start":"08804000"'), 'c', psp).why, undefined);
+  assert.equal(entry(started('"start":"see example.com"'), 'c', psp).why, 'proof');
   for (const [what, functions] of Object.entries({
     'the kernel\'s memory': [['88000000', 8]],
     'below a game\'s memory': [['08000000', 8]],

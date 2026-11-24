@@ -28,6 +28,47 @@ export const NAMES = ['start', 'sum', 'fill', 'lookup', 'twice', 'pick', 'bigger
 /** The table `lookup` reads. */
 export const VALUES = [11, 22, 33, 44];
 
+/**
+ * A second program, for the test of a game whose tasks are its parts (psp-parts.mjs): it sets the screen up, and each
+ * frame counts the frame in memory, `count`, and paints the whole framebuffer, `paint`, a red that changes each frame,
+ * `red`, for its first 59 frames, and a blue by another function, `blue`, from then on. So each part of its recording
+ * runs functions the test knows. `start` is the program's start, which goes round that loop and never comes back.
+ * { elf, at }, as madeUpPspTwin's.
+ */
+export function madeUpPspParts() {
+  const VRAM = 0x04000000, WORDS = 512 * 272;
+  const li32 = (rt, value) => [word(0x0F, 0, rt, value >>> 16), word(0x0D, rt, rt, value & 0xFFFF)];
+  const sllv = (rd, rt, shift) => (rt << 16 | rd << 11 | shift << 6) >>> 0;
+  const andi = (rt, rs, value) => word(0x0C, rs, rt, value);
+  const or = (rd, rs, rt) => (rs << 21 | rt << 16 | rd << 11 | 0x25) >>> 0;
+  const S1 = 17, A3 = 7;
+  const code = [
+    here('start'),
+    addiu(A0, ZERO, 0), addiu(A1, ZERO, 480), addiu(A2, ZERO, 272), ...call('sceDisplaySetMode'),
+    ...li32(A0, VRAM), addiu(A1, ZERO, 512), addiu(A2, ZERO, 3), addiu(A3, ZERO, 1), ...call('sceDisplaySetFrameBuf'),
+    here('frame'),
+    ...call('sceDisplayWaitVblankStart'),
+    jal('count'), NOP,
+    or(S1, V0, ZERO), sltiu(T0, S1, 60), beq(T0, ZERO, 'use blue'), or(A0, S1, ZERO),
+    jal('red'), NOP, b('paint it'), NOP,
+    here('use blue'), jal('blue'), NOP,
+    here('paint it'), ...li32(A0, VRAM), ...li32(A1, WORDS), or(A2, V0, ZERO), jal('paint'), NOP,
+    { jump: 2, name: 'frame' }, NOP,
+    here('count'), ...la(T0, 'counter'), lw(V0, 0, T0), addiu(V0, V0, 1), jr(RA), sw(V0, 0, T0),
+    here('red'), sllv(V0, A0, 2), andi(V0, V0, 0xFF), ...li32(T0, 0xFF000000), jr(RA), or(V0, V0, T0),
+    here('blue'), sllv(V0, A0, 1), andi(V0, V0, 0xFF), sllv(V0, V0, 16), ...li32(T0, 0xFF000000), jr(RA), or(V0, V0, T0),
+    here('paint'),
+    here('paint loop'), beq(A1, ZERO, 'paint done'), NOP,
+    sw(A2, 0, A0), addiu(A1, A1, -1), b('paint loop'), addiu(A0, A0, 4),
+    here('paint done'), jr(RA), NOP,
+  ];
+  return pspProgram({
+    code, name: 'parts', relocatable: true, sections: true,
+    data: { counter: [0] },
+    imports: ['sceDisplaySetMode', 'sceDisplaySetFrameBuf', 'sceDisplayWaitVblankStart'],
+  });
+}
+
 /** The program: { elf, at }, `at` where each name is once the console has placed it. */
 export function madeUpPspTwin() {
   const code = [

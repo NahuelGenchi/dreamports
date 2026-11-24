@@ -91,7 +91,7 @@ export function readOriginal(text) {
 // On a disc with more places than one, a function not in the program the disc boots says where it is after its
 // address: `@` and the file's path, with the module or the place inside it after a colon, and `~vu` for a vector
 // unit's code, as 00000000@IOPRP254.IMG:CDVDFSV and 003599B8~vu
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?(?:,\s*"start":\s*"[0-9A-F]{8}")?\s*\}\s*$/;
 
 /** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null.
  *  A Super Nintendo game's map also says the processor's mode each function starts in (tools/snes/functions.mjs). */

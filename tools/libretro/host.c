@@ -880,10 +880,17 @@ int main(int argc, char** argv) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
 		ps2Watch watch = dlsym(library, "dreamports_watch");
+		// a PlayStation Portable's, whose code map is of addresses in the console's memory for games, from 0x08800000
+		void (*tellMips)(void (*)(uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_mips");
+		if (tellMips) {
+			ran.base = 0x08800000;
+			ran.reach = 0x03800000;
+		}
 		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
 			if (watch) ps2Open(watch, functions);
+			else if (tellMips) tellMips(ranInstructionMips);
 			else if (tell) tell(ranInstruction);
 			else if (tell65816) tell65816(ranInstruction65816);
 			else {

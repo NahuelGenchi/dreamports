@@ -21,12 +21,15 @@ on:
       - 'tools/gba/windows.mjs'
       - 'tools/gba/twin.mjs'
       - 'tools/lib/c.mjs'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/proof-files.mjs'
       - 'tools/lib/proofs.mjs'
       - 'tools/lib/wasm-fold.mjs'
       - 'tools/libretro/**'
       - 'tools/psp/**'
       - 'tools/setup.mjs'
       - 'tools/test/made-up-psp*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/psp-*'
       - 'tools/test/real-psp.mjs'
   push:
@@ -40,12 +43,15 @@ on:
       - 'tools/gba/windows.mjs'
       - 'tools/gba/twin.mjs'
       - 'tools/lib/c.mjs'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/proof-files.mjs'
       - 'tools/lib/proofs.mjs'
       - 'tools/lib/wasm-fold.mjs'
       - 'tools/libretro/**'
       - 'tools/psp/**'
       - 'tools/setup.mjs'
       - 'tools/test/made-up-psp*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/psp-*'
       - 'tools/test/real-psp.mjs'
   schedule:
@@ -92,6 +98,8 @@ jobs:
       - run: npm run test:psp-kit
       # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
       - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: psp-same-linux
@@ -139,6 +147,8 @@ jobs:
       - run: npm run test:psp-kit
       # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
       - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: psp-same-mac
@@ -177,6 +187,8 @@ jobs:
       - run: npm run test:psp-kit
       # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
       - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: psp-same-windows

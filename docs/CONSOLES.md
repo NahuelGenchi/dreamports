@@ -81,6 +81,8 @@ PPSSPP runs it, built from [its makers' source](https://github.com/hrydgard/ppss
 
 **Its function check.** The tools' patch also gives the core a call that runs one function of a game's program by the emulator's own interpreter, which `twin` calls beside the function's twin in C, from the same memory ([The function check on the PlayStation Portable](../tools/README.md#the-function-check-on-the-playstation-portable)), and the tools keep the console's proofs. `match` has no compiler for it: its games were built with Sony's or SN Systems', which no one can have freely.
 
+**Its parts for tasks.** The tools' patch tells the program that drives the emulators of each instruction PPSSPP's interpreter runs, and which way each conditional branch went, and a function runs in a frame when its first instruction does, so `prove` keeps each part's functions in `proof/part-functions.json`, as on the NES, and a game's tasks can be its parts. Its code map names the program's start, `"start"`, which goes round the game's loop and never comes back, so no call can prove it and it's in no task. What ran isn't read into gameplay proven yet, as that needs each of the console's functions followed through its instructions, which the tools do for the Game Boy Advance, the NES, the Super Nintendo and the PlayStation 2 so far. `npm run test:psp-parts` takes a made-up program through the whole new way, from `proofs --start --parts` to a part done, on Linux, a Mac and Windows ([#1965](https://github.com/NahuelGenchi/dreamports/issues/1965)).
+
 **Still to come.** The graphics chip and the processor's own units in its kit in C, each in its own issue. Nothing has tried a disc, a save, a start point or a search for a route on it yet.
 
 ## The PlayStation 2
