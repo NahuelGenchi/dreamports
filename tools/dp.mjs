@@ -38,6 +38,9 @@ if (!TOOLS[tool]) {
   process.exit(tool ? 1 : 0);
 }
 try {
+  // a session's note of the task it makes in this folder counts while the tools run here (lib/taking.mjs). find reads
+  // the notes, so it doesn't mark one that may be another session's
+  if (!['find', 'help'].includes(tool)) (await import('./lib/taking.mjs')).stillHere();
   const { run } = await import(`./${tool}.mjs`);
   process.exitCode = (await run(args)) ?? 0;
 } catch (error) {
