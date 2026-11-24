@@ -252,34 +252,44 @@ void IwramFree(void *space) {
  *  where it now is. As the original has it: the stretch it leaves free names itself as the next. */
 void IwramDefrag(void) {
   struct IwramNode *cur = &gIwramHeap;
+  s32 freed;
+  s32 i;
+  u16 next;
+  void *from;
+  void *to;
 
   while (NODE_AT(cur->next) != NODE_AT(0)) {
     if (cur->size >= 0) {
-      struct IwramNode *next = NODE_AT(cur->next);
-      if (next->size >= 0) {
-        cur->size += next->size;
+#ifdef MATCHING
+      cur->next += 0; // read again here, as the original reads it
+#endif
+      next = cur->next;
+      if (NODE_AT(cur->next)->size >= 0) {
+        cur->size += NODE_AT(cur->next)->size;
         cur->next = NODE_AT(cur->next)->next;
       } else {
-        u8 *from = next->space;
-        u8 *to = cur->space;
-        s16 freed = cur->size;
-        struct IwramNode *rest;
-        s32 i;
-
-        cur->size = next->size;
-        cur->next = next->next;
+        from = (void *)(cur->next + IWRAM_START + 4);
+        to = cur->space;
+        freed = cur->size;
+        cur->size = NODE_AT(cur->next)->size;
+#ifdef MATCHING
+        ++next, --next; // kept in its register here, as the original keeps it
+#endif
+        cur->next = NODE_AT(next)->next;
         for (i = 0; i < MAX_TASKS; i++) {
           if (gTasks[i].data == (u16)(u32)from) {
             gTasks[i].data = (u32)to;
             break;
           }
         }
-        DMA3_COPY32(from, to, cur->size + 4);
-        rest = (struct IwramNode *)((u8 *)cur + cur->size);
-        rest->next = cur->next;
-        rest->size = freed;
-        cur = rest;
-        cur->next = (u32)cur;
+        DMA3_COPY32(from, to, cur->size + sizeof(struct IwramNode));
+        {
+          struct IwramNode *rest = (struct IwramNode *)((u8 *)cur + cur->size);
+          rest->next = cur->next;
+          rest->size = freed;
+          cur = rest;
+          cur->next = (u32)cur;
+        }
       }
     } else {
       cur = NODE_AT(cur->next);
