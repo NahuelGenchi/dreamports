@@ -3,8 +3,8 @@
 // Dreamport in C in a folder of its own that it removes after, so no game's copy is needed. test:real-nds proves the
 // kit's two programs side by side, its buttons, touch screen and sound; this proves what's drawn: the video memory's
 // banks and the 2D engines' text backgrounds (made-up-nds-bg.mjs), then their sprites (made-up-nds-obj.mjs), the two
-// processors talking (made-up-nds-ipc.mjs), and their interrupts and timers (made-up-nds-irq.mjs), and finds Dreamports
-// that get them wrong.
+// processors talking (made-up-nds-ipc.mjs), their interrupts and timers (made-up-nds-irq.mjs), and their DMA channels
+// (made-up-nds-dma.mjs), and finds Dreamports that get them wrong.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,6 +16,7 @@ import { madeUpNdsBackgrounds } from './made-up-nds-bg.mjs';
 import { madeUpNdsSprites, setupInC } from './made-up-nds-obj.mjs';
 import { madeUpNdsIpc } from './made-up-nds-ipc.mjs';
 import { madeUpNdsIrq } from './made-up-nds-irq.mjs';
+import { madeUpNdsDma } from './made-up-nds-dma.mjs';
 
 const GAME = 'test-nds-kit', C_GAME = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-nds-kit');
@@ -149,6 +150,24 @@ async function main() {
   writeCounting({ timer0: '0x00C2FC00' });
   run = dp('prove', C_GAME, 'counting');
   check(run.status !== 0 && report('counting')?.firstDifference?.frame === 1, `a Dreamport whose timer counts four times as fast is found in the first frame that shows the counts, frame 1: ${JSON.stringify(report('counting')?.firstDifference)}`);
+
+  console.log('The DMA channels, copying and filling at once and at each V-blank');
+  const copying = madeUpNdsDma(), copyingCopy = join(WORK, 'copying.nds');
+  writeFileSync(copyingCopy, copying.rom);
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify({ ...original, title: 'MADE UP DMA', code: 'MDDE', sha1: copying.sha1 }, null, 2)}\n`);
+  run = dp('rom', copyingCopy);
+  check(run.status === 0 && run.out.includes(GAME), 'rom knows the fifth program\'s copy');
+  rmSync(join(proofFolder(GAME), 'recordings', 'counting.json'));
+  writeRecording(join(proofFolder(GAME), 'recordings', 'copying.json'), { about: 'The DMA channels copying, with no button held.', frames: FRAMES, held: [[0, []]] });
+  const writeCopying = ({ reverse = '0x80200020' } = {}) => writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'nds-kit', 'dma.c'), 'utf8').replace('@REVERSE@', reverse));
+  writeCopying();
+  run = dp('prove', C_GAME, 'copying');
+  const copied = report('copying');
+  check(run.status === 0 && copied?.matched === FRAMES, `the kit's DMA channels copy and fill as melonDS's do on every frame, by halfwords and words, up, down and from a fill register, at once and at each V-blank with its interrupt's flag, on both processors, each of four ways timed to the tick, the main memory's bursts among them: ${copied?.matched} of ${FRAMES}, ${JSON.stringify(copied?.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  writeCopying({ reverse: '0x80000020' });
+  run = dp('prove', C_GAME, 'copying');
+  check(run.status !== 0 && report('copying')?.firstDifference?.frame === 2, `a Dreamport whose copy counts up where it counts down is found in the first frame that shows it, frame 2: ${JSON.stringify(report('copying')?.firstDifference)}`);
 }
 
 const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };

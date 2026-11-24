@@ -43,6 +43,23 @@ uint32_t nds_irq_pending(int seven);
 int nds_irq_master(int seven);
 uint32_t nds_irq_enabled(int seven);
 
+// Each processor's DMA channels (dma.c), by `seven`
+void nds_dma_power(void);
+/** A read or a write of their registers, or the ARM9's fill registers: 1 when it's one of them. A write that starts a
+ *  channel runs it. */
+int nds_dma_read(int seven, uint32_t address, int bytes, uint32_t *value);
+int nds_dma_write(int seven, uint32_t address, uint32_t value, int bytes);
+/** When the next V-blank comes that a channel waits for, or UINT64_MAX. */
+uint64_t nds_dma_next(int seven);
+/** Whether a V-blank a channel waits for has come by `now`, and when (`at`): each is told once. */
+int nds_dma_due(int seven, uint64_t now, uint64_t *at);
+/** Runs the channels that wait for the V-blank, from the processor's time. */
+void nds_dma_vblank(int seven);
+/** A processor's time, which a channel moves on as it runs, and a read and a write on its bus (nds.c). */
+uint64_t *nds_time(int seven);
+uint32_t nds_bus_read(int seven, uint32_t address, int bytes);
+void nds_bus_write(int seven, uint32_t address, uint32_t value, int bytes);
+
 // The sound (sound.c), on the ARM7's side, by the console's clock.
 void nds_sound_power(void);
 /** Runs the mixer through every mix that happens before tick `until`, keeping each pair of samples. */

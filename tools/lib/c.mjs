@@ -48,7 +48,7 @@ const OWN = {
     // and in the function check, a game's own table of twins leaves an address with no twin to the check (twinsHeader)
     checkFlags: ['-DDP_TWIN_CHECK'],
   },
-  nds: { folder: fileURLToPath(new URL('../../kit/nds/c/', import.meta.url)), sources: ['nds.c', 'video.c', 'ipc.c', 'irq.c', 'sound.c'], header: true },
+  nds: { folder: fileURLToPath(new URL('../../kit/nds/c/', import.meta.url)), sources: ['nds.c', 'video.c', 'ipc.c', 'irq.c', 'dma.c', 'sound.c'], header: true },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c', 'cd.c'], header: true,
