@@ -159,6 +159,7 @@ void Timer0Intr(void);
 void Timer2Intr(void);
 void KeypadIntr(void);
 void GamepakIntr(void);
+void DummyFunc(void);
 void InputRecorderWrite(u16 input);
 u16 InputRecorderRead(void);
 u32 MultiSioMain(void *send, void *recv, u32 loadRequest);
