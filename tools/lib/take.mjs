@@ -34,24 +34,31 @@ export function pieceNamed(pieces, named, language) {
  * What someone signed in as `login` takes next of a game's `pieces`, open and closed, with `free`, `waiting` and
  * `reviewing` as src/lib/pieces.mjs has them, in `language`, which they `languageNamed` or which is the default, and
  * with the piece they `named`, if any. `has(language)` says whether the game has a version in it, and
- * `missing(language)` how many of its parts have no task there yet, which `tasks` would open.
+ * `missing(language)` how many of its parts have no task there yet, which `tasks` would open. `busy` has the numbers
+ * of the tasks other sessions on this computer are making now (lib/taking.mjs): those are neither theirs to carry on
+ * with nor free, whatever their claims say, as a second session is the same person to GitHub (#1863).
  *
  * Returns { do, piece?, language?, notes }: 'carry-on' with a piece that's theirs already, 'take' a free one,
  * 'start-version' when the game has none in `language`, 'open-tasks' when its parts there have no tasks yet, or
  * 'stop' when nothing can be taken. `notes` are sentences on anything that didn't go as asked.
  */
-export function whatToTake({ pieces, free, waiting, reviewing, login, language, languageNamed = false, named = null, has, missing }) {
+export function whatToTake({ pieces, free: freeOf, waiting, reviewing, login, language, languageNamed = false, named = null, has, missing, busy = new Set() }) {
   const open = pieces.filter(piece => piece.state === 'open');
+  const free = freeOf.filter(piece => !busy.has(piece.number));
   const called = piece => `#${piece.number} ${pieceName(piece)}`;
   // theirs, unless a pull request that isn't a draft has it in review, as that one is finished
-  const theirs = piece => Boolean(login) && (piece.assignees ?? []).some(person => person.login?.toLowerCase() === login.toLowerCase()) && !reviewing.has(piece.number);
+  const theirs = piece => Boolean(login) && (piece.assignees ?? []).some(person => person.login?.toLowerCase() === login.toLowerCase()) && !reviewing.has(piece.number) && !busy.has(piece.number);
   const notes = [];
+  const made = open.filter(piece => busy.has(piece.number));
+  if (made.length) notes.push(`${made.map(called).join(', ')} ${made.length === 1 ? 'is' : 'are'} being made by another session on this computer, so ${made.length === 1 ? 'it isn\'t' : 'they aren\'t'} what comes next.`);
 
   // the piece they named comes first: theirs to carry on with, free to take, or waiting on something free
   if (named) {
     const piece = pieceNamed(open, named, language);
     if (!piece) notes.push(`No open task goes by "${named}".`);
-    else if (theirs(piece)) return { do: 'carry-on', piece, notes };
+    else if (busy.has(piece.number)) {
+      // said above, and they take what comes next
+    } else if (theirs(piece)) return { do: 'carry-on', piece, notes };
     else if (free.includes(piece)) return { do: 'take', piece, notes };
     else {
       const held = waiting.find(wait => wait.piece === piece);
@@ -83,6 +90,6 @@ export function whatToTake({ pieces, free, waiting, reviewing, login, language, 
   }
   // nothing else to take, so one of theirs in the other language, unless they asked for the language by name
   const other = ready.find(piece => pieceOf(piece).language !== language);
-  if (other && !languageNamed) return { do: 'carry-on', piece: other, notes: [] };
+  if (other && !languageNamed) return { do: 'carry-on', piece: other, notes: made.length ? notes.slice(0, 1) : [] };
   return { do: 'stop', notes };
 }
