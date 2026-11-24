@@ -44,6 +44,17 @@ void gc_write32(uint32_t address, uint32_t value);
 void gc_write16(uint32_t address, uint16_t value);
 void gc_write8(uint32_t address, uint8_t value);
 
+/** The processor's single-precision sums as its reference works them out (floats.c), each to the bit the original's
+ *  gives, a NaN too: a sum, a difference, a product, whose second operand the processor rounds to 25 bits first, a
+ *  quotient, and a * c + b rounded once, as fmadds gives it; and a double made a whole number toward zero, as fctiwz
+ *  makes it, the largest or the smallest for what is past them or not a number. */
+float gc_adds(float a, float b);
+float gc_subs(float a, float b);
+float gc_muls(float a, float c);
+float gc_divs(float a, float b);
+float gc_madds(float a, float c, float b);
+int32_t gc_tointz(double x);
+
 /** Paints the page's picture with the field the video interface shows, as the console's reference does. For game_draw. */
 void gc_show(void);
 /** Plays the samples the audio interface takes from memory, at its own rate, as the console's reference hands them on.

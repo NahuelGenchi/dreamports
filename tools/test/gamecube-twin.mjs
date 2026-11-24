@@ -7,7 +7,8 @@
 // and says so. Then one line of the twins is changed at a time, and the check has to find each: a difference for a sum,
 // a shift left by 32 or more that keeps bits, a division by zero that gives 0 whatever the sign, a 64-bit sum short of
 // its carry, a case of a switch one off, the square's colours the other way round, a line of the controller's blocks
-// short, a register of the serial interface one off, and a twin that never comes back. Last, the same program as a game
+// short, a register of the serial interface one off, C's own float sums where the processor rounds its own way, and a
+// twin that never comes back. Last, the same program as a game
 // of its own, through the tool everyone runs, npm run dp -- twin, which keeps a proof once the version is made a
 // function at a time, the original's side read from the program twin kept on this computer, and loses it when its twin
 // changes.
@@ -57,7 +58,7 @@ console.log('The twins name the program\'s functions, and the embedded ABI place
 {
   const twins = twinsIn(game, [], null, 'gamecube');
   const wrong = twins.filter(twin => functions[twin.name]?.address !== twin.address);
-  check(twins.length === 11 && !wrong.length, `each of the 11 names the address of its function in the made-up program${wrong.length ? `, but ${wrong.map(t => t.name).join(', ')}` : ''}`);
+  check(twins.length === 15 && !wrong.length, `each of the 15 names the address of its function in the made-up program${wrong.length ? `, but ${wrong.map(t => t.name).join(', ')}` : ''}`);
   const int = { bits: 32 }, float = { bits: 32, float: true }, double = { bits: 64, float: true }, long = { bits: 64 };
   const places = list => placesOf(list).map(place => (place === null ? 'stack' : place.fpr !== null ? `f${place.fpr}` : `r${place.gpr}`)).join(' ');
   check(places([int, int]) === 'r3 r4' && places([float, double, int]) === 'f1 f2 r3' && places([int, long]) === 'r3 r5' && places([long, long]) === 'r3 r5'
@@ -86,7 +87,7 @@ async function tried(changes = [], { only = null, ...options } = {}) {
 try {
   console.log('The twins as they are:');
   const right = await tried();
-  const same = ['fill', 'square', 'bits', 'setup', 'sum', 'compare', 'shift', 'divide', 'wide', 'pick'];
+  const same = ['fill', 'square', 'bits', 'setup', 'sum', 'compare', 'shift', 'divide', 'wide', 'pick', 'mix', 'scale', 'toint', 'pairs'];
   check(same.every(name => right[name]?.kind === 'same' && right[name].compared === CALLS), `${same.join(', ')}: the same memory on all ${CALLS} calls (${same.filter(name => right[name]?.kind !== 'same').map(name => `${name} ${right[name]?.line}`).join('; ')})`);
   check(same.every(name => right[name]?.whole), `each over every instruction and both ways of each branch (${same.filter(name => !right[name]?.whole).map(name => `${name}: ${right[name]?.left?.map(([address, how]) => `${address.toString(16)} ${how}`).join(', ')}`).join('; ')})`);
   check(right.wait?.kind === 'unchecked' && /didn't come back/.test(right.wait.line), `a function whose original waits for the beam, which never moves in a call, isn't checked, and says so: ${right.wait?.line}`);
@@ -106,6 +107,9 @@ try {
   await wrong('square', [['for (int pair = 0; pair < SQUARE_SIZE / 2; pair++) at[pair] = even;', 'for (int pair = 0; pair < SQUARE_SIZE / 2; pair++) at[pair] = odd;']], 'differs', 'the colours of the lines the other way round', /in the console's memory/);
   await wrong('bits', [['line = 0x8;', 'line = 0x7;']], 'differs', 'a line of each block short', /in the console's memory/);
   await wrong('setup', [['*(volatile unsigned *)0xCC006430u = ', '*(volatile unsigned *)0xCC006430u = 1 + ']], 'differs', 'a register of the serial interface one off', /in the hardware's registers/);
+  await wrong('mix', [['return gc_muls(gc_adds(a, b), c);', 'return (a + b) * c;']], 'differs', 'C\'s own sum and product of singles, where the processor rounds and makes a NaN its own way', /the twin gave back .* and the original/);
+  await wrong('scale', [['return gc_madds(a, b, c);', 'return a * b + c;']], 'differs', 'a multiply and an add each rounded, where the processor rounds once');
+  await wrong('toint', [['return gc_tointz(x);', 'return (int)x;']], 'differs', 'C\'s whole number of a double, which saturates as WebAssembly does and gives 0 for what isn\'t a number');
   await wrong('compare', [['int compare(int a, int b) {\n', 'int compare(int a, int b) {\n  if (a == b) for (;;) {}\n']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);
 } finally {
   original.close();
@@ -134,7 +138,7 @@ try {
     let run = dp('rom', copy);
     check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s disc');
     run = dp('twin', VERSION, '--calls', '200');
-    check(run.status === 0 && /10 of 11 functions left the same memory/.test(run.out) && /10 of those 10 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+    check(run.status === 0 && /14 of 15 functions left the same memory/.test(run.out) && /14 of those 14 took every path/.test(run.out), `every twin of the version is checked, and it ends with 0: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
     run = dp('twin', '--seed', '9', VERSION, `fn_${hex(functions.pick.address).slice(2)}`, '--calls', '200');
     check(run.status === 0 && /1 of 1 function left the same memory/.test(run.out), `one function, by its label, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'divide', '--calls', '200');
@@ -149,7 +153,7 @@ try {
     run = dp('proofs', VERSION, '--check');
     check(run.status === 0, `and its proof holds, the original's side read from the program twin kept: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION);
-    check(run.status === 0 && /1 of 12 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
+    check(run.status === 0 && /1 of 16 functions proven, 0 by the same bytes and 1 by the same memory/.test(run.out), `proofs says where the version stands: ${run.out.trim().split('\n')[0]}`);
     writeFileSync(join(gameFolder(VERSION), 'src', 'game.c'), game.replace('return a + b;\n}\n\n/**', 'return a - b;\n}\n\n/**'));
     run = dp('proofs', VERSION, '--check');
     check(run.status !== 0 && /sum/.test(run.out) && /changed/.test(run.out), `a twin changed since its proof makes the check fail: ${run.out.trim().split('\n').find(line => /sum/.test(line))}`);

@@ -6,6 +6,8 @@
 // name and a number by its name in capitals, which gamecube-twin.mjs writes in from it before it checks the twins
 // against the original.
 
+#include "gamecube.h"
+
 #define FRAMEBUFFER (@FRAMEBUFFER@u | @UNCACHED@u)
 #define WIDTH @WIDTH@
 #define HEIGHT @HEIGHT@
@@ -109,4 +111,27 @@ int pick(unsigned n) {
   case 3: return 47;
   default: return -1;
   }
+}
+
+/** @mix@: (a + b) * c in singles, as the processor works them out, its multiply rounding c to 25 bits first */
+float mix(float a, float b, float c) {
+  return gc_muls(gc_adds(a, b), c);
+}
+
+/** @scale@: a * b + c rounded once, as fmadds gives it */
+float scale(float a, float b, float c) {
+  return gc_madds(a, b, c);
+}
+
+/** @toint@: x made a whole number toward zero, as fctiwz makes it */
+int toint(double x) {
+  return gc_tointz(x);
+}
+
+/** @pairs@: the two singles at a and the two at b added and multiplied by a's, a pair at a time, to out, each pair read
+ *  before any is written, as the paired singles' loads come before their store */
+void pairs(const float *a, const float *b, float *out) {
+  float a0 = a[0], a1 = a[1], b0 = b[0], b1 = b[1];
+  out[0] = gc_muls(gc_adds(a0, b0), a0);
+  out[1] = gc_muls(gc_adds(a1, b1), a1);
 }

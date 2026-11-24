@@ -28,6 +28,11 @@
 //   divide   r3 over r4, each with a sign, as the processor divides, with -1 or 0 for what it can't
 //   wide     the 64-bit sum of r3 and r4 and of r5 and r6, high words first, in r3 and r4
 //   pick     a switch on r3, through a table of its cases in the program's values
+//   mix      (f1 + f2) * f3, in singles, as fadds and fmuls work them out
+//   scale    f1 * f2 + f3 rounded once, by fmadds
+//   toint    f1 made a whole number toward zero by fctiwz, in r3, through the stack
+//   pairs    the two singles at r3 and the two at r4 added and multiplied by those at r3, a pair at a time, by the
+//            paired singles' loads, sums and store, to r5
 //
 // The disc holds the program as a DOL, a small apploader of its own, which tells the console where each of the DOL's
 // sections goes, as every disc's does, and a file system with a few files of made-up bytes, one in a folder.
@@ -80,6 +85,17 @@ const addc = (rt, ra, rb) => x(rt, ra, rb, 10);
 const adde = (rt, ra, rb) => x(rt, ra, rb, 138);
 const lwzx = (rt, ra, rb) => x(rt, ra, rb, 23);
 const bctr = 0x4E800420;
+// the floating-point unit's: single precision (opcode 59), double (63), its loads and stores, and the paired singles'
+// (4, and their quantized loads and stores, 56 and 60, here with GQR0, which holds them as they are)
+const fadds = (fd, fa, fb) => ((59 << 26) | (fd << 21) | (fa << 16) | (fb << 11) | (21 << 1)) >>> 0;
+const fmuls = (fd, fa, fc) => ((59 << 26) | (fd << 21) | (fa << 16) | (fc << 6) | (25 << 1)) >>> 0;
+const fmadds = (fd, fa, fc, fb) => ((59 << 26) | (fd << 21) | (fa << 16) | (fb << 11) | (fc << 6) | (29 << 1)) >>> 0;
+const fctiwz = (fd, fb) => ((63 << 26) | (fd << 21) | (fb << 11) | (15 << 1)) >>> 0;
+const stfd = (fs, offset, ra) => d(54, fs, ra, offset);
+const psq = op => (fd, offset, ra) => ((op << 26) | (fd << 21) | (ra << 16) | (offset & 0xFFF)) >>> 0;
+const psq_l = psq(56), psq_st = psq(60);
+const ps_add = (fd, fa, fb) => ((4 << 26) | (fd << 21) | (fa << 16) | (fb << 11) | (21 << 1)) >>> 0;
+const ps_mul = (fd, fa, fc) => ((4 << 26) | (fd << 21) | (fa << 16) | (fc << 6) | (25 << 1)) >>> 0;
 const mr = (ra, rs) => x(rs, ra, rs, 444);
 const slwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | (n << 11) | (0 << 6) | ((31 - n) << 1)) >>> 0;
 const srwi = (ra, rs, n) => ((21 << 26) | (rs << 21) | (ra << 16) | ((32 - n) << 11) | (n << 6) | (31 << 1)) >>> 0;
@@ -262,11 +278,23 @@ export function madeUpGameCube() {
     'pick-2', li(3, 35), blr,
     'pick-3', li(3, 47), blr,
     'pick-none', li(3, -1), blr,
+
+    'mix',
+    fadds(1, 1, 2), fmuls(1, 1, 3), blr,
+
+    'scale',
+    fmadds(1, 1, 2, 3), blr,
+
+    'toint',
+    stwu(1, -16, 1), fctiwz(0, 1), stfd(0, 8, 1), lwz(3, 12, 1), addi(1, 1, 16), blr,
+
+    'pairs',
+    psq_l(1, 0, 3), psq_l(2, 0, 4), ps_add(3, 1, 2), ps_mul(3, 3, 1), psq_st(3, 0, 5), blr,
     'end',
   ];
   const { bytes: text, labels } = assemble(lines, LOAD);
   for (let n = 0; n < 4; n++) data.bytes.writeUInt32BE(labels[`pick-${n}`], data.casesAt + n * 4);
-  const names = ['start', 'setup', 'fill', 'square', 'bits', 'wait', 'sum', 'compare', 'shift', 'divide', 'wide', 'pick', 'end'];
+  const names = ['start', 'setup', 'fill', 'square', 'bits', 'wait', 'sum', 'compare', 'shift', 'divide', 'wide', 'pick', 'mix', 'scale', 'toint', 'pairs', 'end'];
   const functions = Object.fromEntries(names.slice(0, -1).map((name, n) => [name, { address: labels[name], size: labels[names[n + 1]] - labels[name] }]));
   const sections = { text: { address: LOAD, bytes: text }, data: { address: VALUES, bytes: data.bytes } };
   return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions, tone: data.tone, cases: data.cases };
