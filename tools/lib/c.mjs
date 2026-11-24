@@ -96,7 +96,14 @@ export function consoleHeader(id) {
 #define CONSOLE_CLOCK ${clock}
 // how many sound samples it plays a second
 #define CONSOLE_SOUND_RATE ${machine.sound}
-
+// and the most a second can hold, a whole number, where the rate isn't one, as the Nintendo DS's
+#define CONSOLE_SOUND_MOST ${Math.ceil(machine.sound)}
+${machine.screens ? `
+// its screens in the picture, one above the other, and the one that's touched (kit_touch, kit.h)
+#define SCREEN_COUNT ${machine.screens.length}
+${machine.screens.map(([left, top, across, down], n) => `#define SCREEN_${n}_X ${left}\n#define SCREEN_${n}_Y ${top}\n#define SCREEN_${n}_W ${across}\n#define SCREEN_${n}_H ${down}`).join('\n')}
+#define TOUCHED_SCREEN ${machine.touch}
+` : ''}
 // its buttons as game_step gets them, a bit each, held or not
 enum {
 ${machine.buttons.map((name, bit) => `  BUTTON_${ident(name)} = 1 << ${bit},`).join('\n')}
