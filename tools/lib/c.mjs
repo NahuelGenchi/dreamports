@@ -101,7 +101,12 @@ export function consoleHeader(id) {
 #define CONSOLE_SOUND_RATE ${machine.sound}
 // and the most a second can hold, a whole number, where the rate isn't one, as the Nintendo DS's
 #define CONSOLE_SOUND_MOST ${Math.ceil(machine.sound)}
-
+${machine.screens ? `
+// its screens in the picture, one above the other, and the one that's touched (kit_touch, kit.h)
+#define SCREEN_COUNT ${machine.screens.length}
+${machine.screens.map(([left, top, across, down], n) => `#define SCREEN_${n}_X ${left}\n#define SCREEN_${n}_Y ${top}\n#define SCREEN_${n}_W ${across}\n#define SCREEN_${n}_H ${down}`).join('\n')}
+#define TOUCHED_SCREEN ${machine.touch}
+` : ''}
 // its buttons as game_step gets them, a bit each, held or not
 enum {
 ${machine.buttons.map((name, bit) => `  BUTTON_${ident(name)} = 1 << ${bit},`).join('\n')}
@@ -770,12 +775,20 @@ void *__twin_no_code(uint32_t address);
 #else
 #define TWIN_NONE(address) __builtin_trap();
 #endif
+/** How kit_twin is built: with nothing of clang's optimizer, which turns a switch whose cases sit evenly apart, as
+ *  twins at addresses 0x40 apart do, into a table of the functions in the module's data, where the build gives each
+ *  function's address in the original as any value in data, and the twin's number is lost (#1952). */
+#if defined(__clang__)
+#define TWIN_KEEPS_NUMBERS __attribute__((optnone, noinline))
+#else
+#define TWIN_KEEPS_NUMBERS
+#endif
 /** Defines kit_twin: write it once, in a file that declares every twin. A small number is a function of the module's
  *  own, as C keeps its pointers. An address with no twin, where the game copied one of the cartridge's functions, is
  *  that function's twin, as the console runs the copy as it would the original. */
 #define TWIN_TABLE \\
   TWIN_SAME_CODE \\
-  void *kit_twin(uint32_t address) { \\
+  TWIN_KEEPS_NUMBERS void *kit_twin(uint32_t address) { \\
     if (address < 0x10000u) return (void *)(uintptr_t)address; \\
     switch (address) { TWINS(TWIN_CASE) } \\
     TWIN_CODE(TWIN_COPY) \\

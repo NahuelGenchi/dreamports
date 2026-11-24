@@ -431,6 +431,8 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
       if (own && !named.has(own)) named.set(own, b.name);
       if (!own) named.set(b.name, b.name);
     }
+    // a touch on a console with a touched screen goes to the page as the recording has it (kit/gba/input.js)
+    if (machine.touch !== undefined) for (const b of new Set(held.flat())) if (!named.has(b) && KEY[b] !== undefined) named.set(b, b);
     const unknown = [...new Set(held.flat())].filter(b => !named.has(b));
     if (unknown.length) throw new Error(`The recording holds ${unknown.join(', ')}, which the game doesn't have: it has ${[...named.keys()].join(', ')}.`);
     const ownButtons = [...new Set(held.flat())].filter(b => !(b in KEY));
