@@ -30,8 +30,6 @@ export const HOST = join(FOLDER, WINDOWS ? 'host.exe' : 'host');
 // What CMake builds a core with. Every product and sum the emulator's own C++ works out is rounded on its own, as
 // -ffp-contract=off asks: a compiler for arm64, such as Apple's on a Mac, would otherwise fuse a product and a sum into
 // one rounding where x86's can't, and the console's sums would come out differently from Linux's (#1592)
-// On Windows CMake is told of the compiler the tools got and its make, as it would otherwise look for Microsoft's
-const WINDOWS_CMAKE = ['-G', 'MinGW Makefiles', '-DCMAKE_C_COMPILER=gcc', '-DCMAKE_CXX_COMPILER=g++'];
 const cmakeSettings = core => ['-DCMAKE_BUILD_TYPE=Release', '-DCMAKE_C_FLAGS=-ffp-contract=off', '-DCMAKE_CXX_FLAGS=-ffp-contract=off',
   ...(MAC_ARCH ? [`-DCMAKE_OSX_ARCHITECTURES=${MAC_ARCH}`] : []), ...core.cmake, ...(core.cmakeOn?.[process.platform] ?? [])];
 // a core with a patch of the project's own has the patch's hash in its name too, with the hash of each of the project's
@@ -114,7 +112,9 @@ function buildHere(machine, log, tools) {
   // where it leaves what it built: `folderOn` for one kind of computer, as a CMake build can put a library elsewhere there
   const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(tools ? [...WINDOWS_CMAKE, `-DCMAKE_MAKE_PROGRAM=${tools.make}`] : []), ...cmakeSettings(core)], source, tools?.env);
+    // on Windows, with the compiler and make the tools got for themselves (../gba/windows.mjs)
+    const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
+    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
     run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
