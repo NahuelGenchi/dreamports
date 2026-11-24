@@ -54,7 +54,8 @@ static void map(int bank, uint8_t cnt) {
     break;
   case 5: case 6:
     if (use == 0) return;
-    if (use == 1) { abg[(offset & 1) + (offset & 2) * 2] |= 1u << bank; return; }
+    // a page, and its mirror two pages on
+    if (use == 1) { abg[(offset & 1) + (offset & 2) * 2] |= 1u << bank; abg[(offset & 1) + (offset & 2) * 2 + 2] |= 1u << bank; return; }
     break;
   case 7:
     if ((cnt & 3) == 0) return;
