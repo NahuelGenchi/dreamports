@@ -113,9 +113,11 @@ function buildHere(machine, log, tools) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
-    // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
-    run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
-    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+    // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again.
+    // A libretro makefile works out the platform from uname, which w64devkit's says is Unix, so on Windows it's told
+    const make = [...(core.make ?? []), ...(WINDOWS ? ['platform=win'] : [])];
+    run(building, tools?.make ?? 'make', [...make, 'clean'], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...make], folder, tools?.env);
   }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }
