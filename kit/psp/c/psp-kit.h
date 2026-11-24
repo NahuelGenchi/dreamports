@@ -68,6 +68,8 @@ void kernel_frame_ends(void);
 /** An interrupt begins and ends, with no handler of the game's: the change to the system's idle thread and back. */
 void kernel_interrupt_starts(void);
 void kernel_interrupt_ends(void);
+/** The V-blank's interrupt: the running thread is changed for the idle one until the threads are next put in order. */
+void kernel_vblank_interrupt(void);
 /** Runs the console until its frame ends. */
 void kernel_run_frame(void);
 /** Starts the program's first thread, at `entry`. */

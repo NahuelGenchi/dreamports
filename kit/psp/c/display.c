@@ -29,6 +29,8 @@ static void vblank_starts(uint64_t data, int late) {
   in_vblank = 1;
   vcount++;
   clock_schedule(VBLANK_CYCLES - late, vblank_ends, 0);
+  // its interrupt comes before the threads waiting for it are woken
+  kernel_vblank_interrupt();
   int woke = 0;
   for (int i = 0; i < waiting_count; i++) {
     if (--waiting[i].left) continue;
