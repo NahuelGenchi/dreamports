@@ -112,8 +112,8 @@ int nds_video_write(uint32_t address, uint32_t value, int bytes) {
     return 1;
   }
   if (address >> 24 == 0x05) {
-    // the colours take halfwords and words: a byte written there is written to both bytes of its halfword
-    if (bytes == 1) { value = (value & 0xFF) * 0x101; bytes = 2; address &= ~1u; }
+    // the ARM9 writes the colours by halfwords and words: a byte written there is lost, as the console's is
+    if (bytes == 1) return 1;
     for (int i = 0; i < bytes; i++) nds_palette[(address + i) & 0x7FF] = (uint8_t)(value >> (8 * i));
     return 1;
   }
