@@ -161,8 +161,8 @@ static void arm9_write(uint32_t address, uint32_t value, int bytes) {
   catch_up7();
   if (address >> 24 == 0x02) { main_write(address, value, bytes); return; }
   if (address >> 24 == 0x05) {
-    // the colours take halfwords and words: a byte written there is written to both bytes of its halfword
-    if (bytes == 1) { value = (value & 0xFF) * 0x101; bytes = 2; address &= ~1u; }
+    // the ARM9 writes the colours by halfwords and words: a byte written there is lost, as the console's is
+    if (bytes == 1) return;
     for (int i = 0; i < bytes; i++) palette[(address + i) & 0x7FF] = (uint8_t)(value >> (8 * i));
     return;
   }
