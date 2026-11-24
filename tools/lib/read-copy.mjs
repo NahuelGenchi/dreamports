@@ -15,6 +15,7 @@ import { isCso } from '../../kit/copy/cso.js';
 import { inflateRaw } from '../../kit/copy/inflate.js';
 import { bootOf, readFileOn, volumeOf, whatDisc } from '../../kit/copy/iso9660.js';
 import { chunked } from '../../kit/copy/source.js';
+import { dolHeader, isGcm, whatGcm } from '../../kit/copy/gcm.js';
 
 const ascii = (bytes, at, length) => bytes.toString('latin1', at, at + length).replace(/[\0\s]+$/, '').trim();
 const HEAD = 0x10000;
@@ -22,12 +23,16 @@ const HEAD = 0x10000;
 const SNES_REGIONS = { 0: 'Japan', 1: 'USA', 2: 'Europe' };
 
 // the console a cartridge's first bytes say it's for, with what they name
-function cartridge(bytes) {
+function cartridge(bytes, size = null) {
   if (ascii(bytes, 0, 3) === 'NES' && bytes[3] === 0x1A) return { console: 'nes' };
   if (ascii(bytes, 0, 6) === 'MADEUP') return { console: 'made-up' };
   if (ascii(bytes, 0, 8) === 'PS-X EXE') return { console: 'ps1' };
   // a program for the PlayStation 2's processor, as its ELF file's flags say
   if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes.readUInt16LE(18) === 8 && bytes.readUInt32LE(36) === 0x20924001) return { console: 'ps2' };
+  // a program for the GameCube's processor, a PowerPC that keeps its highest byte first, as its ELF file says, or a DOL,
+  // which has no word that says it's one, told by its header fitting the console's memory and the file's length
+  if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes[5] === 2 && bytes.readUInt16BE(18) === 20) return { console: 'gamecube' };
+  if (size !== null && dolHeader(bytes)?.size === size) return { console: 'gamecube' };
   const magic = bytes.length >= 4 ? bytes.readUInt32BE(0) : 0;
   // a Nintendo 64 cartridge's first word, in the three orders copies come in
   if (magic === 0x80371240 || magic === 0x37804012 || magic === 0x40123780) {
@@ -239,7 +244,7 @@ async function sha1Of(disc) {
  */
 export function looksLikeAnyCopy(bytes) {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  return !!cartridge(buffer) || isChd(buffer) || isCso(buffer) || SECTORS.some(([sector, data]) => ascii(buffer, 16 * sector + data + 1, 5) === 'CD001');
+  return !!cartridge(buffer, buffer.length) || isChd(buffer) || isCso(buffer) || isGcm(buffer) || SECTORS.some(([sector, data]) => ascii(buffer, 16 * sector + data + 1, 5) === 'CD001');
 }
 
 // the ways a disc's first volume can lie in a file: in sectors of 2048 bytes, or raw, Mode 2 or Mode 1
@@ -267,7 +272,7 @@ export async function readAnyCopy(path, said = null) {
   const file = await fileSource(files[0]);
   let found = null, disc = null;
   try {
-    found = cartridge(Buffer.from(await file.read(0, HEAD * 2)));
+    found = cartridge(Buffer.from(await file.read(0, HEAD * 2)), file.size);
   } finally {
     await file.close();
   }
@@ -276,7 +281,7 @@ export async function readAnyCopy(path, said = null) {
       // a file that says it's a compressed disc and can't be read says why
       throw new Error(`${basename(path)} can't be read: ${error.message}`);
     });
-    if (disc) found = await whatDisc(disc);
+    if (disc) found = await whatDisc(disc) ?? await whatGcm(disc);
   }
   try {
     const id = said ?? found?.console;

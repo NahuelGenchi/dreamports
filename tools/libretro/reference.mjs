@@ -6,7 +6,7 @@ import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
-import { HOST, buildReference, coreFile } from './build.mjs';
+import { HOST, buildReference, coreFile, coreSystem } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
 
@@ -45,7 +45,8 @@ export function libretroReference(machine) {
   // the one the tools hear it at. { env, path, done }: the copy's link and the saves go when `done` is called
   const forRun = copy => {
     const run = `${process.pid}-${threadId}-${++runs}`, named = plainlyNamed(copy, run);
-    const system = join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
+    // an emulator with files of its own finds them where the tools put them as they built it (build.mjs)
+    const system = coreSystem(core) ?? join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
     rmSync(saves, { recursive: true, force: true });
     mkdirSync(saves, { recursive: true });
     mkdirSync(system, { recursive: true });

@@ -4,7 +4,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -46,6 +46,9 @@ const builtWith = core => {
   for (const [from] of copiesOf(core)) hash.update(readFileSync(join(REPO, from)));
   return `-${hash.digest('hex').slice(0, 8)}`;
 };
+/** Where an emulator's own files are kept, those it reads as it runs and its makers publish with its source (`data`), such
+ *  as Dolphin's stand-ins for the sound processor's ROMs: a folder beside the built emulator, named for the same commit. */
+export const coreSystem = core => core.data ? join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}-system`) : null;
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 function run(what, program, args, cwd, env) {
@@ -80,6 +83,9 @@ export function fetchSource({ core, name }) {
   }
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
+  // the libraries its source keeps as git's submodules, but for those only a program with a window needs, or its makers'
+  // own tests, which can be a gigabyte
+  for (const left of core.withoutSubmodules ?? []) run(what, 'git', ['config', `submodule.${left}.update`, 'none'], source);
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
   if (core.patch) {
     // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
@@ -110,12 +116,21 @@ function buildHere(machine, log, tools) {
   const source = fetchSource(machine);
   const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
-    run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+    // on Windows with the compiler the tools got, whose make CMake has to be told to write for
+    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...(WINDOWS ? ['-G', 'MinGW Makefiles'] : []), ...cmakeSettings(core)], source, tools?.env);
+    run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+  }
+  // its own files first, whole, so a built emulator always has them
+  if (core.data) {
+    const system = coreSystem(core);
+    rmSync(system, { recursive: true, force: true });
+    rmSync(`${system}.new`, { recursive: true, force: true });
+    for (const [from, to] of Object.entries(core.data)) cpSync(join(source, from), join(`${system}.new`, to), { recursive: true });
+    renameSync(`${system}.new`, system);
   }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }

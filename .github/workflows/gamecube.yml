@@ -1,0 +1,140 @@
+name: GameCube
+
+# The GameCube's tools on Linux, on a Mac with Apple's chip and on Windows, on GitHub's own computers (#1906): Dolphin's
+# libretro front built from its makers' source at the commit tools/consoles.mjs fixes, on Linux with the system's
+# compiler, on a Mac with Apple's, and on Windows with the compiler the tools get for themselves, and
+# npm run test:real-gamecube, which runs a small program of the project's own on it, alone and from a disc it boots,
+# and checks its pictures and its sound. Each computer writes every frame's picture and sound, and a last job finds
+# them the same on all three: a proof made on one computer has to be one on every other. Nothing from any game is
+# needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, as building Dolphin takes most of an hour. It runs on pull requests that touch what the
+# GameCube's games need, after they merge, every week, so the newest computers GitHub has try it too, and by hand. A
+# built Dolphin is kept between runs, under the name the tools give it, which has its commit and its settings in it,
+# except every week's, which builds it again.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gamecube.yml'
+      - 'kit/consoles.js'
+      - 'kit/copy/**'
+      - 'kit/gamecube/**'
+      - 'tools/consoles.mjs'
+      - 'tools/gamecube/**'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/jobs.mjs'
+      - 'tools/lib/run-reference.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/dolphin.patch'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-gamecube*'
+      - 'tools/test/gamecube-*'
+      - 'tools/test/real-gamecube.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gamecube.yml'
+      - 'kit/consoles.js'
+      - 'kit/copy/**'
+      - 'kit/gamecube/**'
+      - 'tools/consoles.mjs'
+      - 'tools/gamecube/**'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/jobs.mjs'
+      - 'tools/lib/run-reference.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/dolphin.patch'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-gamecube*'
+      - 'tools/test/gamecube-*'
+      - 'tools/test/real-gamecube.mjs'
+  schedule:
+    - cron: '11 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gamecube-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.name }} (GameCube)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Linux, runner: ubuntu-24.04, system: linux }
+          - { name: Mac, runner: macos-latest, system: mac }
+          - { name: Windows, runner: windows-latest, system: windows }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, and Homebrew gives
+      # Node.js and CMake
+      - name: Getting ready on a Mac
+        if: matrix.system == 'mac'
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          cc --version | head -1
+          brew install --quiet node cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      # on Linux and Windows, Node.js; Windows gets its compiler and CMake from the tools (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: matrix.system != 'mac'
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      # the name the tools give the built emulator, which says what it's built from and with
+      - name: What Dolphin is built from
+        id: core
+        shell: bash
+        run: echo "name=$(node tools/test/real-gamecube.mjs --core)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: kept
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/dolphin_libretro-*
+          key: dolphin-${{ runner.os }}-${{ runner.arch }}-${{ steps.core.outputs.name }}
+      - name: Dolphin, built from its makers' source
+        run: npm run dp -- setup gamecube
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.kept.outputs.cache-hit != 'true'
+        with:
+          path: .dreamports/libretro/dolphin_libretro-*
+          key: dolphin-${{ runner.os }}-${{ runner.arch }}-${{ steps.core.outputs.name }}
+      - run: npm run test:real-gamecube -- --write gamecube-same-${{ matrix.system }}.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gamecube-same-${{ matrix.system }}
+          path: gamecube-same-${{ matrix.system }}.json
+          retention-days: 7
+
+  same:
+    name: The same pictures and sound on every computer (GameCube)
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: gamecube-same-*
+          merge-multiple: true
+      - run: node tools/test/real-gamecube.mjs --compare gamecube-same-linux.json gamecube-same-mac.json gamecube-same-windows.json
