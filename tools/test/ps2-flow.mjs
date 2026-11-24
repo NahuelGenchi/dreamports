@@ -8,7 +8,7 @@
 // With --safari it opens that version's page in Safari too, on a Mac, through Apple's safaridriver, which has to be
 // switched on once (`safaridriver --enable`), and plays the same frames there and in Chrome: every picture and every
 // draw list has to be the same in both. It isn't run on every pull request, as the emulator takes minutes to build, and
-// runs on Linux and macOS alone, where the tools give the emulator a graphics context (docs/CONSOLES.md). The Mac
+// runs on Linux, macOS and Windows, where the tools give the emulator a graphics context (docs/CONSOLES.md). The Mac
 // workflow runs it on GitHub's Mac with Apple's chip.
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';

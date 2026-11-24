@@ -15,7 +15,7 @@ const SONY = { ...BASICS, ...STICK, CROSS: 'B', CIRCLE: 'A', SQUARE: 'Y', TRIANG
 const libretro = name => `https://github.com/libretro/${name}.git`;
 // `source` at `commit`, `make` being what builds it in its `folder`, leaving `built`, or `cmake` the settings CMake builds
 // its `target` with, into `folder`, with `cmakeOn` the settings for one kind of computer. `graphics` says it draws with
-// OpenGL, in the context host.c gives it, on Linux and macOS so far. `patch` is a change of the project's own the tools
+/// OpenGL, in the context host.c gives it, with no window, on Mesa's llvmpipe on Linux and Windows and Apple's software renderer on a Mac. `patch` is a change of the project's own the tools
 // make to its source before building it. `ran` says it tells the tools of every instruction it runs, as FCEUmm and Snes9x
 // do with the tools' changes to them (libretro/fceumm.patch, libretro/snes9x.patch, libretro/ran.h), or 'blocks' that it tells them of each block of
 // instructions it runs, as Play! does with the tools' (libretro/play.patch, libretro/ran-ps2.h). `holds` says it tells

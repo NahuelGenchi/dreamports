@@ -6,7 +6,7 @@ import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
-import { HOST, buildReference, coreFile } from './build.mjs';
+import { HOST, OPENGL, buildReference, coreFile } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
 
@@ -53,7 +53,9 @@ export function libretroReference(machine) {
     // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
     // Documents folder, which CFFIXED_USER_HOME moves there too
     const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
-    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
+    // and on Windows, where one that draws with OpenGL finds Mesa's, which draws on the processor (build.mjs)
+    const openGl = core.graphics && process.platform === 'win32' && { DP_OPENGL: OPENGL };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...openGl, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
