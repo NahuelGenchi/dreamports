@@ -42,7 +42,8 @@ import { UPSTREAM, api } from './lib/github.mjs';
 import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
-import { asksForProofs, groupNamed, groupsOf, KEEPS_PROOFS, stateOf, stateText } from './lib/proofs.mjs';
+import { asksForProofs, groupNamed, KEEPS_PROOFS, stateOf, stateText } from './lib/proofs.mjs';
+import { leftOf, tasksOf } from './lib/part-functions.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
@@ -137,13 +138,15 @@ export function startsByFunction(console, language, pieces) {
  * The tasks of functions a version still needs, from its `groups` (lib/proofs.mjs), its functions' `states` by key
  * and the game's `pieces`, open and closed: { open, wanted, waiting }. `open` are the groups whose task is open,
  * `wanted` those with a function not proven and no open task, up to as many as keeps `most` open at once, and
- * `waiting` how many more come after them. A closed task whose group isn't proven any more gets a new one.
+ * `waiting` how many more come after them. A closed task whose group isn't proven any more gets a new one. A
+ * group that is a part of the game (lib/part-functions.mjs) also needs its recording, and with `played`, the names
+ * of the parts the version has proven, to be one of them.
  */
-export function functionTasks(groups, states, pieces, language = 'c', most = OPEN_AT_ONCE) {
+export function functionTasks(groups, states, pieces, language = 'c', most = OPEN_AT_ONCE, played = null) {
   // the group each open task is for: the one of its name, or the one its first function is in now (groupNamed)
   const taken = new Set(pieces.filter(piece => piece.state === 'open' && pieceOf(piece).language === language).map(piece => groupNamed(groups, pieceOf(piece).name)));
   const has = group => taken.has(group);
-  const unproven = groups.filter(group => group.functions.some(f => !states.get(f.key)?.kind));
+  const unproven = groups.filter(group => leftOf(group, states, played));
   const open = groups.filter(has), missing = unproven.filter(group => !has(group));
   const wanted = missing.slice(0, Math.max(0, most - open.length));
   return { open, wanted, waiting: missing.length - wanted.length };
@@ -154,6 +157,7 @@ export function functionTasks(groups, states, pieces, language = 'c', most = OPE
  * size, the name the code map gives it, its twin, and where it stands, then the tools that prove one.
  */
 export function functionTaskText(version, group, states) {
+  if (group.part) return partTaskText(version, group, states);
   const { game } = versionOf(version);
   const line = f => {
     const state = states.get(f.key), twin = state?.twin ? `\`${state.twin.name}\` in \`${state.twin.file}\`, ` : '';
@@ -175,6 +179,42 @@ export function functionTaskText(version, group, states) {
   ].join('\n');
 }
 
+/** As many of a part's functions as its task lists by name, those with no proof first: `proofs` lists them all. */
+export const PART_LISTS = 120;
+
+/**
+ * The Task issue for a part of the game in a version made a function at a time (lib/part-functions.mjs), under the
+ * headings of the Task form: the functions the original runs in the part that no part before it does, those with no
+ * proof first, or, for a part with no recording of the original yet, how its task starts.
+ */
+export function partTaskText(version, group, states) {
+  const { game } = versionOf(version), named = JSON.stringify(group.name);
+  const line = f => {
+    const state = states.get(f.key), twin = state?.twin ? `\`${state.twin.name}\` in \`${state.twin.file}\`, ` : '';
+    return `- \`${f.key}\`${f.name ? ` \`${f.name}\`` : ''}, ${f.size.toLocaleString('en')} bytes: ${twin}${state ? stateText(state) : 'no twin yet'}`;
+  };
+  const left = group.functions.filter(f => !states.get(f.key)?.kind), done = group.functions.length - left.length;
+  const count = n => n.toLocaleString('en');
+  const what = !group.recorded ? [
+    `${group.name}, one of the game's parts. It has no recording of the original yet, which is where its task starts: a recording that plays the whole part on the original, named with the part's first and last frames in \`games/${game}/proof/parts.json\` (\`tools/README.md#proving-a-part\`). \`npm run dp -- prove ${version}\` then keeps the functions the original runs in it, and \`npm run dp -- tasks ${version} --update --yes\` lists them here.`,
+  ] : [
+    `${group.name}, one of the game's parts. The original runs ${count(group.functions.length)} function${group.functions.length === 1 ? '' : 's'} in it that no part before it runs, from its recording, and ${done === group.functions.length ? 'each has its proof' : `${count(left.length)} ${left.length === 1 ? 'has' : 'have'} no proof yet`}. Each needs its twin in \`games/${version}/\`, written by hand with every path of the original's, and its proof (\`docs/STANDARD.md#twins-and-their-proof\`). The part plays as its functions come in, and it can go out in more than one pull request, each with the proofs it adds and naming this task with \`Refs\` until the last.`,
+    ...(left.length ? ['', ...left.slice(0, PART_LISTS).map(line)] : []),
+    ...(left.length > PART_LISTS ? ['', `And ${count(left.length - PART_LISTS)} more with no proof yet: \`npm run dp -- proofs ${version} ${named}\` lists every one.`] : []),
+    '',
+    `\`npm run dp -- read ${game} <address>\` prints a function from your own copy. \`npm run dp -- match ${version} <address>\` says whether its twin comes out as the original's bytes, and \`npm run dp -- twin ${version} <address>\` whether it leaves the same memory as the original's. Each keeps the proof it finds in \`games/${version}/proof/proofs.json\`, and nothing else writes that file.`,
+  ];
+  return [
+    '### Game folder', '', game, '',
+    '### Kind', '', 'Something else', '',
+    '### What it is', '', ...what, '',
+    '### Done when', '',
+    `\`npm run dp -- ready ${version} --task ${named}\` says each of the part's functions has its proof, by the same bytes or the same memory, with no stop in its twin, and the part is proven: its recording matches the original in picture and sound on every frame of the part.`,
+    '',
+    '### Taking it', '', '- [ ] I\'m taking this task myself.',
+  ].join('\n');
+}
+
 // the tasks of a version made a function at a time, as the start of this file says
 async function openFunctionTasks(version, repo, yes, update) {
   const { game, language } = versionOf(version);
@@ -188,8 +228,9 @@ async function openFunctionTasks(version, repo, yes, update) {
   const where = `the issues of its code's stretches, in its issue for ${LANGUAGES[language].name}, under #${home.number}`;
   const states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
   const pieces = claims.piecesOf(game, entry);
-  const groups = groupsOf(codeMap);
-  const { open, wanted, waiting } = functionTasks(groups, states, pieces, language);
+  const groups = tasksOf(version, codeMap), byPart = groups.some(group => group.part);
+  const played = new Set((dreamport?.language === language ? dreamport.proof : dreamport?.versions.find(v => v.language === language)?.proof)?.gameplay?.parts?.filter(part => part.proven).map(part => part.name) ?? []);
+  const { open, wanted, waiting } = functionTasks(groups, states, pieces, language, OPEN_AT_ONCE, played);
   if (update) {
     // each open task with the group it's for now, which its title names again when the group ends elsewhere
     const changed = pieces.filter(piece => piece.state === 'open' && pieceOf(piece).language === language).map(issue => ({ issue, group: groupNamed(groups, pieceOf(issue).name) })).filter(({ group }) => group)
@@ -217,7 +258,8 @@ async function openFunctionTasks(version, repo, yes, update) {
   }
   const left = group => group.functions.filter(f => !states.get(f.key)?.kind).length;
   if (!yes) {
-    console.log(`${version} is made a function at a time, so its tasks are groups of functions from its code map. A task for each of these ${wanted.length} would go under ${where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${left(group)} of ${group.functions.length} to prove, in ${stretchName(stretchOf(group.functions[0].address))}`).join('\n')}`);
+    const about = group => (group.part ? (group.recorded ? `${left(group)} of ${group.functions.length} to prove, a part of the game` : 'a part of the game with no recording of the original yet') : `${left(group)} of ${group.functions.length} to prove, in ${stretchName(stretchOf(group.functions[0].address))}`);
+    console.log(`${version} is made a function at a time, so its tasks are ${byPart ? 'its game\'s parts, each with the functions the original runs in it, then groups of what no part runs' : 'groups of functions from its code map'}. A task for each of these ${wanted.length} would go under ${byPart ? `#${home.number} or ${where}` : where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${about(group)}`).join('\n')}`);
     console.log(`\nNothing was opened: --yes opens them, once you have said yes.${later}`);
     return 0;
   }
