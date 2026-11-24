@@ -31,6 +31,13 @@
 // On a console whose games choose their own sound's rate, as a Nintendo 64's do, the core says when it changes, and the
 // environment's DP_SOUND_RATE gives the one rate the tools hear it at.
 //
+// On a console with a screen that's touched, as the Nintendo DS's lower one, the environment's DP_TOUCH is set, and a
+// frame's 32 bits of buttons hold the touch too: bit 15 says the screen is touched, bits 16 to 23 the pixel across and
+// bits 24 to 31 the pixel down, which the core reads as libretro's pointer, in pixels of that screen.
+//
+// A core whose console's work memory isn't at address 0, as the Nintendo DS's is at 0x02000000, says where it is
+// (dreamports_memory_base), and an address to read or write is counted from there.
+//
 // The environment's DP_STARTS, when it's set, names a file of the processor's addresses to tell of each time play
 // reaches one, with the registers and the memory the function starts from, from the same core (starts.h), for the
 // function check's memories of play on the PlayStation and the PlayStation 2.
@@ -90,6 +97,7 @@
 #define ENV_GET_CORE_OPTIONS_VERSION 52
 #define DEVICE_JOYPAD 1
 #define DEVICE_ANALOG 5
+#define DEVICE_POINTER 6
 #define JOYPAD_MASK 256
 #define MEMORY_SYSTEM_RAM 2
 #define HW_FRAME ((const void*) -1)
@@ -527,8 +535,17 @@ static void audioSample(int16_t left, int16_t right) {
 
 static void inputPoll(void) {}
 
+static bool touched;   // whether the console has a screen that's touched (DP_TOUCH)
+static uint32_t memoryBase;   // where the console's work memory starts, from a core that says
+
 static int16_t inputState(unsigned port, unsigned device, unsigned index, unsigned id) {
 	if (port) return 0;
+	if (touched) {
+		// the touch, in the bits a console with sticks keeps their directions in: whether, across and down
+		if (device == DEVICE_POINTER) return index ? 0 : id == 2 ? (held >> 15) & 1 : id == 0 ? (held >> 16) & 255 : id == 1 ? (held >> 24) & 255 : 0;
+		if (device == DEVICE_JOYPAD) return id == JOYPAD_MASK ? held & 0x7FFF : id < 15 ? (held >> id) & 1 : 0;
+		return 0;
+	}
 	if (device == DEVICE_JOYPAD) {
 		if (id == JOYPAD_MASK) return held & 0xFFFF;
 		return id < 16 ? (held >> id) & 1 : 0;
@@ -624,6 +641,7 @@ static int searchRead(void* console, uint32_t address, uint32_t bytes, uint32_t*
 		return 1;
 	}
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+	address -= memoryBase;
 	if (!memory || (size_t) address + bytes > retro_get_memory_size(MEMORY_SYSTEM_RAM)) return 0;
 	*value = 0;
 	for (uint32_t i = 0; i < bytes; i++) *value |= (uint32_t) memory[address + i] << (i * 8);
@@ -633,6 +651,7 @@ static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t 
 	(void) console;
 	uint8_t* memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
 	size_t size = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+	address -= memoryBase;
 	for (uint32_t i = 0; i < bytes && memory && address + i < size; i++) memory[address + i] = value >> (i * 8);
 }
 
@@ -838,6 +857,7 @@ int main(int argc, char** argv) {
 	settings = (const char**) argv + at + 2;
 	settingCount = argc - at - 2;
 	picture = malloc(wantedW * wantedH * 2 + 2);
+	touched = getenv("DP_TOUCH") != NULL;
 	systemFolder = getenv("DP_SYSTEM") ? getenv("DP_SYSTEM") : ".";
 	saveFolder = getenv("DP_SAVE_FOLDER") ? getenv("DP_SAVE_FOLDER") : ".";
 
@@ -860,6 +880,8 @@ int main(int argc, char** argv) {
 	retro_run = find(library, "retro_run");
 	retro_get_memory_data = find(library, "retro_get_memory_data");
 	retro_get_memory_size = find(library, "retro_get_memory_size");
+	uint32_t (*baseOfMemory)(void) = dlsym(library, "dreamports_memory_base");
+	if (baseOfMemory) memoryBase = baseOfMemory();
 	if (route) {
 		retro_serialize_size = find(library, "retro_serialize_size");
 		retro_serialize = find(library, "retro_serialize");
@@ -1006,7 +1028,7 @@ int main(int argc, char** argv) {
 	for (long frame = 0; frame < frames; frame++) {
 		held = (size_t) frame < buttonsSize / 4 ? buttons[frame] : 0;
 		for (; nextSet < setCount && sets[nextSet * 4] == (uint32_t) frame; nextSet++) {
-			uint32_t address = sets[nextSet * 4 + 1], bytes = sets[nextSet * 4 + 2], value = sets[nextSet * 4 + 3];
+			uint32_t address = sets[nextSet * 4 + 1] - memoryBase, bytes = sets[nextSet * 4 + 2], value = sets[nextSet * 4 + 3];
 			for (uint32_t i = 0; i < bytes && memory && address + i < memorySize; i++) memory[address + i] = value >> (i * 8);
 		}
 		sampleCount = 0;
@@ -1020,9 +1042,9 @@ int main(int argc, char** argv) {
 			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
 		}
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
-			uint32_t address = reads[nextRead * 3 + 1], bytes = reads[nextRead * 3 + 2], value = 0;
+			uint32_t address = reads[nextRead * 3 + 1] - memoryBase, bytes = reads[nextRead * 3 + 2], value = 0;
 			if (!memory || address + bytes > memorySize) {
-				fprintf(err, "The tools can only read the console's work memory, and 0x%X isn't in it\n", address);
+				fprintf(err, "The tools can only read the console's work memory, and 0x%X isn't in it\n", address + memoryBase);
 				return 2;
 			}
 			for (uint32_t i = 0; i < bytes; i++) value |= (uint32_t) memory[address + i] << (i * 8);
@@ -1070,7 +1092,7 @@ int main(int argc, char** argv) {
 	heldClose();
 	startsClose();
 	fflush(out);
-	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
+	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%.17g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
 	fprintf(err, "],\"drawnBy\":\"%s\",\"reads\":[", drawnBy);
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
