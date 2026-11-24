@@ -85,7 +85,9 @@ PPSSPP runs it, built from [its makers' source](https://github.com/hrydgard/ppss
 
 **Its graphics chip.** The kit runs a game's display lists as PPSSPP does, with the chip's time, its interrupts and its waits, and draws rectangles in the screen's own coordinates and copies blocks, pixel for pixel as the software renderer does ([#1945](https://github.com/NahuelGenchi/dreamports/issues/1945)). Each frame's draw list, every command the chip ran and what each draw read, is hashed in the kit and by the tools' patch alike, so a game can be proven by its draw lists as well as its pictures (`"provenBy": "draw lists"`). Triangles, textures and 3D are [#1980](https://github.com/NahuelGenchi/dreamports/issues/1980).
 
-**Still to come.** The processor's own units in its kit in C ([#1978](https://github.com/NahuelGenchi/dreamports/issues/1978)), and the system's functions by number with what games most ask of the system besides ([#1979](https://github.com/NahuelGenchi/dreamports/issues/1979)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
+**Its processor's own instructions.** The kit's `psp.h` gives each of the Allegrex's instructions that C has no word for, and the floating-point unit's conversions to whole numbers, as PPSSPP's interpreter gives them, and the function check gives a function its floats in the unit's registers ([#1978](https://github.com/NahuelGenchi/dreamports/issues/1978)). The tools' patch has PPSSPP convert a float past what a word holds to the nearest it holds on every computer, as ARM's processors do and x86's didn't.
+
+**Still to come.** The vector unit in its kit in C ([#1987](https://github.com/NahuelGenchi/dreamports/issues/1987)), and the system's functions by number with what games most ask of the system besides ([#1979](https://github.com/NahuelGenchi/dreamports/issues/1979)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
 
 ## The PlayStation 2
 
