@@ -12,6 +12,12 @@ name: Linux, Mac and Windows (Super Nintendo and Nintendo 64)
 # minutes each, as it runs ready whole three times. Nothing from any game's copy is needed, and nothing is sent
 # anywhere: GitHub is a stand-in the test starts.
 #
+# The Nintendo 64's (#1929): npm run test:n64-call, which builds the program that runs one function of a cartridge in
+# Parallel N64's own processor and tries it, and npm run test:n64-twin, the function check on a made-up program's
+# twins, with each proof kept, going stale and held by proofs --check, on a Mac and on Windows; and on the Mac
+# npm run test:n64-match, which builds IDO from its translation's source with Homebrew's GNU make and has match keep
+# its proofs. IDO isn't built on Windows yet, so match isn't tried there. Linux runs all three in Check.
+#
 # It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
 # what those tools are made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and
 # by hand.
@@ -123,6 +129,32 @@ jobs:
       - run: npm run test:snes-twin
       - run: npm run test:snes-parts
 
+  mac-n64:
+    name: Mac (Nintendo 64)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # as a person's Mac has them, with GNU make, which IDO's translation is built with, as a Mac's own is too old
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          cc --version | head -1
+          brew install --quiet node make
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - name: The tools' packages
+        run: |
+          node --version
+          npm ci
+      - run: npm run test:n64-call
+      - run: npm run test:n64-twin
+      - run: npm run test:n64-match
+
   windows-snes:
     name: Windows (Super Nintendo)
     runs-on: windows-latest
@@ -142,3 +174,20 @@ jobs:
       - run: npm run test:snes-call
       - run: npm run test:snes-twin
       - run: npm run test:snes-parts
+
+  windows-n64:
+    name: Windows (Nintendo 64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:n64-call
+      - run: npm run test:n64-twin
