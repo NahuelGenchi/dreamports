@@ -16,6 +16,33 @@ uint8_t gc_ram[GC_RAM_SIZE];
 // 0xC0000000, and the chips' registers at 0x0C000000 round the cache, as 0xCC000000
 static uint32_t physical(uint32_t address) { return address & 0x1FFFFFFF; }
 enum { VI_AT = 0x0C002000, DSP_AT = 0x0C005000, SI_AT = 0x0C006400, AI_AT = 0x0C006C00 };
+
+#ifdef DP_TWIN_CHECK
+// In the function check's build (tools/gamecube/twin.mjs) a read or a write is the processor's own load or store at the
+// address, and no chip does anything with it: the check's pass over the built module sends each to where the console
+// has that address, its number highest byte first, as it does a twin's own loads and stores (tools/lib/wasm-fold.mjs),
+// and compares the memory they leave with what the original's left, as on the Nintendo 64 (kit/n64/c/n64.c). So a twin
+// written as a game on this kit, calling these, is the same C the check proves and the game plays. The kit's own,
+// below, go by other names there, and nothing calls them.
+uint32_t gc_read32(uint32_t address) { return *(volatile uint32_t *)(uintptr_t)address; }
+void gc_write32(uint32_t address, uint32_t value) { *(volatile uint32_t *)(uintptr_t)address = value; }
+uint16_t gc_read16(uint32_t address) { return *(volatile uint16_t *)(uintptr_t)address; }
+void gc_write16(uint32_t address, uint16_t value) { *(volatile uint16_t *)(uintptr_t)address = value; }
+uint8_t gc_read8(uint32_t address) { return *(volatile uint8_t *)(uintptr_t)address; }
+void gc_write8(uint32_t address, uint8_t value) { *(volatile uint8_t *)(uintptr_t)address = value; }
+#define gc_read32 gc_kit_read32
+#define gc_write32 gc_kit_write32
+#define gc_read16 gc_kit_read16
+#define gc_write16 gc_kit_write16
+#define gc_read8 gc_kit_read8
+#define gc_write8 gc_kit_write8
+uint32_t gc_kit_read32(uint32_t address);
+void gc_kit_write32(uint32_t address, uint32_t value);
+uint16_t gc_kit_read16(uint32_t address);
+void gc_kit_write16(uint32_t address, uint16_t value);
+uint8_t gc_kit_read8(uint32_t address);
+void gc_kit_write8(uint32_t address, uint8_t value);
+#endif
 // the chips whose registers are 16 bits and those whose are 32
 static int in(uint32_t at, uint32_t base, uint32_t size) { return at >= base && at < base + size; }
 

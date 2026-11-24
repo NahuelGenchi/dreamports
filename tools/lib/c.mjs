@@ -75,7 +75,15 @@ const OWN = {
     // (wasm-fold.mjs)
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
   },
-  gamecube: { folder: fileURLToPath(new URL('../../kit/gamecube/c/', import.meta.url)), sources: ['gamecube.c', 'vi.c', 'audio.c', 'si.c'], header: true },
+  gamecube: {
+    folder: fileURLToPath(new URL('../../kit/gamecube/c/', import.meta.url)), sources: ['gamecube.c', 'vi.c', 'audio.c', 'si.c'], header: true,
+    // the function check builds it with each read and write the processor's own load or store, which its pass over
+    // the module sends to the console's memory, so a twin written on the kit is checked as it plays (gamecube.c); and
+    // no two stores the compiler sees side by side made into one, as the fold pass turns round each number by its own
+    // size, which two merged in the module's own order would undo (wasm-fold.mjs)
+    checkFlags: ['-DDP_TWIN_CHECK'],
+    twinFlags: ['-mllvm', '-combiner-store-merging=false'],
+  },
 };
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');

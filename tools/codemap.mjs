@@ -114,6 +114,8 @@ const FINDERS = {
     findFunctions: (code, listed) => gamecubeFunctions.discFunctions(code, listed),
     fill: (code, listed) => gamecubeFunctions.discFunctions(code, listed),
     address: address => address,
+    // where the program the disc boots starts, kept in the code map, so that function is known with no copy (lib/proofs.mjs)
+    layout: code => ({ entry: hex(gamecubeFunctions.codeOf(code.boot).entry) }),
   },
 };
 

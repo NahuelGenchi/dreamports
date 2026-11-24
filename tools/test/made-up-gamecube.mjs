@@ -272,6 +272,71 @@ export function madeUpGameCube() {
   return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions, tone: data.tone, cases: data.cases };
 }
 
+/** The parts program's numbers: where its frame's count is, how many pixels of the picture's first rows it colours, and
+ *  the count from which they're blue. */
+export const PARTS = { COUNT: 0x80200000, PIXELS: 1280, TURN: 60 };
+// the colour of a pair of pixels whose brightness is in r3, with the two colour differences given, as a word in r5
+const pairOf = (u, v) => [slwi(5, 3, 24), slwi(6, 3, 8), x(5, 5, 6, 444), d(25, 5, 5, u), ori(5, 5, v)];
+
+/**
+ * The program of the test of a game made a part at a time (gamecube-parts.mjs), as madeUpGameCube gives one, with five
+ * functions: `start` sets the video interface up, clears the picture and the count, and then, once a field, waits for
+ * the beam and calls `step`, which moves the count on by `count` and colours the picture's first rows by `red` while
+ * the count is under PARTS.TURN and by `blue` from then on, each as bright as the count's low five bits say.
+ */
+export function madeUpGameCubeParts() {
+  const data = values(), rows = FRAMEBUFFER | UNCACHED;
+  const colour = (name, u, v) => [
+    name,
+    lis(4, PARTS.COUNT >>> 16), lwz(3, 0, 4), slwi(3, 3, 27), srwi(3, 3, 25), addi(3, 3, 0x40),
+    ...pairOf(u, v),
+    address(6, rows - 4), li(7, PARTS.PIXELS / 2), mtctr(7),
+    `${name}-pair`, stwu(5, 4, 6), bdnz(`${name}-pair`),
+    blr,
+  ];
+  const lines = [
+    'start',
+    address(1, STACK),
+    address(6, VI), address(7, VALUES),
+    'register',
+    lhz(8, 0, 7), cmplwi(8, 0xFFFF), beq('registers-done'),
+    lhz(9, 2, 7), add(8, 8, 6), sth(9, 0, 8), addi(7, 7, 4), b('register'),
+    'registers-done',
+    address(3, rows - 4), address(4, BACKGROUND), address(5, WIDTH * HEIGHT / 2), mtctr(5),
+    'clear', stwu(4, 4, 3), bdnz('clear'),
+    lis(4, PARTS.COUNT >>> 16), li(3, 0), stw(3, 0, 4),
+    address(6, AI), stw(3, 0, 6),
+    'frame',
+    address(6, VI),
+    'leave', lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('leave'), cmpwi(7, SECOND_LINE), beq('leave'),
+    'reach', lhz(7, 0x2C, 6), cmpwi(7, LINE), beq('reached'), cmpwi(7, SECOND_LINE), bne('reach'),
+    'reached',
+    bl('step'),
+    b('frame'),
+
+    'step',
+    mflr(0), stwu(1, -16, 1), stw(0, 20, 1),
+    bl('count'),
+    lis(4, PARTS.COUNT >>> 16), lwz(3, 0, 4), cmplwi(3, PARTS.TURN), bge('later'),
+    bl('red'), b('done'),
+    'later', bl('blue'),
+    'done', lwz(0, 20, 1), addi(1, 1, 16), mtlr(0), blr,
+
+    'count',
+    lis(4, PARTS.COUNT >>> 16), lwz(3, 0, 4), addi(3, 3, 1), stw(3, 0, 4), blr,
+
+    // red: a colour difference toward red, and less of blue; blue the other way round
+    ...colour('red', 0x5A, 0xF0),
+    ...colour('blue', 0xF0, 0x6E),
+    'end',
+  ];
+  const { bytes: text, labels } = assemble(lines, LOAD);
+  const names = ['start', 'step', 'count', 'red', 'blue', 'end'];
+  const functions = Object.fromEntries(names.slice(0, -1).map((name, n) => [name, { address: labels[name], size: labels[names[n + 1]] - labels[name] }]));
+  const sections = { text: { address: LOAD, bytes: text }, data: { address: VALUES, bytes: data.bytes } };
+  return { dol: dolOf(sections, LOAD), entry: LOAD, ...sections, functions };
+}
+
 /** A DOL of one section of code and one of values, each from where 32 bytes start, as the console's own tools write them. */
 export function dolOf({ text, data }, entry) {
   const pad = bytes => Buffer.concat([bytes, Buffer.alloc((32 - bytes.length % 32) % 32)]);

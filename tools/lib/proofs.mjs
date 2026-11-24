@@ -92,6 +92,8 @@ export function beyondProof(codeMap, f) {
   if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
   // and on the Nintendo 64, the function at the address the code loads at, where the boot code jumps to
   if (codeMap.console === 'n64') return /^[0-9A-F]{8}$/.test(codeMap.layout?.load ?? '') && f.address === parseInt(codeMap.layout.load, 16) ? 'reset' : null;
+  // and on the GameCube, the function the program its disc boots starts at
+  if (codeMap.console === 'gamecube') return /^[0-9A-F]{8}$/.test(codeMap.layout?.entry ?? '') && !f.program && f.address === parseInt(codeMap.layout.entry, 16) ? 'reset' : null;
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }

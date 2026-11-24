@@ -18,6 +18,7 @@
     "test:gamecube-kit": "node tools/test/gamecube-kit.mjs",
     "test:gamecube-codemap": "node tools/test/gamecube-codemap.mjs",
     "test:gamecube-twin": "node tools/test/gamecube-twin.mjs",
+    "test:gamecube-parts": "node tools/test/gamecube-parts.mjs",
     "test:ps2-ledger": "node tools/test/ps2-ledger.mjs",
     "test:ps2-memory": "node tools/test/ps2-memory.mjs",
     "test:ps2-3d": "node tools/test/ps2-3d.mjs",

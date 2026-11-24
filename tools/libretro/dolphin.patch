@@ -23,6 +23,10 @@ frames, and ends at the first exception it meets, which is left for it to tell. 
 registers are memory of their own, read and written as they're kept, and the graphics chip's FIFO and the embedded
 framebuffer stop the call; nothing of that changes how a game plays, as the entry runs only when the check asks.
 
+For a game's parts, the interpreter also tells whoever runs the core where the processor is before each instruction
+it runs in play, through retro_dreamports_ran_at, as the tools' change to Parallel N64 does, so the tools know which of
+a game's functions ran in each frame. It only looks, so the console runs the same with it or without.
+
 It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
 Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
 kept the program from ending on Windows.
@@ -56,10 +60,10 @@ index 86cd50b..5d44598 100644
  }
 diff --git a/Source/Core/Core/PowerPC/DreamportsCall.h b/Source/Core/Core/PowerPC/DreamportsCall.h
 new file mode 100644
-index 0000000..777ef32
+index 0000000..98bfef6
 --- /dev/null
 +++ b/Source/Core/Core/PowerPC/DreamportsCall.h
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,23 @@
 +// Dreamports: what a call of the function check needs of the memory (MMU.cpp, DolphinLibretro/Main.cpp), in a header
 +// of its own so that nothing else is built again for it.
 +
@@ -77,8 +81,14 @@ index 0000000..777ef32
 +  void (*read)(u32 address, u32 bytes, u64 value) = nullptr;
 +};
 +extern DreamportsCallState DreamportsCall;
++
++// Dreamports: what the tools' program asks to be told of where the processor is before each instruction the interpreter
++// runs in play: its address, and its place in the console's memory, which the processor sees through the cache at
++// 0x80000000 and round it at 0xC0000000, or 0xFFFFFFFF for anywhere else (Interpreter.cpp, DolphinLibretro/Main.cpp).
++// It only looks, so the console runs the same with it or without.
++extern void (*DreamportsRanAt)(u32 address, u32 place);
 diff --git a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
-index 5ff6fa0..4cfca9f 100644
+index 5ff6fa0..3fbbbe0 100644
 --- a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
 +++ b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
 @@ -20,6 +20,7 @@
@@ -89,7 +99,31 @@ index 5ff6fa0..4cfca9f 100644
  #include "Core/PowerPC/PPCTables.h"
  #include "Core/PowerPC/PowerPC.h"
  #include "Core/System.h"
-@@ -147,17 +148,21 @@ int Interpreter::SingleStepInner()
+@@ -115,6 +116,8 @@ bool Interpreter::HandleFunctionHooking(u32 address)
+   return result.type != HLE::HookType::Start;
+ }
+ 
++void (*DreamportsRanAt)(u32 address, u32 place) = nullptr;
++
+ int Interpreter::SingleStepInner()
+ {
+   if (HandleFunctionHooking(m_ppc_state.pc))
+@@ -126,6 +129,14 @@ int Interpreter::SingleStepInner()
+     return PPCTables::GetOpInfo(m_prev_inst, m_ppc_state.pc)->num_cycles;
+   }
+ 
++  // Dreamports: where the processor is, told before the instruction runs, and not in a call of the function check,
++  // which tells its own
++  if (DreamportsRanAt && !DreamportsCall.on)
++  {
++    const u32 at = m_ppc_state.pc, place = at & 0x3FFFFFFF;
++    DreamportsRanAt(at, at >= 0x80000000 && place < 0x01800000 ? place : 0xFFFFFFFF);
++  }
++
+   m_ppc_state.npc = m_ppc_state.pc + sizeof(UGeckoInstruction);
+   m_prev_inst.hex = m_mmu.Read_Opcode(m_ppc_state.pc);
+ 
+@@ -147,17 +158,21 @@ int Interpreter::SingleStepInner()
      Trace(m_prev_inst);
    }
  
@@ -113,7 +147,7 @@ index 5ff6fa0..4cfca9f 100644
        {
          CheckExceptions();
        }
-@@ -168,18 +173,24 @@ int Interpreter::SingleStepInner()
+@@ -168,18 +183,24 @@ int Interpreter::SingleStepInner()
        if ((opinfo->flags & FL_USE_FPU) != 0)
        {
          m_ppc_state.Exceptions |= EXCEPTION_FPU_UNAVAILABLE;
@@ -314,7 +348,7 @@ index 4ced7bf..024afc9 100644
    Pad::InitializeGBA();
    Keyboard::Initialize();
 diff --git a/Source/Core/DolphinLibretro/Main.cpp b/Source/Core/DolphinLibretro/Main.cpp
-index 97ba667..237ad69 100644
+index 97ba667..8fca362 100644
 --- a/Source/Core/DolphinLibretro/Main.cpp
 +++ b/Source/Core/DolphinLibretro/Main.cpp
 @@ -36,6 +36,11 @@
@@ -329,7 +363,7 @@ index 97ba667..237ad69 100644
  #include "DolphinLibretro/Audio.h"
  #include "DolphinLibretro/Input.h"
  #include "DolphinLibretro/Common/Options.h"
-@@ -242,6 +247,138 @@ void retro_reset(void)
+@@ -242,6 +247,146 @@ void retro_reset(void)
    Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
  }
  
@@ -465,10 +499,18 @@ index 97ba667..237ad69 100644
 +  return end;
 +}
 +
++// Dreamports: the interpreter tells the tools' program where the processor is before each instruction it runs
++// (Interpreter.cpp), and retro_dreamports_ran_at gives the function to tell, or none, as the Nintendo 64's core does.
++// Its name starts as libretro's own do.
++extern "C" RETRO_API void retro_dreamports_ran_at(void (*told)(uint32_t, uint32_t))
++{
++  DreamportsRanAt = told;
++}
++
  void retro_run(void)
  {
    Libretro::Input::InitSensors();
-@@ -283,6 +420,11 @@ void retro_run(void)
+@@ -283,6 +428,11 @@ void retro_run(void)
    if (Core::GetState(system) == Core::State::Starting &&
        !Libretro::g_emuthread_launched)
    {
@@ -480,7 +522,7 @@ index 97ba667..237ad69 100644
      WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
      if (system.IsDualCoreMode())
      {
-@@ -299,12 +441,7 @@ void retro_run(void)
+@@ -299,12 +449,7 @@ void retro_run(void)
  
      Libretro::g_emuthread_launched = true;
  
@@ -494,7 +536,7 @@ index 97ba667..237ad69 100644
      {
        g_gfx.reset();
        g_gfx = std::make_unique<Libretro::Video::NullGfx>();
-@@ -527,7 +664,9 @@ void retro_run(void)
+@@ -527,7 +672,9 @@ void retro_run(void)
      Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
        Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
        Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");
