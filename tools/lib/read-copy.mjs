@@ -9,6 +9,7 @@ import { basename, dirname, extname, join } from 'node:path';
 import { constants as zlibConstants, inflateRawSync, zstdDecompressSync } from 'node:zlib';
 import { CONSOLES } from '../consoles.mjs';
 import { readCopy } from '../gba/header.mjs';
+import { isNdsHeader, readNdsHeader } from '../nds/header.mjs';
 import { openDisc as openDiscOf } from '../../kit/copy/disc.js';
 import { isChd } from '../../kit/copy/chd.js';
 import { isCso } from '../../kit/copy/cso.js';
@@ -27,6 +28,11 @@ function cartridge(bytes, size = null) {
   if (ascii(bytes, 0, 3) === 'NES' && bytes[3] === 0x1A) return { console: 'nes' };
   if (ascii(bytes, 0, 6) === 'MADEUP') return { console: 'made-up' };
   if (ascii(bytes, 0, 8) === 'PS-X EXE') return { console: 'ps1' };
+  // a Nintendo DS cartridge's header, whose checksum adds up
+  if (isNdsHeader(bytes)) {
+    const { title, code, region, revision } = readNdsHeader(bytes);
+    return { console: 'nds', title, code, region, revision };
+  }
   // a program for the PlayStation 2's processor, as its ELF file's flags say
   if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes.readUInt16LE(18) === 8 && bytes.readUInt32LE(36) === 0x20924001) return { console: 'ps2' };
   // a program for the GameCube's processor, a PowerPC that keeps its highest byte first, as its ELF file says, or a DOL,
@@ -288,7 +294,7 @@ export async function readAnyCopy(path, said = null) {
     // a file with a name of its own can still hold a Game Boy Advance game, whose header says so; another console's file can't
     if (!id) return Object.values(CONSOLES).some(({ files: kinds }) => kinds.includes(extension)) ? null : gbaIn();
     const { sha1, tracks, size } = await sha1Of(disc ?? wholeFiles(files));
-    return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format, kind: disc.kind, whole: disc.whole } : {}) };
+    return { console: id, title: found?.title || basename(path, extension), code: found?.code ?? '', region: found?.region ?? null, revision: found?.revision ?? 0, size, sha1, tracks: tracks.length > 1 ? tracks : undefined, ...(disc ? { format: disc.format, kind: disc.kind, whole: disc.whole } : {}) };
   } finally {
     await disc?.close();
   }
