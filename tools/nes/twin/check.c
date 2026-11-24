@@ -41,10 +41,12 @@ static uint8_t any_byte(void) {
 
 // ---- a twin that falls over or never returns
 #ifdef _WIN32
-// no timer here: ../twin.mjs stops the whole check when a twin doesn't return
+// no timer here: ../twin.mjs stops the whole check when a twin doesn't return. The C runtime puts a signal's handler
+// back to the default each time it calls it, so a twin that falls over on every call would end the check at its
+// second fall: the handler sets itself again first (#1957)
 static jmp_buf back;
 #define MARK() setjmp(back)
-static void fell(int sig) { longjmp(back, sig); }
+static void fell(int sig) { signal(sig, fell); longjmp(back, sig); }
 static void limit_on(long ms) { (void)ms; }
 static void limit_off(void) {}
 static void watch(void) { signal(SIGSEGV, fell); signal(SIGFPE, fell); }
