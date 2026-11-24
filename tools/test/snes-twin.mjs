@@ -7,8 +7,11 @@
 // is changed at a time, and the check has to find each: a difference instead of a sum, a byte too many, a value one
 // along, the wrong register of the picture, the work memory's port written twice in the wrong place, a data bank left
 // out, a contract that doesn't say the mode its function leaves, a case of a switch, a twin that never comes back, and
-// one that calls what nothing built is. Last, the same twins through the tool everyone runs, npm run dp -- twin, and
-// match, which says why it has nothing to build them with.
+// one that calls what nothing built is. Then the same twins through the tool everyone runs, npm run dp -- twin, and
+// match, which says why it has nothing to build them with. Last, its proofs, from proofs --start on: twin keeps each
+// function whose calls took every path, over 1,000 calls or more; a proof goes stale when the twin's C, its contract
+// or the mode the code map gives the original's function changes, on a computer with no copy of the game too; a twin
+// with a stop is never kept; and one that differs loses its line.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -19,6 +22,7 @@ import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { formatCodeMap, parseCodeMap } from '../lib/proof-files.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { twinsIn } from '../gba/match.mjs';
+import { layoutOf, readCartridge } from '../snes/cartridge.mjs';
 import { checkVersion } from '../snes/twin.mjs';
 import { madeUpCartridge } from './made-up-snes.mjs';
 
@@ -50,7 +54,9 @@ const copy = join(work, 'made-up.sfc');
 writeFileSync(copy, rom);
 // the code map: every function of the cartridge, by its place in the ROM, as codemap writes one
 const sha1 = createHash('sha1').update(rom).digest('hex');
-const mapText = formatCodeMap({ original: sha1, from: 'The made-up cartridge\'s functions (tools/test/made-up-snes.mjs)', functions: functions.map(f => ({ address: f.address & 0x7FFF, size: f.size })) });
+// with the mode `modes` gives a function by its name, as play finds one, and how the cartridge is laid out
+const mapOf = modes => formatCodeMap({ original: sha1, from: 'The made-up cartridge\'s functions (tools/test/made-up-snes.mjs)', functions: functions.map(f => ({ address: f.address & 0x7FFF, size: f.size, ...(modes[f.name] ? { mode: modes[f.name] } : {}) })), layout: layoutOf(readCartridge(rom)) });
+const mapText = mapOf({});
 const codeMap = parseCodeMap(JSON.parse(mapText));
 const original = { console: 'snes', name: 'Test Super Nintendo Twin (World)', title: 'DREAMPORTS MADE UP', code: '', sha1 };
 
@@ -126,6 +132,79 @@ try {
   check(run.status === 1 && /--memories isn't there yet on the Super Nintendo/.test(run.out), 'what the Super Nintendo\'s check can\'t do yet is said');
   run = dp('match', VERSION);
   check(run.status === 1 && /a Super Nintendo game was written by hand in its processor's own language/.test(run.out) && /npm run dp -- twin/.test(run.out), 'match says a Super Nintendo game has no compiler to give its bytes back, and what proves its functions');
+
+  console.log('Its proofs, from proofs --start on:');
+  const source = join(gameFolder(VERSION), 'src', 'game.c'), proofs = join(proofFolder(VERSION), 'proofs.json');
+  const kept = () => JSON.parse(readFileSync(proofs, 'utf8')).functions;
+  const write = (...changes) => writeFileSync(source, changes.reduce((text, [from, to]) => {
+    if (!text.includes(from)) throw new Error(`snes-twin/game.c has no "${from}" for the test to change.`);
+    return text.replace(from, to);
+  }, game));
+  const SUM = '00000060', PLUS = '*a = (uint16_t)(*a + WORD(d));', MINUS = '*a = (uint16_t)(*a - WORD(d));';
+  const lastLine = () => run.out.trim().split('\n').at(-1);
+  write();
+  run = dp('twin', VERSION, '--calls', '1000');
+  check(run.status === 0 && !/kept as proven/.test(run.out) && !existsSync(proofs), 'a version made a part at a time keeps nothing');
+  run = dp('proofs', VERSION, '--start');
+  check(run.status === 0 && existsSync(proofs) && kept().length === 0, `its proofs start with none: ${lastLine().slice(0, 90)}…`);
+  run = dp('twin', VERSION, '--calls', '200');
+  check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls or more/.test(run.out) && kept().length === 0, 'a few calls are no proof');
+  run = dp('twin', VERSION, '--calls', '1000');
+  check(run.status === 0 && /15 functions kept as proven by the same memory/.test(run.out) && kept().length === 15 && kept().every(line => /^[0-9A-F]{8}$/.test(line[0]) && line[1] === 'memory' && line[4] === 1000) && kept().some(line => line[0] === SUM),
+    `twin keeps each function whose calls took every path of the original's, by its place in the ROM: ${lastLine()}`);
+  const asTwinLeft = readFileSync(proofs, 'utf8');
+  run = dp('proofs', VERSION, SUM);
+  check(run.status === 0 && /sum, src\/game\.c:\d+: proven by the same memory, over 1,000 calls/.test(run.out), 'each function says its twin, where it is and its proof');
+  check(dp('proofs', VERSION, '--check').status === 0, 'proofs --check holds them');
+  run = dp('twin', VERSION, '--calls', '1000');
+  check(run.status === 0 && readFileSync(proofs, 'utf8') === asTwinLeft, 'proving it all again writes the same file');
+
+  console.log('A proof goes stale:');
+  write(['// a byte and a word at one of', '// a byte, and a word, at one of']);
+  check(dp('proofs', VERSION, '--check').status === 0, 'not when a comment changes');
+  write([PLUS, MINUS]);
+  run = dp('proofs', VERSION, '--check');
+  check(run.status === 1 && run.out.includes(`${SUM}, sum in src/game.c, is kept as proven and its twin, or a header or another line of its file, changed since`) && (run.out.match(/changed since/g) ?? []).length === 1,
+    `when a twin's C changes, its own proof and no other's: ${run.out.trim().split('\n')[0]}`);
+  write(['sum(&A, X, D) if D < 0x1FFE', 'sum(&A, X, D) if D < 0x1FFC']);
+  run = dp('proofs', VERSION, '--check');
+  check(run.status === 1 && (run.out.match(/changed since/g) ?? []).length === 1 && run.out.includes(SUM), 'when its contract changes, which says what it is given and gives back');
+  write();
+  check(dp('proofs', VERSION, '--check').status === 0, 'and it holds again with the twin as it was');
+  // on a computer with no copy of the game, the twins' side is still held, by the layout the code map keeps
+  const known = readFileSync(COPIES);
+  rmSync(COPIES);
+  check(dp('proofs', VERSION, '--check').status === 0, 'with no copy of the game here, the proofs still hold');
+  write([PLUS, MINUS]);
+  run = dp('proofs', VERSION, '--check');
+  check(run.status === 1 && run.out.includes(SUM), 'and a changed twin is still found, its label read by the layout the code map keeps');
+  write();
+  writeFileSync(COPIES, known);
+  // the mode the code map gives the original's function is part of what the original is
+  writeFileSync(join(proofFolder(NAME), 'code-map.json'), mapOf({ sum: 'a8i8' }));
+  run = dp('proofs', VERSION, '--check');
+  check(run.status === 1 && run.out.includes(SUM) && (run.out.match(/is kept as proven/g) ?? []).length === 1, `when the code map gives the original's function another mode, as its bytes are other instructions then: ${run.out.trim().split('\n')[0]}`);
+  writeFileSync(join(proofFolder(NAME), 'code-map.json'), mapText);
+  check(dp('proofs', VERSION, '--check').status === 0, 'and it holds again with the mode as it was');
+  writeFileSync(proofs, asTwinLeft.replace(new RegExp(`\\["${SUM}","memory","[0-9a-f]{16}"`), `["${SUM}","memory","0123456789abcdef"`));
+  run = dp('proofs', VERSION, '--check');
+  check(run.status === 1 && run.out.includes(SUM), 'a line written by hand doesn\'t pass for a proof');
+  writeFileSync(proofs, asTwinLeft);
+
+  console.log('A twin that differs, and a path left out:');
+  write([PLUS, MINUS]);
+  run = dp('twin', VERSION, 'sum', '--calls', '1000');
+  check(run.status === 3 && kept().length === 14 && !kept().some(line => line[0] === SUM), 'a twin that differs loses its proof');
+  write([PLUS, `${PLUS} // dp:stop sub_008062`]);
+  run = dp('twin', VERSION, 'sum', '--calls', '1000');
+  check(run.status === 0 && /1 function not kept as proven: 00000060 has a stop in its twin/.test(run.out) && kept().length === 14, `a twin with a stop is never kept as proven, even one that leaves the same memory: ${lastLine()}`);
+  run = dp('proofs', VERSION, SUM);
+  check(/sum, src\/game\.c:\d+: not proven: its twin has a stop, a path marked as left out/.test(run.out), 'which its task says');
+  write();
+  run = dp('twin', VERSION, 'sum', '--calls', '1000');
+  check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out) && readFileSync(proofs, 'utf8') === asTwinLeft, 'and with the path written, twin keeps it again');
+  run = dp('proofs', VERSION);
+  check(run.status === 0 && /15 of 24 functions proven, 0 by the same bytes and 15 by the same memory/.test(run.out) && /The function the console starts the cartridge at is in no task/.test(run.out), `the version says how many functions have each proof, and that the one the console starts the cartridge at is in no task:${run.out.trim().split('\n')[0]}`);
 } finally {
   tidy();
   if (copies) writeFileSync(COPIES, copies);
