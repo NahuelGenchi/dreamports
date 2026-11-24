@@ -36,6 +36,7 @@
     "test:match": "node tools/test/match.mjs",
     "test:rebuild": "node tools/test/rebuild.mjs",
     "test:nes-twin": "node tools/test/nes-twin.mjs",
+    "test:gb-twin": "node tools/test/gb-twin.mjs",
     "test:ps1-call": "node tools/test/ps1-call.mjs",
     "test:n64-call": "node tools/test/n64-call.mjs",
     "test:n64-twin": "node tools/test/n64-twin.mjs",
