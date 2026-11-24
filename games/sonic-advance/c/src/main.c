@@ -32,6 +32,7 @@
 
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
+void Timer1Intr(void);
 // and those of the compiler's helpers and the BIOS's stubs the game takes from the kit (kit/gba/c/lib/libgcc/ and
 // bios/), which only the twins' table names
 unsigned int _call_via_r0(void), _call_via_r1(void), _call_via_r2(void), _call_via_r3(void), _call_via_r4(void);
