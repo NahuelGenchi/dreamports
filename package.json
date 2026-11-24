@@ -56,6 +56,7 @@
     "test:ps1-libraries": "node tools/test/ps1-libraries.mjs",
     "test:ps1-kit": "node tools/test/ps1-kit.mjs",
     "test:n64-kit": "node tools/test/n64-kit.mjs",
+    "test:n64-parts": "node tools/test/n64-parts.mjs",
     "test:ps1-memories": "node tools/test/ps1-memories.mjs",
     "test:same-memory": "node tools/test/same-memory.mjs",
     "test:gba-same": "node tools/test/gba-same.mjs",

@@ -61,8 +61,11 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    seesInstructions: !!core.ran,
+    seesInstructions: core.ran === true || core.ran === 'blocks',
     seesEntries: core.ran === true,
+    // and one that only tells where the processor is, as the Nintendo 64's does, still says which of the code map's
+    // functions ran in each frame, which is what a part's functions are read from (lib/part-functions.mjs)
+    seesFunctions: !!core.ran,
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
     // went by (DP_WHY, libretro/ran-ps2.h)
     saysWhy: core.ran === 'blocks',

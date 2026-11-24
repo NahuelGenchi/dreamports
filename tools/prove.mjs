@@ -40,6 +40,7 @@ import { fromStartPoint, gameplayText, leftToDo, measure, percentText } from '..
 import { readProof } from './readme.mjs';
 import { keepPartFunctions, PART_FUNCTIONS, readPartFunctions } from './lib/part-functions.mjs';
 import { referenceOf } from './lib/reference.mjs';
+import { CONSOLES } from '../kit/consoles.js';
 import { compareCardSaves, compareSaves, fromFrame, readLeftover } from './lib/saves.mjs';
 import { cellsOf, contentIn, finderOf, layoutOf, outsideIn, playedIn, startedIn, writePlayed } from './lib/played.mjs';
 import { checkSizes, firstOtherSize } from './lib/screens.mjs';
@@ -96,6 +97,11 @@ export async function proveReports(game, files, { log = () => {}, say = () => {}
   }
   return found;
 }
+
+// whether the program that plays the original says which of the code map's functions ran in each frame: mGBA does, and
+// a libretro core that tells the tools of its instructions, or of where its processor is (libretro/reference.mjs). One
+// that doesn't answers no function for any frame, which must never be read as a part that runs none
+const saysFunctions = reference => reference.seesFunctions ?? reference.seesInstructions === true;
 
 export async function run(args) {
   const stillsAt = args.indexOf('--stills'), stateAt = args.indexOf('--state');
@@ -228,7 +234,9 @@ export async function run(args) {
   }
   writeProgress(game, { ...totals, recordings: progress.recordings });
   // what each part runs of the original, for a game whose parts are a version's tasks: only where the game keeps it
-  if (codeMap && readPartFunctions(game)) {
+  if (codeMap && readPartFunctions(game) && !saysFunctions(reference)) {
+    console.log(`\ngames/${versionOf(game).game}/proof/${PART_FUNCTIONS} was left as it is: ${CONSOLES[original.console]?.name ?? original.console}'s emulator doesn't say which functions it runs yet, so nothing says what each part runs there (docs/CONSOLES.md).`);
+  } else if (codeMap && readPartFunctions(game)) {
     const ranInParts = new Map(results.flatMap(result => result.partsRan ?? []));
     if (keepPartFunctions(versionOf(game).game, original.sha1, ranInParts)) console.log(`\nWritten: games/${versionOf(game).game}/proof/${PART_FUNCTIONS}, the functions the original runs in each part. npm run dp -- tasks ${game} --update --yes writes the parts' tasks again from it.`);
   }
@@ -606,7 +614,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     }
     // what the original ran in each part's frames, whether or not they matched: the part's functions, for a version
     // whose tasks are its parts (lib/part-functions.mjs)
-    const partsRan = quick || !codeMap || !first.ran ? [] : parts.map(({ name: part, frames: [a, b] }) => {
+    const partsRan = quick || !codeMap || !first.ran || !saysFunctions(reference) ? [] : parts.map(({ name: part, frames: [a, b] }) => {
       const inPart = new Uint8Array(originalHeld.length + 1), ran = new Set();
       // a frame is compared with the picture of what the original's frame worked out and with its work memory a frame
       // further on (expectedMemory), so it matches only once what the original ran in the frame after has run too

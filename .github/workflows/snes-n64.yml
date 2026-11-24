@@ -16,7 +16,9 @@ name: Linux, Mac and Windows (Super Nintendo and Nintendo 64)
 # Parallel N64's own processor and tries it, and npm run test:n64-twin, the function check on a made-up program's
 # twins, with each proof kept, going stale and held by proofs --check, on a Mac and on Windows; and on the Mac
 # npm run test:n64-match, which builds IDO from its translation's source with Homebrew's GNU make and has match keep
-# its proofs. IDO isn't built on Windows yet, so match isn't tried there. Linux runs all three in Check.
+# its proofs. IDO isn't built on Windows yet, so match isn't tried there. Linux runs all three in Check. And on all
+# three, Linux too, npm run test:n64-parts (#1932): the same steps as the Super Nintendo's with a made-up Nintendo 64
+# program, played in Parallel N64 built with the tools' change to it, which says which functions ran in each frame.
 #
 # It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
 # what those tools are made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and
@@ -99,6 +101,24 @@ jobs:
       - run: npm ci
       - run: npm run test:snes-parts
 
+  linux-n64:
+    name: Linux (Nintendo 64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      # OpenGL's headers, which Parallel N64's source includes though nothing of them is linked
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libgl-dev
+      - run: npm run test:n64-parts
+
   mac-snes:
     name: Mac (Super Nintendo)
     runs-on: macos-latest
@@ -147,6 +167,7 @@ jobs:
           cc --version | head -1
           brew install --quiet node make
           echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
       - name: The tools' packages
         run: |
           node --version
@@ -154,6 +175,7 @@ jobs:
       - run: npm run test:n64-call
       - run: npm run test:n64-twin
       - run: npm run test:n64-match
+      - run: npm run test:n64-parts
 
   windows-snes:
     name: Windows (Super Nintendo)
@@ -191,3 +213,4 @@ jobs:
       - run: npm ci
       - run: npm run test:n64-call
       - run: npm run test:n64-twin
+      - run: npm run test:n64-parts
