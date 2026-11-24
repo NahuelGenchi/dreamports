@@ -340,6 +340,9 @@ void Dma3Intr(void) { REG_WRITE16(REG_IF, 0x0800); }
 /** Timer0Intr, 0x080013B0: timer 0's interrupt seen to. */
 void Timer0Intr(void) { REG_WRITE16(REG_IF, 0x0008); }
 
+/** Timer1Intr, 0x080013BC: timer 1's interrupt seen to. */
+void Timer1Intr(void) { REG_WRITE16(REG_IF, 0x0010); }
+
 /** Timer2Intr, 0x080013C8: timer 2's interrupt seen to. */
 void Timer2Intr(void) { REG_WRITE16(REG_IF, 0x0020); }
 
