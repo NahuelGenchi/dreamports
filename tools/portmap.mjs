@@ -46,6 +46,7 @@ import { twinsIn } from './gba/match.mjs';
 import { proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { nesNames } from './nes/functions.mjs';
+import { gbNames } from './gbc/functions.mjs';
 
 // a label's word and its address, or a number's: in the cartridge, or in the work RAMs, where a game copies or unpacks
 // code to run it
@@ -78,6 +79,11 @@ function namer(console, codeMap) {
   if (console === 'nes') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
+  }
+  // a Game Boy's is the offset in the program too, from a label such as sub_02_4123 (gbc/functions.mjs)
+  if (console === 'gb' || console === 'gbc') {
+    const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
+    return line => gbNames(line, banks).map(([name, offset]) => [name, offset, true]);
   }
   const { pattern, bases, address: of } = namesOf(console);
   return line => [...line.matchAll(pattern)].map(([name, label, digits]) => [name, of(digits), Boolean(label)]).filter(([, address]) => !bases.has(address));

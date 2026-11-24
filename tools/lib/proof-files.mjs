@@ -175,7 +175,8 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 
 /** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
  *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
- *  (nes/functions.mjs), and with 'snes' a place in the Super Nintendo cartridge's ROM (snes/cartridge.mjs). Its `copy()`
+ *  (nes/functions.mjs), with 'snes' a place in the Super Nintendo cartridge's ROM (snes/cartridge.mjs), and with 'gb' or
+ *  'gbc' a place in the Game Boy's program, which is the whole file (gbc/functions.mjs). Its `copy()`
  *  gives the whole file. With 'ps2' the address is where the EE runs the program the
  *  disc boots, `disc` is the copy's path, whose sectors are its content, and `code(f)` what a function of the code map
  *  is made of, on whichever processor and in whichever program of the disc, once prepareCopy has read it (ps2/ledger.mjs).
@@ -193,7 +194,9 @@ export function cartridgeOf(path, console = 'gba') {
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : console === 'snes'
       ? (address, count) => (program ??= readCartridge(copy()).rom).subarray(address, address + count)
-      : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
+      : console === 'gb' || console === 'gbc'
+        ? (address, count) => copy().subarray(address, address + count)
+        : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
   return Object.assign(read, { copy });
 }
 
