@@ -33,6 +33,7 @@
 #define CALL_CHUNK 256
 #define CALL_READS 8192
 #define CALL_SEEN (1 << 16)
+#define CALL_CHANGED 64
 
 typedef int (*callFunction)(uint32_t, uint32_t, uint32_t, uint32_t*, uint8_t*, void (*)(uint32_t, uint32_t),
 	void (*)(uint32_t, uint32_t, uint64_t), uint32_t*, uint32_t*, uint32_t*, uint32_t*);
@@ -118,10 +119,19 @@ static int callServe(void* library) {
 		}
 		uint32_t head[3], state[CALL_STATE], changeCount;
 		if (!callWords(head, 3) || !callWords(state, CALL_STATE) || !callWords(&changeCount, 1)) return 2;
+		// the chunks a change is in, which are told whatever the call leaves there, as the check lays the changes over
+		// the image and the chunks over those: one the call put back as the image has it is still what it left
+		uint32_t changed[CALL_CHANGED];
+		uint32_t changedCount = 0;
 		for (uint32_t i = 0; i < changeCount; i++) {
 			uint32_t change[3];
 			if (!callWords(change, 3)) return 2;
 			callPut(ram, ramSize, hardware, change[0], change[1], change[2]);
+			for (uint32_t end = 0; end < 2 && changedCount < CALL_CHANGED; end++) {
+				uint32_t address = change[0] + (end ? change[1] - 1 : 0);
+				size_t at = address >= 0xCC000000 && address < 0xCC000000 + CALL_HARDWARE ? ramSize + (address - 0xCC000000) : (address & 0x1FFFFFFF);
+				if (at < imageSize) changed[changedCount++] = (uint32_t) (at / CALL_CHUNK);
+			}
 		}
 		call.start = head[0];
 		call.span = head[1];
@@ -139,7 +149,9 @@ static int callServe(void* library) {
 		uint32_t chunkCount = 0;
 		for (size_t at = 0; at < imageSize; at += CALL_CHUNK) {
 			const uint8_t* now = at < ramSize ? ram + at : hardware + (at - ramSize);
-			if (memcmp(now, image + at, CALL_CHUNK)) chunks[chunkCount++] = (uint32_t) (at / CALL_CHUNK);
+			int told = memcmp(now, image + at, CALL_CHUNK) != 0;
+			for (uint32_t i = 0; i < changedCount && !told; i++) told = changed[i] == at / CALL_CHUNK;
+			if (told) chunks[chunkCount++] = (uint32_t) (at / CALL_CHUNK);
 		}
 		fwrite(&chunkCount, 4, 1, out);
 		for (uint32_t i = 0; i < chunkCount; i++) {
