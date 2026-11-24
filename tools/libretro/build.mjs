@@ -113,10 +113,10 @@ function buildHere(machine, log, tools) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
-    // on Windows a core's Makefile is told so, as every libretro core's takes it: it reads the computer's kind from
-    // uname, and the compiler the tools get says Windows_NT there, which the Makefiles take for Linux, linking a .so
-    // with settings Windows' linker doesn't have
-    const settings = [...(core.make ?? []), ...(WINDOWS ? ['platform=win'] : [])];
+    // On Windows the platform is named: libretro's makefiles tell it from `uname -a`, which there is w64devkit's, saying
+    // Windows_NT, the computer's name and MS/Windows, and take Windows only for MINGW or a small "win" in it, which only a
+    // computer's name gives. Taken for Unix, PCSX ReARMed builds a recompiler that needs Unix's headers (#1938)
+    const settings = [...(core.make ?? []), ...(tools ? ['platform=win'] : [])];
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
