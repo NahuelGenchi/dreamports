@@ -5,8 +5,8 @@ name: Mac and Windows (Game Boy Advance)
 # GitHub CLI and CMake, and on Windows with only git and Node.js, where setup gets its own compiler and CMake. Each runs npm run test:match and test:twin, the function check, test:rebuild and test:libraries, which run
 # match and twin from npm run dp on games of the project's own, and test:same-memory, which builds a program of the
 # project's own as a cartridge and as a Dreamport from the same C and proves every frame and the whole work memory the
-# same in mGBA and in the computer's own browser. The Mac also runs test:function-tasks, whose stand-in for the GitHub
-# CLI is a script Windows can't start by that name. A Mac with Intel's chip is left out, as Apple no longer makes one,
+# same in mGBA and in the computer's own browser, and test:function-tasks, a game made a function at a time against a
+# stand-in for GitHub, which the tools start with Node.js on every system (#1912). A Mac with Intel's chip is left out, as Apple no longer makes one,
 # and GitHub's Macs, five at a time, are shared with the PlayStation 2's workflow: Linux on Intel builds agbcc on the
 # same kind of chip.
 #
@@ -184,6 +184,7 @@ jobs:
       - run: npm run test:twin
       - run: npm run test:rebuild
       - run: npm run test:libraries
+      - run: npm run test:function-tasks
       - run: npm run test:same-memory
 
   same:
