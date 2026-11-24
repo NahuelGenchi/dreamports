@@ -34,6 +34,7 @@ on:
       - 'tools/setup.mjs'
       - 'tools/lib/sound.mjs'
       - 'tools/test/made-up-ps2*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/ps2-*'
       - 'tools/test/real-ps2.mjs'
   push:
@@ -51,6 +52,7 @@ on:
       - 'tools/setup.mjs'
       - 'tools/lib/sound.mjs'
       - 'tools/test/made-up-ps2*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/ps2-*'
       - 'tools/test/real-ps2.mjs'
   schedule:
@@ -102,6 +104,7 @@ jobs:
       - run: npm run test:ps2-memories
       # what prove says each part of a game runs, a function of each kind in the part it first runs in (#1927)
       - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
 
   mac:
     name: Mac (PlayStation 2)
@@ -191,6 +194,7 @@ jobs:
       - run: npm run test:ps2-memory
       - run: npm run test:ps2-cards
       - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
@@ -250,6 +254,7 @@ jobs:
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
       - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
       - run: npm run test:ps2-flow
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
