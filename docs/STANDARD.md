@@ -60,6 +60,8 @@ A function the original ran in recorded play where every frame matched doesn't c
 
 ### Twins and their proof
 
+A game made a function at a time can have its parts for tasks, so people finish what a player would know, such as a menu or a level: a part is then the functions the original runs in it, each with its proof as below, and it's done when its recording matches the original on every frame as well (`tools/README.md`, Its parts can be its tasks).
+
 A Dreamport is its original written again, function by function, and not only what someone played of it. What was played can match on every frame while a path nobody played is missing, with nothing showing it. So three rules say how a Dreamport's code is written and proven, and [Done](#done) asks for all three. They come from [#1458](https://github.com/NahuelGenchi/dreamports/issues/1458), opened on 17 November 2026 after trials on seven consoles ([#1449](https://github.com/NahuelGenchi/dreamports/issues/1449), [#1451](https://github.com/NahuelGenchi/dreamports/issues/1451)), and they hold for every Dreamport, whoever makes it.
 
 **Every function has a twin.** Each function of the original has a twin in the Dreamport: a piece of code, written by hand, that names the function by its address and does what it does. The game itself gives the list, as its code map holds every function, so nobody chooses what gets written and nothing is left out by being forgotten.
