@@ -113,9 +113,13 @@ function buildHere(machine, log, tools) {
     run(building, 'cmake', ['-S', source, '-B', join(source, 'build'), ...cmakeSettings(core)], source, tools?.env);
     run(building, 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
+    // On Windows the platform is named: libretro's makefiles tell it from `uname`, which there is w64devkit's, saying
+    // Windows_NT, which they take for Unix, unless Git's own comes first on the PATH, as it does in Git Bash and not in
+    // PowerShell or GitHub's runner. Taken for Unix, PCSX ReARMed builds a recompiler that needs Unix's headers (#1938)
+    const settings = [...(core.make ?? []), ...(tools ? ['platform=win'] : [])];
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
-    run(building, tools?.make ?? 'make', [...(core.make ?? []), 'clean'], folder, tools?.env);
-    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...(core.make ?? [])], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
+    run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
   }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }
