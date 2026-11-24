@@ -1,67 +1,79 @@
-// The made-up Nintendo DS program (made-up-nds.mjs) as a Dreamport in C, on what every console's kit in C shares
-// (kit/c/), for npm run test:real-nds: what its two programs do each frame, written again, with nothing of the console's
-// hardware under it yet. @MOVED@ and @PITCH@ are filled in by the test, which also makes a wrong one of it.
+// The made-up Nintendo DS program (made-up-nds.mjs) as a Dreamport in C, on the Nintendo DS kit in C (kit/nds/c/), for
+// npm run test:real-nds: its two programs written again, each read and write where the original makes it, and the time
+// between them as each spends it. @MOVED@ and @TIMER@ are filled in by the test, which also makes a wrong one of it.
 
-#include "console.h"
+#include "nds.h"
 
-// the console's ten buttons as its own register has them, from the kit's bits
-static uint32_t registerOf(uint32_t buttons) {
-  uint32_t bits = 0;
-  if (buttons & BUTTON_A) bits |= 1;
-  if (buttons & BUTTON_B) bits |= 2;
-  if (buttons & BUTTON_SELECT) bits |= 4;
-  if (buttons & BUTTON_START) bits |= 8;
-  if (buttons & BUTTON_RIGHT) bits |= 16;
-  if (buttons & BUTTON_LEFT) bits |= 32;
-  if (buttons & BUTTON_UP) bits |= 64;
-  if (buttons & BUTTON_DOWN) bits |= 128;
-  if (buttons & BUTTON_R) bits |= 256;
-  if (buttons & BUTTON_L) bits |= 512;
-  return bits;
+// the words the two programs share in the main memory, as the original keeps them
+#define SHARED_KEYS 0x02200000
+#define SHARED_X 0x02200004
+#define SHARED_Y 0x02200008
+#define SHARED_FRAMES 0x0220000C
+
+// how long after the V-blank starts each program's loop sees it, and how long the ARM9 takes from there to read the
+// words the ARM7 leaves it: long enough for the ARM7 to have written its buttons, and not to have asked the touch
+// screen's chip, which takes three transfers of the serial bus for each of its two numbers
+#define SEES 16
+#define ARM9_TO_SHARED 200
+#define ARM7_TO_KEYS 12
+
+void game_arm9(void) {
+  nds9_write16(NDS_POWCNT, 0x8203);
+  nds9_write32(NDS_DISPCNT_A, 0x10000);
+  nds9_write32(NDS_DISPCNT_B, 0x10000);
+  uint32_t frames = 0;
+  for (;;) {
+    nds9_wait_vblank(SEES);
+    frames++;
+    uint32_t keys = ~nds9_read16(NDS_KEYINPUT) & 0x3FF;
+    nds9_write16(NDS_PALETTE_A, (frames & 31) | keys << 5);
+    nds9_spend(ARM9_TO_SHARED);
+    uint32_t shared = nds9_read32(SHARED_KEYS), lower;
+    if (!(shared & 64)) {
+      uint32_t x = nds9_read32(SHARED_X), y = nds9_read32(SHARED_Y);
+      lower = (x >> 7) | (y >> 7) << 5 | 0x4000;
+    } else {
+      lower = (~shared & 3) << 10;
+    }
+    nds9_write16(NDS_PALETTE_B, lower);
+    nds9_write32(SHARED_FRAMES, frames);
+  }
 }
 
-// what the ARM7 leaves the ARM9 in the memory they share: X and Y, whether the pen is down, and where
-static struct { uint32_t xy; int pen, x, y; } shared;
-// each screen's colour, 15 bits, as the V-blank leaves it: the console shows it in its next frame, which is the frame
-// prove compares this one with
-static uint32_t upper, lower;
-static uint32_t frames;
-// the square wave: whether it plays, and how far along it is
-static int note;
-static double along;
-
-void game_start(void) {}
-
-void game_step(uint32_t buttons) {
-  // the V-blank: the ARM9 counts it and reads its buttons, and the ARM7 reads X, Y and the pen
-  frames++;
-  upper = (frames & 31) | registerOf(buttons) << 5;
-  int x, y, pen = kit_touch(&x, &y);
-  uint32_t xy = (buttons & BUTTON_X ? 1 : 0) | (buttons & BUTTON_Y ? 2 : 0);
-  // with the pen up the ARM7 has written before the ARM9 reads; with it down it's still asking the touch screen's
-  // chip, so the ARM9 reads what the frame before left
-  if (!pen) { shared.xy = xy; shared.pen = 0; }
-  lower = shared.pen ? 0x4000 | ((shared.x * 16) >> 7) | ((shared.y * 16) >> 7) << 5 : shared.xy << 10;
-  if (pen) { shared.xy = xy; shared.pen = 1; shared.x = x + @MOVED@; shared.y = y; }
-  note = (buttons & BUTTON_A) != 0;
+static void spi_wait(void) {
+  while (nds7_read16(NDS_SPICNT) & 0x80) nds7_spend(8);
 }
 
-static uint32_t paint(uint32_t colour) {
-  return 0xFF000000u | (colour >> 10 & 31) << 19 | (colour >> 5 & 31) << 11 | (colour & 31) << 3;
+// one of the touch screen's numbers, 12 bits, from the chip over the serial bus, as the original asks for it
+static uint32_t touch(uint32_t control) {
+  nds7_write16(NDS_SPICNT, 0x8A01);
+  nds7_write16(NDS_SPIDATA, control);
+  spi_wait();
+  nds7_write16(NDS_SPIDATA, 0);
+  spi_wait();
+  uint32_t high = nds7_read16(NDS_SPIDATA);
+  nds7_write16(NDS_SPICNT, 0x8201);
+  nds7_write16(NDS_SPIDATA, 0);
+  spi_wait();
+  uint32_t low = nds7_read16(NDS_SPIDATA);
+  return ((high << 8 | low) << 17) >> 20;
 }
 
-void game_draw(void) {
-  uint32_t *pixels = kit_screen(SCREEN_W, SCREEN_H);
-  for (int i = 0; i < SCREEN_0_W * SCREEN_0_H; i++) pixels[SCREEN_0_Y * SCREEN_W + i] = paint(upper);
-  for (int i = 0; i < SCREEN_1_W * SCREEN_1_H; i++) pixels[SCREEN_1_Y * SCREEN_W + i] = paint(lower);
-}
-
-// the ninth channel's square wave, as loud as the mixer goes, while the ARM7 has it on
-void game_sound(float *left, float *right, int count) {
-  for (int i = 0; i < count; i++) {
-    if (!note) { along = 0; continue; }
-    left[i] = right[i] = along < 0.5 ? -256 / 512.0f : 255 / 512.0f;
-    along += @PITCH@ / CONSOLE_SOUND_RATE;
-    if (along >= 1) along -= 1;
+void game_arm7(void) {
+  nds7_write16(NDS_POWCNT, 1);
+  nds7_write16(NDS_SOUNDCNT, 0x807F);
+  nds7_write16(NDS_SOUNDBIAS, 0x200);
+  nds7_write16(NDS_SOUND(9) + 8, @TIMER@);
+  for (;;) {
+    nds7_wait_vblank(SEES);
+    uint32_t pen = nds7_read16(NDS_EXTKEYIN);
+    if (!(pen & 64)) {
+      nds7_write32(SHARED_X, touch(0xD0) + @MOVED@ * 16);
+      nds7_write32(SHARED_Y, touch(0x90));
+    }
+    nds7_spend(ARM7_TO_KEYS);
+    nds7_write32(SHARED_KEYS, pen);
+    uint32_t keys = nds7_read16(NDS_KEYINPUT);
+    nds7_write32(NDS_SOUND(9), keys & 1 ? 0 : 0xE340007F);
   }
 }

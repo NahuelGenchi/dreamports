@@ -73,14 +73,19 @@ static retro_input_poll_t inputPoll;
 static retro_input_state_t inputState;
 
 static std::unique_ptr<NDS> console;
-static std::vector<int16_t> mixed;
+// A frame's sound is what the mixer made from the last V-blank's start to this frame's: what a frame shows and plays
+// follows from what a game writes in the V-blank before it, which melonDS's frame, from line 0 to line 262, has 73% of
+// the way through. So what's mixed from line 192 on waits for the next frame. A mix at the V-blank's very tick is the
+// next frame's, as melonDS starts the line before it mixes at the same tick.
+static std::vector<int16_t> mixed, later;
 static uint32_t picture[WIDTH * HEIGHT * 2];
 
 // each pair of samples as the console's mixer leaves it, which melonDS tells this of with the tools' patch
 namespace melonDS { extern void (*DreamportsMixed)(const s16* pair); }
 static void keepMixed(const s16* pair) {
-	mixed.push_back(pair[0]);
-	mixed.push_back(pair[1]);
+	std::vector<int16_t>& into = console->GPU.VCount >= 192 ? later : mixed;
+	into.push_back(pair[0]);
+	into.push_back(pair[1]);
 }
 
 // the functions to watch, by processor and address: each one's number in the code map and its first bytes
@@ -206,7 +211,8 @@ EXPORT void retro_run(void) {
 		console->ReleaseScreen();
 	}
 
-	mixed.clear();
+	mixed.swap(later);
+	later.clear();
 	console->RunFrame();
 
 	void* top = nullptr;
