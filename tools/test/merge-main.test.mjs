@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { optionsOf } from '../update.mjs';
 import { withRowOf } from '../readme.mjs';
+import { formatProofs, parseProofs } from '../lib/proofs.mjs';
 import { builtOn, finishMerge, holding, isHolding, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
 
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -58,6 +59,25 @@ test('proofs both sides added are both kept, a function to a line, and the branc
     { [PROOFS]: proofs([['08000100', 'bytes', 'a', 'b'], ['08000180', 'bytes', 'main', 'b'], ['08000300', 'bytes', 'e', 'f']]) });
   assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
   assert.deepEqual(JSON.parse(read(PROOFS)).functions, [['08000100', 'bytes', 'a', 'b'], ['08000180', 'memory', 'mine', 'b', 2000], ['08000200', 'bytes', 'c', 'd'], ['08000300', 'bytes', 'e', 'f']]);
+});
+
+test('the functions that start as the original\'s do are kept from both sides too, as match writes them', () => {
+  const PROOFS = 'games/one/c/proof/proofs.json', mark = letter => letter.repeat(16);
+  const file = (functions, starts) => formatProofs({ original: 'x', functions: new Map(functions), starts: new Map(starts) });
+  const proof = letter => ({ kind: 'bytes', twin: mark(letter), original: mark('0') }), start = (letter, bytes) => ({ twin: mark(letter), original: mark('0'), bytes });
+  put({ [PROOFS]: file([['08000100', proof('a')]], [['08000400', start('b', 10)], ['08000500', start('c', 14)]]) });
+  git('switch', '-q', 'main');
+  git('merge', '-q', 'work');
+  git('switch', '-q', 'work');
+  // the branch proves a function and changes a twin that only starts as the original's does, and main finds another
+  // that starts so, and proves by the same bytes one that only started so before
+  both({ [PROOFS]: file([['08000100', proof('a')], ['08000200', proof('d')]], [['08000400', start('e', 76)], ['08000500', start('c', 14)]]) },
+    { [PROOFS]: file([['08000100', proof('a')], ['08000500', proof('f')]], [['08000300', start('1', 62)], ['08000400', start('b', 10)]]) });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
+  const merged = parseProofs(JSON.parse(read(PROOFS)));
+  assert.deepEqual([...merged.functions.keys()], ['08000100', '08000200', '08000500']);
+  assert.deepEqual([...merged.starts], [['08000300', start('1', 62)], ['08000400', start('e', 76)]]);
+  assert.equal(read(PROOFS), formatProofs(merged), 'and the file is as the tools write it');
 });
 
 test('a branch with main in it has nothing to do', () => {
