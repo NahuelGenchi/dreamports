@@ -4,6 +4,13 @@
 // makes that wait for each V-blank, which run when the IOP first runs in each frame, at the end of its first slice,
 // after the EE's code, as the emulator runs the EE's slice and then the IOP's, and then the server threads a call woke.
 //
+// And the IOP's own time, for twins that say how much of it their work takes (iop_time_pass). Play! gives the IOP 600
+// of its ticks after each slice of the EE's, runs its code a block at a time, takes each block's instructions, a tick
+// each, from what's left as the block ends, and stops once nothing is left, so the next block runs in a later slice,
+// with what the last went over taken from it. An IOP with nothing to run lets the rest of its slice go (CPS2VM::UpdateIop,
+// CBasicBlock::CompileEpilog). A twin's threads then run beside the EE's code, on a stack of their own (kit_run_beside),
+// so one partway through its work waits there for its time and goes on in a later slice, or a later frame.
+//
 // Followed from Play! (https://github.com/jpd002/Play-), Copyright (c) 2006-2026, Jean-Philip Desjardins, under the
 // BSD licence whose conditions and disclaimer kit/ps2/c/spu2.c carries in full.
 
@@ -32,13 +39,40 @@ void iop_each_vblank(void (*thread)(void)) {
   if (waiter_count == WAITERS) __builtin_trap();
   waiters[waiter_count++] = thread;
 }
-// the V-blank's start wakes them, and they run when the IOP next does, at the end of the EE's slice
+// the V-blank's start wakes them, and they run when the IOP next does, at the end of the EE's slice. A V-blank that
+// starts while they're still at work goes by, as one that waits for the next V-blank's start misses it
 static int woken;
 void iop_vblank(void) { woken = 1; }
-void iop_threads(void) {
+static void threads(void) {
   if (woken) for (int i = 0; i < waiter_count; i++) waiters[i]();
   woken = 0;
   sif_iop_run();
+}
+
+// The IOP's ticks left in its slice, as Play!'s m_iopExecutionTicks, below 1 once its code went over; whether the
+// Dreamport's twins keep the IOP's time; whether the threads are running beside the EE's code, which only they can wait
+// in; and whether one is partway through its work, waiting for its time.
+static int32_t left;
+static int keeping, beside, partway;
+
+void iop_keep_time(void) { keeping = 1; }
+void iop_time_pass(uint32_t iop_ticks) {
+  if (!keeping || !beside) __builtin_trap();
+  left -= (int32_t)iop_ticks;
+  while (left <= 0) kit_wait_beside();
+}
+
+void iop_threads(uint32_t slice) {
+  left += (int32_t)slice;
+  if (!keeping) threads();
+  // a thread partway through goes on once its time has come, and the rest run when there's something for them
+  else if (partway ? left > 0 : woken || sif_iop_waiting()) {
+    beside = 1;
+    partway = kit_run_beside(threads);
+    beside = 0;
+  }
+  // the IOP idle for the rest of its slice, or its code over the slice's end by what it went over
+  if (left > 0 && !partway) left = 0;
 }
 
 static int same(const char *a, const char *b) {
@@ -102,4 +136,8 @@ static int loader(uint32_t number, uint8_t *arguments, uint32_t arguments_size, 
   return 1;
 }
 
-void iop_bios_power(void) { sif_register_server(LOADFILE, loader); }
+void iop_bios_power(void) {
+  left = 0;
+  keeping = beside = partway = 0;
+  sif_register_server(LOADFILE, loader);
+}
