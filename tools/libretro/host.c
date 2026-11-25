@@ -744,9 +744,11 @@ int main(int argc, char** argv) {
 		else if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
+			void (*tellSm83)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_sm83");
 			if (watch) ps2Open(watch, functions);
 			else if (tell) tell(ranInstruction);
 			else if (tell65816) tell65816(ranInstruction65816);
+			else if (tellSm83) tellSm83(ranInstructionSm83);
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;
