@@ -1,0 +1,103 @@
+Gambatte (https://github.com/libretro/gambatte-libretro, GNU General Public License version 2) runs the Game Boy and
+the Game Boy Color, and like every libretro core it says nothing of the instructions it runs. The tools apply this
+change of Dreamports' own to its source before building it on the contributor's computer (tools/consoles.mjs,
+tools/libretro/build.mjs), so the program that plays the original (tools/libretro/host.c) can ask to be told of each
+one: its address, where that is in the cartridge's program whatever bank is switched in there, its first byte, and the
+flags, A and the stack pointer. That's how prove learns which functions the original runs in each part of a game
+(tools/lib/part-functions.mjs), and gameplay proven which instructions ran and which way each jump with a condition
+went (tools/lib/played.mjs).
+
+The processor only calls the function it was given, when it was given one, between reading an instruction and running
+it: nothing of the console changes, so every frame's picture and sound are the same with it or without, which
+tools/test/real-gb.mjs checks. Nothing of Gambatte is in the repository but the lines of its own this change sits
+between.
+
+diff --git a/libgambatte/libretro/libretro.cpp b/libgambatte/libretro/libretro.cpp
+index 15b042c..d622070 100644
+--- a/libgambatte/libretro/libretro.cpp
++++ b/libgambatte/libretro/libretro.cpp
+@@ -2915,6 +2915,23 @@ size_t retro_get_memory_size(unsigned id)
+    return 0;
+ }
+ 
++/* Dreamports: the processor tells the tools' program of every instruction (cpu.cpp). retro_dreamports_ran_sm83 gives
++ * the function to tell, or none. Its name starts as libretro's own do, as those are the only names this core lets out
++ * (link.T). */
++extern void (*DreamportsRan)(unsigned long pc, unsigned long place, unsigned long op, unsigned long fasp);
++static void (*dreamports_told)(uint32_t pc, uint32_t place, uint32_t op, uint32_t fasp);
++
++static void dreamports_ran(unsigned long pc, unsigned long place, unsigned long op, unsigned long fasp)
++{
++   dreamports_told((uint32_t)pc, (uint32_t)place, (uint32_t)op, (uint32_t)fasp);
++}
++
++extern "C" RETRO_API void retro_dreamports_ran_sm83(void (*told)(uint32_t, uint32_t, uint32_t, uint32_t))
++{
++   dreamports_told = told;
++   DreamportsRan   = told ? dreamports_ran : NULL;
++}
++
+ void retro_run()
+ {
+    /* libretro_samples_count and libretro_frames_count are
+diff --git a/libgambatte/src/cpu.cpp b/libgambatte/src/cpu.cpp
+index 0fb6199..bf73ec0 100644
+--- a/libgambatte/src/cpu.cpp
++++ b/libgambatte/src/cpu.cpp
+@@ -20,6 +20,11 @@
+ #include "gambatte-memory.h"
+ #include "savestate.h"
+ 
++/* Dreamports: what the tools' program asks to be told of every instruction, between reading it and running it: its
++ * address, where that is in the cartridge's program, its first byte, and the flags, A and the stack pointer. It only
++ * looks, so the game plays the same with it or without. */
++void (*DreamportsRan)(unsigned long pc, unsigned long place, unsigned long op, unsigned long fasp);
++
+ namespace gambatte {
+ 
+ CPU::CPU()
+@@ -518,6 +523,10 @@ void CPU::process(unsigned long const cycles) {
+ 			unsigned char opcode;
+ 
+ 			PC_READ(opcode);
++			if (DreamportsRan) {
++				unsigned const at = (pc - 1) & 0xFFFF;
++				DreamportsRan(at, mem_.dreamportsPlace(at), opcode, toF(hf2, cf, zf) | (unsigned long)a << 8 | (unsigned long)sp << 16);
++			}
+ 
+ 			if (skip_) {
+ 				pc = (pc - 1) & 0xFFFF;
+diff --git a/libgambatte/src/gambatte-memory.h b/libgambatte/src/gambatte-memory.h
+index d82ca85..09f501b 100644
+--- a/libgambatte/src/gambatte-memory.h
++++ b/libgambatte/src/gambatte-memory.h
+@@ -72,6 +72,8 @@ public:
+ 	bool isCgb() const { return lcd_.isCgb(); }
+ 	bool ime() const { return intreq_.ime(); }
+ 	bool halted() const { return intreq_.halted(); }
++	/* Dreamports: where an address of the processor's is in the cartridge's program (cartridge.h). */
++	unsigned long dreamportsPlace(unsigned pc) const { return cart_.dreamportsPlace(pc); }
+ 	unsigned long nextEventTime() const { return intreq_.minEventTime(); }
+ 	bool isActive() const { return intreq_.eventTime(intevent_end) != disabled_time; }
+ 
+diff --git a/libgambatte/src/mem/cartridge.h b/libgambatte/src/mem/cartridge.h
+index 528b271..7f246e2 100644
+--- a/libgambatte/src/mem/cartridge.h
++++ b/libgambatte/src/mem/cartridge.h
+@@ -67,6 +67,16 @@ namespace gambatte
+             return memptrs_.rmem(area);
+          }
+ 
++         /* Dreamports: where `pc` is in the cartridge's program, as an offset from its first byte, whatever bank is
++          * switched in there, or 0xFFFFFFFF outside it, as in the console's memory. */
++         unsigned long dreamportsPlace(unsigned pc) const
++         {
++            if (pc >= 0x8000)
++               return 0xFFFFFFFFul;
++            unsigned long const at = (unsigned long)(memptrs_.rmem(pc >> 12) + pc - memptrs_.romdata());
++            return at < (unsigned long)(memptrs_.romdataend() - memptrs_.romdata()) ? at : 0xFFFFFFFFul;
++         }
++
+          unsigned char * wmem(unsigned area) const
+          {
+             return memptrs_.wmem(area);
