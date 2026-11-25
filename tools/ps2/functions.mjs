@@ -29,6 +29,7 @@ import { bootFile, discFiles, readDiscFile } from '../lib/read-copy.mjs';
 import { fillFunctions } from '../gba/functions.mjs';
 import { findFunctionsIn as findIopFunctions } from '../ps1/functions.mjs';
 import { isPair } from './vu.mjs';
+import { decode } from './ee.mjs';
 
 const JR_RA = 0x03E00008;
 const isOpening = word => (word >>> 16) === 0x27BD && (word & 0x8000) !== 0;   // ADDIU sp, sp, a negative number
@@ -125,14 +126,18 @@ export function findFunctions(program, listed = []) {
       }
     }
   }
-  // a function without a size reaches the next one, or its section's end, less the zeros after it
+  // a function without a size reaches the next one, or its section's end, less the zeros after it, but for a zero that
+  // is the delay slot of a jump, a branch or a call it ends with, as a nop is in `jr ra` and `nop`: that one is its own
+  const slotted = new Set(['return', 'switch', 'jump', 'branch', 'call']);
   const ordered = [...starts.keys()].sort((a, b) => a - b), functions = [];
   ordered.forEach((address, i) => {
     const section = sections.find(s => address >= s.address && address < s.address + s.size);
     let size = starts.get(address);
     if (!size) {
       let end = Math.min(ordered[i + 1] ?? Infinity, section.address + section.size);
+      const limit = end;
       while (end - 4 > address && wordAt(section, end - 4) === 0) end -= 4;
+      if (end < limit && slotted.has(decode(wordAt(section, end - 4), end - 4)?.kind)) end += 4;
       size = end - address;
     }
     functions.push({ address, size: Math.min(size, section.address + section.size - address) });
