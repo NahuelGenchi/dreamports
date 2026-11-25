@@ -1,5 +1,5 @@
 // The function check's side of a console whose core runs one function of its program by itself, the GameCube's in
-// Dolphin with the tools' change to it (dolphin.patch, dreamports_call): `host CORE ROM call [KEY=VALUE…]` boots the
+// Dolphin with the tools' change to it (dolphin.patch, dreamports_gamecube_call): `host CORE ROM call [KEY=VALUE…]` boots the
 // copy, plays CALL_FRAMES frames so its program is running, and then is told what to do on its standard input, in
 // little-endian words, and answers on its standard output (tools/gamecube/original.mjs):
 //
@@ -68,7 +68,7 @@ static void callRead(uint32_t address, uint32_t bytes, uint64_t value) {
 	r[3] = (uint32_t) (value >> 32);
 }
 
-static int callWords(uint32_t* words, size_t count) {
+static int callTold(uint32_t* words, size_t count) {
 	return fread(words, 4, count, stdin) == count;
 }
 
@@ -82,7 +82,7 @@ static void callPut(uint8_t* ram, size_t ramSize, uint8_t* hardware, uint32_t ad
 }
 
 static int callServe(void* library) {
-	callFunction run = (callFunction) dlsym(library, "dreamports_call");
+	callFunction run = (callFunction) dlsym(library, "dreamports_gamecube_call");
 	if (!run) {
 		fprintf(err, "The core can't run one function by itself: npm run dp -- setup builds it again, with the tools' change to it.\n");
 		return 2;
@@ -118,14 +118,14 @@ static int callServe(void* library) {
 			return 2;
 		}
 		uint32_t head[3], state[CALL_STATE], changeCount;
-		if (!callWords(head, 3) || !callWords(state, CALL_STATE) || !callWords(&changeCount, 1)) return 2;
+		if (!callTold(head, 3) || !callTold(state, CALL_STATE) || !callTold(&changeCount, 1)) return 2;
 		// the chunks a change is in, which are told whatever the call leaves there, as the check lays the changes over
 		// the image and the chunks over those: one the call put back as the image has it is still what it left
 		uint32_t changed[CALL_CHANGED];
 		uint32_t changedCount = 0;
 		for (uint32_t i = 0; i < changeCount; i++) {
 			uint32_t change[3];
-			if (!callWords(change, 3)) return 2;
+			if (!callTold(change, 3)) return 2;
 			callPut(ram, ramSize, hardware, change[0], change[1], change[2]);
 			for (uint32_t end = 0; end < 2 && changedCount < CALL_CHANGED; end++) {
 				uint32_t address = change[0] + (end ? change[1] - 1 : 0);

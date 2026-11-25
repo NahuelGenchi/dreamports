@@ -1,6 +1,6 @@
 // A GameCube game's original, a function at a time, for the function check (twin.mjs): Dolphin's own interpreter, the
 // processor `prove` runs a game on, running one function of the program by itself through the entry the tools' change
-// to it adds (tools/libretro/dolphin.patch, dreamports_call), driven by the tools' program that runs every core, in its
+// to it adds (tools/libretro/dolphin.patch, dreamports_gamecube_call), driven by the tools' program that runs every core, in its
 // call mode (tools/libretro/host.c, calls.h). The program boots the player's copy, plays two frames so the console is
 // running, and is kept running while a check asks it for calls.
 //

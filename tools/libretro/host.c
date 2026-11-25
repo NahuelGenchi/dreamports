@@ -59,8 +59,8 @@
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
 //
-// `call` runs one function of the console's program at a time, on a core that can, for the function check: calls.h says
-// how it's asked and what it answers.
+// `call` runs one function of the console's program at a time, on a core that can, for the function check: on the
+// GameCube's Dolphin as calls.h says, and on any other core as `call` below says.
 //
 // The environment's DP_LEAVE, when it's set, has the program end the moment its work is written, without the core's own
 // ending, for a core whose ending can fail or never come, as Dolphin's does on Windows: nothing of a run is kept past
@@ -1078,7 +1078,8 @@ static int run(int argc, char** argv) {
 		graphics->contextReset();
 	}
 	wantedRate = getenv("DP_SOUND_RATE") ? atof(getenv("DP_SOUND_RATE")) : 0;
-	if (calls) return callServe(library);
+	// the GameCube's Dolphin answers a call its own way (calls.h); any other core, below
+	if (calls && dlsym(library, "dreamports_gamecube_call")) return callServe(library);
 
 	if (route) {
 		// what the search says goes where the tools read it, which the core's own words never reach
