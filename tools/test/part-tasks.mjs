@@ -174,7 +174,7 @@ async function flow(machine) {
     check(same(keptLists()[firstPart.name], expected[0].runs), `${firstPart.name} runs what the program is known to run in frames ${firstPart.frames.join(' to ')}, ${expected[0].runs.length} functions: ${(keptLists()[firstPart.name] ?? []).join(' ')}`);
     run = dp('proofs', VERSION);
     said(run, run.status === 0 && new RegExp(`^  ${escaped(firstPart.name)} +0 of ${first.keys.length} proven$`, 'm').test(run.out) && !/^  Functions? [0-9A-F]{8}/m.test(run.out),
-      `its task is its ${first.keys.length} functions a proof can be given of, and while a part has no list there is still no group by address`);
+      `its task is the ${first.keys.length} functions it runs, and while a part has no list there is still no group by address`);
     if (machine.named) {
       run = dp('proofs', VERSION, key(machine.named.name));
       said(run, run.status === 0 && /is in no task yet, as no part's recording runs it so far, and 1 part of the game has no recording of the original yet/.test(run.out) && /Its twin can be written and proven now all the same/.test(run.out),

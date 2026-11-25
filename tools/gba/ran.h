@@ -47,9 +47,11 @@ static void endStretches(struct played* p) {
 	}
 }
 
+// a stretch begins when nothing came before it, which is -1, and so is the frame before frame 0: so a first one at frame
+// 0 begins too, and its first frame isn't left as the memory happened to hold it
 static void happened(struct played* p, int what, long frame) {
 	if (p->last[what] == frame) return;
-	if (p->last[what] != frame - 1) {
+	if (p->last[what] < 0 || p->last[what] != frame - 1) {
 		if (p->last[what] >= 0) writeStretch(p, what);
 		p->start[what] = (uint32_t) frame;
 	}
