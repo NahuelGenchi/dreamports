@@ -160,6 +160,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
+      # Git on GitHub's Windows machines writes CRLF where a file has no rule of its own, as in the scratch repositories
+      # the tools' tests make, which then don't read back as they were written
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
