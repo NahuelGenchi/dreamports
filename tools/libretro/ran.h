@@ -115,6 +115,9 @@ static int ranOpen(const uint32_t* functions, size_t words, int byPlace) {
 	ran.inFrameOf = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(struct ranFunction*));
 	for (size_t i = 0; i < ran.functionCount; i++) {
 		uint32_t place = functions[i * 6] - ran.base, size = functions[i * 6 + 1];
+		// a Nintendo 64 function's address is where its processor sees the console's memory, at 0x80000000 or at
+		// 0xA0000000, and its place is where that is in the memory, as its emulator says an instruction's
+		if (place >= 0x80000000 && place < 0xC0000000) place &= 0x1FFFFFFF;
 		ran.functions[i].index = functions[i * 6 + 2];
 		if (!byPlace || !size || place + size < place || functions[i * 6] < ran.base || (ran.reach && place + size > ran.reach)) continue;
 		ranReach(place + size - 1);
@@ -374,6 +377,21 @@ static void ranInstructionMips(uint32_t pc, uint32_t op, uint32_t way) {
 	struct ranPlayed* now = &ran.list[ran.played[place] - 1];
 	ranHappened(now, RAN);
 	if (way) ranHappened(now, way == 1 ? TAKEN : NOT_TAKEN);
+}
+
+/** What Parallel N64 calls before each instruction its cached interpreter runs (parallel-n64.patch): its address, and
+ *  its place in the console's memory, or RAN_NOWHERE. It says where the processor is and nothing of the instruction,
+ *  so which functions ran in each frame is all that's kept of it: nothing is written for DP_PLAYED, DP_ENTRIES or
+ *  DP_REGISTERS, which the tools don't ask of this console (reference.mjs). */
+static void ranAt(uint32_t pc, uint32_t place) {
+	(void) pc;
+	if (place == RAN_NOWHERE) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
 }
 
 /** The functions that ran in the frame just played, by their numbers in the code map, and how many: begun again for the next. */
