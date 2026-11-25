@@ -1,8 +1,9 @@
 // The function check on the Game Boy (../../twin.mjs): what stands in for the rest of Gambatte under its processor.
 // The build compiles the emulator's cpu.cpp as its makers wrote it, from the source the proof tools fetch for the
-// reference emulator, and that file asks its memory for every byte it reads and writes. This is that memory, with the
-// same names, and nothing behind them but the check's own (../original.cpp): no screen, no sound, no timer, no
-// interrupts. It ends the processor's run after each instruction, so the check sees where every one went.
+// reference emulator, with the tools' change that tells of each instruction (../../../libretro/gambatte.patch), and
+// that file asks its memory for every byte it reads and writes. This is that memory, with the same names, and nothing
+// behind them but the check's own (../original.cpp): no screen, no sound, no timer, no interrupts. It ends the
+// processor's run after each instruction, so the check sees where every one went.
 
 #ifndef DREAMPORTS_TWIN_GAMBATTE_MEMORY_H
 #define DREAMPORTS_TWIN_GAMBATTE_MEMORY_H
@@ -38,6 +39,10 @@ public:
 	unsigned long nextEventTime() const { return end_; }
 	bool isActive() const { return active_; }
 	long cyclesSinceBlit(unsigned long) const { return -1; }
+
+	// where an address is in the cartridge's program, which the tools' change asks only when it's to tell of each
+	// instruction, and the check never asks it to
+	unsigned long dreamportsPlace(unsigned) const { return 0xFFFFFFFFul; }
 
 	void halt() { halted_ = true; }
 	void ei(unsigned long) { ime_ = true; }

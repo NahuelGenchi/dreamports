@@ -9,7 +9,8 @@
 // itself too, as node tools/gbc/twin.mjs with the same words.
 //
 // The original's side is Gambatte's own processor, the one the proof's emulator runs every game on: its cpu.cpp, built
-// as its makers wrote it from the source the tools fetch for the reference emulator, on a stand-in for the rest of the
+// as its makers wrote it from the source the tools fetch for the reference emulator, but for the lines the tools add so
+// it can tell them what ran (../libretro/gambatte.patch), which the check never asks it to, on a stand-in for the rest of the
 // emulator (twin/core/, twin/original.cpp). The twin's side is the game's C built for this computer as it is, on a
 // stand-in for the kit that draws and plays nothing (twin/kit.c). twin/check.c gives both the same memory, the 8 KB of
 // work memory at $C000 and the high memory at $FF80, and the same registers, and compares what each leaves: every byte
@@ -203,11 +204,13 @@ function compile(what, compiler, args, cwd, env) {
 }
 
 // Gambatte's processor and the check's own side of it, built by themselves, once: the emulator's files, copied from its
-// makers' source beside the stand-in, in a folder of the tools' own, on this computer only
+// makers' source with the tools' change to it beside the stand-in, in a folder of the tools' own, on this computer
+// only. A copy of the change is kept beside them, so a new change builds them again.
 function buildProcessor(log, compilers) {
   const machine = consoleOf('gb'), core = join(LOCAL, 'twin', 'gb-processor');
   const objects = [join(core, `cpu-${machine.core.commit.slice(0, 12)}.o`), join(core, 'original.o')];
-  const own = [...STAND_INS.map(name => [join(HERE, 'core', name), join(core, name)]), ...['original.cpp', 'check.h', 'contract.h'].map(name => [join(HERE, name), join(core, name)])];
+  const own = [...STAND_INS.map(name => [join(HERE, 'core', name), join(core, name)]), ...['original.cpp', 'check.h', 'contract.h'].map(name => [join(HERE, name), join(core, name)]),
+    ...(machine.core.patch ? [[join(REPO, machine.core.patch), join(core, basename(machine.core.patch))]] : [])];
   if (objects.every(object => existsSync(object)) && own.every(([from, to]) => existsSync(to) && readFileSync(to, 'utf8') === readFileSync(from, 'utf8'))) return { core, objects };
   log(`Getting the Game Boy's processor from its emulator's source, at ${machine.core.source}…`);
   const source = join(fetchSource(machine), 'libgambatte');

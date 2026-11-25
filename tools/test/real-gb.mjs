@@ -126,6 +126,16 @@ async function oneConsole(id) {
   const same = report('buttons');
   check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `the kit in C matches the emulator on every frame, picture and sound: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
   if (run.status) console.log(run.out);
+  // what ran in matching play, which the emulator tells the tools of with their change to it (libretro/gambatte.patch)
+  const progress = () => JSON.parse(readFileSync(join(proofFolder(inC), 'progress.json'), 'utf8'));
+  const ran = () => (progress().recordings.buttons?.functions ?? []).map(key => parseInt(key, 16));
+  // its power-on runs on into the first frame compared, so its routines are among them
+  check(mapped.every(place => ran().includes(place)),
+    `prove says which functions ran in matching play, the interrupts' code and the power-on's that runs into the first frame compared: ${ran().map(place => place.toString(16)).join(', ')}`);
+  check(!/outside every function of the code map: [\d,]+ in the cartridge/.test(run.out) && /outside every function of the code map: [\d,]+ outside the cartridge's program/.test(run.out),
+    'and nothing ran outside them in the cartridge, and the copy of the sprites it runs from the high memory is said, as no code map can hold it');
+  const { units } = JSON.parse(readFileSync(join(proofFolder(inC), 'played.json'), 'utf8'));
+  check(units?.played > 0 && units.played < units.total, `played.json counts its instructions and the ways of its jumps with a condition: ${units?.played} of ${units?.total}`);
   run = dp('prove', inC, 'later');
   check(run.status === 0 && report('later').matched === 60, `and from a start point: ${report('later').matched} of ${report('later').frames}`);
   if (run.status) console.log(run.out);
@@ -138,6 +148,20 @@ async function oneConsole(id) {
   const { buildGame } = await import('../lib/c.mjs');
   const wasm = await buildGame(gameFolder(inC), join(WORK, `${id}.wasm`));
   const reference = libretroReference(machine);
+  // the same pictures and sound, sample for sample, whether the emulator tells of its instructions or not
+  {
+    const heldAt = heldIn(HELD), pressed = Array.from({ length: FRAMES + 1 }, (_, frame) => (frame ? heldAt(frame - 1).reduce((bits, name) => bits | reference.KEY[name], 0) : 0));
+    const watched = readCodeMap(game).functions.map(({ address, size }, index) => ({ address, size, index }));
+    const untold = await reference.runOriginal({ copy, frames: pressed.length, buttons: pressed, sound: true });
+    const told = await reference.runOriginal({ copy, frames: pressed.length, buttons: pressed, sound: true, functions: watched, played: true });
+    const sameFrames = pressed.filter((_, frame) => untold.hashes[frame] === told.hashes[frame] && Buffer.from(untold.sound.read(frame)).equals(Buffer.from(told.sound.read(frame)))).length;
+    untold.sound.close();
+    told.sound.close();
+    const vblank = watched.findIndex(f => f.address === at.vblank);
+    // a Game Boy Color's power-on takes three frames and more, as it writes the colours and the tiles' palettes too
+    check(sameFrames === pressed.length && told.ran.filter(list => list.includes(vblank)).length >= FRAMES - 4,
+      `the emulator plays the same while it tells of every instruction, and its V-blank's code runs each frame: ${sameFrames} of ${pressed.length} frames, picture and sound`);
+  }
   for (const [presses, list, frames] of [['the recording\'s presses', HELD, FRAMES], [`presses drawn from seed 0x${SEED.toString(16).toUpperCase()}`, drawn(machine), MANY]]) {
     const heldAt = heldIn(list);
     const buttons = Array.from({ length: frames + 1 }, (_, frame) => (frame ? heldAt(frame - 1).reduce((bits, name) => bits | reference.KEY[name], 0) : 0));

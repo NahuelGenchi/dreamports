@@ -1,4 +1,4 @@
-name: Mac and Windows (Game Boy)
+name: Linux, Mac and Windows (Game Boy)
 
 # The Game Boy's and the Game Boy Color's tools on a Mac and on Windows, as a person making a Dreamport on one has
 # them (#1911), on GitHub's own computers: a Mac with Apple's chip, with Homebrew's Node.js and CMake, and Windows with
@@ -7,11 +7,13 @@ name: Mac and Windows (Game Boy)
 # (kit/gbc/c/), which prove has to find the same in every frame, picture and sound, in the computer's own browser, and
 # which the test then compares itself, every pixel and every sample of the sound. And npm run test:gb-twin, the
 # function check: Gambatte's own processor, built by itself, runs a second program's functions, each checked against
-# its twin in C. Nothing from any game's copy is needed, and nothing is sent anywhere.
+# its twin in C. And on all three, with Linux, npm run test:part-tasks -- gb gbc: a made-up game of each console taken
+# from its first day to its last task done, its parts its tasks (#1959), against a stand-in for GitHub. Nothing from any game's copy is
+# needed, and nothing is sent anywhere.
 #
-# It isn't part of Check, where the same test runs on Linux, as a Mac and Windows take longer to start and build. It
-# runs on pull requests that touch what those tools are made of, after they merge, every week, so the newest Mac and
-# Windows GitHub has try it too, and by hand.
+# It isn't part of Check, where the first two tests run on Linux, as a Mac and Windows take longer to start and build,
+# and test:part-tasks builds the site each time it runs ready. It runs on pull requests that touch what those tools are
+# made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and by hand.
 on:
   pull_request:
     paths:
@@ -29,6 +31,12 @@ on:
       - 'tools/test/gb-*/**'
       - 'tools/test/made-up-gb*'
       - 'tools/test/real-gb.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/gb*'
+      - 'tools/test/part-tasks/gb/**'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/played.mjs'
+      - 'tools/lib/proofs.mjs'
   push:
     branches: [main]
     paths:
@@ -46,6 +54,12 @@ on:
       - 'tools/test/gb-*/**'
       - 'tools/test/made-up-gb*'
       - 'tools/test/real-gb.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/gb*'
+      - 'tools/test/part-tasks/gb/**'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/played.mjs'
+      - 'tools/lib/proofs.mjs'
   schedule:
     - cron: '17 7 * * 1'
   workflow_dispatch:
@@ -58,10 +72,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linux:
+    name: Linux (Game Boy)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      # the first two tests run in Check
+      - run: npm run test:part-tasks -- gb gbc
+
   mac:
     name: Mac (Game Boy)
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -85,11 +116,12 @@ jobs:
           npm ci
       - run: npm run test:real-gb
       - run: npm run test:gb-twin
+      - run: npm run test:part-tasks -- gb gbc
 
   windows:
     name: Windows (Game Boy)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,3 +136,4 @@ jobs:
       - run: npm ci
       - run: npm run test:real-gb
       - run: npm run test:gb-twin
+      - run: npm run test:part-tasks -- gb gbc

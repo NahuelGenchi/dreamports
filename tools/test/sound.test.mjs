@@ -104,3 +104,30 @@ test('silence where the original plays differs', () => {
   assert.ok(differs.length >= 1);
   assert.deepEqual(dips, []);
 });
+
+// A console whose sound holds a level from power-on, as a Game Boy's first channel does, which falls away over a few
+// frames: the emulator's first frame, which holds the power-on and is longer than the others, isn't the Dreamport's,
+// whose frame f is heard against the original's f + 1, and its filters start at its first frame
+test('a level held from power-on, the same on both sides, is the same from the first frame on', () => {
+  const FIRST = SAMPLES * 2, at = frame => (frame ? FIRST + (frame - 1) * SAMPLES : 0);
+  const level = Array.from({ length: FRAMES + 1 }, (_, frame) => {
+    const n = frame ? SAMPLES : FIRST, samples = new Int16Array(n * 2);
+    for (let i = 0; i < n; i++) samples[i * 2] = samples[i * 2 + 1] = Math.round(-40 * Math.exp(-(at(frame) + i) / 4000));
+    return samples;
+  });
+  const shifted = (theirs, ours) => {
+    const compare = soundOf({ lengths: Uint32Array.from(theirs, samples => samples.length / 2), read: frame => theirs[frame] });
+    const filter = makeFilter(RATE), heard = [], differs = [], originalOf = Array.from(ours, (_, f) => f + 1);
+    for (let f = 0; f < ours.length; f++) {
+      const energies = new Float64Array(16);
+      filter(ours[f], energies);
+      heard.push({ energies, samples: SAMPLES });
+      if (f > 0 && compare(heard, originalOf, f - 1)) differs.push(f - 1);
+    }
+    return differs;
+  };
+  assert.deepEqual(shifted(level, level.slice(1)), []);
+  // and a tone the Dreamport plays where the original has only the level is found at once
+  const toned = level.slice(1).map((samples, frame) => (frame < 3 ? Int16Array.from(samples, (v, i) => v + Math.round(30 * Math.sin(2 * Math.PI * 500 * (frame * SAMPLES + (i >> 1)) / RATE))) : samples));
+  assert.equal(shifted(level, toned)[0], 0);
+});
