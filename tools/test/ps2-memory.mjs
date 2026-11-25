@@ -14,7 +14,7 @@
 // found differing at once, at its first byte. And `route` searches it, saving the console's state and bringing it back
 // at every step, as Play! does with its own save states, until the flat program's square reaches a place: it gets
 // there at the frame the program does. Like the other checks on the real emulator, it isn't run on every pull
-// request, as the emulator takes minutes to build, and runs on Linux and macOS alone (docs/CONSOLES.md).
+// request, as the emulator takes minutes to build, and runs on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
