@@ -81,6 +81,9 @@ static struct {
 	FILE* entriesFile;
 	FILE* registersFile;
 	int beforeOp, beforeS;   // the instruction before this one, and the stack pointer it started with, or -1
+	// on a console whose code map is of addresses in its memory, as the PlayStation Portable's is, where a place's
+	// count starts, and how far the game's memory reaches from it: a place is an address less `base`
+	uint32_t base, reach;
 } ran = { .beforeOp = -1 };
 
 static void ranCant(const char* path) {
@@ -111,12 +114,12 @@ static int ranOpen(const uint32_t* functions, size_t words, int byPlace) {
 	ran.inFrame = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(uint32_t));
 	ran.inFrameOf = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(struct ranFunction*));
 	for (size_t i = 0; i < ran.functionCount; i++) {
-		uint32_t place = functions[i * 6], size = functions[i * 6 + 1];
+		uint32_t place = functions[i * 6] - ran.base, size = functions[i * 6 + 1];
 		// a Nintendo 64 function's address is where its processor sees the console's memory, at 0x80000000 or at
 		// 0xA0000000, and its place is where that is in the memory, as its emulator says an instruction's
 		if (place >= 0x80000000 && place < 0xC0000000) place &= 0x1FFFFFFF;
 		ran.functions[i].index = functions[i * 6 + 2];
-		if (!byPlace || !size || place + size < place) continue;
+		if (!byPlace || !size || place + size < place || functions[i * 6] < ran.base || (ran.reach && place + size > ran.reach)) continue;
 		ranReach(place + size - 1);
 		ran.starts[place] = (uint32_t) i + 1;
 		memset(ran.marks + place, 1, size);
@@ -343,6 +346,37 @@ static void ranInstructionSm83(uint32_t pc, uint32_t place, uint32_t op, uint32_
 		int when = (int) (op >> 3) & 3, set = (int) (f & (when < 2 ? 0x80 : 0x10)) != 0;
 		ranHappened(now, set == (when & 1) ? TAKEN : NOT_TAKEN);
 	}
+}
+
+/** What PPSSPP calls after its interpreter runs an instruction, with the tools' change to it (ppsspp.patch): where it
+ *  was, its word, and for a conditional branch which way it went, 1 to its target and 2 on, or 0. A function runs when
+ *  its first instruction does, and a place is the address less `base`, in the game's memory, or nowhere. */
+static void ranInstructionMips(uint32_t pc, uint32_t op, uint32_t way) {
+	uint32_t place = pc - ran.base;
+	if (pc < ran.base || place >= ran.reach) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
+	if (!ran.playedFile) return;
+	if (!ran.played[place]) {
+		if (ran.count == ran.room) {
+			ran.room = ran.room ? ran.room * 2 : 1 << 14;
+			ran.list = realloc(ran.list, ran.room * sizeof(struct ranPlayed));
+		}
+		struct ranPlayed* new = &ran.list[ran.count++];
+		new->place = pc;
+		new->code = op;
+		new->processor = 0;
+		new->other = 0;
+		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
+		ran.played[place] = (uint32_t) ran.count;
+	}
+	struct ranPlayed* now = &ran.list[ran.played[place] - 1];
+	ranHappened(now, RAN);
+	if (way) ranHappened(now, way == 1 ? TAKEN : NOT_TAKEN);
 }
 
 /** What Parallel N64 calls before each instruction its cached interpreter runs (parallel-n64.patch): its address, and
