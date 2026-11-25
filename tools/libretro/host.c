@@ -53,8 +53,9 @@
 //
 // A core that draws with OpenGL, as the PlayStation 2's does, gets a graphics context with no window: on Linux from EGL,
 // on Mesa's llvmpipe, which draws on the processor, so a picture doesn't depend on the computer's graphics card, and on
-// a Mac from CGL, on Apple's software renderer, which does the same there. It stops with a sentence on a computer that
-// can't give one, which is Windows so far. The environment's DP_ANY_GRAPHICS lets it
+// a Mac from CGL, on Apple's software renderer, which does the same there, and on Windows from WGL, with a window nobody
+// sees, on the Mesa the environment's DP_OPENGL names the folder of, which the tools fetch (build.mjs), so it's
+// llvmpipe there too. It stops with a sentence on a computer that can't give one. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
 //
@@ -222,7 +223,8 @@ static void* readAll(const char* path, size_t* size) {
 #define GL_RENDERER 0x1F01
 #define GL_PACK_ALIGNMENT 0x0D05
 
-// what finds an OpenGL function by its name on this computer: EGL's on Linux, the OpenGL framework itself on a Mac
+// what finds an OpenGL function by its name on this computer: EGL's on Linux, the OpenGL framework itself on a Mac, and
+// on Windows WGL's, or the OpenGL library's own for the few it has had since OpenGL 1.1
 static void* (*glFunction)(const char*);
 static unsigned framebuffer;
 static char drawnBy[128];   // the renderer's own name for itself
@@ -323,15 +325,84 @@ static const char* makeContext(bool any) {
 	eglMakeCurrent = makeCurrent;
 	return NULL;
 }
+#else
+// Windows': WGL, on Mesa's llvmpipe, as on Linux. Windows' own OpenGL draws on the graphics card, or stops at OpenGL 1.1
+// without one, so the tools fetch Mesa's build for Windows and name its folder in DP_OPENGL. It's loaded before the
+// emulator is, which asks Windows for opengl32.dll by its name and is then given the one already here. A context needs
+// a window's device on Windows, so it gets one nobody sees, and draws into its own framebuffer as everywhere else.
+#define WGL_CONTEXT_MAJOR_VERSION 0x2091
+#define WGL_CONTEXT_MINOR_VERSION 0x2092
+#define WGL_CONTEXT_PROFILE_MASK 0x9126
+#define WGL_CONTEXT_CORE_PROFILE_BIT 0x0001
+#define WGL_CONTEXT_ES2_PROFILE_BIT 0x0004
+static void* glContext;
+static HMODULE openGl;
+static HDC glDevice;
+static BOOL (WINAPI* wglCurrent)(HDC, HGLRC);
+static PROC (WINAPI* wglFunction)(const char*);
+static void contextOnThread(bool here) {
+	wglCurrent(here ? glDevice : NULL, here ? (HGLRC) glContext : NULL);
+}
+static void* libraryFunction(const char* name) {
+	void* found = (void*) wglFunction(name);
+	// some drivers answer a small number for a function they don't have
+	if ((uintptr_t) found <= 3 || found == (void*) -1) found = (void*) GetProcAddress(openGl, name);
+	return found;
+}
+// Mesa's OpenGL, from the folder the tools name, before the emulator loads: nothing when they name none, or when the
+// check of why it mustn't asks for whatever the computer has
+static void loadOpenGl(void) {
+	const char* folder = getenv("DP_OPENGL");
+	if (!folder || getenv("DP_ANY_GRAPHICS")) return;
+	char path[1024];
+	if (snprintf(path, sizeof path, "%s\\opengl32.dll", folder) >= (int) sizeof path) return;
+	SetEnvironmentVariableA("GALLIUM_DRIVER", "llvmpipe");
+	SetEnvironmentVariableA("MESA_SHADER_CACHE_DISABLE", "true");
+	// its own folder is where it finds the rest of itself
+	openGl = LoadLibraryExA(path, NULL, LOAD_WITH_ALTERED_SEARCH_PATH);
+}
+static const char* makeContext(bool any) {
+	if (!openGl && !any) return "which needs Mesa's OpenGL on Windows, and it isn't where the tools keep it: npm run dp -- setup gets it again";
+	if (!openGl) openGl = LoadLibraryA("opengl32.dll");
+	if (!openGl) return "which needs OpenGL, and this computer's wouldn't load";
+	int (WINAPI* choose)(HDC, const PIXELFORMATDESCRIPTOR*) = (void*) GetProcAddress(openGl, "wglChoosePixelFormat");
+	BOOL (WINAPI* setFormat)(HDC, int, const PIXELFORMATDESCRIPTOR*) = (void*) GetProcAddress(openGl, "wglSetPixelFormat");
+	HGLRC (WINAPI* create)(HDC) = (void*) GetProcAddress(openGl, "wglCreateContext");
+	BOOL (WINAPI* destroy)(HGLRC) = (void*) GetProcAddress(openGl, "wglDeleteContext");
+	wglCurrent = (void*) GetProcAddress(openGl, "wglMakeCurrent");
+	wglFunction = (void*) GetProcAddress(openGl, "wglGetProcAddress");
+	if (!choose || !setFormat || !create || !destroy || !wglCurrent || !wglFunction) return "which needs WGL, and this computer's OpenGL has none";
+	HWND window = CreateWindowExA(0, "STATIC", "", WS_POPUP, 0, 0, 16, 16, NULL, NULL, GetModuleHandleA(NULL), NULL);
+	glDevice = window ? GetDC(window) : NULL;
+	if (!glDevice) return "which needs a window nobody sees, and Windows wouldn't make one";
+	PIXELFORMATDESCRIPTOR wanted = { .nSize = sizeof wanted, .nVersion = 1, .dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER, .iPixelType = PFD_TYPE_RGBA, .cColorBits = 32, .cAlphaBits = 8, .cDepthBits = 24, .cStencilBits = 8 };
+	int format = choose(glDevice, &wanted);
+	if (!format || !setFormat(glDevice, format, &wanted)) return "of a kind this computer's OpenGL can't make";
+	// the context of the version asked comes from a function only a context can give, so a first one, then the one kept
+	HGLRC first = create(glDevice);
+	if (!first || !wglCurrent(glDevice, first)) return "and this computer's OpenGL wouldn't make one";
+	HGLRC (WINAPI* createWith)(HDC, HGLRC, const int*) = (void*) wglFunction("wglCreateContextAttribsARB");
+	if (!createWith) return "which needs a context of a version it can ask for, and this computer's OpenGL only makes its oldest";
+	bool es = graphics->contextType == CONTEXT_OPENGLES2 || graphics->contextType == CONTEXT_OPENGLES3 || graphics->contextType == CONTEXT_OPENGLES_VERSION;
+	unsigned askedMajor = graphics->major ? graphics->major : graphics->contextType == CONTEXT_OPENGLES2 ? 2 : 3;
+	// a profile only when one is asked for: OpenGL ES's, or the core one
+	int version[] = { WGL_CONTEXT_MAJOR_VERSION, askedMajor, WGL_CONTEXT_MINOR_VERSION, graphics->minor, 0, 0, 0 };
+	if (es || graphics->contextType == CONTEXT_OPENGL_CORE) {
+		version[4] = WGL_CONTEXT_PROFILE_MASK;
+		version[5] = es ? WGL_CONTEXT_ES2_PROFILE_BIT : WGL_CONTEXT_CORE_PROFILE_BIT;
+	}
+	HGLRC context = createWith(glDevice, NULL, version);
+	wglCurrent(NULL, NULL);
+	destroy(first);
+	if (!context || !wglCurrent(glDevice, context)) return "of a version this computer's OpenGL can't make";
+	glContext = context;
+	glFunction = libraryFunction;
+	return NULL;
+}
 #endif
 
 // why there's no context, or NULL once there is one, current on this thread, with the core's framebuffer bound
 static const char* makeGraphics(unsigned width, unsigned height) {
-#ifdef _WIN32
-	(void) width;
-	(void) height;
-	return "which the tools offer only on Linux and macOS so far";
-#else
 	bool any = getenv("DP_ANY_GRAPHICS") != NULL;
 	const char* why = makeContext(any);
 	if (why) return why;
@@ -367,7 +438,6 @@ static const char* makeGraphics(unsigned width, unsigned height) {
 	if (checkFramebuffer(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) return "and its framebuffer wouldn't be made";
 	readBack = malloc((size_t) width * height * 4);
 	return NULL;
-#endif
 }
 
 // the picture the core drew into the framebuffer, read back, as one it had handed over: 32-bit, its top line first
@@ -402,9 +472,14 @@ static const void* drawnPicture(unsigned width, unsigned height, size_t* pitch) 
 	return readBack;
 }
 
+// what the core prints goes nowhere, unless the environment's DP_SAYS is set, for finding out why a core won't run a copy
 static void quiet(int level, const char* text, ...) {
 	(void) level;
-	(void) text;
+	if (!getenv("DP_SAYS")) return;
+	va_list args;
+	va_start(args, text);
+	vfprintf(err, text, args);
+	va_end(args);
 }
 
 static bool environment(unsigned command, void* data) {
@@ -664,11 +739,184 @@ static void searchSet(void* console, uint32_t address, uint32_t bytes, uint32_t 
 // goes with it. Without it, what the emulator draws there goes nowhere on Linux, and on a Mac the search stopped (#1707)
 static void searchThread(void* console, int plays) {
 	(void) console;
-#ifndef _WIN32
 	if (glContext) contextOnThread(plays);
-#else
-	(void) plays;
-#endif
+}
+
+// what a core that tells of each instruction it's about to run tells: which functions ran in the frame (ran.h), and
+// what the console held as one started (starts.h), each only when it's asked for
+static int pcWatched;
+static void reachedPc(uint32_t pc) {
+	ranReachedPc(pc);
+	startsReached(pc);
+}
+
+// `call`: one function of the original at a time, for the function check of a console whose core can run one, as the
+// PlayStation Portable's does with the tools' patch (ppsspp.patch, dreamports_call). The copy is started and played for
+// one frame, so the console is there, and then the program is told what to do on stdin, in little-endian words, and
+// answers on stdout, as tools/ps1/call.c does for the PlayStation:
+//
+//   first      it says how many bytes of work memory the console has.
+//   'I' image  the memory every call starts from: how many places, then each place's address, how many bytes of the
+//              image it is and how far its mirrors reach from it, then a mask every address is cut to first, then the
+//              bytes of every place in turn. They're written into the console's memory. Answers 'k'.
+//   'C' call   the function's address, how many bytes long it is, how many instructions it may run, where it comes back
+//              to, the 32 registers with hi and lo, the floating-point unit's 32 and its control register, the vector
+//              unit's 128 and its 16 control registers, the changes to the image, a count then each one's address, bytes
+//              and value, and the places that stop a call, a count then each. Answers how it ended, where, the pc, how
+//              many instructions ran and the registers it left, 215 words; a byte for each instruction of the function;
+//              each place it read, the first time, a count then each's address, bytes and value; and each 256 bytes of
+//              the image it wrote, a count then each's number and the bytes it left. Then the memory is as it was.
+//   'Q'        ends it.
+// what a call is given and what it leaves, in words: four of its own, the 32 registers, hi and lo, the floating-point
+// unit's 32 registers and its control register, and the vector unit's 128 registers and its 16 control registers
+#define CALL_HEAD 215
+struct callPlace { uint32_t address, bytes, span, at; };
+static struct callPlace callPlaces[16];
+static uint32_t callPlaceCount, callMask, callImageBytes;
+static uint8_t* callImage;
+static const uint8_t* (*callMemory)(uint32_t, uint32_t, uint32_t);
+static uint32_t* callReads;
+static size_t callReadCount, callReadRoom;
+static uint32_t callSeen[1 << 16];
+static uint8_t* callWritten;
+static uint32_t* callChunks;
+static size_t callChunkCount;
+
+// where an address is in the image, or -1
+static long callAt(uint32_t address) {
+	uint32_t cut = address & callMask;
+	for (uint32_t i = 0; i < callPlaceCount; i++) {
+		struct callPlace* p = &callPlaces[i];
+		if (cut >= p->address && cut - p->address < p->span) return (long) (p->at + (cut - p->address) % p->bytes);
+	}
+	return -1;
+}
+// the console's address of a place in the image
+static uint32_t callAddressOf(uint32_t at) {
+	for (uint32_t i = 0; i < callPlaceCount; i++) if (at >= callPlaces[i].at && at < callPlaces[i].at + callPlaces[i].bytes) return callPlaces[i].address + at - callPlaces[i].at;
+	return 0;
+}
+static void callCopy(uint32_t at, uint32_t bytes, const uint8_t* from) {
+	uint8_t* to = (uint8_t*) callMemory(0, callAddressOf(at), bytes);
+	if (to) memcpy(to, from, bytes);
+}
+
+static void callNoted(uint32_t address, uint32_t bytes, uint32_t how) {
+	for (uint32_t done = 0; done < bytes; done += bytes > 4 ? 4 : bytes) {
+		uint32_t place = address + done, size = bytes > 4 ? 4 : bytes;
+		long at = callAt(place);
+		if (at < 0) continue;
+		if (how & 2) {
+			for (long chunk = at >> 8; chunk <= (at + size - 1) >> 8; chunk++) {
+				if (callWritten[chunk]) continue;
+				callWritten[chunk] = 1;
+				callChunks[callChunkCount++] = (uint32_t) chunk;
+			}
+		}
+		if (!(how & 1)) continue;
+		// the first read of each place, by a table of what was read in this call
+		uint32_t slot = (place * 2654435761u) >> 16;
+		while (callSeen[slot] && callSeen[slot] != place + 1) slot = (slot + 1) & 0xFFFF;
+		if (callSeen[slot]) continue;
+		if (callReadCount >= 0x8000) continue;
+		callSeen[slot] = place + 1;
+		const uint8_t* now = callMemory(0, place, size);
+		uint32_t value = 0;
+		for (uint32_t i = 0; now && i < size; i++) value |= (uint32_t) now[i] << (i * 8);
+		if (callReadCount == callReadRoom) callReads = realloc(callReads, (callReadRoom = callReadRoom ? callReadRoom * 2 : 1024) * 12);
+		callReads[callReadCount * 3] = place;
+		callReads[callReadCount * 3 + 1] = size;
+		callReads[callReadCount * 3 + 2] = value;
+		callReadCount++;
+	}
+}
+
+static bool callWords(uint32_t* words, size_t count) { return fread(words, 4, count, stdin) == count; }
+
+static int serveCalls(void* library) {
+	void (*call)(const uint32_t*, uint32_t*, uint8_t*, void (*)(uint32_t, uint32_t, uint32_t)) = dlsym(library, "dreamports_call");
+	callMemory = dlsym(library, "dreamports_memory");
+	if (!call || !callMemory) {
+		fprintf(err, "The core can't run one function at a time: npm run dp -- setup builds it again, with the tools' change to it.\n");
+		return 2;
+	}
+	uint32_t memorySize = (uint32_t) retro_get_memory_size(MEMORY_SYSTEM_RAM);
+	fwrite(&memorySize, 4, 1, out);
+	fflush(out);
+	uint32_t* in = NULL;
+	size_t inRoom = 0;
+	for (;;) {
+		int command = fgetc(stdin);
+		if (command == EOF || command == 'Q') return 0;
+		if (command == 'I') {
+			uint32_t count;
+			if (!callWords(&count, 1) || count > 16) return 2;
+			callImageBytes = 0;
+			for (uint32_t i = 0; i < count; i++) {
+				uint32_t place[3];
+				if (!callWords(place, 3)) return 2;
+				callPlaces[i] = (struct callPlace) { place[0], place[1], place[2], callImageBytes };
+				callImageBytes += place[1];
+			}
+			callPlaceCount = count;
+			if (!callWords(&callMask, 1)) return 2;
+			callImage = realloc(callImage, callImageBytes);
+			callWritten = realloc(callWritten, (callImageBytes >> 8) + 1);
+			callChunks = realloc(callChunks, ((callImageBytes >> 8) + 1) * 4);
+			memset(callWritten, 0, (callImageBytes >> 8) + 1);
+			if (fread(callImage, 1, callImageBytes, stdin) != callImageBytes) return 2;
+			for (uint32_t i = 0; i < count; i++) callCopy(callPlaces[i].at, callPlaces[i].bytes, callImage + callPlaces[i].at);
+			fputc('k', out);
+			fflush(out);
+			continue;
+		}
+		if (command != 'C') {
+			fprintf(err, "The function check asked for something it doesn't have: %d\n", command);
+			return 2;
+		}
+		uint32_t head[CALL_HEAD], count;
+		if (!callWords(head, CALL_HEAD) || !callWords(&count, 1)) return 2;
+		uint32_t* changes = malloc((count ? count : 1) * 12);
+		if (!callWords(changes, count * 3)) return 2;
+		uint32_t stopCount;
+		if (!callWords(&stopCount, 1)) return 2;
+		if (CALL_HEAD + 1 + stopCount > inRoom) in = realloc(in, (inRoom = CALL_HEAD + 1 + stopCount) * 4);
+		memcpy(in, head, CALL_HEAD * 4);
+		in[CALL_HEAD] = stopCount;
+		if (!callWords(in + CALL_HEAD + 1, stopCount)) return 2;
+		for (uint32_t i = 0; i < count; i++) {
+			uint8_t* to = (uint8_t*) callMemory(0, changes[i * 3], changes[i * 3 + 1]);
+			for (uint32_t b = 0; to && b < changes[i * 3 + 1]; b++) to[b] = (uint8_t) (changes[i * 3 + 2] >> (b * 8));
+		}
+		uint32_t span = head[1], result[CALL_HEAD];
+		uint8_t* ran = calloc(span / 4 + 1, 1);
+		callReadCount = 0;
+		callChunkCount = 0;
+		memset(callSeen, 0, sizeof callSeen);
+		call(in, result, ran, callNoted);
+		fwrite(result, 4, CALL_HEAD, out);
+		fwrite(ran, 1, span / 4, out);
+		uint32_t reads = (uint32_t) callReadCount, chunks = (uint32_t) callChunkCount;
+		fwrite(&reads, 4, 1, out);
+		fwrite(callReads, 12, callReadCount, out);
+		fwrite(&chunks, 4, 1, out);
+		for (size_t i = 0; i < callChunkCount; i++) {
+			uint32_t chunk = callChunks[i], at = chunk << 8;
+			const uint8_t* now = callMemory(0, callAddressOf(at), 256);
+			fwrite(&chunk, 4, 1, out);
+			fwrite(now ? now : callImage + at, 1, 256, out);
+			// and the memory as it was
+			callCopy(at, 256, callImage + at);
+			callWritten[chunk] = 0;
+		}
+		for (uint32_t i = 0; i < count; i++) {
+			long at = callAt(changes[i * 3]);
+			if (at >= 0) callCopy((uint32_t) at, changes[i * 3 + 1], callImage + at);
+		}
+		fflush(out);
+		free(ran);
+		free(changes);
+	}
 }
 
 static int run(int argc, char** argv);
@@ -716,6 +964,9 @@ static int run(int argc, char** argv) {
 	systemFolder = getenv("DP_SYSTEM") ? getenv("DP_SYSTEM") : ".";
 	saveFolder = getenv("DP_SAVE_FOLDER") ? getenv("DP_SAVE_FOLDER") : ".";
 
+#ifdef _WIN32
+	loadOpenGl();
+#endif
 	void* library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
 	if (!library) {
 		fprintf(err, "The core wouldn't load.\n");
@@ -757,6 +1008,12 @@ static int run(int argc, char** argv) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
 		ps2Watch watch = dlsym(library, "dreamports_watch");
+		// a PlayStation Portable's, whose code map is of addresses in the console's memory for games, from 0x08800000
+		void (*tellMips)(void (*)(uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_mips");
+		if (tellMips) {
+			ran.base = 0x08800000;
+			ran.reach = 0x03800000;
+		}
 		// a core that says itself which of the functions ran in a frame, as the Nintendo DS's does, whose code is all in
 		// memory, at addresses too far apart for a table of places: it's given them, and asked after each frame
 		void (*coreFunctions)(const uint32_t*, size_t) = dlsym(library, "dreamports_functions");
@@ -764,15 +1021,23 @@ static int run(int argc, char** argv) {
 			coreFunctions(functions, functionsSize / 24);
 			coreRan = dlsym(library, "dreamports_ran_in_frame");
 		}
+		// a core that tells only where the processor is about to run, as the PlayStation's does: its functions by their
+		// places in the console's memory, whichever of its addresses a code map names them at
+		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
+		if (watchPc && !watch && !coreRan) for (size_t i = 0; i + 6 <= functionsSize / 4; i += 6) functions[i] = ranPlaystationPlace(functions[i]);
 		if (coreRan) ranOpen(NULL, 0, 0);
 		else if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
 			void (*tellSm83)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_sm83");
+			void (*tellAt)(void (*)(uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_at");
 			if (watch) ps2Open(watch, functions);
+			else if (tellMips) tellMips(ranInstructionMips);
 			else if (tell) tell(ranInstruction);
 			else if (tell65816) tell65816(ranInstruction65816);
 			else if (tellSm83) tellSm83(ranInstructionSm83);
+			else if (tellAt) tellAt(ranAt);
+			else if (watchPc) pcWatched |= 1;
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;
@@ -828,6 +1093,21 @@ static int run(int argc, char** argv) {
 		return exploreRoute(machine, NULL, argv[4], 4);
 	}
 
+	// the console started and played for one frame, and then its functions called one at a time
+	if (calls) {
+		retro_run();
+		int code = serveCalls(library);
+		// it ends here as a recording does below, with what it said written: what a core tidies away as a program ends
+		// stops PPSSPP's with an error, a thread of its own still running, which would hide how it ended and what it said
+		fflush(out);
+		fflush(err);
+		fflush(NULL);
+#ifdef _WIN32
+		TerminateProcess(GetCurrentProcess(), (UINT) code);
+#endif
+		_Exit(code);
+	}
+
 	if (live) {
 		uint32_t buttons;
 		while (fread(&buttons, 4, 1, stdin) == 1) {
@@ -878,9 +1158,10 @@ static int run(int argc, char** argv) {
 	heldOpen(memories, dlsym(library, "dreamports_memory_card"));
 	if (startsOpen(dlsym(library, "dreamports_registers"), memories, dlsym(library, "dreamports_starts_layout"))) {
 		// a core that tells of each instruction it's about to run, as the PlayStation's does with the tools' patch
-		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
-		if (watchPc) watchPc(startsReached);
+		if (dlsym(library, "dreamports_watch_pc")) pcWatched |= 2;
 	}
+	// one of the two, or both, are told of each instruction such a core is about to run
+	if (pcWatched) ((void (*)(void (*)(uint32_t))) dlsym(library, "dreamports_watch_pc"))(pcWatched == 1 ? ranReachedPc : pcWatched == 2 ? startsReached : reachedPc);
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
@@ -901,6 +1182,11 @@ static int run(int argc, char** argv) {
 			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
 		}
 		noteSize(frame);
+		// a core that starts its console in its first frame, as PPSSPP does, has its memory only then
+		if (!memory || !memorySize) {
+			memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+		}
 		for (; nextRead < readCount && reads[nextRead * 3] == (uint32_t) frame; nextRead++) {
 			uint32_t address = reads[nextRead * 3 + 1] - memoryBase, bytes = reads[nextRead * 3 + 2], value = 0;
 			if (!memory || address + bytes > memorySize) {
@@ -958,5 +1244,12 @@ static int run(int argc, char** argv) {
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(err, "]}\n");
 	fflush(err);
-	return 0;
+	// everything is written, so it ends here, without what a core does as a program ends: PPSSPP's threads are still
+	// running then, and what it tidies away under them stopped the program with an error. Windows runs a library's
+	// tidying even as a program ends at once, so there the program is stopped from outside, by itself
+	fflush(NULL);
+#ifdef _WIN32
+	TerminateProcess(GetCurrentProcess(), 0);
+#endif
+	_Exit(0);
 }
