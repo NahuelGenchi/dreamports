@@ -91,6 +91,11 @@ async function main() {
   const from = LOOKED_AT[0] + 8, apart = booted.hashes.indexOf(first.hashes[from]) - from;
   const same = Math.abs(apart) <= 4 && first.hashes.slice(from, FRAMES - 8).every((hash, n) => hash === booted.hashes[from + apart + n]);
   check(same, `booted from its disc it shows the same pictures, ${Math.abs(apart)} ${Math.abs(apart) === 1 ? 'frame' : 'frames'} ${apart < 0 ? 'sooner' : 'later'}`);
+  // and gives the same sound, each sample in the frame as far apart, as the console starts the program at the same
+  // moment of a field either way: a program given alone has no region of its own, and Dolphin would take the
+  // computer's, which would start it at another moment on another computer (libretro/dolphin.patch)
+  const heardSame = apart !== 0 && Array.from({ length: FRAMES - 8 - from }, (_, n) => from + n).every(frame => Buffer.from(first.sound.read(frame)).equals(Buffer.from(booted.sound.read(frame + apart))));
+  check(heardSame, `and gives the same sound, each sample in the frame ${Math.abs(apart)} ${Math.abs(apart) === 1 ? 'frame' : 'frames'} ${apart < 0 ? 'sooner' : 'later'}`);
 
   // every frame's picture and sound, for the other computers to be held to
   const write = process.argv.indexOf('--write');
