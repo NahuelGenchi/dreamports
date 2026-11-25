@@ -62,7 +62,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'gamecube'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds', 'gamecube'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -309,6 +309,9 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
     return code && (f => (functionBytes(code, f) ? markOf(functionBytes(code, f)) : null));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
+  // a Nintendo DS game's, from whichever program or overlay of the cartridge the function is in, or nothing known of
+  // one the cartridge doesn't have there
+  if ((codeMap?.console ?? original.console) === 'nds') return f => (bytes => (bytes ? markOf(bytes) : null))(cartridge.code(f));
   // a Super Nintendo function's, with the mode it starts in and the address its code runs at, as the top of this
   // file says
   if ((codeMap?.console ?? original.console) === 'snes') {

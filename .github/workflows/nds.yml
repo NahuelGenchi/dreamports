@@ -5,7 +5,10 @@ name: Linux, Mac and Windows (Nintendo DS)
 # and on Windows with only git and Node.js, where the tools get their own compiler and CMake. Each builds melonDS from
 # its makers' source at the commit tools/consoles.mjs fixes, with the tools' own front, and runs npm run test:real-nds:
 # a made-up program's two screens, its buttons, its touches and its sound, the same on all three by a hash the test
-# keeps (docs/CONSOLES.md#the-nintendo-ds). Nothing from any game's copy is needed, and nothing is sent anywhere.
+# keeps (docs/CONSOLES.md#the-nintendo-ds), and npm run test:nds-twin, the function check, with the original in melonDS's own
+# processors and a made-up cartridge's twins in C, and npm run test:nds-flow, a made-up game taken through the new way of
+# making one, a part at a time, from proofs --start --parts to a part done, with a stand-in for GitHub, and
+# npm run test:nds-kit, the kit in C's pieces proven against melonDS with programs of the project's own. Nothing from any game's copy is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as the emulator takes minutes to build. It runs on pull requests that touch what those tools
 # are made of, after they merge, every week, so the newest systems GitHub has try it too, and by hand.
@@ -29,6 +32,19 @@ on:
       - 'tools/nds/**'
       - 'tools/test/made-up-nds*'
       - 'tools/test/real-nds.mjs'
+      - 'tools/test/nds-twin.mjs'
+      - 'tools/test/nds-twin/**'
+      - 'tools/test/nds-flow.mjs'
+      - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
+      - 'tools/*.mjs'
+      - 'src/lib/systems.ts'
+      - 'public/systems/nds.svg'
+      - 'tools/twin.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/gba/twin.mjs'
+      - 'tools/gba/match.mjs'
   push:
     branches: [main]
     paths:
@@ -49,6 +65,19 @@ on:
       - 'tools/nds/**'
       - 'tools/test/made-up-nds*'
       - 'tools/test/real-nds.mjs'
+      - 'tools/test/nds-twin.mjs'
+      - 'tools/test/nds-twin/**'
+      - 'tools/test/nds-flow.mjs'
+      - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
+      - 'tools/*.mjs'
+      - 'src/lib/systems.ts'
+      - 'public/systems/nds.svg'
+      - 'tools/twin.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/gba/twin.mjs'
+      - 'tools/gba/match.mjs'
   schedule:
     - cron: '23 7 * * 1'
   workflow_dispatch:
@@ -64,7 +93,7 @@ jobs:
   linux:
     name: Linux (Nintendo DS)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -76,11 +105,14 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
 
   mac:
     name: Mac (Nintendo DS)
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,11 +134,14 @@ jobs:
           node --version
           npm ci
       - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
 
   windows:
     name: Windows (Nintendo DS)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -120,3 +155,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
