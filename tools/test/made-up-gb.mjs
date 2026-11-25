@@ -293,3 +293,44 @@ export function madeUpGb({ colour = false } = {}) {
   rom[0x14F] = sum & 255;
   return { rom, sha1: createHash('sha1').update(rom).digest('hex'), at: { ...names }, times };
 }
+
+/** A second program, for the tools that read a game's code and never run it (gb-functions.test.mjs): a 64 KB copy of
+ *  four banks, with code in each, a bank switched in by a write and by a routine, a table a JP (HL) jumps through, and
+ *  a list of addresses after an RST that a routine reads. Its bytes are written out, with nothing from any game. */
+export function madeUpBanks() {
+  const BANK = 0x4000, rom = Buffer.alloc(4 * BANK, 0xFF);
+  const put = (address, bytes, bank = 0) => Buffer.from(bytes).copy(rom, bank ? bank * BANK + (address & 0x3FFF) : address);
+  // RST $08: reads the list after it, POP HL, twice A added to it, the address there into HL, and JP (HL)
+  put(0x0008, [0xE1, 0x87, 0x85, 0x6F, 0x30, 0x01, 0x24, 0x2A, 0x66, 0x6F, 0xE9]);
+  // the V-blank interrupt jumps to its code, and the screen's other interrupt only returns
+  put(0x0040, [0xC3, ...word(0x0240)]);
+  put(0x0048, [0xD9]);
+  put(0x0100, [0x00, 0xC3, ...word(0x0150)]);
+  // where the game starts: bank 1 by a write, a call there, bank 2 by the routine at $0200, a call there, bank 3 by a
+  // write, a call there, then a jump through the table at $0300
+  put(0x0150, [0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(0x4000), 0x3E, 0x02, 0xCD, ...word(0x0200), 0xCD, ...word(0x4010),
+    0x3E, 0x03, 0xEA, ...word(0x2000), 0xCD, ...word(0x4000),
+    0x21, ...word(0x0300), 0xFA, ...word(0xC000), 0x87, 0x5F, 0x16, 0x00, 0x19, 0x2A, 0x66, 0x6F, 0xE9]);
+  // switches to the bank in A
+  put(0x0200, [0xEA, ...word(0x2100), 0xC9]);
+  // the V-blank's code: an RST with its list after it
+  put(0x0240, [0xCF, ...word(0x0340), ...word(0x0350)]);
+  put(0x0300, [...word(0x0320), ...word(0x0330)]);
+  // a call to $4020 with no bank known: only bank 3 has code there
+  put(0x0320, [0xCD, ...word(0x4020), 0xC9]);
+  for (const address of [0x0330, 0x0340, 0x0350]) put(address, [0xC9]);
+  // code nothing leads to
+  put(0x0360, [0xFA, ...word(0xC000), 0x3C, 0xC9]);
+  // bank 1: a call inside its own bank
+  put(0x4000, [0xCD, ...word(0x4008), 0xC9], 1);
+  put(0x4008, [0xC9], 1);
+  put(0x4010, [0x06, 0x01, 0xC9], 2);
+  put(0x4000, [0xC9], 3);
+  put(0x4020, [0x3E, 0x03, 0xC9], 3);
+  rom.fill(0, 0x104, 0x150);
+  rom.write('MADEUP BANKS', 0x134, 'ascii');
+  rom[0x147] = 0x19;
+  rom[0x148] = 0x01;
+  rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
+  return rom;
+}

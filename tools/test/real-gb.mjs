@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { consoleOf } from '../consoles.mjs';
+import { readCodeMap } from '../lib/proof-files.mjs';
 import { libretroReference } from '../libretro/reference.mjs';
 import { RAM, madeUpGb, numbersFor } from './made-up-gb.mjs';
 
@@ -87,7 +88,7 @@ function playInC(wasm, rom, machine, frames, heldAt) {
 async function oneConsole(id) {
   const colour = id === 'gbc', machine = consoleOf(id), game = gameOf(id), inC = `${game}/c`;
   console.log(`A small program on the ${machine.name}'s real emulator, and its Dreamport in C on the kit`);
-  const { rom, sha1 } = madeUpGb({ colour });
+  const { rom, sha1, at } = madeUpGb({ colour });
   const copy = join(WORK, `program${machine.files[0]}`);
   writeFileSync(copy, rom);
   // it reads its buttons as its V-blank starts, which is where the emulator's frame starts, as most of the console's games do
@@ -96,6 +97,11 @@ async function oneConsole(id) {
   writeFileSync(join(proofFolder(game), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
   check(run.status === 0 && run.out.includes(game), `rom knows the copy by its header: ${run.out.trim().split('\n')[1]?.trim()}`);
+
+  run = dp('codemap', game);
+  const mapped = (readCodeMap(game)?.functions ?? []).map(f => f.address);
+  check(run.status === 0 && [0x40, 0x48, 0x50, 0x100, at.vblank, at.stat, at.timer, at.copy, at.fill].every(place => mapped.includes(place)) && mapped.length === 9,
+    `codemap finds the program's functions, from where the console starts it and from its three interrupts: ${run.out.trim().split('\n').at(-1)}`);
 
   const files = { ...startingFiles(game, original), 'entry.md': startingEntry(game, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) };
   for (const [file, text] of Object.entries({ ...files, ...Object.fromEntries(Object.entries(startingFiles(game, original, { language: 'c' })).map(([file, text]) => [`c/${file}`, text])) })) {
