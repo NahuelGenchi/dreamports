@@ -209,3 +209,4 @@ if (failures.length) {
 }
 console.log('\nAll passed.');
 process.exit(0);
+// A throwaway lower piece for the Stack demonstration (#2034), closed without merging.
