@@ -65,8 +65,10 @@ export function gameBoy({ colour = false } = {}) {
 
     /** The version's code, by its path in the version's folder, with the twins of `twins` written, by name, `wrong` for
      *  the one twin written wrong, and `late` for the game's step a frame late. A function that isn't a twin yet is
-     *  there as C with no contract, as the Game Boy's kit runs only the game's C, and twin proves only a function with
-     *  one. */
+     *  there as C with no contract, so twin gives it no proof. It isn't left out as a stop, as the NES's side does
+     *  (docs/STANDARD.md#stops): a twin proven by the same memory runs the C of each function it calls, so vblank, in
+     *  the first part, could never be proven while paint, which it calls from the 50th picture on and which is the
+     *  second part's, did nothing. */
     source({ twins, wrong = false, late = false }) {
       // its first day: the game the tools start it with, which runs nothing of the program
       if (!twins.length) return {};
