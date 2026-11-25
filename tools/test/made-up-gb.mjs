@@ -334,3 +334,60 @@ export function madeUpBanks() {
   rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
   return rom;
 }
+
+/** A third program, for the function check (../gbc/twin.mjs, gb-twin.mjs): a 64 KB copy of four banks with a few small
+ *  functions, each written out here with what it does, and the twins of them in gb-twin/game.c. `TWIN` says where
+ *  each is and what its tables hold. */
+export const TWIN = {
+  // adds A to the 16-bit number at $C020 and $C021, counts the call at $C022, and leaves the carry of the low byte's sum
+  add: 0x0500,
+  // the byte at $0600 + 4 * B of a table, to $C030 and in A: the processor's place in the table is 8 bits, so it wraps round at 256
+  pick: 0x0520,
+  // reads the hardware's $FF44 to $C031, writes A to $FF47, and leaves C one higher
+  send: 0x0540,
+  // the byte at $5000 + E of the bank that's switched in, to $C033
+  look: 0x0560,
+  // switches to the bank in A, and keeps its number at $C010
+  switchTo: 0x0580,
+  // zeros B bytes from HL, 256 for 0, and leaves HL after them
+  clear: 0x05A0,
+  // in bank 1: the byte at $5000 + D of its own bank, to $C032
+  own: 0x4100,
+  // the game keeps the bank it switched in at $C010
+  bank: 0xC010,
+  /** The byte at `at` of the table every bank has at $5000, and of the table at $0600. */
+  inBank: (bank, at) => (at * 7 + bank * 31 + 5) & 0xFF,
+  inTable: at => (at * 13 + 3) & 0xFF,
+};
+export function madeUpTwins() {
+  const BANK = 0x4000, rom = Buffer.alloc(4 * BANK, 0xFF);
+  const put = (address, bytes, bank = 0) => Buffer.from(bytes).copy(rom, bank ? bank * BANK + (address & 0x3FFF) : address);
+  put(0x0100, [0x00, 0xC3, ...word(0x0150)]);
+  // where the game starts: a call of each, bank 1 switched in for the one that's there, and then nothing for ever
+  put(0x0150, [0xCD, ...word(TWIN.add), 0xCD, ...word(TWIN.pick), 0xCD, ...word(TWIN.send), 0xCD, ...word(TWIN.look), 0xCD, ...word(TWIN.switchTo), 0xCD, ...word(TWIN.clear),
+    0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(TWIN.own), 0x18, 0xFE]);
+  // LD HL,$C020, ADD A,(HL), LD (HL+),A, JR NC past the next, INC (HL), LD A,($C022), INC A, LD ($C022),A, RET
+  put(TWIN.add, [0x21, ...word(0xC020), 0x86, 0x22, 0x30, 0x01, 0x34, 0xFA, ...word(0xC022), 0x3C, 0xEA, ...word(0xC022), 0xC9]);
+  // LD A,B, ADD A,A, ADD A,A, LD L,A, LD H,$06, LD A,(HL), LD ($C030),A, RET
+  put(TWIN.pick, [0x78, 0x87, 0x87, 0x6F, 0x26, 0x06, 0x7E, 0xEA, ...word(0xC030), 0xC9]);
+  // PUSH AF, LDH A,($44), LD ($C031),A, POP AF, LDH ($47),A, INC C, RET
+  put(TWIN.send, [0xF5, 0xF0, 0x44, 0xEA, ...word(0xC031), 0xF1, 0xE0, 0x47, 0x0C, 0xC9]);
+  // LD H,$50, LD L,E, LD A,(HL), LD ($C033),A, RET
+  put(TWIN.look, [0x26, 0x50, 0x6B, 0x7E, 0xEA, ...word(0xC033), 0xC9]);
+  // LD ($C010),A, LD ($2000),A, RET
+  put(TWIN.switchTo, [0xEA, ...word(TWIN.bank), 0xEA, ...word(0x2000), 0xC9]);
+  // XOR A, LD (HL+),A, DEC B, JR NZ back to the store, RET
+  put(TWIN.clear, [0xAF, 0x22, 0x05, 0x20, 0xFC, 0xC9]);
+  // LD H,$50, LD L,D, LD A,(HL), LD ($C032),A, RET
+  put(TWIN.own, [0x26, 0x50, 0x6A, 0x7E, 0xEA, ...word(0xC032), 0xC9], 1);
+  put(0x0600, Array.from({ length: 0x100 }, (_, at) => TWIN.inTable(at)));
+  // each bank's table at $5000: the first bank's is what the console sees there when the chip switches bank 0 in
+  for (let bank = 0; bank < 4; bank++) Buffer.from(Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at))).copy(rom, bank * BANK + 0x1000);
+  rom.fill(0, 0x104, 0x150);
+  rom.write('MADEUP TWINS', 0x134, 'ascii');
+  rom[0x147] = 0x19;
+  rom[0x148] = 0x01;
+  rom[0x14A] = 0x01;
+  rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
+  return rom;
+}

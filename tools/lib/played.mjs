@@ -47,6 +47,8 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
+import { findFunctions as findGbFunctions } from '../gbc/functions.mjs';
+import { decode as decodeSm83 } from '../gbc/sm83.mjs';
 import { instructionsIn as snesInstructionsIn } from '../snes/functions.mjs';
 import { SECTOR, loadedCopy, mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
@@ -218,6 +220,30 @@ export function nesInstructionsOf(codeMap, copy) {
     for (let i = low; i < at.length && at[i] < f.address + f.size; i++) {
       instructions.add(at[i] - f.address);
       if (INSTRUCTIONS[prg[at[i]]].mode === 'rel') branches.add(at[i] - f.address);
+    }
+    return { instructions, branches };
+  };
+}
+
+/**
+ * The same for a Game Boy or Game Boy Color game: what its function finder walked, with each jump, call and return
+ * that has a condition as a branch, which goes one way or the other. `copy` is the whole copy, which is its program.
+ */
+export function gbInstructionsOf(codeMap, copy) {
+  const walked = new Map();
+  findGbFunctions(copy, codeMap.functions.map(({ address, size }) => ({ address, size })), new Set(), { walked });
+  const at = [...walked.keys()].sort((a, b) => a - b);
+  return f => {
+    const instructions = new Set(), branches = new Set();
+    let low = 0, high = at.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (at[middle] < f.address) low = middle + 1;
+      else high = middle;
+    }
+    for (let i = low; i < at.length && at[i] < f.address + f.size; i++) {
+      instructions.add(at[i] - f.address);
+      if (decodeSm83(copy, at[i])?.when !== undefined) branches.add(at[i] - f.address);
     }
     return { instructions, branches };
   };
