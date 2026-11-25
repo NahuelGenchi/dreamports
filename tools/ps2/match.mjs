@@ -29,6 +29,7 @@ import { decode } from './ee.mjs';
 import { ps2Program } from './functions.mjs';
 import { ps2Resolve } from './read.mjs';
 import { gpOf } from './twin.mjs';
+import { keepProgram } from './original-program.mjs';
 
 // a flag that says how the code is made, which is all a game's proof/original.json may give the compiler: none that
 // names a file
@@ -425,8 +426,11 @@ export function loadedOf(elf) {
 // what match needs to know of the PlayStation 2, as the PlayStation's has it (../ps1/match.mjs)
 const PLAYSTATION_2 = {
   console: 'ps2', place: 'the PlayStation 2', compiler: 'the original\'s compiler', label: LABEL, labelExample: 'D_003A1234', readCompiler, wayAt, wayText, matchFile,
-  programOf: async path => {
+  // the program kept on this computer as it's read, as the function check keeps it, so a proof match finds has the
+  // original's side to be of (../lib/proofs.mjs, original-program.mjs)
+  programOf: async (path, sha1) => {
     const elf = await ps2Program(path);
+    if (sha1) keepProgram(sha1, elf);
     return { program: loadedOf(elf), gp: gpOf(elf) ?? 0 };
   },
   resolve: (game, codeMap, what) => {
