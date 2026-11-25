@@ -116,6 +116,8 @@ Dolphin runs it, in its libretro front, built from [its makers' source](https://
 
 **Buttons.** Each trigger is two buttons in a recording: `L` is one pressed to its click, and `L_ANALOG` one pressed short of it. A recording can't hold how far a stick or a trigger is pushed yet, as on the PlayStation 2.
 
+**The same on every computer.** Dolphin takes two things from the computer it runs on, and the tools' change fixes both. A program given alone, or a disc with no region of its own, would run in the region of the computer's country, on Windows, or of Switzerland, where Linux and macOS give it none, and the region sets the video interface's rate as the console starts, so the same program started a frame at another moment on Windows than on Linux and a Mac, and its sound fell 8 samples into another frame now and then. It runs as an American console's now, as a disc for one does. And the console's clock would follow the computer's, so a game that reads the time would play differently each run: it starts at the first of January 2002 and moves with the emulated time, as it does for one of Dolphin's movies. `npm run test:real-gamecube` finds the program alone and its disc giving the same sound, each sample a frame apart, on one computer, and the GameCube workflow finds every frame's picture and sound the same on all three.
+
 **Ending.** On Windows Dolphin's own ending fails once a run's work is done, so the tools' program ends the moment its files are written, without it. Nothing of a run is kept past that anyway.
 
 **Building.** It builds with CMake and a C++ compiler, GCC, Apple's Clang, or on Windows the compiler the tools get for themselves, in about an hour, as it's far larger than the others.
