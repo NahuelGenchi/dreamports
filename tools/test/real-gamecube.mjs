@@ -116,6 +116,11 @@ async function main() {
   // each frame of it shows what the program alone shows a frame later, field and words and all
   const same = booted.hashes.slice(1, FRAMES - 1).every((hash, n) => hash === first.hashes[n + 2]);
   check(same, 'booted from its disc it shows the same pictures, a frame sooner, the same field and the same words in each');
+  // and gives the same sound, each sample a frame sooner, as the console starts the program at the same moment of a
+  // field either way: a program given alone has no region of its own, and Dolphin would take the computer's, which
+  // would start it at another moment on another computer (libretro/dolphin.patch)
+  const heardSame = Array.from({ length: FRAMES - 2 }, (_, n) => n + 1).every(frame => Buffer.from(booted.sound.read(frame)).equals(Buffer.from(first.sound.read(frame + 1))));
+  check(heardSame, 'and gives the same sound, each sample a frame sooner');
 
   // every frame's picture and sound, for the other computers to be held to
   const write = process.argv.indexOf('--write');
