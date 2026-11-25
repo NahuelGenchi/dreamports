@@ -392,14 +392,17 @@ export function madeUpTwins() {
   return rom;
 }
 
-/** A fourth program, for the test of a game whose tasks are its parts (gb-parts.mjs): it turns the screen off, clears
- *  the background, makes it dark and turns the screen on, and then only waits for the V-blank interrupt, whose code
- *  counts the pictures and, from the PARTS.from'th on, gives the background's shades from the count, or on a Game Boy
- *  Color, where the shades are its colours, the background's first colour. So it has two
- *  parts, the first with no shades given and the second with them, and the second runs a function the first never
- *  does. `PARTS` says where each function is; its twins are in gb-parts/twins.c. */
-export const PARTS = { atVblank: 0x0040, start: 0x0100, vblank: 0x0200, tick: 0x0220, paint: 0x0240, count: 0xC000, from: 50, shades: 0x03, dark: 0x0842 };
+/** A fourth program, for the test of a game whose tasks are its parts (part-tasks/gb.mjs): it turns the screen off,
+ *  fills the background with a tile striped in its first two shades, or on a Game Boy Color colours, and turns the
+ *  screen on, and then only waits for the V-blank interrupt, whose code counts the pictures and scrolls the background
+ *  as far, and from the PARTS.from'th picture on gives the background's shades from the count, or on a Game Boy Color
+ *  its first colour. So it has two parts, the first with the stripes scrolling and the second with the shades given
+ *  too, which the first never runs the function for. When the count comes round to 0, after 256 pictures, a fifth
+ *  function gives the first shades back, which no part's 40 frames reach. `PARTS` says where each function is; their
+ *  twins are in part-tasks/gb/twins.c. */
+export const PARTS = { atVblank: 0x0040, start: 0x0100, vblank: 0x0200, tick: 0x0220, paint: 0x0240, secret: 0x0260, count: 0xC000, from: 50, shades: 0x03, dark: 0x0842, light: 0x5EF7, stripe: 0xF0 };
 const jrc = near => ({ near, b: [0x38], t: 8 });
+const callz = to => ({ to, b: [0xCC], t: 12 });
 const RLCA = op(4, 0x07), INC_AT_HL = op(12, 0x34);
 export function madeUpParts({ colour = false } = {}) {
   const rom = Buffer.alloc(0x8000, 0xFF), times = {};
@@ -414,10 +417,12 @@ export function madeUpParts({ colour = false } = {}) {
     DI, ldw('sp', 0xE000), xor('a'), mark('screenOff', HIGH), sth(IO.lcdc),
     ldw('hl', 0x9800), ldw('bc', 0x0400),
     here('clear'), turns(0x400, [xor('a'), STI, decw('bc'), mv('a', 'b'), or('c'), jrnz('clear')]),
-    ldw('hl', 0x8000), ld('b', 16),
-    here('tile'), turns(16, [xor('a'), STI, dec('b'), jrnz('tile')]),
+    // the first tile: each row's first byte the stripe, its second 0, so its left half is the second shade
+    ldw('hl', 0x8000), ld('b', 8),
+    here('tile'), turns(8, [ld('a', PARTS.stripe), STI, xor('a'), STI, dec('b'), jrnz('tile')]),
     colour
-      ? [ld('a', 0x80), mark('bcps', HIGH), sth(IO.bcps), ld('a', PARTS.dark & 255), mark('low', HIGH), sth(IO.bcpd), ld('a', PARTS.dark >> 8), mark('high', HIGH), sth(IO.bcpd)]
+      ? [ld('a', 0x80), mark('bcps', HIGH), sth(IO.bcps), ld('a', PARTS.dark & 255), mark('low', HIGH), sth(IO.bcpd), ld('a', PARTS.dark >> 8), mark('high', HIGH), sth(IO.bcpd),
+        ld('a', PARTS.light & 255), mark('low1', HIGH), sth(IO.bcpd), ld('a', PARTS.light >> 8), mark('high1', HIGH), sth(IO.bcpd)]
       : [ld('a', PARTS.shades), mark('bgp', HIGH), sth(IO.bgp)],
     xor('a'), sta(PARTS.count), sth(IO.if),
     ld('a', 0x01), mark('ie', HIGH), sth(IO.ie),
@@ -425,11 +430,14 @@ export function madeUpParts({ colour = false } = {}) {
     EI, mark('waits'),
     here('wait'), HALT, jr('wait'),
   ]);
-  lay(PARTS.vblank, [call(PARTS.tick), lda(PARTS.count), cp(PARTS.from), jrc('skip'), call(PARTS.paint), here('skip'), RETI]);
-  lay(PARTS.tick, [ldw('hl', PARTS.count), INC_AT_HL, RET]);
+  lay(PARTS.vblank, [call(PARTS.tick), lda(PARTS.count), cp(PARTS.from), jrc('skip'), call(PARTS.paint), here('skip'), lda(PARTS.count), or('a'), callz(PARTS.secret), RETI]);
+  lay(PARTS.tick, [ldw('hl', PARTS.count), INC_AT_HL, LD_HL, sth(IO.scx), RET]);
   lay(PARTS.paint, colour
     ? [ld('a', 0x80), sth(IO.bcps), lda(PARTS.count), sth(IO.bcpd), sth(IO.bcpd), RET]
     : [lda(PARTS.count), RLCA, RLCA, sth(IO.bgp), RET]);
+  lay(PARTS.secret, colour
+    ? [ld('a', 0x80), sth(IO.bcps), ld('a', PARTS.dark & 255), sth(IO.bcpd), ld('a', PARTS.dark >> 8), sth(IO.bcpd), RET]
+    : [ld('a', PARTS.shades), sth(IO.bgp), RET]);
   rom.fill(0, 0x104, 0x150);
   rom.write(colour ? 'PARTS GBC' : 'MADEUP PARTS', 0x134, 'ascii');
   rom[0x143] = colour ? 0x80 : 0x00;
@@ -437,6 +445,6 @@ export function madeUpParts({ colour = false } = {}) {
   rom[0x148] = 0x00;
   rom[0x14A] = 0x01;
   rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
-  const numbers = { ...Object.fromEntries(Object.entries(times).map(([name, cycles]) => [`T_${name}`, cycles])), FROM: PARTS.from, START_SHADES: PARTS.shades, DARK: PARTS.dark, COUNT: PARTS.count, COLOUR: colour ? 1 : 0 };
+  const numbers = { ...Object.fromEntries(Object.entries(times).map(([name, cycles]) => [`T_${name}`, cycles])), FROM: PARTS.from, START_SHADES: PARTS.shades, DARK: PARTS.dark, LIGHT: PARTS.light, STRIPE: PARTS.stripe, COUNT: PARTS.count, COLOUR: colour ? 1 : 0 };
   return { rom, sha1: createHash('sha1').update(rom).digest('hex'), times, NUMBERS: Object.entries(numbers).map(([name, value]) => `#define ${name} ${value}`).join('\n') };
 }

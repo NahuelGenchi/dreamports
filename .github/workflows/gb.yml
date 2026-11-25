@@ -7,12 +7,12 @@ name: Linux, Mac and Windows (Game Boy)
 # (kit/gbc/c/), which prove has to find the same in every frame, picture and sound, in the computer's own browser, and
 # which the test then compares itself, every pixel and every sample of the sound. And npm run test:gb-twin, the
 # function check: Gambatte's own processor, built by itself, runs a second program's functions, each checked against
-# its twin in C. And on all three, with Linux, npm run test:gb-parts: a made-up game of each console taken from its
-# first day to a part done, its parts its tasks (#1959), against a stand-in for GitHub. Nothing from any game's copy is
+# its twin in C. And on all three, with Linux, npm run test:part-tasks -- gb gbc: a made-up game of each console taken
+# from its first day to its last task done, its parts its tasks (#1959), against a stand-in for GitHub. Nothing from any game's copy is
 # needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, where the first two tests run on Linux, as a Mac and Windows take longer to start and build,
-# and test:gb-parts builds the site each time it runs ready. It runs on pull requests that touch what those tools are
+# and test:part-tasks builds the site each time it runs ready. It runs on pull requests that touch what those tools are
 # made of, after they merge, every week, so the newest Mac and Windows GitHub has try it too, and by hand.
 on:
   pull_request:
@@ -31,7 +31,9 @@ on:
       - 'tools/test/gb-*/**'
       - 'tools/test/made-up-gb*'
       - 'tools/test/real-gb.mjs'
-      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/gb*'
+      - 'tools/test/part-tasks/gb/**'
       - 'tools/lib/part-functions.mjs'
       - 'tools/lib/played.mjs'
       - 'tools/lib/proofs.mjs'
@@ -52,7 +54,9 @@ on:
       - 'tools/test/gb-*/**'
       - 'tools/test/made-up-gb*'
       - 'tools/test/real-gb.mjs'
-      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/gb*'
+      - 'tools/test/part-tasks/gb/**'
       - 'tools/lib/part-functions.mjs'
       - 'tools/lib/played.mjs'
       - 'tools/lib/proofs.mjs'
@@ -83,7 +87,7 @@ jobs:
           cache: npm
       - run: npm ci
       # the first two tests run in Check
-      - run: npm run test:gb-parts
+      - run: npm run test:part-tasks -- gb gbc
 
   mac:
     name: Mac (Game Boy)
@@ -112,7 +116,7 @@ jobs:
           npm ci
       - run: npm run test:real-gb
       - run: npm run test:gb-twin
-      - run: npm run test:gb-parts
+      - run: npm run test:part-tasks -- gb gbc
 
   windows:
     name: Windows (Game Boy)
@@ -132,4 +136,4 @@ jobs:
       - run: npm ci
       - run: npm run test:real-gb
       - run: npm run test:gb-twin
-      - run: npm run test:gb-parts
+      - run: npm run test:part-tasks -- gb gbc
