@@ -24,7 +24,8 @@ const libretro = name => `https://github.com/libretro/${name}.git`;
 // tools' front (nds/melonds/), or by where its processor is about to run, as PCSX ReARMed does with the tools' change to
 // it (libretro/pcsx.patch), or 'starts' that it tells them where the processor is before each instruction and nothing of
 // the instruction, as Parallel N64 does with the tools' (libretro/parallel-n64.patch), which says which functions ran in
-// each frame and no more. `holds` says it tells
+// each frame and no more. PPSSPP is taken the same way: with the tools' change (libretro/ppsspp.patch) it tells them of each
+// instruction and each way a branch went, which the tools don't read into gameplay proven yet. `holds` says it tells
 // them where it keeps the console's memory and its memory cards, as Play! does with the same change (libretro/held.h). `options` are the settings that keep it the same for everyone.
 // `make` may set how its own C is built: Parallel N64's makers build it with -Ofast, which lets the compiler drop a sum's
 // rounding and a check for a number that isn't one, so the tools build it as IEEE 754 asks, as the console's own
