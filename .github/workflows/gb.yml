@@ -1,0 +1,103 @@
+name: Mac and Windows (Game Boy)
+
+# The Game Boy's and the Game Boy Color's tools on a Mac and on Windows, as a person making a Dreamport on one has
+# them (#1911), on GitHub's own computers: a Mac with Apple's chip, with Homebrew's Node.js and CMake, and Windows with
+# only git and Node.js, where the tools get their own compiler. Each builds Gambatte, the consoles' emulator, from its
+# makers' source, and runs npm run test:real-gb: a program of the project's own and its Dreamport in C on the kit
+# (kit/gbc/c/), which prove has to find the same in every frame, picture and sound, in the computer's own browser, and
+# which the test then compares itself, every pixel and every sample of the sound. Nothing from any game's copy is
+# needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, where the same test runs on Linux, as a Mac and Windows take longer to start and build. It
+# runs on pull requests that touch what those tools are made of, after they merge, every week, so the newest Mac and
+# Windows GitHub has try it too, and by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/gb.yml'
+      - 'kit/c/**'
+      - 'kit/gbc/**'
+      - 'kit/consoles.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/consoles.mjs'
+      - 'tools/gbc/**'
+      - 'tools/lib/c.mjs'
+      - 'tools/libretro/**'
+      - 'tools/test/gb-*'
+      - 'tools/test/gb-*/**'
+      - 'tools/test/made-up-gb*'
+      - 'tools/test/real-gb.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/gb.yml'
+      - 'kit/c/**'
+      - 'kit/gbc/**'
+      - 'kit/consoles.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tools/consoles.mjs'
+      - 'tools/gbc/**'
+      - 'tools/lib/c.mjs'
+      - 'tools/libretro/**'
+      - 'tools/test/gb-*'
+      - 'tools/test/gb-*/**'
+      - 'tools/test/made-up-gb*'
+      - 'tools/test/real-gb.mjs'
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gb-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    name: Mac (Game Boy)
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # what a person's Mac has or installs: Apple's command line tools give git, make and the C compiler, Homebrew
+      # gives Node.js and CMake, and Chrome is there
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          cc --version | head -1
+          brew install --quiet node cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          test -x "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+      - name: The tools' packages
+        run: |
+          node --version
+          npm ci
+      - run: npm run test:real-gb
+
+  windows:
+    name: Windows (Game Boy)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js, and Edge, which comes with Windows. The tools get
+      # the compiler themselves (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:real-gb
