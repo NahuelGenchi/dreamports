@@ -10,12 +10,13 @@
 // as the BIOS.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
+import { WINDOWS_BUILD, windowsTools } from '../gba/windows.mjs';
 
 const CALL = fileURLToPath(new URL('./call.c', import.meta.url));
 // the emulator's own files the program is built from, in its source's libpcsxcore/
@@ -88,15 +89,32 @@ export function buildCaller(log = console.log) {
   const program = programFile(), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('ps1');
-  log(`Getting the PlayStation's processor from its emulator's source, at ${machine.core.source}…`);
-  const source = fetchSource(machine);
+  const compile = (compiler, call, out, env) => {
+    log(`Getting the PlayStation's processor from its emulator's source, at ${machine.core.source}…`);
+    const source = fetchSource(machine);
+    const result = spawnSync(compiler, ['-std=gnu11', '-O2', '-w', '-DNDEBUG', '-I', join(source, 'include'), '-I', join(source, 'libpcsxcore'),
+      '-o', out, call, ...PROCESSOR.map(name => join(source, 'libpcsxcore', name))], { encoding: 'utf8', maxBuffer: 2 ** 26, env });
+    if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
+    if (result.status !== 0) throw new Error(`The program that calls the PlayStation's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  };
   mkdirSync(FOLDER, { recursive: true });
   rmSync(program, { force: true });
-  const compiler = process.env.CC || (process.platform === 'win32' ? 'gcc' : 'cc');
-  const result = spawnSync(compiler, ['-std=gnu11', '-O2', '-w', '-DNDEBUG', '-I', join(source, 'include'), '-I', join(source, 'libpcsxcore'),
-    '-o', program, CALL, ...PROCESSOR.map(name => join(source, 'libpcsxcore', name))], { encoding: 'utf8', maxBuffer: 2 ** 26 });
-  if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
-  if (result.status !== 0) throw new Error(`The program that calls the PlayStation's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  // On Windows, where most computers have no compiler, with the one the tools fetch for a build, in its folder with a
+  // plain name, which goes once the program is made (../gba/windows.mjs): the emulator's source is fetched there, and
+  // call.c is built from there too, as the compiler can't read a path with some languages' letters in it. $CC names a
+  // compiler the person has instead.
+  if (process.platform === 'win32' && !process.env.CC) {
+    rmSync(WINDOWS_BUILD, { recursive: true, force: true });
+    try {
+      const tools = windowsTools(log), work = join(WINDOWS_BUILD, 'ps1-caller');
+      mkdirSync(work, { recursive: true });
+      copyFileSync(CALL, join(work, 'call.c'));
+      compile(tools.gcc, join(work, 'call.c'), join(work, 'call.exe'), tools.env);
+      copyFileSync(join(work, 'call.exe'), program);
+    } finally {
+      try { rmSync(WINDOWS_BUILD, { recursive: true, force: true }); } catch {}
+    }
+  } else compile(process.env.CC || 'cc', CALL, program);
   writeFileSync(stamp, text);
   return program;
 }

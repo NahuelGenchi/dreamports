@@ -43,6 +43,8 @@ const li = (rt, value) => [lui(rt, value >>> 16), ori(rt, rt, value & 0xFFFF)];
 // branches and jumps by name, filled in once every place is known
 const here = name => ({ here: name }), beq = (rs, rt, name) => ({ op: 0x04, rs, rt, name }), bne = (rs, rt, name) => ({ op: 0x05, rs, rt, name });
 const j = name => ({ jump: name });
+// a call of a function by name, which comes back with jr ra
+const jal = name => ({ jump: name, call: true }), JR_RA = 0x03E00008;
 
 // the GS's privileged registers and the DMA controller's, as the EE sees them
 const GS = 0x12000000, PMODE = 0x00, SMODE2 = 0x20, DISPFB1 = 0x70, DISPLAY1 = 0x80, BGCOLOR = 0xE0, CSR = 0x1000;
@@ -345,7 +347,7 @@ function assemble(code) {
   }
   return words.map((item, at) => {
     if (typeof item === 'number') return item;
-    if (item.jump) return (2 << 26 | ((LOAD_AT + places[item.jump] * 4) >>> 2 & 0x3FFFFFF)) >>> 0;
+    if (item.jump) return ((item.call ? 3 : 2) << 26 | ((LOAD_AT + places[item.jump] * 4) >>> 2 & 0x3FFFFFF)) >>> 0;
     return imm(item.op, item.rs, item.rt, places[item.name] - at - 1);
   });
 }
@@ -394,4 +396,4 @@ function elfOf(written, packet) {
 }
 
 // what the other programs' files build on (made-up-ps2-gs.mjs): the instructions, the screen, the DMA and the ELF file
-export { ZERO, T0, T1, T2, T3, S0, S1, imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, assemble, elfOf, bitsOf, SYSCALL, send, PACKET };
+export { ZERO, T0, T1, T2, T3, S0, S1, imm, lui, ori, addiu, andi, lw, sw, sll, or, li, here, beq, bne, j, jal, JR_RA, NOP, GS, GIF_DMA, VIF1_DMA, MADR, QWC, WIDTH, HEIGHT, FBW, setUp, waitForVBlank, assemble, elfOf, bitsOf, SYSCALL, send, PACKET };

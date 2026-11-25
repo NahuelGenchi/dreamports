@@ -12,7 +12,7 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { arch } from 'node:os';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +20,7 @@ import { LOCAL, REPO } from '../lib/paths.mjs';
 import { buildJobs } from '../lib/jobs.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
+import { WINDOWS_BUILD, windowsTools } from '../gba/windows.mjs';
 
 const CALL = fileURLToPath(new URL('./call.cpp', import.meta.url));
 const CHUNK = 256;
@@ -142,9 +143,9 @@ function sourcesOf(source) {
 const FOLDER = join(LOCAL, 'twin', 'ps2-caller');
 
 // runs a compiler, answering what it said when it failed
-function compileOne(compiler, args) {
+function compileOne(compiler, args, env) {
   return new Promise(resolve => {
-    const child = spawn(compiler, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(compiler, args, { stdio: ['ignore', 'ignore', 'pipe'], env });
     let said = '';
     child.stderr.on('data', chunk => { said += chunk; });
     child.on('error', error => resolve(error.code === 'ENOENT' ? `There's no C++ compiler here (${compiler}): tools/README.md says how to get one.` : String(error.message)));
@@ -174,39 +175,64 @@ export async function buildCaller(log = console.log) {
   const folder = join(FOLDER, `${core.commit.slice(0, 12)}-${createHash('sha1').update(`${FLAGS.join(' ')} ${patch}`).digest('hex').slice(0, 8)}`);
   const program = join(folder, `call${process.platform === 'win32' ? '.exe' : ''}`), stamp = `${program}.source`, text = readFileSync(CALL, 'utf8');
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
-  const machine = consoleOf('ps2');
-  const objects = join(folder, 'objects');
+  // On Windows, where most computers have no compiler, with the one the tools fetch for a build, in its folder with
+  // a plain name, which goes once the program is made (../gba/windows.mjs): the emulator's source is fetched there,
+  // and every file is built there again. $CXX names a compiler the person has instead.
+  if (process.platform === 'win32' && !process.env.CXX) {
+    rmSync(WINDOWS_BUILD, { recursive: true, force: true });
+    try {
+      const tools = windowsTools(log), work = join(WINDOWS_BUILD, 'ps2-caller');
+      log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
+      const source = fetchSource(consoleOf('ps2'));
+      mkdirSync(work, { recursive: true });
+      // call.cpp from there too, as the compiler can't read a path with some languages' letters in it
+      copyFileSync(CALL, join(work, 'call.cpp'));
+      const made = await compileCaller({ source, call: join(work, 'call.cpp'), objects: join(work, 'objects'), program: join(work, 'call.exe'), compiler: tools.gxx, env: tools.env, linked: ['-static'], log });
+      mkdirSync(folder, { recursive: true });
+      rmSync(program, { force: true });
+      copyFileSync(made, program);
+    } finally {
+      try { rmSync(WINDOWS_BUILD, { recursive: true, force: true }); } catch {}
+    }
+    writeFileSync(stamp, text);
+    return program;
+  }
   let source = join(LOCAL, 'libretro', `${core.built}-source`);
   // the source as this patch leaves it, which the stamp beside it says: what builds the emulator patches it too, and
   // doesn't say with which
   const stamped = join(LOCAL, 'libretro', `${core.built}-source.patch`);
   if (!sourceIsAt(source, core.commit) || !existsSync(stamped) || readFileSync(stamped, 'utf8') !== patch) {
     log(`Getting the PlayStation 2's processors from its emulator's source, at ${core.source}…`);
-    source = fetchSource(machine);
+    source = fetchSource(consoleOf('ps2'));
     writeFileSync(stamped, patch);
   }
+  rmSync(program, { force: true });
+  await compileCaller({ source, call: CALL, objects: join(folder, 'objects'), program, compiler: process.env.CXX || 'c++', linked: process.platform === 'linux' ? ['-lpthread'] : [], log });
+  writeFileSync(stamp, text);
+  return program;
+}
+
+// compiles the emulator's files in `source` that aren't built yet into `objects`, and `call` with them into `program`
+async function compileCaller({ source, call, objects, program, compiler, env, linked, log }) {
   const files = sourcesOf(source);
   mkdirSync(objects, { recursive: true });
-  const compiler = process.env.CXX || 'c++';
   // the last is the filesystem header Play! takes on a Mac, where it doesn't use the compiler's own: it comes with its source
   const flags = [...FLAGS, ...['Source', 'Source/app_shared', 'deps/Framework/include', 'deps/CodeGen/include', 'deps/Dependencies/xxHash', 'deps/Dependencies/ghc_filesystem/include'].flatMap(folder => ['-I', join(source, folder)])];
   const objectOf = file => join(objects, `${basename(file, '.cpp')}.o`);
-  const waiting = [...files.filter(file => !existsSync(objectOf(file))).map(file => [file, objectOf(file)]), [CALL, join(folder, 'call.o')]];
+  const waiting = [...files.filter(file => !existsSync(objectOf(file))).map(file => [file, objectOf(file)]), [call, join(objects, '..', 'call.o')]];
   if (waiting.length > 1) log('Building the PlayStation 2\'s processors from Play!\'s source, once…');
   const failed = [];
   await Promise.all(Array.from({ length: buildJobs() }, async () => {
     while (waiting.length && !failed.length) {
       const [file, object] = waiting.shift();
-      const said = await compileOne(compiler, [...flags, '-c', file, '-o', `${object}.part`]);
+      const said = await compileOne(compiler, [...flags, '-c', file, '-o', `${object}.part`], env);
       if (said) failed.push(`${basename(file)}: ${said}`);
       else writeFileSync(object, readFileSync(`${object}.part`)), rmSync(`${object}.part`);
     }
   }));
   if (failed.length) throw new Error(`The program that calls the PlayStation 2's functions didn't build:\n${failed[0]}`);
-  rmSync(program, { force: true });
-  const linked = await compileOne(compiler, ['-o', program, join(folder, 'call.o'), ...files.map(objectOf), ...(process.platform === 'linux' ? ['-lpthread'] : [])]);
-  if (linked) throw new Error(`The program that calls the PlayStation 2's functions didn't link:\n${linked}`);
-  writeFileSync(stamp, text);
+  const said = await compileOne(compiler, ['-o', program, join(objects, '..', 'call.o'), ...files.map(objectOf), ...linked], env);
+  if (said) throw new Error(`The program that calls the PlayStation 2's functions didn't link:\n${said}`);
   return program;
 }
 
