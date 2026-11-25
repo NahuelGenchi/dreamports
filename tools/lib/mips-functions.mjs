@@ -1,6 +1,7 @@
 // The functions in a program for a console's MIPS processor, found by reading it, for its code map (../codemap.mjs): a
 // PlayStation game's program (../ps1/functions.mjs), a PlayStation 2 game's modules for its second processor
-// (../ps2/functions.mjs), and the code a Nintendo 64 game's cartridge starts (../n64/functions.mjs).
+// (../ps2/functions.mjs), the code a Nintendo 64 game's cartridge starts (../n64/functions.mjs), and a PlayStation
+// Portable game's program (../psp/functions.mjs).
 //
 // Such a program keeps its code and its values together, with nothing to say which is which, so the functions are found
 // by reading it: where it starts, every call's target (JAL), every function's opening (ADDIU sp, sp, -n, or on the
@@ -38,12 +39,14 @@ function wayOf(word, address, before, processor) {
   const offset = ((word << 16) >> 14) + address + 4;
   if (o >= 4 && o <= 7) return { to: offset >>> 0, always: (o === 4 && rs(word) === 0 && rt(word) === 0) || (o === 6 && rs(word) === 0) };
   if (o === 1 && (rt(word) === 0 || rt(word) === 1)) return { to: offset >>> 0, always: rt(word) === 1 && rs(word) === 0 };
-  if (processor === 'vr4300') {
+  if (processor === 'vr4300' || processor === 'allegrex') {
     // a likely branch, which runs its delay slot only when it goes, and a branch on the floating-point unit's condition
     if (o >= 20 && o <= 23) return { to: offset >>> 0, always: (o === 20 && rs(word) === 0 && rt(word) === 0) || (o === 22 && rs(word) === 0) };
     if (o === 1 && (rt(word) === 2 || rt(word) === 3)) return { to: offset >>> 0, always: rt(word) === 3 && rs(word) === 0 };
     if (o === 17 && rs(word) === 8) return { to: offset >>> 0 };
-    if (word === 0x42000018) return { ends: true, slot: false };
+    // and on the Allegrex, a branch on one of its vector unit's conditions
+    if (processor === 'allegrex' && o === 18 && rs(word) === 8) return { to: offset >>> 0 };
+    if (processor === 'vr4300' && word === 0x42000018) return { ends: true, slot: false };
   }
   return {};
 }
