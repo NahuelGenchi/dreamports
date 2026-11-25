@@ -1,0 +1,217 @@
+name: PlayStation Portable
+
+# The PlayStation Portable's tools on Linux, on a Mac with Apple's chip and on Windows, as a person making a Dreamport on
+# each has them, on GitHub's own computers: Getting ready as tools/README.md has it, PPSSPP built from its makers' source
+# with the tools' patch, with its software renderer and its interpreter, so it needs no graphics card, and
+# npm run test:real-psp, which runs a small program of the project's own on it twice. Each computer writes what it saw,
+# every frame's picture and sound, and a last job finds them the same on all three: a proof made on one computer has to
+# be one on every other. Nothing from any game is needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, as building PPSSPP takes a while. It runs on pull requests that touch what the PlayStation
+# Portable's games need, after they merge, every week, so the newest computers GitHub has try it too, and by hand. A
+# built PPSSPP is kept between runs, by the commit and patch it's built from, except every week's, which builds it again.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/psp.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/psp/**'
+      - 'tools/consoles.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/gba/twin.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/wasm-fold.mjs'
+      - 'tools/libretro/**'
+      - 'tools/ps2/twin.mjs'
+      - 'tools/psp/**'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-psp*'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/psp-*'
+      - 'tools/test/real-psp.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/psp.yml'
+      - 'kit/c/**'
+      - 'kit/consoles.js'
+      - 'kit/psp/**'
+      - 'tools/consoles.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/gba/twin.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/part-functions.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/wasm-fold.mjs'
+      - 'tools/libretro/**'
+      - 'tools/ps2/twin.mjs'
+      - 'tools/psp/**'
+      - 'tools/setup.mjs'
+      - 'tools/test/made-up-psp*'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/psp-*'
+      - 'tools/test/real-psp.mjs'
+  schedule:
+    - cron: '41 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: psp-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux (PlayStation Portable)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      # OpenGL's headers, which PPSSPP's source includes whatever it draws with
+      - run: sudo apt-get update -q && sudo apt-get install -y --no-install-recommends libgl-dev libegl-dev libgles-dev
+      - run: npm ci
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.so
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs') }}
+      - run: npm run dp -- setup psp
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.so
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs') }}
+      - run: npm run test:real-psp -- --write psp-same-linux.json
+      # the kit in C, proven against the emulator in the computer's own browser
+      - run: npm run test:psp-kit
+      # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
+      - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: psp-same-linux
+          path: psp-same-linux.json
+          retention-days: 7
+
+  mac:
+    name: Mac (PlayStation Portable)
+    runs-on: macos-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, Homebrew gives
+      # Node.js, the GitHub CLI and CMake
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          cc --version | head -1
+          brew install --quiet node gh cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          cmake --version | head -1
+      - run: npm ci
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.dylib
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs') }}
+      - name: PPSSPP, built for arm64
+        run: |
+          npm run dp -- setup psp
+          file .dreamports/libretro/ppsspp_libretro-*.dylib .dreamports/libretro/host
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.dylib
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs') }}
+      - run: npm run test:real-psp -- --write psp-same-mac.json
+      # the kit in C, proven against the emulator in the computer's own browser
+      - run: npm run test:psp-kit
+      # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
+      - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: psp-same-mac
+          path: psp-same-mac.json
+          retention-days: 7
+
+  windows:
+    name: Windows (PlayStation Portable)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      # Git on GitHub's Windows machines writes CRLF where a file has no rule of its own, as in the scratch repositories
+      # the tools' tests make, which then don't read back as they were written
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js. setup gets the compiler and CMake itself
+      # (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.dll
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs', 'tools/gba/windows.mjs') }}
+      - run: npm run dp -- setup psp
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/ppsspp_libretro-*.dll
+          key: ppsspp-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/ppsspp.patch', 'tools/libretro/build.mjs', 'tools/gba/windows.mjs') }}
+      - run: npm run test:real-psp -- --write psp-same-windows.json
+      # the kit in C, proven against the emulator in the computer's own browser
+      - run: npm run test:psp-kit
+      # the function check: the original's functions run in PPSSPP's own interpreter beside their twins
+      - run: npm run test:psp-twin
+      # the whole new way, from proofs --start --parts to a part done, with a stand-in for GitHub
+      - run: npm run test:psp-parts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: psp-same-windows
+          path: psp-same-windows.json
+          retention-days: 7
+
+  same:
+    name: Same on Linux, a Mac and Windows (PlayStation Portable)
+    needs: [linux, mac, windows]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: psp-same-*
+          merge-multiple: true
+      - run: node tools/test/real-psp.mjs --compare psp-same-linux.json psp-same-mac.json psp-same-windows.json
