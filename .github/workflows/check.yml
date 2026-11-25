@@ -127,6 +127,11 @@ jobs:
           - part: part tasks
             minutes: 30
             run: npm run test:part-tasks -- gba
+          # the same on the NES, with its program's Dreamport on the NES kit and its functions proven by the function check,
+          # as far as the NES's tools reach (#1958), in a part of its own beside the Game Boy Advance's
+          - part: part tasks nes
+            minutes: 25
+            run: npm run test:part-tasks -- nes
           # the PlayStation 2, in a job of its own as it took tasks near the 15-minute limit (#1695): Sony's own
           # compiler and assemblers, built from Sony's GPL source with the runner's clang, kept only if they make the
           # original compiler's objects, the tools' tables checked against them, and match on the console against a
