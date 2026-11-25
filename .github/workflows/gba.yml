@@ -6,7 +6,8 @@ name: Mac and Windows (Game Boy Advance)
 # match and twin from npm run dp on games of the project's own, and test:same-memory, which builds a program of the
 # project's own as a cartridge and as a Dreamport from the same C and proves every frame and the whole work memory the
 # same in mGBA and in the computer's own browser, and test:function-tasks, a game made a function at a time against a
-# stand-in for GitHub, which the tools start with Node.js on every system (#1912). A Mac with Intel's chip is left out, as Apple no longer makes one,
+# stand-in for GitHub, which the tools start with Node.js on every system (#1912), and test:part-tasks, a game whose
+# parts are its tasks from its first day to its last task done, on the Game Boy Advance. A Mac with Intel's chip is left out, as Apple no longer makes one,
 # and GitHub's Macs, five at a time, are shared with the PlayStation 2's workflow: Linux on Intel builds agbcc on the
 # same kind of chip.
 #
@@ -154,6 +155,7 @@ jobs:
       - run: npm run test:libraries
       - run: npm run test:function-tasks
       - run: npm run test:same-memory
+      - run: npm run test:part-tasks -- gba
 
   windows:
     name: Windows (Game Boy Advance)
@@ -186,6 +188,7 @@ jobs:
       - run: npm run test:libraries
       - run: npm run test:function-tasks
       - run: npm run test:same-memory
+      - run: npm run test:part-tasks -- gba
 
   same:
     name: The same compiler on every computer (Game Boy Advance)
