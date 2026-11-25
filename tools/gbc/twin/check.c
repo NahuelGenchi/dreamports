@@ -141,6 +141,14 @@ static int draw(uint8_t *start, twin_regs *r, int changed) {
   return 1;
 }
 
+// the stack pointer the twin's call started with, which a call it makes to a stop starts below
+static uint16_t twin_sp;
+void twin_stop_registers(twin_regs *r) {
+  r->A = any_byte(); r->B = any_byte(); r->C = any_byte(); r->D = any_byte(); r->E = any_byte(); r->H = any_byte(); r->L = any_byte();
+  r->ZF = (int)rnd(2); r->NF = (int)rnd(2); r->HF = (int)rnd(2); r->CF = (int)rnd(2);
+  r->SP = (uint16_t)(twin_sp - 2);
+}
+
 static void flags_text(char *into, const twin_regs *r) {
   snprintf(into, 8, "%s%s%s%s", r->ZF ? "Z" : "-", r->NF ? "N" : "-", r->HF ? "H" : "-", r->CF ? "C" : "-");
 }
@@ -170,6 +178,7 @@ static void run(tally *out, long calls, int changed) {
     kit_memory_in(start);
     kit_begin(bank);
     twin_reads_from(reads);
+    twin_sp = entry.SP;
     int sig = MARK();
     if (!sig) {
       limit_on(limit_ms);
