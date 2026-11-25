@@ -103,10 +103,17 @@ export class Original {
       this.wake?.();
     });
     this.child.stderr.on('data', chunk => { this.said += chunk; });
-    this.child.on('exit', code => {
+    // a write to a program that has ended is told by how it ended, below, once everything it said has come
+    this.child.stdin.on('error', () => {});
+    this.child.on('close', code => {
       this.over = `The program that calls the PlayStation Portable's functions ended (${code})${this.said ? `: ${this.said.trim()}` : ''}.`;
       this.wake?.();
     });
+  }
+
+  write(bytes) {
+    if (this.over) throw new Error(this.over);
+    this.child.stdin.write(bytes);
   }
 
   async take(count) {
@@ -135,8 +142,8 @@ export class Original {
   /** Sets the image every call starts from, laid out as `regions` says. */
   async image(bytes, regions) {
     await this.ready();
-    this.child.stdin.write(Buffer.concat([Buffer.from('I'), word(regions.length), ...regions.flatMap(r => [word(r.address), word(r.bytes), word(r.span)]), word(MASK)]));
-    this.child.stdin.write(bytes);
+    this.write(Buffer.concat([Buffer.from('I'), word(regions.length), ...regions.flatMap(r => [word(r.address), word(r.bytes), word(r.span)]), word(MASK)]));
+    this.write(bytes);
     const answer = await this.take(1);
     if (answer[0] !== 0x6B) throw new Error('The program that calls the PlayStation Portable\'s functions didn\'t take the image.');
   }
@@ -152,7 +159,7 @@ export class Original {
    */
   async call({ address, span, limit = 1000000, back, registers, floats = new Array(32).fill(0), control = FCR31, changes = [], stops = [] }) {
     const words = [address, span, limit, back, ...registers, ...floats, control, changes.length, ...changes.flat(), stops.length, ...stops];
-    this.child.stdin.write(Buffer.concat([Buffer.from('C'), ...words.map(word)]));
+    this.write(Buffer.concat([Buffer.from('C'), ...words.map(word)]));
     const [end, detail, pc, steps, ...left] = await this.words(71);
     const ran = new Uint8Array(await this.take(Math.floor(span / 4)));
     const [readCount] = await this.words(1);

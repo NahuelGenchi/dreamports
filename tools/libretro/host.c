@@ -976,7 +976,16 @@ int main(int argc, char** argv) {
 	// the console started and played for one frame, and then its functions called one at a time
 	if (calls) {
 		retro_run();
-		return serveCalls(library);
+		int code = serveCalls(library);
+		// it ends here as a recording does below, with what it said written: what a core tidies away as a program ends
+		// stops PPSSPP's with an error, a thread of its own still running, which would hide how it ended and what it said
+		fflush(out);
+		fflush(err);
+		fflush(NULL);
+#ifdef _WIN32
+		TerminateProcess(GetCurrentProcess(), (UINT) code);
+#endif
+		_Exit(code);
 	}
 
 	if (live) {
