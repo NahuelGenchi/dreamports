@@ -31,7 +31,9 @@ name: Check
 #
 # The tests run in fourteen jobs side by side, as one after another they came near the 15-minute limit (#1503, #1558, #1695,
 # #1742, #1744), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and
-# the first-entry bot read, is the last job, Check, which passes only when all fourteen have.
+# the first-entry bot read, is the last job, Check, which passes only when all fourteen have. They start after Stack, which
+# fails a pull request that one above it in a stack carries, and Check then fails too, naming the one to merge it
+# through, as only that one's tests decide anything (.github/stack/stack.mjs, #2034).
 on:
   pull_request:
 
@@ -44,8 +46,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # fails a pull request that one above it in a stack carries, so no test starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      above: ${{ steps.stack.outputs.above }}
+      message: ${{ steps.stack.outputs.message }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        id: stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
   tests:
     name: Check (${{ matrix.part }})
+    needs: stack
     runs-on: ubuntu-24.04
     # 15 minutes a part, but one that says it needs more
     timeout-minutes: ${{ matrix.minutes || 15 }}
@@ -207,17 +232,25 @@ jobs:
           git show "$BASE:.github/credit/credit.mjs" > "$RUNNER_TEMP/credit.mjs" 2>/dev/null || cp .github/credit/credit.mjs "$RUNNER_TEMP/credit.mjs"
           node "$RUNNER_TEMP/credit.mjs" "$BASE"
 
+  # never skipped, as main's rules count a skipped check as passed: a pull request Stack stopped fails here
   check:
     name: Check
-    needs: [tests, credit]
+    needs: [stack, tests, credit]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Every part passed
         env:
+          STACK: ${{ needs.stack.result }}
+          ABOVE: ${{ needs.stack.outputs.above }}
+          MESSAGE: ${{ needs.stack.outputs.message }}
           RESULT: ${{ needs.tests.result }}
           CREDIT: ${{ needs.credit.result }}
         run: |
-          echo "The tests ended: $RESULT, and the credit check: $CREDIT"
-          test "$RESULT" = success && test "$CREDIT" = success
+          if test -n "$MESSAGE"; then
+            echo "::error title=Tested through $ABOVE::$MESSAGE"
+            exit 1
+          fi
+          echo "Stack ended: $STACK, the tests: $RESULT, and the credit check: $CREDIT"
+          test "$STACK" = success && test "$RESULT" = success && test "$CREDIT" = success
