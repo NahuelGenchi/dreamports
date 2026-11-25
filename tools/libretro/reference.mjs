@@ -63,12 +63,15 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    // one that says only which functions ran in each frame, as the PlayStation's and the Nintendo DS's do, says no more,
-    // and nor does one that tells of each instruction but whose record of every instruction and branch the tools can't
-    // read into gameplay proven yet, as the PlayStation Portable's ('starts'): its functions in each frame are still
-    // counted, for a part's list (lib/part-functions.mjs)
-    seesInstructions: !!core.ran && core.ran !== 'starts' && core.ran !== 'functions',
+    // one that says only which functions ran in each frame, as the PlayStation's and the Nintendo DS's do, or only where
+    // the processor is, as the Nintendo 64's does, says no more, and nor does one that tells of each instruction but
+    // whose record of every instruction and branch the tools can't read into gameplay proven yet, as the PlayStation
+    // Portable's: its functions in each frame are still counted, for a part's list (lib/part-functions.mjs)
+    seesInstructions: !!core.ran && core.ran !== 'functions' && core.ran !== 'starts',
     seesEntries: core.ran === true,
+    // and one that only tells where the processor is, as the Nintendo 64's does, still says which of the code map's
+    // functions ran in each frame, which is what a part's functions are read from (lib/part-functions.mjs)
+    seesFunctions: !!core.ran,
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
     // went by (DP_WHY, libretro/ran-ps2.h)
     saysWhy: core.ran === 'blocks',

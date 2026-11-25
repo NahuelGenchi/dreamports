@@ -141,6 +141,48 @@ try {
     check(run.status === 3 && /Differs  0x8000047C sum: call \d+, sum\(/.test(run.out), `a twin that differs ends it with 3: ${run.out.trim().split('\n').find(line => /Differs/.test(line))}`);
     run = dp('twin', VERSION, '--memories');
     check(run.status === 1 && /--memories isn't there yet on the Nintendo 64/.test(run.out), 'what the Nintendo 64\'s check can\'t do yet is said');
+
+    console.log('Its proofs, from proofs --start on:');
+    const source = join(gameFolder(VERSION), 'src', 'game.c'), proofs = join(proofFolder(VERSION), 'proofs.json');
+    const kept = () => JSON.parse(readFileSync(proofs, 'utf8')).functions;
+    const SUM = '8000047C', lastLine = () => run.out.trim().split('\n').at(-1);
+    writeFileSync(source, game);
+    run = dp('twin', VERSION, 'sum', '--calls', '1000');
+    check(run.status === 0 && !/kept as proven/.test(run.out) && !existsSync(proofs), 'a version made a part at a time keeps nothing');
+    run = dp('proofs', VERSION, '--start');
+    check(run.status === 0 && existsSync(proofs) && kept().length === 0, `its proofs start with none: ${lastLine().slice(0, 90)}…`);
+    run = dp('twin', VERSION, '--calls', '300');
+    check(run.status === 0 && /Nothing was kept as proven: a proof by the same memory is over 1,000 calls or more/.test(run.out) && kept().length === 0, 'a few calls are no proof');
+    run = dp('twin', VERSION, '--calls', '1000');
+    check(run.status === 0 && /15 functions kept as proven by the same memory/.test(run.out) && kept().length === 15 && kept().every(line => /^80[0-9A-F]{6}$/.test(line[0]) && line[1] === 'memory' && line[4] === 1000) && kept().some(line => line[0] === SUM),
+      `twin keeps each function whose calls took every path of the original's, by its address: ${lastLine()}`);
+    const asTwinLeft = readFileSync(proofs, 'utf8');
+    run = dp('proofs', VERSION);
+    check(run.status === 0 && /15 of 21 functions proven, 0 by the same bytes and 15 by the same memory/.test(run.out) && /The function the console starts the cartridge at is in no task/.test(run.out),
+      `the version says how many functions have each proof, and that the one the cartridge starts is in no task: ${run.out.trim().split('\n')[0]}`);
+    check(dp('proofs', VERSION, '--check').status === 0, 'proofs --check holds them');
+    writeFileSync(source, game.replace('return a + b;', 'return b + a;'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && run.out.includes(`${SUM}, sum in src/game.c, is kept as proven and its twin, or a header or another line of its file, changed since`) && (run.out.match(/changed since/g) ?? []).length === 1, `a proof goes stale when its twin's C changes, its own and no other's: ${run.out.trim().split('\n')[0]}`);
+    // on a computer with no copy of the game, the twins' side is still held
+    const known = readFileSync(COPIES);
+    rmSync(COPIES);
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && run.out.includes(SUM), 'with no copy of the game here, the changed twin is still found');
+    writeFileSync(source, game);
+    check(dp('proofs', VERSION, '--check').status === 0, 'and the proofs hold again with the twin as it was');
+    writeFileSync(COPIES, known);
+    // the original's mark is of where the code loads too: a line of other bytes, or of another place, doesn't pass
+    writeFileSync(proofs, asTwinLeft.replace(new RegExp(`(\\["${SUM}","memory","[0-9a-f]{16}",)"[0-9a-f]{16}"`), '$1"0123456789abcdef"'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && run.out.includes(`${SUM}, sum in src/game.c, is kept as proven and the copy has other bytes there`), 'a line of another original than the copy\'s doesn\'t pass for a proof');
+    writeFileSync(proofs, asTwinLeft);
+    writeFileSync(source, game.replace('return a + b;', 'return a - b;'));
+    run = dp('twin', VERSION, 'sum', '--calls', '1000');
+    check(run.status === 3 && kept().length === 14 && !kept().some(line => line[0] === SUM), 'a twin that differs loses its proof');
+    writeFileSync(source, game);
+    run = dp('twin', VERSION, 'sum', '--calls', '1000');
+    check(run.status === 0 && /1 function kept as proven by the same memory/.test(run.out) && readFileSync(proofs, 'utf8') === asTwinLeft, 'and proven again, the file is as it was');
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
