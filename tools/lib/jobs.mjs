@@ -6,4 +6,7 @@ import { availableParallelism, freemem } from 'node:os';
 const MOST = 8;
 const MEMORY_EACH = 300 * 1024 * 1024;
 
-export const buildJobs = () => Math.max(1, Math.min(MOST, availableParallelism(), Math.floor(freemem() / MEMORY_EACH)));
+// DP_BUILD_JOBS says fewer, for a computer that's doing something else as well
+const asked = () => (Number(process.env.DP_BUILD_JOBS) >= 1 ? Math.floor(Number(process.env.DP_BUILD_JOBS)) : MOST);
+
+export const buildJobs = () => Math.max(1, Math.min(MOST, asked(), availableParallelism(), Math.floor(freemem() / MEMORY_EACH)));
