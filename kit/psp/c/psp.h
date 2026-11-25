@@ -41,6 +41,9 @@ uint64_t psp_time(void);
 typedef int32_t SceUID;
 /** What a thread starts at: the size of what it was given and where that is, in the console's memory. */
 typedef int (*psp_thread_entry)(uint32_t size, uint32_t arguments);
+/** What a thread may be made with: a vector unit of its own, which the system puts away and gives back as the thread
+ *  stops and runs again, and the user's memory, which the program's first thread has. */
+enum { PSP_THREAD_ATTR_VFPU = 0x00004000, PSP_THREAD_ATTR_USER = (int)0x80000000 };
 
 SceUID sceKernelCreateThread(const char *name, psp_thread_entry entry, int priority, int stack_size, uint32_t attributes, uint32_t options);
 int sceKernelStartThread(SceUID thread, uint32_t size, uint32_t arguments);
@@ -331,5 +334,38 @@ static inline float psp_mul_s(float a, float b) {
   }
   return a * b;
 }
+
+// ---- the vector unit (vfpu.c) ---------------------------------------------------------------------------------------
+//
+// The processor's vector unit, the VFPU, as the console's emulator in the proof tools runs it with its interpreter, to
+// the bit: a twin calls these where its original runs one of the unit's instructions, with the instruction's word as
+// the original has it. What the instruction does to the processor's counter is the twin's own.
+
+/** The unit's 128 registers as their bits, in the order PPSSPP keeps them: the register of matrix m, column c and row
+ *  r (S mcr) at m * 16 + c * 4 + r. And its 16 control registers, PPSSPP's vfpuCtrl: the S, T and D prefixes, the
+ *  condition bits, and the random numbers' state in the last eight. */
+struct psp_vfpu { uint32_t v[128]; uint32_t control[16]; };
+extern struct psp_vfpu psp_vfpu_state;
+/** Whether vmmul works its sums out as the PSP rounds them, as PPSSPP does for the games its compat.ini lists under
+ *  MoreAccurateVMMUL, the versions of Tekken 6: 0 unless a game sets it. */
+extern int psp_vfpu_accurate_vmmul;
+/** Puts the unit as the emulator starts it (MIPSState::Reset): every register 0, the prefixes passing everything
+ *  through, every condition bit set and the random numbers at their start. */
+void psp_vfpu_reset(void);
+/** Runs any instruction of the unit's own but its loads, stores, mfv, mtv, mfvc, mtvc and bv branches, with vpfxs,
+ *  vpfxt, vpfxd, vmfvc, vmtvc, vflush, vnop and vsync among them. A word the emulator takes as no instruction, or that
+ *  isn't the unit's, changes nothing. */
+void psp_vfpu(uint32_t word);
+/** lv.s, lv.q, lvl.q and lvr.q, with `base` the value of the instruction's rs register. */
+void psp_vfpu_load(uint32_t word, uint32_t base);
+/** sv.s, sv.q, svl.q and svr.q, with `base` the value of the instruction's rs register. */
+void psp_vfpu_store(uint32_t word, uint32_t base);
+/** mfv and mfvc: what goes to rt. For a control register past the 16 (an 8-bit number from 144 on) the emulator leaves
+ *  rt as it was, and this gives 0. */
+uint32_t psp_vfpu_get(uint32_t word);
+/** mtv and mtvc, with `value` the value of rt. */
+void psp_vfpu_set(uint32_t word, uint32_t value);
+/** bvf, bvt, bvfl and bvtl: 1 when the branch goes to its target. */
+int psp_vfpu_branch(uint32_t word);
 
 #endif

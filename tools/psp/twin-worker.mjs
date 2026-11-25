@@ -8,12 +8,14 @@
 //
 //   { set: image, regions }   the memory every call starts from, and where each of its places is. Answers { done }.
 //   { types: name, count }    the compiler's word on each of a twin's types (../ps2/twin.mjs, wrapOf). Answers { types }.
-//   { call: name, args, changes, chunks, skip }
-//                             lays `changes` over the image, calls the function with `args`, and compares what it left
-//                             with the image the original left, the image with `changes` and the original's `chunks`
-//                             laid over it, but in the `skip` stretches of the image. Each argument crosses as 64 bits,
-//                             and what the twin gives back too, as a BigInt. Answers { gave, differs }, or
-//                             { stopped: why }. Then the memory is the image again.
+//   { call: name, args, changes, chunks, skip, vfpu }
+//                             lays `changes` over the image, sets the kit's vector unit (kit/psp/c/vfpu.c) to `vfpu`,
+//                             its 128 registers and its 16 control registers as the original was given them, calls the
+//                             function with `args`, and compares what it left with the image the original left, the
+//                             image with `changes` and the original's `chunks` laid over it, but in the `skip` stretches
+//                             of the image. Each argument crosses as 64 bits, and what the twin gives back too, as a
+//                             BigInt. Answers { gave, differs, vfpu }, `vfpu` the vector unit as the twin left it, or null
+//                             where the twins' module has none, or { stopped: why }. Then the memory is the image again.
 //
 // The console's memory is tens of megabytes, so it's compared and put back 64 KB at a time, and a block a call didn't
 // touch is neither read byte by byte nor copied.
@@ -35,6 +37,8 @@ for (const { module: from, name, kind } of WebAssembly.Module.imports(module)) {
 const { exports } = new WebAssembly.Instance(module, imports);
 const memory = new Uint8Array(exports.memory.buffer), view = new DataView(exports.memory.buffer);
 const stack = exports.__stack_pointer?.value;
+// the kit's vector unit, 144 words, where the module keeps it
+const vfpuAt = exports.psp_vfpu_state?.value, VFPU_WORDS = 144;
 const own = exports.__data_end ? { from: exports.__global_base?.value ?? 0, to: exports.__data_end.value } : null;
 const before = own && memory.slice(own.from, own.to);
 // the table the module's addresses are folded by (twin.mjs, foldTable), where the module reads it
@@ -112,6 +116,7 @@ parentPort.on('message', message => {
     else if (bytes === 2) view.setUint16(address, value, true);
     else view.setUint32(address, value, true);
   }
+  if (vfpuAt !== undefined && message.vfpu) for (let i = 0; i < VFPU_WORDS; i++) view.setUint32(vfpuAt + i * 4, message.vfpu[i] >>> 0, true);
   let gave = null, stopped = null;
   try {
     gave = BigInt.asUintN(64, BigInt(exports[message.call](...message.args.map(arg => BigInt(arg)))));
@@ -120,7 +125,8 @@ parentPort.on('message', message => {
     else if (error instanceof WebAssembly.RuntimeError && /signature mismatch/.test(error.message)) stopped = { stopped: 'mismatch' };
     else stopped = { stopped: String(error.message ?? error) };
   }
+  const vfpu = vfpuAt === undefined ? null : Array.from({ length: VFPU_WORDS }, (_, i) => view.getUint32(vfpuAt + i * 4, true));
   const differs = compareAndPutBack(overlayOf(message.changes, message.chunks), message.skip);
-  parentPort.postMessage(stopped ?? { gave, differs });
+  parentPort.postMessage(stopped ?? { gave, differs, vfpu });
 });
 parentPort.postMessage({ ready: true });

@@ -6,9 +6,10 @@
 // or give arguments to, which say why. Then one line of the twins is changed at a time, and the check has to find each:
 // a wrong sum, a byte too many, a value one along, a switch with a case too many, which only the edge of what a value
 // holds meets, the smaller for the larger, a twin that never comes back, and one that calls what nothing built is. Of
-// the functions that use the floating-point unit or the Allegrex's own instructions, each through what the kit's
-// psp.h has for it: one that rounds a half down where the original rounds it up, a float cast as C casts it where the
-// console gives the nearest whole number a word holds, and a remainder for a quotient.
+// the functions that use the floating-point unit, the vector unit or the Allegrex's own instructions, each through what
+// the kit's psp.h has for it: one that rounds a half down where the original rounds it up, a float cast as C casts it
+// where the console gives the nearest whole number a word holds, a remainder for a quotient, a reciprocal as C divides
+// where the vector unit gives its own, and a cosine left out, which only the vector unit's registers show.
 // Last, the same program as a game of its own, through the tool everyone runs, npm run dp -- twin, which keeps the
 // proofs it finds once the version keeps proofs.
 
@@ -102,6 +103,10 @@ try {
     check(['differs', 'stopped'].includes(run.cut?.kind), `a float cast as C casts it, where the console gives the nearest whole number a word holds: ${run.cut?.kind} ${run.cut?.line}`);
   }
   await wrong('quotient', [['return (int)psp_div(a, b).lo;', 'return (int)psp_div(a, b).hi;']], 'differs', 'the remainder for the quotient');
+  // one over S000 as C divides, into S010, in place of the unit's vrcp.s
+  const rcpInC = '  float x;\n  __builtin_memcpy(&x, &psp_vfpu_state.v[0], 4);\n  x = 1.0f / x;\n  __builtin_memcpy(&psp_vfpu_state.v[4], &x, 4);\n';
+  await wrong('reciprocal', [['  psp_vfpu(0xD0100001u);\n', rcpInC]], 'differs', 'a reciprocal as C divides, where the vector unit gives its own', /the twin gave back/);
+  await wrong('spin', [['  psp_vfpu(0xD0130003u);\n', '']], 'differs', 'a cosine left out, which only the vector unit\'s registers show', /in the vector unit's S030/);
 } finally {
   original.close();
 }

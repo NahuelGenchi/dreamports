@@ -6,7 +6,7 @@ import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
-import { HOST, OPENGL, buildReference, coreFile } from './build.mjs';
+import { HOST, OPENGL, buildReference, coreFile, systemFolder } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
 
@@ -45,10 +45,9 @@ export function libretroReference(machine) {
   // the one the tools hear it at. { env, path, done }: the copy's link and the saves go when `done` is called
   const forRun = copy => {
     const run = `${process.pid}-${threadId}-${++runs}`, named = plainlyNamed(copy, run);
-    const system = join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
+    const system = systemFolder(machine), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
     rmSync(saves, { recursive: true, force: true });
     mkdirSync(saves, { recursive: true });
-    mkdirSync(system, { recursive: true });
     // a core that keeps its settings and memory cards in the person's home folder, as Play! does, finds them in that empty
     // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
     // Documents folder, which CFFIXED_USER_HOME moves there too

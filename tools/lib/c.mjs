@@ -66,7 +66,7 @@ const OWN = {
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'timing.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
   // a game keeps its own values above the console's memory, which is at the console's own addresses, the scratchpad
   // from 64 KB, the video memory from 64 MB and the main memory up to 192 MB (kit/psp/c/memory.c)
-  psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c', 'mutex.c'], header: true, gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
+  psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c', 'mutex.c', 'vfpu.c'], header: true, trees: ['vfpu'], gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
   n64: {
     folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
     // the function check builds it with each read and write the processor's own load or store, which its pass over
@@ -184,7 +184,8 @@ function filesFor(sources, folders) {
   for (const folder of new Set([...all, ...trees])) {
     let place = tree;
     for (const part of relative(REPO, folder).split(sep).filter(Boolean)) place = place[part] ??= {};
-    for (const name of readdirSync(folder)) if (/\.[ch]$/.test(name)) place[name] = readFileSync(join(folder, name));
+    // and the tables a kit's C takes in whole with #embed, as the PlayStation Portable's vector unit's
+    for (const name of readdirSync(folder)) if (/\.([ch]|dat)$/.test(name)) place[name] = readFileSync(join(folder, name));
   }
   return tree;
 }

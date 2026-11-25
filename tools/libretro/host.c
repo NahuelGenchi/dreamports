@@ -751,16 +751,16 @@ static void reachedPc(uint32_t pc) {
 //              image it is and how far its mirrors reach from it, then a mask every address is cut to first, then the
 //              bytes of every place in turn. They're written into the console's memory. Answers 'k'.
 //   'C' call   the function's address, how many bytes long it is, how many instructions it may run, where it comes back
-//              to, the 32 registers with hi and lo, the floating-point unit's 32 and its control register, the changes
-//              to the image, a count then each one's address, bytes and value, and the places that stop a call, a count
-//              then each. Answers how it ended, where, the pc, how many instructions ran and the registers it left, 71
-//              words; a byte for each instruction of the function;
+//              to, the 32 registers with hi and lo, the floating-point unit's 32 and its control register, the vector
+//              unit's 128 and its 16 control registers, the changes to the image, a count then each one's address, bytes
+//              and value, and the places that stop a call, a count then each. Answers how it ended, where, the pc, how
+//              many instructions ran and the registers it left, 215 words; a byte for each instruction of the function;
 //              each place it read, the first time, a count then each's address, bytes and value; and each 256 bytes of
 //              the image it wrote, a count then each's number and the bytes it left. Then the memory is as it was.
 //   'Q'        ends it.
-// what a call is given and what it leaves, in words: four of its own, the 32 registers, hi and lo, and the
-// floating-point unit's 32 registers and its control register
-#define CALL_HEAD 71
+// what a call is given and what it leaves, in words: four of its own, the 32 registers, hi and lo, the floating-point
+// unit's 32 registers and its control register, and the vector unit's 128 registers and its 16 control registers
+#define CALL_HEAD 215
 struct callPlace { uint32_t address, bytes, span, at; };
 static struct callPlace callPlaces[16];
 static uint32_t callPlaceCount, callMask, callImageBytes;

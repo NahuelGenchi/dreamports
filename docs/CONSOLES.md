@@ -92,7 +92,9 @@ PPSSPP runs it, built from [its makers' source](https://github.com/hrydgard/ppss
 
 **Its semaphores and event flags, mutexes and callbacks.** The kit has semaphores, event flags, mutexes and lightweight mutexes as PPSSPP answers them, with their timeouts as it times them, and the callbacks a game makes as the console's SDK has it start ([#1979](https://github.com/NahuelGenchi/dreamports/issues/1979), [#2001](https://github.com/NahuelGenchi/dreamports/issues/2001)).
 
-**Still to come.** The vector unit in its kit in C ([#1987](https://github.com/NahuelGenchi/dreamports/issues/1987)), and a callback a game notifies, message boxes, interrupts, timers, files and the system's functions by number ([#1990](https://github.com/NahuelGenchi/dreamports/issues/1990)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
+**Its vector unit.** The kit runs the vector unit's instructions as PPSSPP's interpreter does, ported from its source, with the tables PPSSPP measured on the console for the unit's sine and the rest, which the tools give PPSSPP too, so both work them out from the same files on every computer. A thread made with the unit has its own, as the system keeps it, and the function check gives a function the unit's registers and compares what it leaves there ([#1987](https://github.com/NahuelGenchi/dreamports/issues/1987)).
+
+**Still to come.** A callback a game notifies, message boxes, interrupts, timers, files and the system's functions by number ([#1990](https://github.com/NahuelGenchi/dreamports/issues/1990)). Nothing has tried a disc, a save, a start point or a search for a route on it yet.
 
 ## The PlayStation 2
 
