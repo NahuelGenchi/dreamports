@@ -1,0 +1,20 @@
+// @TITLE_C@: the game's own code, in C, on the Game Boy kit in C (kit/gbc/c/gb.h), with the console's screen, frame,
+// sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page, built to
+// WebAssembly as src/game.wasm (kit/gbc/c/README.md).
+
+#include "gb.h"
+
+// once, at power-on, with the player's copy in kit_copy and the cartridge in gb_rom
+void game_start(void) {}
+
+// what the original does each frame, from its V-blank on, writing the hardware's registers as it does. To begin with,
+// the background's first colour: on a Game Boy Color blue, and green while a button is held, and on a Game Boy, which
+// has four shades of one colour, light, and dark while a button is held
+void game_step(uint32_t buttons) {
+  if (gb_colour) {
+    uint16_t colour = buttons ? 0x03E0 : 0x7C00;
+    gb_write(0xFF68, 0x80);
+    gb_write(0xFF69, (uint8_t)colour);
+    gb_write(0xFF69, (uint8_t)(colour >> 8));
+  } else gb_write(0xFF47, buttons ? 0xFE : 0xFD);
+}
