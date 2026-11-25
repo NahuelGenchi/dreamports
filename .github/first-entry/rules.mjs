@@ -57,8 +57,13 @@ const near = (a, b) => !!letters(a) && !!letters(b) && (letters(a).includes(lett
 // disc's code is the name of the program it boots, as SLUS_205.73, and its functions are in more places than one
 // (`places`, tools/ps2/functions.mjs)
 const OTHER = { title: /^[A-Za-z0-9][A-Za-z0-9 _.!&',:+()-]{0,59}$/, code: /^[A-Z0-9 -]{0,16}$/, address: /^/, named: found => near(namesOf(found).name, found.title) };
+// A Game Boy copy's header names it too, in up to 16 letters, or 11 and a code of up to 4 on a Game Boy Color, so a title
+// that short needn't be the game's name, and its code map's addresses are places in its program, of 8 MB at most
+const gameBoy = letters => ({ ...OTHER, address: /^00[0-7]/, named: found => found.title.length <= letters || OTHER.named(found) });
 const HEADER = {
   gba: { title: /^[A-Za-z0-9 _.!&'-]{1,12}$/, code: /^[A-Z0-9]{4}$/, address: /^0[89]/, named: () => true },
+  gb: { ...gameBoy(16), code: /^$/ },
+  gbc: { ...gameBoy(11), code: /^[A-Z0-9]{0,4}$/ },
   ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true },
   // a Nintendo DS cartridge's header has a title of up to 12 letters and a code of 4, and its code is the ARM9's
   // program, in the main memory or copied to the fast memory below it, with the ARM7's program and each overlay a
