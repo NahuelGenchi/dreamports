@@ -187,6 +187,8 @@ async function main() {
   const same = report('buttons');
   check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `every frame of both screens and the sound matches the emulator, buttons and touches from the recording: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
   if (run.status) console.log(run.out);
+  const ran = JSON.parse(readFileSync(join(proofFolder(C_GAME), 'progress.json'), 'utf8')).recordings.buttons?.functions ?? [];
+  check(ran.length === mapped.length && ran.includes('02000000') && ran.filter(key => key.endsWith('@ARM7')).length === 4, `prove says which functions ran in matching play, on both processors, the one that asks the touch screen's chip among them: ${ran.join(', ')}`);
   writeGameInC({ moved: 8 });
   run = dp('prove', C_GAME, 'buttons');
   check(run.status !== 0 && report('buttons').firstDifference?.frame === 161, `a touch read eight pixels to the right is found where it first shows, at frame 161: ${JSON.stringify(report('buttons').firstDifference)}`);
