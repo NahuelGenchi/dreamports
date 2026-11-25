@@ -44,6 +44,9 @@ const CORES = {
     // on a Mac its CMake asks for its own copy of SDL unless it may look for the computer's, which the core never uses
     cmakeOn: { darwin: ['-DUSE_SYSTEM_LIBSDL2=ON'] },
     target: 'ppsspp_libretro', folder: 'build', folderOn: { linux: 'build/lib', darwin: 'build/lib' }, built: 'ppsspp_libretro', patch: 'tools/libretro/ppsspp.patch', ran: 'starts',
+    // the tables its vector unit's sine, square root and the rest are worked out from, which it reads from its system
+    // folder as it needs them, the same files as the kit's (kit/psp/c/vfpu/), so every computer gives the same
+    system: { 'PPSSPP/vfpu': 'kit/psp/c/vfpu' },
     options: { ppsspp_backend: 'none', ppsspp_software_rendering: 'enabled', ppsspp_cpu_core: 'Interpreter', ppsspp_fast_memory: 'disabled', ppsspp_ignore_bad_memory_access: 'disabled', ppsspp_io_timing_method: 'Simulate UMD delays', ppsspp_force_lag_sync: 'disabled', ppsspp_locked_cpu_speed: '0', ppsspp_cache_iso: 'disabled', ppsspp_cheats: 'disabled', ppsspp_language: 'English', ppsspp_psp_model: 'psp_2000_3000', ppsspp_button_preference: 'Cross', ppsspp_analog_is_circular: 'disabled', ppsspp_analog_deadzone: '0.0', ppsspp_analog_sensitivity: '1.00', ppsspp_memstick_inserted: 'enabled', ppsspp_internal_resolution: '480x272', ppsspp_cropto16x9: 'disabled', ppsspp_frameskip: '0', ppsspp_auto_frameskip: 'disabled', ppsspp_frame_duplication: 'disabled', ppsspp_detect_vsync_swap_interval: 'disabled', ppsspp_texture_replacement: 'disabled', ppsspp_enable_wlan: 'disabled', ppsspp_enable_upnp: 'disabled' },
     pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', SELECT: 'SELECT', START: 'START', ...STICK, CROSS: 'B', CIRCLE: 'A', SQUARE: 'Y', TRIANGLE: 'X', L: 'L', R: 'R' } },
   'made-up': { local: 'tools/test/made-up-core.c', built: 'made_up_core', commit: 'local', gameChoosesRate: true, pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', START: 'START', A: 'A', B: 'B' } },

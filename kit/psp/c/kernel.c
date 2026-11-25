@@ -77,8 +77,10 @@ enum { DORMANT, READY, RUNNING, WAITING, GONE };
 struct thread {
   SceUID uid;
   int state, priority, first_priority, wait_kind, wait_what, wakeups, result, exit_status;
-  uint32_t wait_value, size, arguments;
+  uint32_t wait_value, size, arguments, attributes;
   psp_thread_entry entry;
+  // the vector unit as a thread made with PSP_THREAD_ATTR_VFPU left it, which it gets back as it runs again
+  struct psp_vfpu vfpu;
   uint64_t ready_order;
   // the pass's own: where the waiting functions' values are kept, the C stack, and where each was left
   struct { uint8_t *at, *end; } kept;
@@ -125,6 +127,16 @@ static struct thread *best_ready(int better_than) {
   }
   return best;
 }
+// The system changes the thread it has running to `next`, or to its idle thread for none. A thread made with the
+// vector unit keeps its own: the system puts the unit away for the thread it leaves and gives the one it goes to its
+// own, and a thread made without it, as the program's first is, finds the unit as the last one left it.
+static void change_to(struct thread *next) {
+  if (next == running) return;
+  if (running && (running->attributes & PSP_THREAD_ATTR_VFPU)) running->vfpu = psp_vfpu_state;
+  if (next && (next->attributes & PSP_THREAD_ATTR_VFPU)) psp_vfpu_state = next->vfpu;
+  running = next;
+}
+
 // With no thread ready the system's own idle thread runs, which `running` being nothing stands for. Changing the
 // thread that runs takes time of its own in the emulator, 1,200 cycles to or from the idle thread and 2,700 between
 // two others, even from a thread that waited to itself once it's woken, and what's due within that time happens in the
@@ -141,7 +153,7 @@ void thread_reschedule(void) {
     make_ready(running);
   } else next = best_ready(-1);
   now += from_idle || !next ? 1200 : 2700;
-  running = next;
+  change_to(next);
   if (running) running->state = RUNNING;
 }
 
@@ -303,7 +315,7 @@ void kernel_interrupt_starts(void) {
   if (!running) return;
   now += 1200;
   if (running->state == RUNNING) interrupted_running = 1;
-  else running = 0;
+  else change_to(0);
 }
 void kernel_interrupt_ends(void) {
   if (interrupted_running) now += 1200;
@@ -316,7 +328,7 @@ void kernel_vblank_interrupt(void) {
   if (!running) return;
   now += 1200;
   if (running->state == RUNNING) make_ready(running);
-  running = 0;
+  change_to(0);
 }
 
 void kernel_run_frame(void) {
@@ -339,10 +351,15 @@ void kernel_run_frame(void) {
 
 // ---- what a game asks of its threads ---------------------------------------------------------------------------------
 
-static struct thread *new_thread(SceUID uid, psp_thread_entry entry, int priority, int stack_size) {
+static struct thread *new_thread(SceUID uid, psp_thread_entry entry, int priority, int stack_size, uint32_t attributes) {
   if (thread_count == THREADS) __builtin_trap();
   struct thread *thread = &threads[thread_count++];
-  *thread = (struct thread){ .uid = uid, .state = DORMANT, .priority = priority, .first_priority = priority, .entry = entry };
+  *thread = (struct thread){ .uid = uid, .state = DORMANT, .priority = priority, .first_priority = priority, .entry = entry, .attributes = attributes };
+  // its vector unit as the system starts a thread: every register not a number, and the control registers as the
+  // console starts them, no prefixes, every condition bit and vrnd's own numbers
+  static const uint32_t control[16] = { 0xE4, 0xE4, 0, 0x3F, 0, 0, 0, 0x7772CEAB, 0x3F800001, 0x3F800002, 0x3F800004, 0x3F800008, 0x3F800000, 0x3F800000, 0x3F800000, 0x3F800000 };
+  for (int i = 0; i < 128; i++) thread->vfpu.v[i] = 0x7F800001u;
+  for (int i = 0; i < 16; i++) thread->vfpu.control[i] = control[i];
   thread->stack_bytes = (uint32_t)stack_size * 2 < STACK_LEAST ? STACK_LEAST : (uint32_t)stack_size * 2;
   thread->kept_bytes = kit_alloc(KEPT_BYTES);
   thread->stack = kit_alloc(thread->stack_bytes);
@@ -357,7 +374,7 @@ SceUID sceKernelCreateThread(const char *name, psp_thread_entry entry, int prior
   if (priority < 0x08 || priority > 0x77) return thread_done(PSP_ERROR_ILLEGAL_PRIORITY);
   // a game's thread may ask for the vector unit, the user's memory and a few ways with its stack, and nothing else
   if (attributes & ~0xF8F060FFu) return thread_done(PSP_ERROR_ILLEGAL_ATTR);
-  struct thread *thread = new_thread(kernel_new_uid(), entry, priority, stack_size);
+  struct thread *thread = new_thread(kernel_new_uid(), entry, priority, stack_size, attributes);
   clock_spend(32000);
   return thread_answer(thread->uid);
 }
@@ -474,10 +491,12 @@ void kernel_power(void) {
   next_uid = FIRST_UID;
   running = executing = 0;
   frame_ended = 0;
+  psp_vfpu_reset();
 }
 void kernel_start(psp_thread_entry entry) {
-  // the program's first thread, as the system starts one that asks for nothing else: priority 32 and 256 KB of stack
-  struct thread *root = new_thread(ROOT_UID, entry, 0x20, 0x40000);
+  // the program's first thread, as the system starts one that asks for nothing else: priority 32, 256 KB of stack and
+  // the user's memory, but not a vector unit of its own
+  struct thread *root = new_thread(ROOT_UID, entry, 0x20, 0x40000, PSP_THREAD_ATTR_USER);
   root->state = RUNNING;
   running = root;
 }

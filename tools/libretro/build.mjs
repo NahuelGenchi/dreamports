@@ -4,7 +4,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -47,6 +47,25 @@ const builtWith = core => {
   return `-${hash.digest('hex').slice(0, 8)}`;
 };
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
+
+/** The folder a console's emulator reads its own files from, .dreamports/libretro/system/<console>, with what
+ *  tools/consoles.mjs says it takes from the repository laid in it as they are in the repository now. */
+export function systemFolder(machine) {
+  const folder = join(LOCAL, 'libretro', 'system', machine.id);
+  mkdirSync(folder, { recursive: true });
+  for (const [to, from] of Object.entries(machine.core.system ?? {})) {
+    mkdirSync(join(folder, to), { recursive: true });
+    for (const name of readdirSync(join(REPO, from))) {
+      const source = join(REPO, from, name), target = join(folder, to, name), bytes = readFileSync(source);
+      if (existsSync(target) && readFileSync(target).equals(bytes)) continue;
+      // written beside it and then put in its place, so a core another recording is starting never reads half of one
+      const part = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}`;
+      writeFileSync(part, bytes);
+      renameSync(part, target);
+    }
+  }
+  return folder;
+}
 
 function run(what, program, args, cwd, env) {
   try {

@@ -268,7 +268,7 @@ index 09396da..11f9550 100644
  	gstate_c.UpdateUVScaleOffset();
  	drawEngine_->transformUnit.SetDirty(dirtyFlags_);
 diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
-index 3b2f103..c8f0b98 100644
+index 3b2f103..8ba2995 100644
 --- a/libretro/libretro.cpp
 +++ b/libretro/libretro.cpp
 @@ -32,6 +32,8 @@
@@ -324,7 +324,7 @@ index 3b2f103..c8f0b98 100644
        switch (state) {
        case BootState::Failed:
           g_pendingBoot = false;
-@@ -2046,6 +2066,126 @@ inline int16_t Clamp16(int32_t sample) {
+@@ -2046,6 +2066,136 @@ inline int16_t Clamp16(int32_t sample) {
     return sample;
  }
  
@@ -365,8 +365,9 @@ index 3b2f103..c8f0b98 100644
 +
 +// Dreamports: one function of a game's program at a time, run by the emulator's own interpreter, for the tools'
 +// function check (tools/psp/twin.mjs). `in` holds the function's address, how many bytes long it is, how many
-+// instructions it may run, the address it comes back to, the 32 registers with hi and lo, and how many places stop a
-+// call, then each: the pairs of instructions the system writes its calls into. Each instruction runs as the
++// instructions it may run, the address it comes back to, the 32 registers with hi and lo, the floating-point unit's 32
++// registers and its control register, the vector unit's 128 registers and its 16 control registers, and how many places
++// stop a call, then each: the pairs of instructions the system writes its calls into. Each instruction runs as the
 +// interpreter runs it, a branch with its delay slot. Before one that reads or writes memory, `noted` is told where and
 +// how many bytes, and whether it reads (1) or writes (2), or the call ends there, as an exception, when the processor
 +// has nothing there. `out` gets how the call ended (0 came back, 1 ran out of instructions, 2 met an exception, 3 went
@@ -374,8 +375,8 @@ index 3b2f103..c8f0b98 100644
 +// `ran` a byte for each instruction of the function: 1 ran, 2 a branch there went to its target, 4 went on.
 +extern "C" RETRO_API void dreamports_call(const uint32_t *in, uint32_t *out, uint8_t *ran, void (*noted)(uint32_t address, uint32_t bytes, uint32_t how)) {
 +   MIPSState *m = currentMIPS;
-+   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[71];
-+   const uint32_t *stops = in + 72;
++   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[215];
++   const uint32_t *stops = in + 216;
 +   for (int i = 0; i < 32; i++)
 +      m->r[i] = in[4 + i];
 +   m->r[0] = 0;
@@ -386,6 +387,11 @@ index 3b2f103..c8f0b98 100644
 +      m->fi[i] = in[38 + i];
 +   m->fcr31 = in[70] & 0x0181FFFF;
 +   m->fpcond = (in[70] >> 23) & 1;
++   // the vector unit's registers, as their bits, and its control registers
++   for (int i = 0; i < 128; i++)
++      m->vi[i] = in[71 + i];
++   for (int i = 0; i < 16; i++)
++      m->vfpuCtrl[i] = in[199 + i];
 +   m->pc = address;
 +   m->nextPC = 0;
 +   m->inDelaySlot = false;
@@ -444,6 +450,10 @@ index 3b2f103..c8f0b98 100644
 +   for (int i = 0; i < 32; i++)
 +      out[38 + i] = m->fi[i];
 +   out[70] = (m->fcr31 & ~(1u << 23)) | ((m->fpcond & 1u) << 23);
++   for (int i = 0; i < 128; i++)
++      out[71 + i] = m->vi[i];
++   for (int i = 0; i < 16; i++)
++      out[199 + i] = m->vfpuCtrl[i];
 +   m->inDelaySlot = false;
 +   coreState = was;
 +}

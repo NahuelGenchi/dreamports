@@ -28,9 +28,13 @@
 //   rest(a, b)           div's remainder, in HI
 //   dot(a, b, c, d)      a times b plus c times d, by mult and the Allegrex's madd, the low word
 //   turned(x, n)         rotrv: x turned right by n
+//   inverse_square(v)    one over the four floats at v dotted with themselves, by the vector unit: lv.q, vdot.q,
+//                        vrcp.s and mfv
+//   spin(angle)          the vector unit's sine and cosine of a float, mtv, vsin.s and vcos.s, left in its registers
 //   start                the program's start, which comes straight back
 
 import { A0, A1, A2, NOP, RA, SP, T0, T1, T2, V0, ZERO, addiu, addu, beq, call, here, jal, jr, la, lw, pspProgram, sll, sw } from './made-up-psp.mjs';
+import { lvq, mfv, mtv, vcos, vdot, vrcp, vsin } from './made-up-psp-vfpu.mjs';
 
 const word = (op, rs, rt, value) => (op << 26 | rs << 21 | rt << 16 | (value & 0xFFFF)) >>> 0;
 const sb = (rt, offset, base) => word(0x28, base, rt, offset);
@@ -58,8 +62,8 @@ const F0 = 0, F1 = 1, F12 = 12, F13 = 13, A3 = 7;
 
 /** The functions, by name, in the order they're in the program. */
 export const NAMES = ['start', 'sum', 'fill', 'lookup', 'twice', 'pick', 'bigger', 'middle', 'clock', 'half', 'scale', 'whole', 'cut', 'floor_of', 'ceil_of',
-  'nearest', 'less', 'root', 'from_whole', 'leading', 'swapped', 'reversed', 'quotient', 'rest', 'dot', 'turned'];
-/** Those that use the floating-point unit or the Allegrex's own instructions. */
+  'nearest', 'less', 'root', 'from_whole', 'leading', 'swapped', 'reversed', 'quotient', 'rest', 'dot', 'turned', 'inverse_square', 'spin'];
+/** Those that use the floating-point unit, the vector unit or the Allegrex's own instructions. */
 export const UNITS = NAMES.slice(NAMES.indexOf('half'));
 /** The table `lookup` reads. */
 export const VALUES = [11, 22, 33, 44];
@@ -143,6 +147,8 @@ export function madeUpPspTwin() {
     here('rest'), div(A0, A1), jr(RA), mfhi(V0),
     here('dot'), mult(A0, A1), madd(A2, A3), jr(RA), mflo(V0),
     here('turned'), jr(RA), rotrv(V0, A0, A1),
+    here('inverse_square'), lvq(0, 0, A0), vdot('q', 1, 0, 0), vrcp('s', 1, 1), jr(RA), mfv(V0, 1),
+    here('spin'), mtv(A0, 0), vsin('s', 2, 0), jr(RA), vcos('s', 3, 0),
   ];
   return pspProgram({
     code, name: 'twins', relocatable: true, sections: true,

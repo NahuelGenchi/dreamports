@@ -139,3 +139,18 @@ int dot(int a, int b, int c, int d) {
 unsigned turned(unsigned x, unsigned n) {
   return psp_rotr(x, n);
 }
+
+/** @INVERSE_SQUARE@: one over the four floats at v dotted with themselves, by the vector unit, as its bits */
+unsigned inverse_square(const float *v) {
+  psp_vfpu_load(0xD8800000u, (uint32_t)(uintptr_t)v);
+  psp_vfpu(0x64808081u);
+  psp_vfpu(0xD0100101u);
+  return psp_vfpu_get(0x48620001u);
+}
+
+/** @SPIN@: angle's sine and cosine, left in the vector unit */
+void spin(unsigned angle) {
+  psp_vfpu_set(0x48E40000u, angle);
+  psp_vfpu(0xD0120002u);
+  psp_vfpu(0xD0130003u);
+}

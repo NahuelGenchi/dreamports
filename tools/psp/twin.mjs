@@ -45,7 +45,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 import { KEPT_FROM, openBuild } from '../gba/twin.mjs';
 import { TYPES, signatureOf, typeOf, wrapOf } from '../ps2/twin.mjs';
 import { findFunctions, programOf, pspProgram } from './functions.mjs';
-import { addressAt, CAME_BACK, ELSEWHERE, endText, EXCEPTION, FCR31, inImage, OUT_OF_STEPS, Original, RAM, regionsOf, REGISTERS, SYSTEM } from './original.mjs';
+import { addressAt, CAME_BACK, ELSEWHERE, endText, EXCEPTION, FCR31, inImage, OUT_OF_STEPS, Original, RAM, regionsOf, REGISTERS, SYSTEM, VFPU_CONTROL } from './original.mjs';
 
 const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 const NO_CODE = '__twin_no_code';
@@ -75,7 +75,14 @@ export function foldTable() {
 
 /** A version's C ready to be built for the check, as openBuild (../gba/twin.mjs) has it, on the console's kit and laid out as
  *  a game's build is, each twin called with what the compiler says it takes and gives (../ps2/twin.mjs, wrapOf). */
-export const openPspBuild = options => openBuild({ ...options, console: 'psp', layout: LAYOUT, signature: signatureOf, wrap: wrapOf });
+export const openPspBuild = options => openBuild({ ...options, console: 'psp', layout: LAYOUT, signature: signatureOf, wrap: wrapOf, kitNames: ['psp_vfpu_state'] });
+
+// the vector unit's control registers by the names PPSSPP gives them, and which holds its condition bits
+const VFPU_CONTROL_NAMES = ['SPREFIX', 'TPREFIX', 'DPREFIX', 'CC', 'INF4', 'RSV5', 'RSV6', 'REV', 'RCX0', 'RCX1', 'RCX2', 'RCX3', 'RCX4', 'RCX5', 'RCX6', 'RCX7'];
+const VFPU_CC = 3;
+/** A word of the vector unit, by its place in what a call gives it: a register as the console names it, S and its
+ *  matrix, column and row, from PPSSPP's order, or a control register. */
+export const vectorName = i => (i < 128 ? `S${i >> 4}${(i >> 2) & 3}${i & 3}` : `${VFPU_CONTROL_NAMES[i - 128]}`);
 
 /** What the check does unless it's told otherwise. */
 export const DEFAULTS = {
@@ -196,10 +203,10 @@ class Runner {
     else await this.ask({ set: image, regions });
   }
 
-  async call(name, args, changes, chunks, skip) {
+  async call(name, args, changes, chunks, skip, vfpu) {
     let timer;
     const late = new Promise(resolve => { timer = setTimeout(() => resolve({ never: true }), this.seconds * 1000); });
-    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip }), late]);
+    const answer = await Promise.race([this.ask({ call: name, args, changes, chunks, skip, vfpu }), late]);
     clearTimeout(timer);
     if (answer.never) {
       await this.worker.terminate();
@@ -213,7 +220,7 @@ class Runner {
   }
 }
 
-async function checkFunction({ f, original, runner, program, regions, options, choose }) {
+async function checkFunction({ f, original, runner, program, regions, options, choose, chooseVectors }) {
   const pool = new Map(), pointers = [], ran = new Map(), aside = {};
   const top = RAM + regions[0].bytes, stack = (top - 0x100) >>> 0;
   const inMemory = address => (address >>> 0) >= GAME && (address >>> 0) < top;
@@ -245,7 +252,11 @@ async function checkFunction({ f, original, runner, program, regions, options, c
       return argument >= 0 && argument < integers.length ? integers[argument] : choose.next();
     });
     const fprs = Array.from({ length: 32 }, (_, i) => (i >= FLOAT_ARGUMENTS && i - FLOAT_ARGUMENTS < floats.length ? floats[i - FLOAT_ARGUMENTS] : choose.next()));
-    const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, back: BACK, registers, floats: fprs, control: FCR31, changes, stops });
+    // the vector unit as a caller may leave it: any floats in its registers and any condition bits, from a seed of its
+    // own, so a function's calls are the same with or without it, and no prefix waiting, as a call never leaves one
+    const vectors = Array.from({ length: 128 }, () => chooseVectors.value({ float: true }));
+    const vectorControl = VFPU_CONTROL.map((value, i) => (i === VFPU_CC ? chooseVectors.below(64) : value));
+    const answer = await original.call({ address: f.address, span: f.size, limit: options.limit, back: BACK, registers, floats: fprs, control: FCR31, vectors, vectorControl, changes, stops });
     for (const { address, bytes, value } of answer.reads) {
       // a word that points back into the function's own code is a switch's table, the compiler's and not the caller's
       if (!read(address) || (bytes === 4 && value >= f.code.from && value < f.code.to)) continue;
@@ -265,7 +276,7 @@ async function checkFunction({ f, original, runner, program, regions, options, c
       aside.keptText ??= changed !== undefined ? `${REGISTERS[changed]}` : `$f${changedFloat}`;
       continue;
     }
-    const twin = await runner.call(f.call, args, changes, answer.chunks, skip);
+    const twin = await runner.call(f.call, args, changes, answer.chunks, skip, [...vectors, ...vectorControl]);
     const call = { number, args, changes };
     if (twin.never) return { compared, aside, ran, result: { kind: 'never', ...call } };
     if (twin.stopped === 'unbuilt') {
@@ -285,6 +296,10 @@ async function checkFunction({ f, original, runner, program, regions, options, c
       if (ours !== theirs) return { compared, aside, ran, result: { kind: 'differs', gave: { ours, theirs, float: Boolean(f.returns.float) }, ...call } };
     }
     if (twin.differs) return { compared, aside, ran, result: { kind: 'differs', memory: { ...addressAt(regions, twin.differs.at), ours: twin.differs.ours, theirs: twin.differs.theirs }, ...call } };
+    // and the vector unit as each left it, a twins' module with none leaving it as it was given
+    const theirs = [...answer.vectors, ...answer.vectorControl], ours = twin.vfpu ?? [...vectors, ...vectorControl];
+    const word = theirs.findIndex((value, i) => value >>> 0 !== ours[i] >>> 0);
+    if (word >= 0) return { compared, aside, ran, result: { kind: 'differs', vector: { name: vectorName(word), ours: ours[word] >>> 0, theirs: theirs[word] >>> 0 }, ...call } };
     compared++;
     answer.ran.forEach((ways, i) => { if (ways) ran.set(f.address + i * 4, (ran.get(f.address + i * 4) ?? 0) | ways); });
   }
@@ -303,7 +318,8 @@ export function outcome(f, { compared, aside, result }, { calls, seconds }) {
   if (result?.kind === 'differs') {
     const gave = result.gave ? `the twin gave back ${at(result.gave.ours)} and the original ${at(result.gave.theirs)}${result.gave.float ? ', as floats\' bits' : ''}` : null;
     const memory = result.memory ? `at ${at(result.memory.address)}, in ${result.memory.name}, the twin left ${byte(result.memory.ours)} and the original ${byte(result.memory.theirs)}` : null;
-    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, gave].filter(Boolean).join(', and ')}.` };
+    const vector = result.vector ? `in the vector unit's ${result.vector.name}, the twin left ${at(result.vector.ours)} and the original ${at(result.vector.theirs)}` : null;
+    return { kind: 'differs', line: `${callText(f.name, result)}: ${[memory, vector, gave].filter(Boolean).join(', and ')}.` };
   }
   if (result?.kind === 'never') return { kind: 'never', line: `${callText(f.name, result)}: the original came back and the twin was still going after ${seconds} second${seconds === 1 ? '' : 's'}.` };
   if (result?.kind === 'stopped') return { kind: 'stopped', line: `${callText(f.name, result)}: the original came back and the twin stopped (${result.why}).` };

@@ -14,7 +14,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { LOCAL } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
-import { HOST, buildReference, coreFile } from '../libretro/build.mjs';
+import { HOST, buildReference, coreFile, systemFolder } from '../libretro/build.mjs';
 
 /** Where the console's memories are, and the image a call starts from and leaves, as `call` takes it: the main memory
  *  at 0x08000000, as much as the console has, then the scratchpad and the video memory. */
@@ -27,6 +27,9 @@ export const REGISTERS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0'
   's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra', 'hi', 'lo'];
 /** The floating-point unit's control register as the console starts a program: rounding to the nearest. */
 export const FCR31 = 0;
+/** The vector unit's 16 control registers as the console starts a program, as PPSSPP has them: no prefixes, every
+ *  condition bit set, and its numbers for vrnd's sums. */
+export const VFPU_CONTROL = [0xE4, 0xE4, 0, 0x3F, 0, 0, 0, 0x7772CEAB, 0x3F800001, 0x3F800002, 0x3F800004, 0x3F800008, 0x3F800000, 0x3F800000, 0x3F800000, 0x3F800000];
 /** How a call ended. */
 export const CAME_BACK = 0, OUT_OF_STEPS = 1, EXCEPTION = 2, ELSEWHERE = 3, SYSTEM = 4;
 export const hex = n => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
@@ -91,7 +94,7 @@ export class Original {
     buildReference(machine, log);
     const options = Object.entries(machine.core.options ?? {}).map(([key, value]) => `${key}=${value}`);
     const saves = join(LOCAL, 'libretro', 'saves', 'psp', `call-${process.pid}`);
-    this.child = spawn(HOST, [coreFile(machine.core), copy, 'call', ...options], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, DP_SYSTEM: join(LOCAL, 'libretro', 'system', 'psp'), DP_SAVE_FOLDER: saves } });
+    this.child = spawn(HOST, [coreFile(machine.core), copy, 'call', ...options], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, DP_SYSTEM: systemFolder(machine), DP_SAVE_FOLDER: saves } });
     this.held = [];
     this.bytes = 0;
     this.wake = null;
@@ -144,16 +147,18 @@ export class Original {
   /**
    * Runs the function at `address`, `span` bytes long, from the image with `changes`, each [address, bytes, value],
    * and with `registers`, 34 numbers in the order of REGISTERS, `floats`, the floating-point unit's 32 registers as
-   * their bits, and `control`, its control register, `back` the address ra points at, where it comes back to. `limit`
-   * is how many instructions it may run, and `stops` the addresses that are the system's. Answers { end, detail, pc,
-   * steps, registers, floats, control, ran, reads, chunks }: `ran` a byte for each instruction of the function, 1 ran, 2
+   * their bits, and `control`, its control register, `vectors`, the vector unit's 128 registers as their bits, and
+   * `vectorControl`, its 16 control registers, `back` the address ra points at, where it comes back to. `limit` is how
+   * many instructions it may run, and `stops` the addresses that are the system's. Answers { end, detail, pc, steps,
+   * registers, floats, control, vectors, vectorControl, ran, reads, chunks }: `ran` a byte for each instruction of the function, 1 ran, 2
    * went to its target, 4 went on; `reads` each place read, { address, bytes, value }; `chunks` each 256 bytes of the
    * image the function wrote, { at, bytes }.
    */
-  async call({ address, span, limit = 1000000, back, registers, floats = new Array(32).fill(0), control = FCR31, changes = [], stops = [] }) {
-    const words = [address, span, limit, back, ...registers, ...floats, control, changes.length, ...changes.flat(), stops.length, ...stops];
+  async call({ address, span, limit = 1000000, back, registers, floats = new Array(32).fill(0), control = FCR31, vectors = new Array(128).fill(0), vectorControl = VFPU_CONTROL, changes = [], stops = [] }) {
+    if (registers.length !== 34 || floats.length !== 32 || vectors.length !== 128 || vectorControl.length !== 16) throw new Error('A call of the original needs every register: 34, 32 floats, 128 of the vector unit and its 16 control registers.');
+    const words = [address, span, limit, back, ...registers, ...floats, control, ...vectors, ...vectorControl, changes.length, ...changes.flat(), stops.length, ...stops];
     this.child.stdin.write(Buffer.concat([Buffer.from('C'), ...words.map(word)]));
-    const [end, detail, pc, steps, ...left] = await this.words(71);
+    const [end, detail, pc, steps, ...left] = await this.words(215);
     const ran = new Uint8Array(await this.take(Math.floor(span / 4)));
     const [readCount] = await this.words(1);
     const flat = await this.words(readCount * 3);
@@ -164,7 +169,7 @@ export class Original {
       const [index] = await this.words(1);
       chunks.push({ at: index * CHUNK, bytes: Uint8Array.from(await this.take(CHUNK)) });
     }
-    return { end, detail, pc, steps, registers: left.slice(0, 34), floats: left.slice(34, 66), control: left[66], ran, reads, chunks };
+    return { end, detail, pc, steps, registers: left.slice(0, 34), floats: left.slice(34, 66), control: left[66], vectors: left.slice(67, 195), vectorControl: left.slice(195, 211), ran, reads, chunks };
   }
 
   close() {
