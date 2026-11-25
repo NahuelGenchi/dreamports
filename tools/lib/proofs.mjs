@@ -61,7 +61,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'nds'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -87,10 +87,15 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * the cartridge at, its reset vector's: it sets the game up and goes round its main loop, and never comes back, so no
  * call of it can be compared with a twin's, and it's the frames of play that say a Dreamport does what it does. On
  * the Nintendo 64 it's the function the cartridge's boot code jumps to, at the address the code loads at, which never
- * comes back either. The code map says where each is (`layout`), so a computer with no copy of the game knows.
+ * comes back either. The code map says where each is (`layout`), so a computer with no copy of the game knows. On the
+ * PlayStation Portable it's 'start' for the program's start, which its code map names: the console starts its first
+ * thread there, and it goes round the game's loop and never comes back.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
+  // a PlayStation Portable program's start, which its code map names: the console starts the program's first thread
+  // there, and it goes round the game's loop and never comes back
+  if (codeMap.console === 'psp') return codeMap.start && functionKey(f) === codeMap.start ? 'start' : null;
   if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
   // and on the Nintendo 64, the function at the address the code loads at, where the boot code jumps to
   if (codeMap.console === 'n64') return /^[0-9A-F]{8}$/.test(codeMap.layout?.load ?? '') && f.address === parseInt(codeMap.layout.load, 16) ? 'reset' : null;

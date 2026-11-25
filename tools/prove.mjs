@@ -723,7 +723,7 @@ async function prove({ page, reference, game, recording, copy, server, codeMap, 
     let listApart = null;
     if (drawLists && firstPicture >= 0) {
       const ours = await page.evaluate('__proof.drawList()');
-      if (!ours || ours.frame !== firstPicture) listApart = { frame: firstPicture, unknown: 'the Dreamport\'s list of that frame was too long to keep' };
+      if (!ours || ours.frame !== firstPicture) listApart = { frame: firstPicture, unknown: 'the Dreamport\'s kit didn\'t keep that frame\'s whole list, as a PlayStation Portable\'s doesn\'t yet and a PlayStation 2\'s doesn\'t when it\'s too long' };
       else {
         say('playing the original to the frame whose draw list differs, with its list written out…');
         const at = originalOf[firstPicture] + 1, dump = join(LOCAL, 'tmp', `draw-lists-${process.pid}-${name}.bin`);

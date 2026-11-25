@@ -7,3 +7,5 @@
 *.avif binary
 *.ico binary
 *.woff2 binary
+# the PlayStation Portable kit's tables for its vector unit (kit/psp/c/vfpu/)
+*.dat binary
