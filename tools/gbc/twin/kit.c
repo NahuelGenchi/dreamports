@@ -112,6 +112,16 @@ uint8_t gb_read(uint16_t address) {
 }
 
 void gb_spend(int cycles) { kit_cycles += cycles; kit_spent = 1; }
+
+// A function the twin's C calls that is still a stop, which the original's runs for: its time counts only if the twin
+// counts its own, and a call that doesn't come back as a function does is noted, so the two sides differ.
+void kit_original(uint32_t offset, int allowance, twin_regs *r) {
+  uint16_t pc = (uint16_t)(offset < 0x4000 ? offset : 0x4000 + offset % 0x4000);
+  long cycles = 0;
+  int how = orig_call_through(pc, r, &cycles, gb_read, gb_write);
+  if (how) twin_note(&kit_events, TWIN_HW_OTHER, pc, (uint8_t)(16 + how));
+  kit_cycles += cycles + allowance;
+}
 // what no function can be checked across: each is noted, so the two sides differ
 int gb_halt(void) { twin_note(&kit_events, TWIN_HW_OTHER, 0, 1); return 0; }
 int gb_interrupt(void) { twin_note(&kit_events, TWIN_HW_OTHER, 0, 2); return 0; }
