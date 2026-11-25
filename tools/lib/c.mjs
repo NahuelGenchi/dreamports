@@ -1,6 +1,6 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the Game Boy and the Game Boy Color kit/gbc/c/, the
 // PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
@@ -50,6 +50,7 @@ const OWN = {
   },
   nds: { folder: fileURLToPath(new URL('../../kit/nds/c/', import.meta.url)), sources: ['nds.c', 'video.c', 'sound.c'], header: true },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
+  gb: { folder: fileURLToPath(new URL('../../kit/gbc/c/', import.meta.url)), sources: ['gb.c', 'lcd.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c', 'cd.c'], header: true,
     // psx_gpu, which draw.c builds as one with itself, dfsound, which sound.c does, and the emulator's CD drive, which
@@ -73,6 +74,9 @@ const OWN = {
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
   },
 };
+
+// the Game Boy Color's kit is the Game Boy's: one kit for both, as they share nearly all their hardware
+OWN.gbc = OWN.gb;
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
