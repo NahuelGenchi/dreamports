@@ -19,6 +19,7 @@ import { consoleOf } from '../consoles.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { libretroReference } from '../libretro/reference.mjs';
 import { readNdsHeader } from '../nds/header.mjs';
+import { readCodeMap } from '../lib/proof-files.mjs';
 import { ARM7, ARM9, PITCH, SHARED, madeUpNds } from './made-up-nds.mjs';
 
 const WORK = join(LOCAL, 'test-real-nds');
@@ -165,6 +166,11 @@ async function main() {
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
   check(run.status === 0 && run.out.includes(GAME), `rom knows the copy for the game's: ${run.out.trim().split('\n')[1]?.trim()}`);
+  run = dp('codemap', GAME);
+  const mapped = readCodeMap(GAME)?.functions ?? [];
+  check(run.status === 0 && mapped.some(f => f.address === ARM9.address && !f.program) && mapped.some(f => f.program === 'ARM7' && f.address === ARM7.address) && mapped.filter(f => f.mode === 'thumb').length >= 4,
+    `codemap finds the functions of both of its programs, in ARM and in Thumb code: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+  if (run.status) console.log(run.out);
   const files = { 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) };
   for (const [name, text] of Object.entries(files)) writeFileSync(join(gameFolder(GAME), name), text);
   for (const [name, text] of Object.entries(startingFiles(GAME, original, { language: 'c' }))) {
