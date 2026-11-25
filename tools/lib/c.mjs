@@ -1,6 +1,6 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the Game Boy and the Game Boy Color kit/gbc/c/, the
 // PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
@@ -49,6 +49,7 @@ const OWN = {
     checkFlags: ['-DDP_TWIN_CHECK'],
   },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
+  gb: { folder: fileURLToPath(new URL('../../kit/gbc/c/', import.meta.url)), sources: ['gb.c', 'lcd.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c', 'cd.c'], header: true,
     // psx_gpu, which draw.c builds as one with itself, dfsound, which sound.c does, and the emulator's CD drive, which
@@ -73,6 +74,9 @@ const OWN = {
   },
 };
 
+// the Game Boy Color's kit is the Game Boy's: one kit for both, as they share nearly all their hardware
+OWN.gbc = OWN.gb;
+
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
 /** console.h for a console with no kit in C of its own, from what kit/consoles.js says of it. */
@@ -96,7 +100,14 @@ export function consoleHeader(id) {
 #define CONSOLE_CLOCK ${clock}
 // how many sound samples it plays a second
 #define CONSOLE_SOUND_RATE ${machine.sound}
-
+// and the most a second can hold, a whole number, where the rate isn't one, as the Nintendo DS's
+#define CONSOLE_SOUND_MOST ${Math.ceil(machine.sound)}
+${machine.screens ? `
+// its screens in the picture, one above the other, and the one that's touched (kit_touch, kit.h)
+#define SCREEN_COUNT ${machine.screens.length}
+${machine.screens.map(([left, top, across, down], n) => `#define SCREEN_${n}_X ${left}\n#define SCREEN_${n}_Y ${top}\n#define SCREEN_${n}_W ${across}\n#define SCREEN_${n}_H ${down}`).join('\n')}
+#define TOUCHED_SCREEN ${machine.touch}
+` : ''}
 // its buttons as game_step gets them, a bit each, held or not
 enum {
 ${machine.buttons.map((name, bit) => `  BUTTON_${ident(name)} = 1 << ${bit},`).join('\n')}
@@ -765,12 +776,20 @@ void *__twin_no_code(uint32_t address);
 #else
 #define TWIN_NONE(address) __builtin_trap();
 #endif
+/** How kit_twin is built: with nothing of clang's optimizer, which turns a switch whose cases sit evenly apart, as
+ *  twins at addresses 0x40 apart do, into a table of the functions in the module's data, where the build gives each
+ *  function's address in the original as any value in data, and the twin's number is lost (#1952). */
+#if defined(__clang__)
+#define TWIN_KEEPS_NUMBERS __attribute__((optnone, noinline))
+#else
+#define TWIN_KEEPS_NUMBERS
+#endif
 /** Defines kit_twin: write it once, in a file that declares every twin. A small number is a function of the module's
  *  own, as C keeps its pointers. An address with no twin, where the game copied one of the cartridge's functions, is
  *  that function's twin, as the console runs the copy as it would the original. */
 #define TWIN_TABLE \\
   TWIN_SAME_CODE \\
-  void *kit_twin(uint32_t address) { \\
+  TWIN_KEEPS_NUMBERS void *kit_twin(uint32_t address) { \\
     if (address < 0x10000u) return (void *)(uintptr_t)address; \\
     switch (address) { TWINS(TWIN_CASE) } \\
     TWIN_CODE(TWIN_COPY) \\
