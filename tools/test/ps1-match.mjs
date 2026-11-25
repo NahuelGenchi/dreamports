@@ -10,7 +10,7 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { assemble } from '../ps1/assemble.mjs';
@@ -108,7 +108,7 @@ async function main() {
   mkdirSync(WORK, { recursive: true });
   const empty = { load: LOAD, text: Buffer.alloc(SIZE) };
   const matching = (file, extra = {}) => matchFile({
-    file, compiler: COMPILER, work: join(WORK, 'built', file.split('/').at(-1).replace(/\.c$/, '')), addressOf: name => NAMED.get(name) ?? null,
+    file, compiler: COMPILER, work: join(WORK, 'built', basename(file, '.c')), addressOf: name => NAMED.get(name) ?? null,
     sizeOf: () => null, program: empty, gp: GP, log: line => console.log(`    ${line}`), ...extra,
   });
 
@@ -190,7 +190,8 @@ async function main() {
   // the compiler's process crashing as it builds a file, as it did in #1661: match asks a new one, and the file builds the same
   const building = matching(join(HERE, 'program.c'), against);
   const crashed = compilerPid();
-  process.kill(crashed, 'SIGSEGV');
+  // Windows sends a process no such signal: one ended from outside stops before it answers too
+  process.kill(crashed, process.platform === 'win32' ? 'SIGKILL' : 'SIGSEGV');
   const rebuilt = byName(await building);
   check(rebuilt.Score?.same === true && rebuilt.Say?.same === true && compilerPid() !== null && compilerPid() !== crashed, 'the compiler\'s process crashing in the middle of a file is started again, and the file builds the same');
 

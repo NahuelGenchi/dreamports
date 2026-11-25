@@ -728,6 +728,14 @@ static void searchThread(void* console, int plays) {
 	if (glContext) contextOnThread(plays);
 }
 
+// what a core that tells of each instruction it's about to run tells: which functions ran in the frame (ran.h), and
+// what the console held as one started (starts.h), each only when it's asked for
+static int pcWatched;
+static void reachedPc(uint32_t pc) {
+	ranReachedPc(pc);
+	startsReached(pc);
+}
+
 int main(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route");
 	if (argc < (live ? 6 : route ? 5 : 12)) {
@@ -809,6 +817,10 @@ int main(int argc, char** argv) {
 			coreFunctions(functions, functionsSize / 24);
 			coreRan = dlsym(library, "dreamports_ran_in_frame");
 		}
+		// a core that tells only where the processor is about to run, as the PlayStation's does: its functions by their
+		// places in the console's memory, whichever of its addresses a code map names them at
+		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
+		if (watchPc && !watch && !coreRan) for (size_t i = 0; i + 6 <= functionsSize / 4; i += 6) functions[i] = ranPlaystationPlace(functions[i]);
 		if (coreRan) ranOpen(NULL, 0, 0);
 		else if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
@@ -818,6 +830,7 @@ int main(int argc, char** argv) {
 			else if (tell) tell(ranInstruction);
 			else if (tell65816) tell65816(ranInstruction65816);
 			else if (tellSm83) tellSm83(ranInstructionSm83);
+			else if (watchPc) pcWatched |= 1;
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;
@@ -922,9 +935,10 @@ int main(int argc, char** argv) {
 	heldOpen(memories, dlsym(library, "dreamports_memory_card"));
 	if (startsOpen(dlsym(library, "dreamports_registers"), memories, dlsym(library, "dreamports_starts_layout"))) {
 		// a core that tells of each instruction it's about to run, as the PlayStation's does with the tools' patch
-		void (*watchPc)(void (*)(uint32_t)) = dlsym(library, "dreamports_watch_pc");
-		if (watchPc) watchPc(startsReached);
+		if (dlsym(library, "dreamports_watch_pc")) pcWatched |= 2;
 	}
+	// one of the two, or both, are told of each instruction such a core is about to run
+	if (pcWatched) ((void (*)(void (*)(uint32_t))) dlsym(library, "dreamports_watch_pc"))(pcWatched == 1 ? ranReachedPc : pcWatched == 2 ? startsReached : reachedPc);
 	size_t readsSize = 0;
 	uint32_t* reads = getenv("DP_READS") ? readAll(getenv("DP_READS"), &readsSize) : NULL;
 	size_t readCount = readsSize / 12, nextRead = 0;
