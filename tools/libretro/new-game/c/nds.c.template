@@ -1,0 +1,24 @@
+// @TITLE_C@: the game's own code, in C, on the Nintendo DS kit in C (kit/nds/c/nds.h), with the console's screens,
+// frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on the page,
+// built to WebAssembly as src/game.wasm (kit/nds/c/README.md).
+
+#include "nds.h"
+
+// the ARM9's program, as the original's runs from power-on: it turns both screens on and, once a frame, as the V-blank
+// starts, colours each screen's backdrop. To begin with, blue, and green while A is held
+void game_arm9(void) {
+  nds9_write16(NDS_POWCNT, 0x8203);
+  nds9_write32(NDS_DISPCNT_A, 0x10000);
+  nds9_write32(NDS_DISPCNT_B, 0x10000);
+  for (;;) {
+    nds9_wait_vblank(0);
+    uint32_t colour = nds9_read16(NDS_KEYINPUT) & 1 ? 0x7C00 : 0x03E0;
+    nds9_write16(NDS_PALETTE_A, colour);
+    nds9_write16(NDS_PALETTE_B, colour);
+  }
+}
+
+// the ARM7's program, which reads the touch screen and plays the sound: to begin with, it waits
+void game_arm7(void) {
+  for (;;) nds7_wait_vblank(0);
+}

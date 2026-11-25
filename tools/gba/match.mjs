@@ -256,8 +256,9 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
         at = comment.from;
       }
       const name = m[1], through = given ? null : throughIn(above.join('\n'), shifts, console);
-      // on the PlayStation 2 a comment can name a function of another program of the disc, or a vector unit's, by its key
-      const keyed = !given && console === 'ps2' ? keyIn(above.join('\n')) : null;
+      // on the PlayStation 2 a comment can name a function of another program of the disc, or a vector unit's, by its
+      // key, and on the Nintendo DS one of the ARM7's program or of an overlay
+      const keyed = !given && (console === 'ps2' || console === 'nds') ? keyIn(above.join('\n')) : null;
       const address = given ? given.get(name) ?? null : keyed ? null : addressIn(above.join('\n'), shifts, console) ?? addressIn(name, shifts, console) ?? namedBase(above.join('\n'), name, console);
       // dp:unaligned in the comment: a twin of code that reads or writes where no halfword or word starts, on purpose,
       // whose calls the function check compares as the processor ran them (twin.mjs)

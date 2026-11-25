@@ -13,16 +13,20 @@ index d193d1e..77e9a5b 100644
      add_subdirectory(src/frontend/qt_sdl)
  endif()
 diff --git a/src/ARM.cpp b/src/ARM.cpp
-index 3937a99..c8261e5 100644
+index 3937a99..4fdea6c 100644
 --- a/src/ARM.cpp
 +++ b/src/ARM.cpp
-@@ -291,8 +291,14 @@ void ARM::SetupCodeMem(u32 addr)
+@@ -291,8 +291,18 @@ void ARM::SetupCodeMem(u32 addr)
      }
  }
  
 +// Dreamports: each place either processor is sent to, by a call, a branch or a return, for the tools' front
 +// (dreamports/libretro.cpp), which says from it which functions ran
 +void (*DreamportsJumped)(u32 processor, u32 addr) = nullptr;
++
++// Dreamports: before each instruction the interpreter runs, for the tools' program that runs one function of a game
++// (dreamports/call.cpp): it says true to stop there, with that instruction not run. Nothing sets it as a game plays
++bool (*DreamportsStep)(u32 processor) = nullptr;
 +
  void ARMv5::JumpTo(u32 addr, bool restorecpsr)
  {
@@ -31,7 +35,7 @@ index 3937a99..c8261e5 100644
      if (restorecpsr)
      {
          RestoreCPSR();
-@@ -361,6 +367,8 @@ void ARMv5::JumpTo(u32 addr, bool restorecpsr)
+@@ -361,6 +371,8 @@ void ARMv5::JumpTo(u32 addr, bool restorecpsr)
  
  void ARMv4::JumpTo(u32 addr, bool restorecpsr)
  {
@@ -40,6 +44,24 @@ index 3937a99..c8261e5 100644
      if (restorecpsr)
      {
          RestoreCPSR();
+@@ -616,6 +628,8 @@ void ARMv5::Execute()
+ 
+     while (NDS.ARM9Timestamp < NDS.ARM9Target)
+     {
++        if (DreamportsStep && DreamportsStep(0)) break;
++
+ #ifdef JIT_ENABLED
+         if constexpr (mode == CPUExecuteMode::JIT)
+         {
+@@ -756,6 +770,8 @@ void ARMv4::Execute()
+ 
+     while (NDS.ARM7Timestamp < NDS.ARM7Target)
+     {
++        if (DreamportsStep && DreamportsStep(1)) break;
++
+ #ifdef JIT_ENABLED
+         if constexpr (mode == CPUExecuteMode::JIT)
+         {
 diff --git a/src/SPU.cpp b/src/SPU.cpp
 index e1d49f9..6f20687 100644
 --- a/src/SPU.cpp
