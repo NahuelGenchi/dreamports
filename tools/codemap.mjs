@@ -35,6 +35,7 @@ import { atOnce } from './lib/at-once.mjs';
 import * as gbaFunctions from './gba/functions.mjs';
 import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
+import * as gbFunctions from './gbc/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
 import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
@@ -64,6 +65,15 @@ const FINDERS = {
     address: address => address,
     play: true,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
+  },
+  // a Game Boy or Game Boy Color game's program, its addresses the offsets in it, which say the bank, followed from
+  // where the console starts it and from its interrupts (gbc/functions.mjs)
+  gb: {
+    ...gbFunctions,
+    file: 'tools/gbc/functions.mjs',
+    inCode: copy => offset => offset >= 0 && offset < copy.length,
+    address: address => address,
+    name: (value, copy) => gbFunctions.gbNames(value, gbFunctions.gbProgram(copy).banks)[0]?.[1],
   },
   // a Super Nintendo game's cartridge, its addresses the offsets in its ROM, followed from its vectors with the
   // processor's mode carried along, and from where play sent it in the mode it ran in (snes/functions.mjs)
@@ -114,6 +124,8 @@ const FINDERS = {
     address: address => address,
   },
 };
+
+FINDERS.gbc = FINDERS.gb;
 
 export async function run(args) {
   const game = args.find(a => !a.startsWith('--'));
