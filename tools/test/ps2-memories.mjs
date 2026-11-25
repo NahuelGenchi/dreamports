@@ -6,7 +6,7 @@
 // same code. Then the program as a game of its own, with a recording, through the tool everyone runs: npm run dp --
 // twin <version> --memories plays the recording and starts each function's calls from its own memories.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and it runs on Linux and macOS alone, as
+// It isn't run on every pull request, as the emulator takes minutes to build, and it runs on Linux, macOS and Windows, as
 // that's where the tools give the emulator a graphics context (docs/CONSOLES.md).
 
 import { spawnSync } from 'node:child_process';

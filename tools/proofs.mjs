@@ -170,7 +170,8 @@ const summary = counts => `${count(counts.bytes + counts.memory)} of ${plural(co
 export function groupLines(group, states) {
   return group.functions.map(f => {
     const state = states.get(f.key), twin = state.twin ? `${state.twin.name}, ${state.twin.file}:${state.twin.line}: ` : '';
-    return `  0x${hex(f.address)}  ${String(f.size).padStart(5)} bytes  ${f.name ? `${f.name}, ` : ''}${twin}${stateText(state)}`;
+    // one of another program of a PlayStation 2 disc, or a vector unit's, as its twin's comment names it
+    return `  0x${hex(f.address)}${f.program ? `@${f.program}` : ''}${f.vu ? '~vu' : ''}  ${String(f.size).padStart(5)} bytes  ${f.name ? `${f.name}, ` : ''}${twin}${stateText(state)}`;
   });
 }
 
