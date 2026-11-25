@@ -55,7 +55,9 @@ const near = (a, b) => !!letters(a) && !!letters(b) && (letters(a).includes(lett
 // its code at 08000000 or 09000000. Another console's games say less or nothing, so their title has more room, and is
 // the game's name or part of it, as `rom` takes it from the copy's own name when its header has none. A PlayStation 2
 // disc's code is the name of the program it boots, as SLUS_205.73, and its functions are in more places than one
-// (`places`, tools/ps2/functions.mjs)
+// (`places`, tools/ps2/functions.mjs). A PlayStation Portable disc's code is its UMD's, as ULUS-10041, or none for a
+// program or a download, and a game's code runs in the console's memory for games, 0x08800000 to 0x0BFFFFFF
+// (tools/psp/functions.mjs)
 const OTHER = { title: /^[A-Za-z0-9][A-Za-z0-9 _.!&',:+()-]{0,59}$/, code: /^[A-Z0-9 -]{0,16}$/, address: /^/, named: found => near(namesOf(found).name, found.title) };
 // A Game Boy copy's header names it too, in up to 16 letters, or 11 and a code of up to 4 on a Game Boy Color, so a title
 // that short needn't be the game's name, and its code map's addresses are places in its program, of 8 MB at most
@@ -65,6 +67,7 @@ const HEADER = {
   gb: { ...gameBoy(16), code: /^$/ },
   gbc: { ...gameBoy(11), code: /^[A-Z0-9]{0,4}$/ },
   ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true },
+  psp: { ...OTHER, code: /^(?:[A-Z]{4}-?[0-9]{5})?$/, address: /^0(?:8[89A-F]|9|A|B)/ },
   // a Nintendo DS cartridge's header has a title of up to 12 letters and a code of 4, and its code is the ARM9's
   // program, in the main memory or copied to the fast memory below it, with the ARM7's program and each overlay a
   // place of its own, as 02380000@ARM7 and 02100000@OVERLAY9_0003 (tools/nds/functions.mjs)
@@ -97,7 +100,7 @@ export function readOriginal(text) {
 // On a disc with more places than one, a function not in the program the disc boots says where it is after its
 // address: `@` and the file's path, with the module or the place inside it after a colon, and `~vu` for a vector
 // unit's code, as 00000000@IOPRP254.IMG:CDVDFSV and 003599B8~vu
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}(?:@[A-Z0-9_]{1,32})?":\s*"(?:a8i8|a8i16|a16i8|a16i16|e|thumb)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}(?:@[A-Z0-9_]{1,32})?":\s*"(?:a8i8|a8i16|a16i8|a16i16|e|thumb)"(?:,\s*)?)+\s*\})?(?:,\s*"start":\s*"[0-9A-F]{8}")?\s*\}\s*$/;
 
 /** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null.
  *  A Super Nintendo game's map also says the processor's mode each function starts in (tools/snes/functions.mjs). */
