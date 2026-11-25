@@ -54,6 +54,7 @@ export function windowsTools(log) {
   run(fromWindows('tar.exe'), ['-xf', cmake], `Unpacking ${CMAKE.name}`);
   return {
     gcc: join(COMPILER.bin, 'gcc.exe'),
+    gxx: join(COMPILER.bin, 'g++.exe'),
     cmake: join(CMAKE.bin, 'cmake.exe'),
     make: join(COMPILER.bin, 'make.exe'),
     env: { ...process.env, PATH: `${COMPILER.bin};${CMAKE.bin};${process.env.PATH}` },

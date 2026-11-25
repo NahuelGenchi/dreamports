@@ -424,14 +424,16 @@ export function madeUpKitCartridge() {
   return cartridge;
 }
 
-// A third program, for the test of a game whose tasks are its parts (n64-parts.mjs): it sets the video interface up as
-// the kit's program does, and every frame waits for the video interface's interrupt and calls step. step calls count,
-// which adds one to the frame's count, a word of the console's memory, and then red while the count is under 60 and
-// blue from then on. Each fills the picture's first four rows with a colour whose level is the count's low five bits.
-// Its start, with the loop in it, never comes back, and the other four functions do.
+// A third program, for the test of a game whose tasks are its parts (part-tasks/n64.mjs): it sets the video interface
+// up as the kit's program does, and every frame its start's loop waits for the video interface's interrupt and calls
+// count, which adds one to the frame's count, a word of the console's memory, then bonus only once the count is 1,000
+// or more, and then red while the count is under 60 and blue from then on. red and blue each fill the picture's first
+// four rows with a colour whose level is the count's low five bits, and bonus sets a word after the count. The start,
+// with the loop in it, never comes back, and no function calls another, so each one's twin can be proven by itself.
 
-/** Where the parts program keeps its count, how many pixels red and blue fill, and the count blue starts at. */
-export const PARTS = { COUNT: 0x80200000, PIXELS: 1280, TURN: 60 };
+/** Where the parts program keeps its count, how many pixels red and blue fill, the count blue starts at, and the count
+ *  bonus starts at. */
+export const PARTS = { COUNT: 0x80200000, PIXELS: 1280, TURN: 60, BONUS: 1000 };
 const fillWith = (name, shift) => [
   here(name), lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), andi('t1', 't1', 31), sll('t1', 't1', shift), ori('t1', 't1', 1),
   lui('t2', (0xA0000000 + FRAMEBUFFER) >>> 16), addiu('t3', 'zero', PARTS.PIXELS),
@@ -446,20 +448,21 @@ const PARTS_PROGRAM = [
   // the video interface's interrupt, and then it's told it was seen
   lui('t0', 0xA430), here('waiting'), lw('t1', 0x08, 't0'), andi('t1', 't1', 0x08), beq('t1', 'zero', 'waiting'), nop,
   lui('t0', 0xA440), sw('zero', 0x10, 't0'),
-  jal('step'), nop, b('frame'), nop,
-  here('step'), addiu('sp', 'sp', -24), sw('ra', 20, 'sp'), jal('count'), nop,
-  lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), sltiu('t2', 't1', PARTS.TURN), beq('t2', 'zero', 'later'), nop,
-  jal('red'), nop, b('done'), nop,
-  here('later'), jal('blue'), nop,
-  here('done'), lw('ra', 20, 'sp'), jr('ra'), addiu('sp', 'sp', 24),
+  jal('count'), nop,
+  lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), sltiu('t2', 't1', PARTS.BONUS), bne('t2', 'zero', 'early'), nop,
+  jal('bonus'), nop,
+  here('early'), lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), sltiu('t2', 't1', PARTS.TURN), beq('t2', 'zero', 'later'), nop,
+  jal('red'), nop, b('frame'), nop,
+  here('later'), jal('blue'), nop, b('frame'), nop,
   here('count'), lui('t0', PARTS.COUNT >>> 16), lw('t1', 0, 't0'), addiu('t1', 't1', 1), jr('ra'), sw('t1', 0, 't0'),
   // red in the colour's top five bits, blue in the five above its lowest, which is the pixel's coverage
   ...fillWith('red', 11), ...fillWith('blue', 1),
+  here('bonus'), lui('t0', PARTS.COUNT >>> 16), addiu('t1', 'zero', 1), jr('ra'), sw('t1', 4, 't0'),
   here('end'),
 ];
 
-/** The parts program as a cartridge the console boots: { cartridge, labels }, `labels` the address of start, step,
- *  count, red and blue. */
+/** The parts program as a cartridge the console boots: { cartridge, labels }, `labels` the address of start, count,
+ *  red, blue and bonus. */
 export function madeUpPartsCartridge() {
   const { words, labels } = assemble(PARTS_PROGRAM, LOAD);
   const cartridge = Buffer.alloc(0x1000 + 0x2000);

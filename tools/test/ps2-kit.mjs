@@ -10,7 +10,7 @@
 //   palettes, blending and 16-bit framebuffer against the emulator's;
 // - the flat one is proven by its pictures, pixel for pixel, which is the kit's own drawing against the emulator's.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';

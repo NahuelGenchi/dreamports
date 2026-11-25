@@ -35,6 +35,8 @@ function cartridge(bytes, size = null) {
   }
   // a program for the PlayStation 2's processor, as its ELF file's flags say
   if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes.readUInt16LE(18) === 8 && bytes.readUInt32LE(36) === 0x20924001) return { console: 'ps2' };
+  // and one for the PlayStation Portable's, the Allegrex
+  if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes.readUInt16LE(18) === 8 && (bytes.readUInt32LE(36) & 0x00FF0000) === 0x00A20000) return { console: 'psp' };
   // a program for the GameCube's processor, a PowerPC that keeps its highest byte first, as its ELF file says, or a DOL,
   // which has no word that says it's one, told by its header fitting the console's memory and the file's length
   if (bytes.length >= 52 && bytes.readUInt32BE(0) === 0x7F454C46 && bytes[5] === 2 && bytes.readUInt16BE(18) === 20) return { console: 'gamecube' };
