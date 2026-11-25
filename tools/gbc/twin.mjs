@@ -63,7 +63,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gameFolder, LOCAL, REPO } from '../lib/paths.mjs';
 import { functionKey, readCodeMap, readOriginal } from '../lib/proof-files.mjs';
@@ -74,7 +74,7 @@ import { readAnyCopy } from '../lib/read-copy.mjs';
 import { cKit } from '../lib/c.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
-import { withBuildTools } from '../gba/build.mjs';
+import { keptCompiler } from '../gba/windows.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 import { gbName, gbNames, gbProgram } from './functions.mjs';
 
@@ -183,16 +183,19 @@ const int twin_bank_at = ${bank ?? -1};
 `;
 }
 
-// what compiles C and C++ here: the computer's own, or on Windows the compiler the tools get for a build
-function compilersOf(tools) {
-  if (tools) return { cc: tools.gcc, cxx: tools.gcc.replace(/gcc(\.exe)?$/i, 'g++$1'), env: tools.env, more: ['-static'] };
-  if (process.platform === 'win32') return { cc: process.env.CC || 'gcc', cxx: process.env.CXX || 'g++', env: process.env, more: ['-static'] };
-  return { cc: process.env.CC || 'cc', cxx: process.env.CXX || 'c++', env: process.env, more: [] };
+// What compiles C and C++ here: those CC and CXX name, or the computer's own, and on Windows, where most computers have
+// none, w64devkit's GCC, which the tools get once and keep (../gba/windows.mjs, keptCompiler), as the NES's check does.
+// A computer that has GCC already, as GitHub's has, builds with its own.
+let compilers = null;
+function compilersOf(log) {
+  if (compilers) return compilers;
+  if (process.platform !== 'win32') return (compilers = { cc: process.env.CC || 'cc', cxx: process.env.CXX || 'c++', env: process.env, more: [] });
+  const own = [process.env.CC || 'gcc', process.env.CXX || 'g++'];
+  const missing = own.some(name => spawnSync(name, ['--version'], { encoding: 'utf8' }).error?.code === 'ENOENT');
+  if (!missing || process.env.CC || process.env.CXX) return (compilers = { cc: own[0], cxx: own[1], env: process.env, more: ['-static'] });
+  const gcc = keptCompiler(log), bin = dirname(gcc);
+  return (compilers = { cc: gcc, cxx: join(bin, 'g++.exe'), env: { ...process.env, PATH: `${bin};${process.env.PATH}` }, more: ['-static'] });
 }
-// On Windows most computers have no compiler, and the tools get one for each build (../gba/windows.mjs). A computer
-// that has GCC already, as GitHub's has, builds with its own.
-const hasOwn = () => process.platform !== 'win32' || [process.env.CC || 'gcc', process.env.CXX || 'g++'].every(name => spawnSync(name, ['--version'], { encoding: 'utf8' }).status === 0);
-const withCompilers = (log, work) => (hasOwn() ? work(compilersOf(null)) : withBuildTools(log, tools => work(compilersOf(tools))));
 function compile(what, compiler, args, cwd, env) {
   const result = spawnSync(compiler, args, { cwd, env, encoding: 'utf8', maxBuffer: 2 ** 26 });
   if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
@@ -262,17 +265,16 @@ export function buildCheck({ rom, sources: folder, work: where, functions = null
   writeFileSync(join(made, 'dp-contracts.c'), tableFor(contracts, bank));
   const out = join(work, exe('check'));
   const folders = [HERE, sources, ...cKit('gb').folders];
-  withCompilers(log, compilers => {
-    const { objects } = buildProcessor(log, compilers);
-    const cFiles = [...built, join(made, 'dp-contracts.c'), join(HERE, 'check.c'), join(HERE, 'kit.c')];
-    const compiled = cFiles.map((file, i) => {
-      const object = join(made, `unit-${i}.o`);
-      compile('The check', compilers.cc, ['-std=gnu11', ...FLAGS, ...folders.flatMap(each => ['-I', each]), '-c', file, '-o', object], work, compilers.env);
-      return object;
-    });
-    // the processor is C++, so its compiler links the whole
-    compile('The check', compilers.cxx, [...compilers.more, '-o', out, ...compiled, ...objects], work, compilers.env);
+  const compilers = compilersOf(log);
+  const { objects } = buildProcessor(log, compilers);
+  const cFiles = [...built, join(made, 'dp-contracts.c'), join(HERE, 'check.c'), join(HERE, 'kit.c')];
+  const compiled = cFiles.map((file, i) => {
+    const object = join(made, `unit-${i}.o`);
+    compile('The check', compilers.cc, ['-std=gnu11', ...FLAGS, ...folders.flatMap(each => ['-I', each]), '-c', file, '-o', object], work, compilers.env);
+    return object;
   });
+  // the processor is C++, so its compiler links the whole
+  compile('The check', compilers.cxx, [...compilers.more, '-o', out, ...compiled, ...objects], work, compilers.env);
   return { program: out, contracts, bank, notes };
 }
 

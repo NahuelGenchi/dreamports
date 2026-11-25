@@ -19,6 +19,7 @@ import { consoleOf } from '../consoles.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { libretroReference } from '../libretro/reference.mjs';
 import { readNdsHeader } from '../nds/header.mjs';
+import { readCodeMap } from '../lib/proof-files.mjs';
 import { ARM7, ARM9, PITCH, SHARED, madeUpNds } from './made-up-nds.mjs';
 
 const WORK = join(LOCAL, 'test-real-nds');
@@ -165,6 +166,11 @@ async function main() {
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
   let run = dp('rom', copy);
   check(run.status === 0 && run.out.includes(GAME), `rom knows the copy for the game's: ${run.out.trim().split('\n')[1]?.trim()}`);
+  run = dp('codemap', GAME);
+  const mapped = readCodeMap(GAME)?.functions ?? [];
+  check(run.status === 0 && mapped.some(f => f.address === ARM9.address && !f.program) && mapped.some(f => f.program === 'ARM7' && f.address === ARM7.address) && mapped.filter(f => f.mode === 'thumb').length >= 4,
+    `codemap finds the functions of both of its programs, in ARM and in Thumb code: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+  if (run.status) console.log(run.out);
   const files = { 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) };
   for (const [name, text] of Object.entries(files)) writeFileSync(join(gameFolder(GAME), name), text);
   for (const [name, text] of Object.entries(startingFiles(GAME, original, { language: 'c' }))) {
@@ -181,6 +187,8 @@ async function main() {
   const same = report('buttons');
   check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `every frame of both screens and the sound matches the emulator, buttons and touches from the recording: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
   if (run.status) console.log(run.out);
+  const ran = JSON.parse(readFileSync(join(proofFolder(C_GAME), 'progress.json'), 'utf8')).recordings.buttons?.functions ?? [];
+  check(ran.length === mapped.length && ran.includes('02000000') && ran.filter(key => key.endsWith('@ARM7')).length === 4, `prove says which functions ran in matching play, on both processors, the one that asks the touch screen's chip among them: ${ran.join(', ')}`);
   writeGameInC({ moved: 8 });
   run = dp('prove', C_GAME, 'buttons');
   check(run.status !== 0 && report('buttons').firstDifference?.frame === 161, `a touch read eight pixels to the right is found where it first shows, at frame 161: ${JSON.stringify(report('buttons').firstDifference)}`);
