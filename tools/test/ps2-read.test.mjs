@@ -251,3 +251,14 @@ test('read on the made-up disc: the EE\'s code, a vector unit\'s and an IOP modu
     rmSync(work, { recursive: true, force: true });
   }
 });
+
+test('a function found without a size keeps the nop in its last jump\'s delay slot, and not the zeros after it', async () => {
+  const { elfWith } = await import('./made-up-ps2-disc.mjs');
+  // one function that returns with a nop in its delay slot, a zero that lines up the next, which opens a stack frame,
+  // returns the same way, and is followed by zeros to the end of its section
+  const words = [0x24020001, 0x03E00008, 0, 0, 0x27BDFFF0, 0x27BD0010, 0x03E00008, 0, 0, 0, 0, 0];
+  const text = Buffer.alloc(words.length * 4);
+  words.forEach((word, i) => text.writeUInt32LE(word, i * 4));
+  const elf = elfWith({ entry: 0x00100000, sections: [{ name: '.text', type: 1, flags: 6, address: 0x00100000, bytes: text }] });
+  assert.deepEqual(findFunctions(elf).map(f => [f.address, f.size]), [[0x00100000, 12], [0x00100010, 16]]);
+});

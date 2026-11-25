@@ -84,6 +84,33 @@ static void mi_write(uint32_t reg, uint32_t value) {
 
 static uint32_t physical(uint32_t address) { return address & 0x1FFFFFFF; }
 
+#ifdef DP_TWIN_CHECK
+// In the function check's build (tools/n64/twin.mjs) a read or a write is the processor's own load or store at the
+// address, and no chip does anything with it: the check's pass over the built module sends each to where the console
+// has that address, its number highest byte first, as it does a twin's own loads and stores (tools/lib/wasm-fold.mjs),
+// and compares the memory they leave with what the original's left. So a twin written as a game on this kit is,
+// calling these, is the same C the check proves and the game plays. The kit's own, below, go by other names there,
+// and nothing calls them.
+uint32_t n64_read32(uint32_t address) { return *(volatile uint32_t *)(uintptr_t)address; }
+void n64_write32(uint32_t address, uint32_t value) { *(volatile uint32_t *)(uintptr_t)address = value; }
+uint16_t n64_read16(uint32_t address) { return *(volatile uint16_t *)(uintptr_t)address; }
+void n64_write16(uint32_t address, uint16_t value) { *(volatile uint16_t *)(uintptr_t)address = value; }
+uint8_t n64_read8(uint32_t address) { return *(volatile uint8_t *)(uintptr_t)address; }
+void n64_write8(uint32_t address, uint8_t value) { *(volatile uint8_t *)(uintptr_t)address = value; }
+#define n64_read32 n64_kit_read32
+#define n64_write32 n64_kit_write32
+#define n64_read16 n64_kit_read16
+#define n64_write16 n64_kit_write16
+#define n64_read8 n64_kit_read8
+#define n64_write8 n64_kit_write8
+uint32_t n64_kit_read32(uint32_t address);
+void n64_kit_write32(uint32_t address, uint32_t value);
+uint16_t n64_kit_read16(uint32_t address);
+void n64_kit_write16(uint32_t address, uint16_t value);
+uint8_t n64_kit_read8(uint32_t address);
+void n64_kit_write8(uint32_t address, uint8_t value);
+#endif
+
 uint32_t n64_read32(uint32_t address) {
   uint32_t at = physical(address) & ~3u;
   if (at < N64_RDRAM_SIZE) return n64_be32(n64_rdram + at);

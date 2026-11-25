@@ -12,7 +12,7 @@
 // - a Dreamport that says nothing of the IOP's time is found by its sound list, as its writes come all at once;
 // - one whose long wait is a frame short is found by its sound list on the frame its write comes too early in.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
