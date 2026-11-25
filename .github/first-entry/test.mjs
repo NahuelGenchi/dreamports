@@ -260,6 +260,18 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.equal(entry(map([['00004450', 139], ['00000000@PADMAN.IRX', 8]]), 'c', nes).why, 'proof', 'places, on a console with one');
   assert.equal(entry(map([['00004450', 139], ['00004500~vu', 8]]), 'c', nes).why, 'proof');
   assert.equal(readCodeMap(`{"original":"${SHA1}","from":"The tools","functions":[["08000000",4],["080000C0@PADMAN.IRX",200]]}\n`, SHA1), null);
+  // a Nintendo DS game's code is in its ARM9 program, its ARM7 program and its overlays, each a place, and its map
+  // says which functions are Thumb code
+  const nds = { ...original, console: 'nds', title: 'MADE UP DS', code: 'MDUE' };
+  assert.deepEqual(readOriginal(`${JSON.stringify(nds, null, 2)}\n`), nds);
+  const ndsMap = (functions, modes = '') => `{"original":"${SHA1}","from":"The tools","functions":[${functions.map(f => JSON.stringify(f)).join(',')}]${modes}}\n`;
+  const cartridge = [['01FF8000', 12], ['02000000', 8], ['02000800', 40], ['02380000@ARM7', 8], ['02100000@OVERLAY9_0003', 6], ['02100000@OVERLAY9_0004', 20]];
+  assert.ok(readCodeMap(ndsMap(cartridge, ',"modes":{"02000800":"thumb","02100000@OVERLAY9_0003":"thumb"}'), SHA1, 'nds'));
+  assert.ok(readCodeMap(ndsMap(cartridge), SHA1, 'nds'));
+  assert.equal(readCodeMap(ndsMap([['08000000', 8]]), SHA1, 'nds'), null, 'not where a Nintendo DS game\'s code is');
+  assert.equal(readCodeMap(ndsMap([['02000000', 8], ['02380000@ARM7', 8], ['02000800', 40]]), SHA1, 'nds'), null, 'a place in two parts');
+  assert.equal(readCodeMap(ndsMap(cartridge, ',"modes":{"02000800":"see https://example.com"}'), SHA1, 'nds'), null, 'words for a mode');
+  assert.equal(readOriginal(`${JSON.stringify({ ...nds, code: 'MADE UP' }, null, 2)}\n`), null);
   // a Super Nintendo game's map says the mode each function starts in, and nothing else
   const snes = { ...nes, console: 'snes' };
   const modes = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/snes/functions.mjs)","functions":[["00000000",24],["00000018",72]],"modes":${text}}\n`);
