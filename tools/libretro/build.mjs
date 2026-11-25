@@ -169,6 +169,45 @@ export function fetchSource({ core, name }) {
   return source;
 }
 
+// one target of an emulator CMake builds, in its source's build/: on Windows, with the compiler and make the tools got
+// for themselves (../gba/windows.mjs)
+function cmakeTarget(what, source, core, target, tools) {
+  const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
+  run(what, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
+  run(what, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', target, '-j', String(buildJobs())], source, tools?.env);
+}
+
+/**
+ * Builds a program of the tools' own from a console's emulator's source, with the emulator's own CMake build and its
+ * settings, as the emulator itself is built: `files`, the tools' files to put in the source first, each a path here
+ * to a path there, `target`, what CMake calls the program, and `out`, where it's kept. The Nintendo DS's function
+ * check builds the program that runs one function in melonDS's processors this way (../nds/original.mjs).
+ */
+export function buildProgram(machine, { what, files = {}, target, out, log = console.log }) {
+  const work = tools => {
+    const source = fetchSource(machine);
+    for (const [from, to] of Object.entries(files)) {
+      mkdirSync(dirname(join(source, to)), { recursive: true });
+      copyFileSync(from, join(source, to));
+    }
+    cmakeTarget(what, source, machine.core, target, tools);
+    mkdirSync(dirname(out), { recursive: true });
+    copyFileSync(join(source, 'build', `${target}${WINDOWS ? '.exe' : ''}`), out);
+  };
+  if (!WINDOWS) return work(null);
+  rmSync(WINDOWS_BUILD, { recursive: true, force: true });
+  try {
+    work(windowsTools(log));
+  } finally {
+    // it's about a gigabyte, and one that won't go is emptied by the next build
+    try { rmSync(WINDOWS_BUILD, { recursive: true, force: true }); } catch {}
+  }
+}
+
+/** What names a build from a console's emulator's source beside its commit: the hash of its patch, its settings and
+ *  the project's files built into it, as its emulator's own file has it (coreFile). */
+export const builtWithOf = core => builtWith(core);
+
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
   compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
@@ -184,10 +223,7 @@ function buildHere(machine, log, tools) {
   // where it leaves what it built: `folderOn` for one kind of computer, as a CMake build can put a library elsewhere there
   const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    // on Windows, with the compiler and make the tools got for themselves (../gba/windows.mjs)
-    const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
-    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
-    run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+    cmakeTarget(building, source, core, core.target, tools);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     // and what one kind of computer has to say besides: Gambatte's makefile takes the tools' compiler on Windows for a
