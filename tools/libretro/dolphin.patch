@@ -16,7 +16,7 @@ speed asks. With this change the samples the console's audio interface takes fro
 they are, 8 at a time, at the interface's own rate, which whoever runs the core is told each time a game changes it.
 Sound a game streams from its disc isn't among them yet.
 
-For the function check, the front has an entry of its own, dreamports_call, which runs one function of the console's
+For the function check, the front has an entry of its own, dreamports_gamecube_call, which runs one function of the console's
 program by itself on the interpreter, from the registers and memory it's given, until it comes back, telling of each
 instruction it runs and each read it makes. Each call starts from the processor as the program left it after its
 frames, and ends at the first exception it meets, which is left for it to tell. While it runs, no time passes for the rest of the console, the hardware's
@@ -356,10 +356,10 @@ index 97ba667..237ad69 100644
 +// came back, 1 it ran out of instructions, 2 an exception, with `detail` the exceptions' bits, 3 it reached what the
 +// check can't follow, with `detail` the address; and `at` where it was, `steps` how many instructions ran, and
 +// `used` whether it read or wrote the hardware's registers.
-+extern "C" RETRO_API int dreamports_call(uint32_t pc, uint32_t sentinel, uint32_t most, uint32_t* state,
-+                                         uint8_t* hardware, void (*ran)(uint32_t, uint32_t),
-+                                         void (*read)(uint32_t, uint32_t, uint64_t), uint32_t* detail,
-+                                         uint32_t* at, uint32_t* steps, uint32_t* used)
++extern "C" RETRO_API int dreamports_gamecube_call(uint32_t pc, uint32_t sentinel, uint32_t most, uint32_t* state,
++                                                  uint8_t* hardware, void (*ran)(uint32_t, uint32_t),
++                                                  void (*read)(uint32_t, uint32_t, uint64_t), uint32_t* detail,
++                                                  uint32_t* at, uint32_t* steps, uint32_t* used)
 +{
 +  auto& system = Core::System::GetInstance();
 +  auto& ppc = system.GetPPCState();
