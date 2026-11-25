@@ -1,0 +1,479 @@
+diff --git a/Core/HLE/__sceAudio.cpp b/Core/HLE/__sceAudio.cpp
+index b263af3..996e0bc 100644
+--- a/Core/HLE/__sceAudio.cpp
++++ b/Core/HLE/__sceAudio.cpp
+@@ -62,6 +62,21 @@ int srcFrequency = 0;
+ const int hwSampleRate = 44100;
+ const int hwBlockSize = 64;
+ 
++// Dreamports: the sound list, everything a game gives the sound channels that decides its sound, hashed in the order
++// given (FNV-1a), with how many things that was: each block handed to a channel, as 'Q', the channel, its two volumes,
++// its format and how many samples, and 'S', the samples' bytes, and each block of 64 samples the console mixes, as
++// 'M' and the samples as they leave it. The frontend reads it as each frame ends and starts it again
++// (dreamports_sound_list). The kit in C hashes its own the same way (kit/psp/c/audio.c).
++uint32_t dreamportsSoundHash = 0x811C9DC5;
++uint32_t dreamportsSoundCount = 0;
++static void DreamportsSoundListed(u8 kind, const void *data, size_t length) {
++	const u8 *bytes = (const u8 *)data;
++	dreamportsSoundHash = (dreamportsSoundHash ^ kind) * 0x01000193;
++	for (size_t i = 0; i < length; i++)
++		dreamportsSoundHash = (dreamportsSoundHash ^ bytes[i]) * 0x01000193;
++	dreamportsSoundCount++;
++}
++
+ static int audioIntervalCycles;
+ static int audioHostIntervalCycles;
+ 
+@@ -228,6 +243,14 @@ u32 __AudioEnqueue(AudioChannel &chan, int chanNum, bool blocking) {
+ 		return ret;
+ 	}
+ 
++	{
++		const u32 dreamportsValues = chan.sampleCount * (chan.format == PSP_AUDIO_FORMAT_STEREO ? 2 : 1);
++		const u32_le dreamportsAbout[5] = { (u32)chanNum, (u32)chan.leftVolume, (u32)chan.rightVolume, (u32)chan.format, chan.sampleCount };
++		DreamportsSoundListed('Q', dreamportsAbout, sizeof(dreamportsAbout));
++		if ((chan.format == PSP_AUDIO_FORMAT_STEREO || chan.format == PSP_AUDIO_FORMAT_MONO) && Memory::IsValidAddress(chan.sampleAddress) && Memory::IsValidAddress(chan.sampleAddress + (dreamportsValues - 1) * sizeof(s16_le)))
++			DreamportsSoundListed('S', Memory::GetPointerUnchecked(chan.sampleAddress), dreamportsValues * sizeof(s16_le));
++	}
++
+ 	// NOTE: The below is WRONG! See issue #20095.
+ 	//
+ 	// What we should be queueing here is just the sampleAddress and sampleCount. Then when dequeuing is when we should
+@@ -425,6 +448,14 @@ void __AudioUpdate(bool resetRecording) {
+ 		memset(mixBuffer, 0, hwBlockSize * 2 * sizeof(s32));
+ 	}
+ 
++	{
++		// Dreamports: the block as it leaves the console, kept within 16 bits as the frontend keeps it
++		s16_le dreamportsBlock[hwBlockSize * 2];
++		for (int i = 0; i < hwBlockSize * 2; i++)
++			dreamportsBlock[i] = mixBuffer[i] < -32767 ? -32767 : mixBuffer[i] > 32767 ? 32767 : mixBuffer[i];
++		DreamportsSoundListed('M', dreamportsBlock, sizeof(dreamportsBlock));
++	}
++
+ 	if (g_Config.bEnableSound) {
+ 		float multiplier = Volume100ToMultiplier(std::clamp(g_Config.iGameVolume, 0, VOLUMEHI_FULL));
+ 		if (PSP_CoreParameter().fpsLimit != FPSLimit::NORMAL || PSP_CoreParameter().fastForward) {
+diff --git a/Core/HLE/sceDisplay.cpp b/Core/HLE/sceDisplay.cpp
+index 9cc9bc7..567638a 100644
+--- a/Core/HLE/sceDisplay.cpp
++++ b/Core/HLE/sceDisplay.cpp
+@@ -156,6 +156,7 @@ void __DisplayVblankEndCallback(SceUID threadID, SceUID prevCallbackId);
+ 
+ void __DisplayFlip(int cyclesLate);
+ static void __DisplaySetFramerate(void);
++static bool dreamportsAtVblank = false;
+ 
+ static bool UseAutoFrameSkip() {
+ 	return g_Config.bAutoFrameSkip && !g_Config.bSkipBufferEffects;
+@@ -552,11 +553,12 @@ void hleEnterVblank(u64 userdata, int cyclesLate) {
+ 		framebuf = latchedFramebuf;
+ 		framebufIsLatched = false;
+ 		gpu->SetDisplayFramebuffer(framebuf.topaddr, framebuf.stride, framebuf.fmt);
+-		__DisplayFlip(cyclesLate);
+-	} else if (!flippedThisFrame) {
+-		// Gotta flip even if sceDisplaySetFramebuf was not called.
+-		__DisplayFlip(cyclesLate);
+ 	}
++	// Dreamports: one frame of the tools is one frame of the console, so each V-blank ends a frame and shows what the
++	// screen shows then, whether anything was drawn since the last or not, and nothing else ends one.
++	dreamportsAtVblank = true;
++	__DisplayFlip(cyclesLate);
++	dreamportsAtVblank = false;
+ }
+ 
+ static void NotifyUserIfSlow() {
+@@ -592,6 +594,20 @@ void __DisplayFlip(int cyclesLate) {
+ 	__DisplaySetFramerate();
+ 
+ 	flippedThisFrame = true;
++	// Dreamports: no frame is skipped, none waits for the computer's clock, and a frame ends at its V-blank alone.
++	if (!dreamportsAtVblank)
++		return;
++	DisplayFireFlip();
++	if (Core_NextFrame()) {
++		gpu->SetCurFramebufferDirty(true);
++		DisplayFireActualFlip();
++	}
++	gpuStats.numFlips++;
++	gstate_c.skipDrawReason &= ~SKIPDRAW_SKIPFRAME;
++	numSkippedFrames = 0;
++	CoreTiming::ScheduleEvent(0 - cyclesLate, afterFlipEvent, 0);
++	numVBlanksSinceFlip = 0;
++	return;
+ 	// We flip only if the framebuffer was dirty. This eliminates flicker when using
+ 	// non-buffered rendering. The interaction with frame skipping seems to need
+ 	// some work.
+diff --git a/Core/HLE/sceRtc.cpp b/Core/HLE/sceRtc.cpp
+index 12a2c0a..f29c93b 100644
+--- a/Core/HLE/sceRtc.cpp
++++ b/Core/HLE/sceRtc.cpp
+@@ -149,6 +149,8 @@ void __RtcInit()
+ 	// Everything else is relative to that, "virtual time."
+ 	timeval tv;
+ 	gettimeofday(&tv, NULL);
++	// Dreamports: the console's clock starts at the first second of 2005 in every run, and goes on by the console's own time.
++	tv.tv_sec = 1104537600;
+ 	rtcBaseTime.tv_sec = tv.tv_sec;
+ 	rtcBaseTime.tv_usec = 0;
+ 	// Precalculate the current time in microseconds (rtcMagicOffset is offset to 1970.)
+diff --git a/Core/MIPS/MIPSInt.cpp b/Core/MIPS/MIPSInt.cpp
+index ba926a7..370d540 100644
+--- a/Core/MIPS/MIPSInt.cpp
++++ b/Core/MIPS/MIPSInt.cpp
+@@ -874,6 +874,15 @@ namespace MIPSInt
+ 		PC += 4;
+ 	}
+ 
++	// Dreamports: a float made a whole number, at the most or the least 32 bits hold where it's past them, as an ARM
++	// processor gives it and as the console gives an infinity, where C leaves it to the processor and x86's gives the
++	// least either way, so every computer gives the same
++	static inline s32 DreamportsWhole(double value) {
++		if (value >= 2147483648.0) return 0x7FFFFFFF;
++		if (value < -2147483648.0) return (s32)0x80000000;
++		return (s32)value;
++	}
++
+ 	void Int_FPU2op(MIPSOpcode op)
+ 	{
+ 		int fs = _FS;
+@@ -896,21 +905,21 @@ namespace MIPSInt
+ 			}
+ 			switch (op & 0x3f)
+ 			{
+-			case 12: FsI(fd) = (int)floorf(F(fs)+0.5f); break; //round.w.s
++			case 12: FsI(fd) = DreamportsWhole(floorf(F(fs)+0.5f)); break; //round.w.s
+ 			case 13: //trunc.w.s
+ 				if (F(fs) >= 0.0f) {
+-					FsI(fd) = (int)floorf(F(fs));
++					FsI(fd) = DreamportsWhole(floorf(F(fs)));
+ 					// Overflow, but it was positive.
+ 					if (FsI(fd) == -2147483648LL) {
+ 						FsI(fd) = 2147483647LL;
+ 					}
+ 				} else {
+ 					// Overflow happens to be the right value anyway.
+-					FsI(fd) = (int)ceilf(F(fs));
++					FsI(fd) = DreamportsWhole(ceilf(F(fs)));
+ 				}
+ 				break;
+-			case 14: FsI(fd) = (int)ceilf (F(fs)); break; //ceil.w.s
+-			case 15: FsI(fd) = (int)floorf(F(fs)); break; //floor.w.s
++			case 14: FsI(fd) = DreamportsWhole(ceilf (F(fs))); break; //ceil.w.s
++			case 15: FsI(fd) = DreamportsWhole(floorf(F(fs))); break; //floor.w.s
+ 			}
+ 			break;
+ 		case 32: F(fd) = (float)FsI(fs); break; //cvt.s.w
+@@ -923,10 +932,10 @@ namespace MIPSInt
+ 			}
+ 			switch (currentMIPS->fcr31 & 3)
+ 			{
+-			case 0: FsI(fd) = (int)round_ieee_754(F(fs)); break;  // RINT_0
+-			case 1: FsI(fd) = (int)F(fs); break;  // CAST_1
+-			case 2: FsI(fd) = (int)ceilf(F(fs)); break;  // CEIL_2
+-			case 3: FsI(fd) = (int)floorf(F(fs)); break;  // FLOOR_3
++			case 0: FsI(fd) = DreamportsWhole(round_ieee_754(F(fs))); break;  // RINT_0
++			case 1: FsI(fd) = DreamportsWhole(F(fs)); break;  // CAST_1
++			case 2: FsI(fd) = DreamportsWhole(ceilf(F(fs))); break;  // CEIL_2
++			case 3: FsI(fd) = DreamportsWhole(floorf(F(fs))); break;  // FLOOR_3
+ 			}
+ 			break; //cvt.w.s
+ 		default:
+diff --git a/Core/MIPS/MIPSTables.cpp b/Core/MIPS/MIPSTables.cpp
+index 4e3e820..f03ac5c 100644
+--- a/Core/MIPS/MIPSTables.cpp
++++ b/Core/MIPS/MIPSTables.cpp
+@@ -968,6 +968,18 @@ void MIPSInterpret(MIPSOpcode op) {
+ #define _RD   ((op>>11) & 0x1F)
+ #define R(i)   (curMips->r[i])
+ 
++// Dreamports: told of each instruction the interpreter runs, when the tools ask (libretro/libretro.cpp,
++// retro_dreamports_ran_mips): where it was, its word, and for a conditional branch which way it went, 1 to its target
++// and 2 on, or 0, for what ran in each frame (tools/libretro/ran.h).
++void (*dreamports_ran)(u32 pc, u32 op, u32 way);
++
++static inline void DreamportsRan(u32 pc, MIPSOpcode op, const MIPSInstruction *instr, bool wasInDelaySlot, bool inDelaySlot) {
++	u32 way = 0;
++	if (instr && (instr->flags & IS_CONDBRANCH))
++		way = !wasInDelaySlot && inDelaySlot ? 1 : 2;
++	dreamports_ran(pc, op.encoding, way);
++}
++
+ static inline void RunUntilFast() {
+ 	MIPSState *curMips = currentMIPS;
+ 	// NEVER stop in a delay slot!
+@@ -978,7 +990,10 @@ static inline void RunUntilFast() {
+ 
+ 			bool wasInDelaySlot = curMips->inDelaySlot;
+ 			const MIPSInstruction *instr = MIPSGetInstruction(op);
++			const u32 dreamportsPc = curMips->pc;
+ 			Interpret(instr, op);
++			if (dreamports_ran)
++				DreamportsRan(dreamportsPc, op, instr, wasInDelaySlot, curMips->inDelaySlot);
+ 			curMips->downcount -= GetInstructionCycleEstimate(instr);
+ 
+ 			// The reason we have to check this is the delay slot hack in Int_Syscall.
+@@ -1028,7 +1043,10 @@ static void RunUntilWithChecks(u64 globalTicks) {
+ 			}
+ 
+ 			bool wasInDelaySlot = curMips->inDelaySlot;
++			const u32 dreamportsPc = curMips->pc;
+ 			Interpret(instr, op);
++			if (dreamports_ran)
++				DreamportsRan(dreamportsPc, op, instr, wasInDelaySlot, curMips->inDelaySlot);
+ 			curMips->downcount -= GetInstructionCycleEstimate(instr);
+ 
+ 			// The reason we have to check this is the delay slot hack in Int_Syscall.
+diff --git a/GPU/Software/SoftGpu.cpp b/GPU/Software/SoftGpu.cpp
+index 09396da..11f9550 100644
+--- a/GPU/Software/SoftGpu.cpp
++++ b/GPU/Software/SoftGpu.cpp
+@@ -758,6 +758,20 @@ void SoftGPU::CheckConfigChanged(const DisplayLayoutConfig &config) {
+ 	}
+ }
+ 
++// Dreamports: each frame's draw list, every command the chip runs and the vertices and indices each draw reads, hashed
++// in the order run (dreamports_draw_list). The kit in C hashes its own the same way (kit/psp/c/ge.c).
++uint32_t dreamportsDrawHash = 0x811C9DC5;
++uint32_t dreamportsDrawCount = 0;
++static void DreamportsDrawn(u32 address, u32 length) {
++	for (u32 i = 0; i < length; i++)
++		dreamportsDrawHash = (dreamportsDrawHash ^ Memory::Read_U8(address + i)) * 0x01000193;
++}
++static void DreamportsCommand(u32 op) {
++	for (int i = 0; i < 4; i++)
++		dreamportsDrawHash = (dreamportsDrawHash ^ ((op >> (8 * i)) & 0xFF)) * 0x01000193;
++	dreamportsDrawCount++;
++}
++
+ void SoftGPU::FastRunLoop(DisplayList &list) {
+ 	PROFILE_THIS_SCOPE("soft_runloop");
+ 	const auto *cmdInfo = softgpuCmdInfo;
+@@ -765,6 +779,7 @@ void SoftGPU::FastRunLoop(DisplayList &list) {
+ 	SoftDirty dirty = dirtyFlags_;
+ 	for (; dc > 0; --dc) {
+ 		u32 op = Memory::ReadUnchecked_U32(list.pc);
++		DreamportsCommand(op);
+ 		const u32 cmd = op >> 24;
+ 		const auto &info = cmdInfo[cmd];
+ 		const u32 diff = op ^ gstate.cmdmem[cmd];
+@@ -869,6 +884,9 @@ void SoftGPU::Execute_Prim(u32 op, u32 diff) {
+ 	}
+ 
+ 	cyclesExecuted += EstimatePerVertexCost() * count;
++	DreamportsDrawn(gstate_c.vertexAddr, count * drawEngine_->FindVertexDecoder(gstate.vertType)->VertexSize());
++	if ((gstate.vertType & GE_VTYPE_IDX_MASK) != GE_VTYPE_IDX_NONE)
++		DreamportsDrawn(gstate_c.indexAddr, count << (((gstate.vertType & GE_VTYPE_IDX_MASK) >> GE_VTYPE_IDX_SHIFT) - 1));
+ 	int bytesRead;
+ 	gstate_c.UpdateUVScaleOffset();
+ 	drawEngine_->transformUnit.SetDirty(dirtyFlags_);
+diff --git a/libretro/libretro.cpp b/libretro/libretro.cpp
+index 3b2f103..8ba2995 100644
+--- a/libretro/libretro.cpp
++++ b/libretro/libretro.cpp
+@@ -32,6 +32,8 @@
+ #include "Core/HLE/__sceAudio.h"
+ #include "Core/HW/MemoryStick.h"
+ #include "Core/MemMap.h"
++#include "Core/MIPS/MIPS.h"
++#include "Core/MIPS/MIPSTables.h"
+ #include "Core/System.h"
+ #include "Core/CoreTiming.h"
+ #include "Core/HW/Display.h"
+@@ -1527,10 +1529,18 @@ bool retro_load_game(const struct retro_game_info *game)
+    // default to interpreter to allow startup in platforms w/o JIT capability
+    // TODO: I guess we should auto detect? And also, default to IR Interpreter...
+    g_Config.iCpuCore         = (int)CPUCore::INTERPRETER;
++   // Dreamports: the software renderer works out each pixel and texel with its own C++ on every computer, as it has
++   // no code it compiles for Apple's chip, and the code it compiles for others' doesn't always draw what its C++ does
++   g_Config.bSoftwareRenderingJit = false;
+ 
+    CoreParameter coreParam   = {};
+    coreParam.enableSound     = true;
+-   coreParam.fileToStart     = Path(game->path);
++   // Dreamports: a program named with no folder is in the folder the emulator runs from, which is the folder its disc
++   // stands for, where a bare name was taken for the folder itself.
++   std::string dreamportsPath = game->path;
++   if (dreamportsPath.find_first_of("/\\") == std::string::npos)
++      dreamportsPath = "./" + dreamportsPath;
++   coreParam.fileToStart     = Path(dreamportsPath);
+    coreParam.startBreak      = false;
+    coreParam.headLess        = true;  // really?
+    coreParam.graphicsContext = ctx;
+@@ -1697,6 +1707,10 @@ static void retro_input(void)
+ 
+    x_left = Libretro::clamp(x_left / norm * mappedNorm, -1.0f, 1.0f);
+    y_left = Libretro::clamp(y_left / norm * mappedNorm, -1.0f, 1.0f);
++   // Dreamports: a stick nobody touches is in its middle. The division above is of zero by zero then, which is no
++   // number, and what that became as a whole number, all the way up and left, was the compiler's to choose.
++   if (norm == 0.0f)
++      x_left = y_left = 0.0f;
+ 
+    __CtrlSetAnalogXY(CTRL_STICK_LEFT, x_left, y_left);
+    __CtrlSetAnalogXY(CTRL_STICK_RIGHT, x_right, y_right);
+@@ -1706,6 +1720,12 @@ void retro_run(void)
+ {
+    if (g_pendingBoot) {
+       BootState state = PSP_InitUpdate(&g_bootErrorString);
++      // Dreamports: the console starts in the first frame the tools ask for, however long the computer takes to load
++      // the program, so a recording's frames are the same on every computer.
++      while (state == BootState::Booting) {
++         sleep_ms(1, "dreamports-boot");
++         state = PSP_InitUpdate(&g_bootErrorString);
++      }
+       switch (state) {
+       case BootState::Failed:
+          g_pendingBoot = false;
+@@ -2046,6 +2066,136 @@ inline int16_t Clamp16(int32_t sample) {
+    return sample;
+ }
+ 
++// Dreamports: the sound list of the frame that has just ended (Core/HLE/__sceAudio.cpp), which starts again here.
++extern uint32_t dreamportsSoundHash;
++extern uint32_t dreamportsSoundCount;
++extern "C" RETRO_API void dreamports_sound_list(uint32_t *hash, uint32_t *count) {
++   *hash = dreamportsSoundHash;
++   *count = dreamportsSoundCount;
++   dreamportsSoundHash = 0x811C9DC5;
++   dreamportsSoundCount = 0;
++}
++
++// Dreamports: the draw list of the frame that has just ended (GPU/Software/SoftGpu.cpp), which starts again here.
++extern uint32_t dreamportsDrawHash;
++extern uint32_t dreamportsDrawCount;
++extern "C" RETRO_API void dreamports_draw_list(uint32_t *hash, uint32_t *count) {
++   *hash = dreamportsDrawHash;
++   *count = dreamportsDrawCount;
++   dreamportsDrawHash = 0x811C9DC5;
++   dreamportsDrawCount = 0;
++}
++
++// Dreamports: what the interpreter runs, each instruction, for the tools' count of what ran in each frame
++// (tools/libretro/ran.h): where, its word, and for a conditional branch which way it went (Core/MIPS/MIPSTables.cpp).
++extern void (*dreamports_ran)(u32 pc, u32 op, u32 way);
++extern "C" RETRO_API void retro_dreamports_ran_mips(void (*ran)(uint32_t pc, uint32_t op, uint32_t way)) {
++   dreamports_ran = ran;
++}
++
++// Dreamports: the console's memory by address, whichever of its mirrors the address is in, or nullptr where it has
++// none, for the tools' program that drives the emulator (tools/libretro/host.c). Memory 0 is all the processor sees.
++extern "C" RETRO_API const uint8_t *dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes) {
++   if (memory != 0 || !Memory::IsValidRange(address, bytes))
++      return nullptr;
++   return Memory::GetPointerUnchecked(address);
++}
++
++// Dreamports: one function of a game's program at a time, run by the emulator's own interpreter, for the tools'
++// function check (tools/psp/twin.mjs). `in` holds the function's address, how many bytes long it is, how many
++// instructions it may run, the address it comes back to, the 32 registers with hi and lo, the floating-point unit's 32
++// registers and its control register, the vector unit's 128 registers and its 16 control registers, and how many places
++// stop a call, then each: the pairs of instructions the system writes its calls into. Each instruction runs as the
++// interpreter runs it, a branch with its delay slot. Before one that reads or writes memory, `noted` is told where and
++// how many bytes, and whether it reads (1) or writes (2), or the call ends there, as an exception, when the processor
++// has nothing there. `out` gets how the call ended (0 came back, 1 ran out of instructions, 2 met an exception, 3 went
++// where the check can't follow, 4 reached the system), where, the pc, how many instructions ran, and the registers;
++// `ran` a byte for each instruction of the function: 1 ran, 2 a branch there went to its target, 4 went on.
++extern "C" RETRO_API void dreamports_call(const uint32_t *in, uint32_t *out, uint8_t *ran, void (*noted)(uint32_t address, uint32_t bytes, uint32_t how)) {
++   MIPSState *m = currentMIPS;
++   const uint32_t address = in[0], span = in[1], limit = in[2], back = in[3], stopCount = in[215];
++   const uint32_t *stops = in + 216;
++   for (int i = 0; i < 32; i++)
++      m->r[i] = in[4 + i];
++   m->r[0] = 0;
++   m->hi = in[36];
++   m->lo = in[37];
++   // the floating-point unit's registers, and its control register with its condition
++   for (int i = 0; i < 32; i++)
++      m->fi[i] = in[38 + i];
++   m->fcr31 = in[70] & 0x0181FFFF;
++   m->fpcond = (in[70] >> 23) & 1;
++   // the vector unit's registers, as their bits, and its control registers
++   for (int i = 0; i < 128; i++)
++      m->vi[i] = in[71 + i];
++   for (int i = 0; i < 16; i++)
++      m->vfpuCtrl[i] = in[199 + i];
++   m->pc = address;
++   m->nextPC = 0;
++   m->inDelaySlot = false;
++   const CoreState was = coreState;
++   coreState = CORE_RUNNING_CPU;
++   uint32_t end = 0, detail = 0, steps = 0;
++   for (;;) {
++      const uint32_t pc = m->pc;
++      if (pc == back && !m->inDelaySlot) { end = 0; break; }
++      if (steps >= limit) { end = 1; detail = pc; break; }
++      bool system = false;
++      for (uint32_t i = 0; i < stopCount && !system; i++)
++         system = pc == stops[i] || pc == stops[i] + 4;
++      if (system) { end = 4; detail = pc; break; }
++      if (!Memory::IsValidAddress(pc) || (pc & 3)) { end = 3; detail = pc; break; }
++      const MIPSOpcode op = Memory::Read_Instruction(pc, true);
++      const uint32_t word = op.encoding;
++      // a call of the system made by the game's own code
++      if ((word & 0xFC00003F) == 0x0000000C) { end = 4; detail = pc; break; }
++      const MIPSInfo info = MIPSGetInfo(op);
++      if (info & (IN_MEM | OUT_MEM)) {
++         const uint32_t opcode = word >> 26, base = m->r[(word >> 21) & 31];
++         uint32_t bytes = MIPSGetMemoryAccessSize(op), at = base + (int16_t)(word & 0xFFFF);
++         // the vector unit's loads and stores leave the offset's low two bits to say other things
++         if (opcode == 0x32 || opcode == 0x36 || opcode == 0x3A || opcode == 0x3E || opcode == 0x35 || opcode == 0x3D)
++            at = base + (int16_t)(word & 0xFFFC);
++         // a word or a quad moved in part reaches the whole of it
++         if (opcode == 0x22 || opcode == 0x26 || opcode == 0x2A || opcode == 0x2E) { at &= ~3u; bytes = 4; }
++         if (opcode == 0x35 || opcode == 0x3D) { at &= ~15u; bytes = 16; }
++         if (!bytes || !Memory::IsValidRange(at, bytes)) { end = 2; detail = at; break; }
++         if (noted) noted(at, bytes, (info & IN_MEM ? 1 : 0) | (info & OUT_MEM ? 2 : 0));
++      }
++      const bool slot = m->inDelaySlot;
++      MIPSInterpret(op);
++      steps++;
++      if (m->inDelaySlot && slot) {
++         m->pc = m->nextPC;
++         m->inDelaySlot = false;
++      }
++      if (pc >= address && pc - address < span) {
++         uint8_t &mark = ran[(pc - address) >> 2];
++         mark |= 1;
++         if (info & IS_CONDBRANCH)
++            mark |= !slot && m->inDelaySlot ? 2 : 4;
++      }
++      if (coreState != CORE_RUNNING_CPU) { end = 2; detail = pc; break; }
++   }
++   out[0] = end;
++   out[1] = detail;
++   out[2] = m->pc;
++   out[3] = steps;
++   for (int i = 0; i < 32; i++)
++      out[4 + i] = m->r[i];
++   out[36] = m->hi;
++   out[37] = m->lo;
++   for (int i = 0; i < 32; i++)
++      out[38 + i] = m->fi[i];
++   out[70] = (m->fcr31 & ~(1u << 23)) | ((m->fpcond & 1u) << 23);
++   for (int i = 0; i < 128; i++)
++      out[71 + i] = m->vi[i];
++   for (int i = 0; i < 16; i++)
++      out[199 + i] = m->vfpuCtrl[i];
++   m->inDelaySlot = false;
++   coreState = was;
++}
++
+ void System_AudioPushSamples(const int32_t *audio, int numSamples, float volume) {
+    // We ignore volume here, because it's handled by libretro presumably.
+ 
+diff --git a/libretro/libretro.osx.def b/libretro/libretro.osx.def
+index 53a556a..8a82b1c 100644
+--- a/libretro/libretro.osx.def
++++ b/libretro/libretro.osx.def
+@@ -1,6 +1,11 @@
+ #LIBRARY "libretro"
+ #EXPORTS
+ _retro_set_environment
++_dreamports_sound_list
++_dreamports_draw_list
++_dreamports_memory
++_dreamports_call
++_retro_dreamports_ran_mips
+ _retro_set_video_refresh
+ _retro_set_audio_sample
+ _retro_set_audio_sample_batch
