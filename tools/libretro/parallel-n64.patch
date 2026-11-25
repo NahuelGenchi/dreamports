@@ -1,0 +1,349 @@
+Parallel N64 (https://github.com/libretro/parallel-n64, GNU General Public License version 2) runs the Nintendo 64,
+and like every libretro core it says nothing of the instructions it runs. The tools apply this change of Dreamports'
+own to its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so
+the program that plays the original (tools/libretro/host.c) can ask to be told of each instruction its cached
+interpreter is about to run, the processor the tools play every game on: its address, and where that is in the
+console's memory. That's how prove knows which of the code map's functions ran in each frame, and so which functions
+each part of a game runs (tools/lib/part-functions.mjs).
+
+The interpreter only calls the function it was given, when it was given one, just before it runs an instruction:
+nothing of the console changes, so every frame's picture and sound are the same with it or without, which
+tools/test/n64-kit.mjs checks. Its own steps that are no instruction of the game, the end of a block of instructions
+and code it hasn't read yet, aren't told: each goes on to the instruction it stands for, which is told there, so every
+instruction is told once. Nothing of Parallel N64 is in the repository but the lines of its own this change sits
+between.
+
+It also puts one thing right in Parallel N64 itself, which kept it from running at all on Windows and on a Mac with
+Apple's chip as the tools build it, with no dynarec, so every computer runs the same interpreter. A frame ends when the
+video interface's interrupt sets a flag that stops the processor, and the next frame starts by clearing it. There are
+two such flags, the processor's own and one the dynarec keeps, and which one the interrupt looks at is chosen by the
+compiler's own name for the computer: with MinGW on Windows for x86-64, and on arm64, it's the dynarec's, which a
+build with no dynarec never cleared. So the first frame ended, the flag stayed set, the interrupt took every later
+frame for one already stopped, and the emulator never came back from its second frame. The change clears that flag
+too. On Linux for x86-64 the two are one, so nothing changes there, and no frame's picture or sound changes anywhere.
+
+And it makes the floating-point unit the same on every computer, in the emulator and in the program that calls one
+function of a game in its processor (tools/n64/original.mjs), which is built from the same source. On x86 Parallel N64
+has SSE make a result too small to be an ordinary number a zero of its sign, by the flush mode it gives SSE from FCR31
+whenever a game writes it, as the VR4300 does with the FS bit games set. A computer without SSE, as a Mac with
+Apple's chip, has nothing doing that, so the same sum or product came out a small number there and zero on Linux and
+Windows. The change does the same without SSE, by the same rule, to the result of each operation SSE's mode flushes:
+a sum, a difference, a product, a quotient, a square root and a double made a float, and not an absolute value or a
+negation, which SSE makes with its logic and leaves as they are. A number given that is too small is used as it is,
+as the emulator leaves SSE's mode for those off. On a computer with SSE nothing changes. Checked on x86 against SSE's
+own flush, over 72 million results near the smallest ordinary number in each of the four rounding modes, 12 million
+of them flushed: every bit the same.
+
+And it lets the emulator build on a Mac, where it had never been built for the tools before. Its r4300.h makes macros of
+hi and lo, and the GL header libretro.c includes after it reads Apple's MacTypes.h there, whose structs have members
+of those names, so Apple's compiler stopped at them. The two are put aside while that header is read, and nothing
+else is; on another computer the header reads nothing of Apple's.
+
+diff --git a/libretro/libretro.c b/libretro/libretro.c
+index 4302bb4..f4e6472 100644
+--- a/libretro/libretro.c
++++ b/libretro/libretro.c
+@@ -42,6 +42,13 @@
+ #include "../mupen64plus-video-angrylion/vdac.h"
+ #endif
+ 
++/* Dreamports: the GL header below reads Apple's MacTypes.h on a Mac, through libretro-common's apple_compat.h, and its
++ * structs have members named hi and lo, which r4300.h, included above, makes macros of; so they're put aside while it's
++ * read. Nothing else is, and on another computer the header reads nothing of Apple's. */
++#pragma push_macro("hi")
++#pragma push_macro("lo")
++#undef hi
++#undef lo
+ #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
+ #include <glsm/glsmsym.h>
+ #else
+@@ -54,6 +61,8 @@
+ #include <glsm/glsm.h>
+ bool glsm_ctl(enum glsm_state_ctl state, void *data) { return false; }
+ #endif
++#pragma pop_macro("lo")
++#pragma pop_macro("hi")
+ 
+ /* libretro-fork compat: legacy CONT_* controller-presence + M64CMD_DDROM_OPEN +
+  * mempak format defaults, retained for the fork's libretro glue (next dropped
+@@ -3753,6 +3762,25 @@ static void glsm_enter(void)
+ #define RETRO_AV_ENABLE_AUDIO (1 << 1)
+ #endif
+ 
++/* Dreamports: the cached interpreter tells the tools' program of every instruction (cached_interp.c), with where its
++ * address is in the console's memory, as an offset from its first byte, by whichever of the processor's two fixed
++ * ways of seeing it, cached at 0x80000000 or not at 0xA0000000, or 0xFFFFFFFF anywhere else, as in an address only the
++ * TLB maps. retro_dreamports_ran_at gives the function to tell, or none. */
++extern void (*DreamportsRan)(uint32_t address);
++static void (*dreamports_told)(uint32_t address, uint32_t place);
++
++static void dreamports_ran(uint32_t address)
++{
++   uint32_t place = address & 0x1FFFFFFF;
++   dreamports_told(address, address >= 0x80000000 && address < 0xC0000000 && place < 0x800000 ? place : 0xFFFFFFFF);
++}
++
++RETRO_API void retro_dreamports_ran_at(void (*told)(uint32_t, uint32_t))
++{
++   dreamports_told = told;
++   DreamportsRan   = told ? dreamports_ran : NULL;
++}
++
+ void retro_run (void)
+ {
+    static bool updated = false;
+diff --git a/libretro/link.T b/libretro/link.T
+index dd733fb..f6685ad 100644
+--- a/libretro/link.T
++++ b/libretro/link.T
+@@ -21,6 +21,7 @@
+       retro_cheat_reset;
+       retro_cheat_set;
+       retro_deinit;
++      retro_dreamports_ran_at;
+       retro_get_memory_data;
+       retro_get_memory_size;
+       retro_get_region;
+diff --git a/mupen64plus-core/src/device/r4300/cached_interp.c b/mupen64plus-core/src/device/r4300/cached_interp.c
+index 1ed9088..ba39460 100644
+--- a/mupen64plus-core/src/device/r4300/cached_interp.c
++++ b/mupen64plus-core/src/device/r4300/cached_interp.c
+@@ -52,6 +52,24 @@
+ 
+ extern unsigned int r4300_jit_backend;
+ 
++/* Dreamports: what the tools' program asks to be told of every instruction the cached interpreter runs, just before
++ * it runs it: its address. It only looks, so the game plays the same with it or without. The interpreter's own steps
++ * that are no instruction of the game, the end of a block and code not read yet, each go on to the instruction they
++ * stand for, which is told there. */
++void (*DreamportsRan)(uint32_t address);
++void cached_interp_FIN_BLOCK(void);
++void cached_interp_NOTCOMPILED(void);
++void cached_interp_NOTCOMPILED2(void);
++#define DREAMPORTS_RAN() \
++    do { \
++        if (DreamportsRan) \
++        { \
++            const struct precomp_instr *dreamports_at = *r4300_pc_struct(r4300); \
++            if (dreamports_at->ops != cached_interp_FIN_BLOCK && dreamports_at->ops != cached_interp_NOTCOMPILED && dreamports_at->ops != cached_interp_NOTCOMPILED2) \
++                DreamportsRan(dreamports_at->addr); \
++        } \
++    } while (0)
++
+ #define DECLARE_R4300 struct r4300_core* r4300 = &g_dev.r4300;
+ #define PCADDR *r4300_pc(r4300)
+ /* When ari64 is the active dynarec, PC advances live in its hot state
+@@ -84,6 +102,7 @@ void cached_interp_##name(void) \
+         (*r4300_pc_struct(r4300))++; \
+         r4300->delay_slot=1; \
+         UPDATE_DEBUGGER(); \
++        DREAMPORTS_RAN(); \
+         (*r4300_pc_struct(r4300))->ops(); \
+         cp0_update_count(r4300); \
+         r4300->delay_slot=0; \
+@@ -117,6 +136,7 @@ void cached_interp_##name##_OUT(void) \
+         (*r4300_pc_struct(r4300))++; \
+         r4300->delay_slot=1; \
+         UPDATE_DEBUGGER(); \
++        DREAMPORTS_RAN(); \
+         (*r4300_pc_struct(r4300))->ops(); \
+         cp0_update_count(r4300); \
+         r4300->delay_slot=0; \
+@@ -204,6 +224,7 @@ void cached_interp_FIN_BLOCK(void)
+ #endif
+ Used by dynarec only, check should be unnecessary
+ */
++        DREAMPORTS_RAN();
+         (*r4300_pc_struct(r4300))->ops();
+     }
+     else
+@@ -220,12 +241,16 @@ Used by dynarec only, check should be unnecessary
+ */
+         if (!r4300->skip_jump)
+         {
++            DREAMPORTS_RAN();
+             (*r4300_pc_struct(r4300))->ops();
+             r4300->cached_interp.actual = blk;
+             (*r4300_pc_struct(r4300)) = inst+1;
+         }
+         else
++        {
++            DREAMPORTS_RAN();
+             (*r4300_pc_struct(r4300))->ops();
++        }
+     }
+ }
+ 
+@@ -251,6 +276,7 @@ void cached_interp_NOTCOMPILED(void)
+ The preceeding update_debugger SHOULD be unnecessary since it should have been
+ called before NOTCOMPILED would have been executed
+ */
++    DREAMPORTS_RAN();
+     (*r4300_pc_struct(r4300))->ops();
+ }
+ 
+@@ -1045,6 +1071,7 @@ void run_cached_interpreter(struct r4300_core* r4300)
+         if (g_DebuggerActive) update_debugger((*r4300_pc_struct(r4300))->addr);
+ #endif
+         r4300_regs(r4300)[0] = 0;
++        DREAMPORTS_RAN();
+         (*r4300_pc_struct(r4300))->ops();
+     }
+ }
+diff --git a/mupen64plus-core/src/device/r4300/fpu.h b/mupen64plus-core/src/device/r4300/fpu.h
+index 7691dcd..950145c 100644
+--- a/mupen64plus-core/src/device/r4300/fpu.h
++++ b/mupen64plus-core/src/device/r4300/fpu.h
+@@ -67,6 +67,46 @@ static __inline float  truncf(float x) { return (float)(int)x; }
+ #define FCR31_FLAG_INVALIDOP_BIT UINT32_C(0x000040)
+ 
+ 
++/* Dreamports: on x86 the emulator has SSE make a result too small to be an ordinary number a zero of its sign, by
++ * the flush mode update_x86_rounding_mode gives it from FCR31 (cp1.c). A computer without SSE, as a Mac with Apple's
++ * chip, has nothing doing that, and kept the small number, so the same function came out otherwise there. Without SSE
++ * the same is done here, by the same rule, to the result of each operation SSE's mode flushes: a sum, a difference, a
++ * product, a quotient, a square root and a double made a float, and not an absolute value or a negation, which SSE
++ * makes with its logic and leaves as they are. A number given that is too small is used as it is, as the emulator
++ * leaves SSE's mode for those off (r4300_core.c). */
++#include "osal/preproc.h"
++#ifdef OSAL_SSE
++#define fpu_flush_float(fcr31, value) ((void)0)
++#define fpu_flush_double(fcr31, value) ((void)0)
++#else
++M64P_FPU_INLINE int fpu_flushes(uint32_t fcr31)
++{
++    return (fcr31 & 2) ? !(fcr31 & UINT32_C(0x1000000)) : 1;
++}
++
++M64P_FPU_INLINE void fpu_flush_float(uint32_t fcr31, float* value)
++{
++    uint32_t bits;
++    memcpy(&bits, value, sizeof bits);
++    if (fpu_flushes(fcr31) && (bits & UINT32_C(0x7F800000)) == 0 && (bits & UINT32_C(0x7FFFFF)) != 0)
++    {
++        bits &= UINT32_C(0x80000000);
++        memcpy(value, &bits, sizeof bits);
++    }
++}
++
++M64P_FPU_INLINE void fpu_flush_double(uint32_t fcr31, double* value)
++{
++    uint64_t bits;
++    memcpy(&bits, value, sizeof bits);
++    if (fpu_flushes(fcr31) && (bits & UINT64_C(0x7FF0000000000000)) == 0 && (bits & UINT64_C(0xFFFFFFFFFFFFF)) != 0)
++    {
++        bits &= UINT64_C(0x8000000000000000);
++        memcpy(value, &bits, sizeof bits);
++    }
++}
++#endif
++
+ M64P_FPU_INLINE void set_rounding(uint32_t fcr31)
+ {
+ #if !defined(VITA) && !defined(__SWITCH__)
+@@ -297,6 +337,7 @@ M64P_FPU_INLINE void cvt_s_d(uint32_t* fcr31, const double* source, float* dest)
+     fpu_reset_exceptions();
+ 
+     *dest = (float)*source;
++    fpu_flush_float(*fcr31, dest);
+ 
+     fpu_check_exceptions(fcr31);
+     fpu_check_output_float(fcr31, dest);
+@@ -996,6 +1037,7 @@ M64P_FPU_INLINE void add_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 + *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1012,6 +1054,7 @@ M64P_FPU_INLINE void sub_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 - *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1028,6 +1071,7 @@ M64P_FPU_INLINE void mul_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 * *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1044,6 +1088,7 @@ M64P_FPU_INLINE void div_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 / *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1059,6 +1104,7 @@ M64P_FPU_INLINE void sqrt_s(uint32_t* fcr31, const float* source, float* target)
+     fpu_reset_exceptions();
+ 
+     *target = sqrtf(*source);
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1097,6 +1143,7 @@ M64P_FPU_INLINE void add_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 + *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1113,6 +1160,7 @@ M64P_FPU_INLINE void sub_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 - *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1129,6 +1177,7 @@ M64P_FPU_INLINE void mul_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 * *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1145,6 +1194,7 @@ M64P_FPU_INLINE void div_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 / *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1161,6 +1211,7 @@ M64P_FPU_INLINE void sqrt_d(uint32_t* fcr31, const double* source, double* targe
+     fpu_reset_exceptions();
+ 
+     *target = sqrt(*source);
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+diff --git a/mupen64plus-core/src/main/main.c b/mupen64plus-core/src/main/main.c
+index 0f959c8..84815c7 100644
+--- a/mupen64plus-core/src/main/main.c
++++ b/mupen64plus-core/src/main/main.c
+@@ -839,9 +839,11 @@ m64p_error main_run(void)
+          * retro_return from arming the next frame-break. The hot-state stop only
+          * exists when the ari64 dynarec is compiled in (NEW_DYNAREC); without it
+          * there is no separate ari64 stop and *r4300_stop() above is sufficient. */
+-#ifdef NEW_DYNAREC
++        /* Dreamports: cleared whatever is built. Where the compiler says _M_X64, as MinGW's does on Windows, and on
++         * arm64, as on a Mac with Apple's chip, the flag retro_return looks at is this one (r4300.h), also in a build
++         * with no dynarec, as the tools' is: left set after the first frame, no later frame ever ended, and
++         * retro_run never came back. Where the two flags are one, as on Linux for x86-64, this changes nothing. */
+         g_dev.r4300.new_dynarec_hot_state.stop = 0;
+-#endif
+         run_device(&g_dev);
+         return M64ERR_SUCCESS;
+     }

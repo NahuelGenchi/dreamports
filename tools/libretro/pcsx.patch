@@ -30,14 +30,14 @@ index 734fc30..9465d9e 100644
 +// scratchpad and hardware's registers PCSX keeps together.
 +extern void (*dreamports_reached)(u32 pc);
 +
-+void dreamports_watch_pc(void (*reached)(uint32_t pc))
++RETRO_API void dreamports_watch_pc(void (*reached)(uint32_t pc))
 +{
 +   dreamports_reached = reached;
 +}
 +
 +// the 32 registers, then hi and lo, as the function will find them: a load still waiting, as one in a call's delay
 +// slot is, is given as it will land
-+const uint32_t *dreamports_registers(uint32_t *next)
++RETRO_API const uint32_t *dreamports_registers(uint32_t *next)
 +{
 +   static uint32_t words[34];
 +   int i;
@@ -57,7 +57,7 @@ index 734fc30..9465d9e 100644
 +
 +// memory 0 is the console's RAM from its first byte, and memory 1 the scratchpad and the hardware's registers, from
 +// 0x1F800000
-+const uint8_t *dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
++RETRO_API const uint8_t *dreamports_memory(uint32_t memory, uint32_t address, uint32_t bytes)
 +{
 +   if (memory == 0 && psxRegs.ptrs.psxM && address + bytes <= 0x200000)
 +      return psxRegs.ptrs.psxM + address;
@@ -73,7 +73,7 @@ index 734fc30..9465d9e 100644
 +   { 0, 0x00000000, 0x200, 0x000 }, { 1, 0x00000000, 0x001, 0x200 }, { 1, 0x00001000, 0x002, 0x201 },
 +};
 +
-+const void *dreamports_starts_layout(uint32_t *words, uint32_t *memories)
++RETRO_API const void *dreamports_starts_layout(uint32_t *words, uint32_t *memories)
 +{
 +   *words = 34;
 +   *memories = sizeof dreamportsStartsMemories / sizeof dreamportsStartsMemories[0];

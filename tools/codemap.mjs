@@ -39,6 +39,7 @@ import * as gbFunctions from './gbc/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
 import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
+import * as pspFunctions from './psp/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
 import * as ndsFunctions from './nds/functions.mjs';
 import { layoutOf, readCartridge } from './snes/cartridge.mjs';
@@ -100,6 +101,17 @@ const FINDERS = {
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
     address: address => address,
+    // where the code loads, kept in the code map, so the function the cartridge starts is known with no copy (lib/proofs.mjs)
+    layout: cartridge => ({ load: hex(n64Functions.programOf(cartridge).load) }),
+  },
+  // a PlayStation Portable game's program, read off its disc or out of the file a download comes as, and placed where
+  // the emulator places it when it's relocatable
+  psp: {
+    ...pspFunctions,
+    file: 'tools/psp/functions.mjs',
+    read: pspFunctions.pspProgram,
+    address: address => address,
+    start: elf => pspFunctions.programOf(elf).entry,
   },
   // a Nintendo DS game's programs, read off its cartridge a piece at a time: the ARM9's, the ARM7's and each overlay,
   // each found on its own; a list is of the ARM9's program
@@ -196,7 +208,9 @@ export async function run(args) {
     from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
-  writeCodeMap(game, { original: original.sha1, from, functions, copies, layout: finder?.layout?.(theCopy) ?? null });
+  // where the program starts, on a console whose finder says it: a function that never comes back (lib/proofs.mjs)
+  const start = finder?.start ? finder.start(theCopy) : null;
+  writeCodeMap(game, { original: original.sha1, from, functions, copies, layout: finder?.layout?.(theCopy) ?? null, ...(start !== null && functions.some(f => f.address === start) ? { start } : {}) });
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
