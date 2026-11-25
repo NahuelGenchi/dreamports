@@ -17,7 +17,7 @@
 //   and the pressure on each button, and a Dreamport that doesn't read the pressure is found;
 // - a Dreamport whose pitch is one step out on one frame is found on that frame, by its sound list.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
