@@ -231,7 +231,7 @@ index 4c460e6..1fec7a8 100644
  	jitter->PushRel(offsetof(CMIPS, m_State.cycleQuota));
  	jitter->PushCst(((m_end - m_begin) / 4) + 1);
 diff --git a/Source/CMakeLists.txt b/Source/CMakeLists.txt
-index 0eb6a2e..9636c6c 100644
+index 0eb6a2e..7a12591 100644
 --- a/Source/CMakeLists.txt
 +++ b/Source/CMakeLists.txt
 @@ -192,6 +192,12 @@ set(COMMON_SRC_FILES
@@ -247,6 +247,14 @@ index 0eb6a2e..9636c6c 100644
  	ee/FpAddTruncate.cpp
  	ee/FpAddTruncate.h
  	ee/FpMulTruncate.cpp
+@@ -575,6 +581,6 @@ target_include_directories(PlayCore
+ )
+ target_compile_definitions(PlayCore PUBLIC ${DEFINITIONS_LIST})
+ 
+-if(TARGET_PLATFORM_WIN32)
++if(TARGET_PLATFORM_WIN32 AND MSVC)
+ 	add_precompiled_header(PlayCore Pch.h FORCEINCLUDE SOURCE_CXX Pch.cpp)
+ endif()
 diff --git a/Source/COP_FPU.cpp b/Source/COP_FPU.cpp
 index 438943a..04f2901 100644
 --- a/Source/COP_FPU.cpp
@@ -3256,7 +3264,7 @@ index 71aed53..be44279 100644
  }
  
 diff --git a/Source/iop/Iop_McServ.cpp b/Source/iop/Iop_McServ.cpp
-index 4ef7854..d67f2c4 100644
+index 4ef7854..d32ada9 100644
 --- a/Source/iop/Iop_McServ.cpp
 +++ b/Source/iop/Iop_McServ.cpp
 @@ -18,6 +18,8 @@
@@ -3420,15 +3428,27 @@ index 4ef7854..d67f2c4 100644
  			}
  			catch(...)
  			{
-@@ -882,6 +966,7 @@ void CMcServ::Delete(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+@@ -880,8 +964,19 @@ void CMcServ::Delete(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize,
+ 		auto filePath = GetHostFilePath(cmd->port, cmd->slot, cmd->name);
+ 		if(fs::exists(filePath))
  		{
++#ifdef _WIN32
++			// Dreamports: a folder that holds something isn't deleted, which Windows says another way than the error
++			// looked for below, so it's looked at first there
++			std::error_code looked;
++			if(fs::is_directory(filePath, looked) && !fs::is_empty(filePath, looked))
++			{
++				ret[0] = RET_NOT_EMPTY;
++				return;
++			}
++#endif
  			fs::remove(filePath);
  			ret[0] = 0;
 +			DreamportsStamp(filePath.parent_path());
  		}
  		else
  		{
-@@ -1008,6 +1093,7 @@ void CMcServ::WriteFast(uint32* args, uint32 argsSize, uint32* ret, uint32 retSi
+@@ -1008,6 +1103,7 @@ void CMcServ::WriteFast(uint32* args, uint32 argsSize, uint32* ret, uint32 retSi
  
  	result += static_cast<uint32>(file->Write(dst, cmd->size));
  	ret[0] = result;
@@ -3436,7 +3456,7 @@ index 4ef7854..d67f2c4 100644
  }
  
  void CMcServ::Init(uint32* args, uint32 argsSize, uint32* ret, uint32 retSize, uint8* ram)
-@@ -1276,7 +1362,11 @@ unsigned int CMcServ::CPathFinder::Read(ENTRY* entry, unsigned int size)
+@@ -1276,7 +1372,11 @@ unsigned int CMcServ::CPathFinder::Read(ENTRY* entry, unsigned int size)
  void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
  {
  	bool found = false;
@@ -3449,7 +3469,7 @@ index 4ef7854..d67f2c4 100644
  	{
  		const auto& relativePath(element.path());
  		std::string relativePathString(relativePath.generic_string());
-@@ -1308,8 +1398,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
+@@ -1308,8 +1408,9 @@ void CMcServ::CPathFinder::SearchRecurse(const fs::path& path)
  
  			//Fill in modification date info
  			{
@@ -4059,3 +4079,236 @@ index 8a07c26..5d27bac 100644
  		m_virtualMachine->PauseAsync();
  		auto gsHandler = static_cast<CGSH_OpenGL_Libretro*>(m_virtualMachine->GetGSHandler());
  		if(gsHandler)
+diff --git a/Source/FpUtils.cpp b/Source/FpUtils.cpp
+index 5e4ab48..98c28dd 100644
+--- a/Source/FpUtils.cpp
++++ b/Source/FpUtils.cpp
+@@ -45,7 +45,7 @@ void FpUtils::SetDenormalHandlingMode()
+ 
+ void FpUtils::EnableFpExceptions()
+ {
+-#ifdef _WIN32
++#ifdef _MSC_VER
+ 	unsigned int currentState = 0;
+ 	_controlfp_s(&currentState, _MCW_EM & ~(_EM_ZERODIVIDE | _EM_INVALID), _MCW_EM);
+ #endif
+diff --git a/Source/VolumeStream.cpp b/Source/VolumeStream.cpp
+index b91173c..33735e6 100644
+--- a/Source/VolumeStream.cpp
++++ b/Source/VolumeStream.cpp
+@@ -1,4 +1,7 @@
+ #include <exception>
++#include <stdexcept>
++#include <algorithm>
++#include <cstring>
+ #include <cassert>
+ #include "tcharx.h"
+ #include "VolumeStream.h"
+@@ -46,7 +49,7 @@ void CVolumeStream::Seek(int64 nDistance, STREAM_SEEK_DIRECTION nFrom)
+ 		m_nPosition += nDistance;
+ 		break;
+ 	case STREAM_SEEK_END:
+-		throw std::exception("Operation not supported.");
++		throw std::runtime_error("Operation not supported.");
+ 		break;
+ 	}
+ }
+@@ -68,7 +71,7 @@ uint64 CVolumeStream::Read(void* pBuffer, uint64 nSize)
+ 
+ 		uint64 nSectorOffset = (m_nPosition & (m_nSectorSize - 1));
+ 		uint64 nSectorRemain = (m_nSectorSize - nSectorOffset);
+-		uint64 nCopy = min(nSize, nSectorRemain);
++		uint64 nCopy = std::min<uint64>(nSize, nSectorRemain);
+ 
+ 		memcpy(pDst, pSrc + nSectorOffset, nCopy);
+ 
+@@ -82,7 +85,7 @@ uint64 CVolumeStream::Read(void* pBuffer, uint64 nSize)
+ 
+ uint64 CVolumeStream::Write(const void* pBuffer, uint64 nSize)
+ {
+-	throw std::exception("Operation not-supported.");
++	throw std::runtime_error("Operation not-supported.");
+ }
+ 
+ bool CVolumeStream::IsEOF()
+diff --git a/Source/app_shared/DefaultAppConfig.h b/Source/app_shared/DefaultAppConfig.h
+index 01535c1..587aa28 100644
+--- a/Source/app_shared/DefaultAppConfig.h
++++ b/Source/app_shared/DefaultAppConfig.h
+@@ -2,6 +2,8 @@
+ 
+ //Include this file in your app's main.cpp file to obtain a default AppConfig base path.
+ 
++#include <cstdlib>
++#include <cwchar>
+ #include "PathUtils.h"
+ #include "AppConfig.h"
+ 
+@@ -10,6 +12,16 @@ fs::path CAppConfig::GetBasePath() const
+ 	static const char* BASE_DATA_PATH = "Play Data Files";
+ 	static const auto basePath =
+ 	    []() {
++#ifdef _WIN32
++		    // Dreamports: Windows says where a person's Documents are whatever the environment says, so the folder the
++		    // tools name for a run, as XDG_DATA_HOME names it elsewhere, comes first there
++		    if(auto named = _wgetenv(L"XDG_DATA_HOME"))
++		    {
++			    auto named_path = fs::path(named) / BASE_DATA_PATH;
++			    Framework::PathUtils::EnsurePathExists(named_path);
++			    return named_path;
++		    }
++#endif
+ 		    auto result = Framework::PathUtils::GetPersonalDataPath() / BASE_DATA_PATH;
+ 		    Framework::PathUtils::EnsurePathExists(result);
+ 		    return result;
+diff --git a/Source/gs/GSH_OpenGL/CMakeLists.txt b/Source/gs/GSH_OpenGL/CMakeLists.txt
+index 0f89436..65e1f65 100644
+--- a/Source/gs/GSH_OpenGL/CMakeLists.txt
++++ b/Source/gs/GSH_OpenGL/CMakeLists.txt
+@@ -22,7 +22,7 @@ if(TARGET_PLATFORM_UNIX_ARM)
+ 	list(APPEND GSH_OPENGL_COMPILE_OPTIONS "-mfpu=neon")
+ endif()
+ 
+-if(TARGET_PLATFORM_UNIX AND NOT TARGET_PLATFORM_UNIX_ARM AND NOT TARGET_PLATFORM_UNIX_AARCH64)
++if((TARGET_PLATFORM_UNIX OR MINGW) AND NOT TARGET_PLATFORM_UNIX_ARM AND NOT TARGET_PLATFORM_UNIX_AARCH64)
+ 	list(APPEND GSH_OPENGL_COMPILE_OPTIONS -msse -msse2 -mssse3)
+ endif()
+ 
+diff --git a/Source/iop/namco_sys246/MameCompatOutput.h b/Source/iop/namco_sys246/MameCompatOutput.h
+index 9eba14d..df1284a 100644
+--- a/Source/iop/namco_sys246/MameCompatOutput.h
++++ b/Source/iop/namco_sys246/MameCompatOutput.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <string>
++#include <thread>
+ #include "SocketDef.h"
+ 
+ namespace Iop
+diff --git a/deps/Framework/include/AlignedAlloc.h b/deps/Framework/include/AlignedAlloc.h
+index f5dfa9d..06a208b 100644
+--- a/deps/Framework/include/AlignedAlloc.h
++++ b/deps/Framework/include/AlignedAlloc.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#ifdef _MSC_VER
++#ifdef _WIN32
+ #include <malloc.h>
+ #include <Windows.h>
+ #else
+@@ -13,7 +13,7 @@
+ FRAMEWORK_MAYBE_UNUSED
+ static size_t framework_getpagesize()
+ {
+-#if defined(_MSC_VER)
++#if defined(_WIN32)
+ 	SYSTEM_INFO si;
+ 	GetSystemInfo(&si);
+ 	return si.dwPageSize;
+@@ -25,7 +25,7 @@ static size_t framework_getpagesize()
+ FRAMEWORK_MAYBE_UNUSED
+ static void* framework_aligned_alloc(size_t allocSize, size_t alignment)
+ {
+-#if defined(_MSC_VER)
++#if defined(_WIN32)
+ 	return _aligned_malloc(allocSize, alignment);
+ #elif defined(__ANDROID__) || defined(__APPLE__) || defined(__FreeBSD__) || defined(__linux__) || defined(__EMSCRIPTEN__)
+ 	void* result = nullptr;
+@@ -42,7 +42,7 @@ static void* framework_aligned_alloc(size_t allocSize, size_t alignment)
+ FRAMEWORK_MAYBE_UNUSED
+ static void framework_aligned_free(void* ptr)
+ {
+-#if defined(_MSC_VER)
++#if defined(_WIN32)
+ 	_aligned_free(ptr);
+ #else
+ 	free(ptr);
+diff --git a/deps/Framework/include/stricmp.h b/deps/Framework/include/stricmp.h
+index ad12ad7..e29a01f 100644
+--- a/deps/Framework/include/stricmp.h
++++ b/deps/Framework/include/stricmp.h
+@@ -2,6 +2,8 @@
+ #define _STRICMP_H_
+ 
+ #ifdef _WIN32
++#include <string.h>
++#include <wchar.h>
+ #define stricmp _stricmp
+ #define strnicmp _strnicmp
+ #define wcsicmp _wcsicmp
+diff --git a/deps/Framework/src/PathUtils.cpp b/deps/Framework/src/PathUtils.cpp
+index f7a9f8b..4a8e7a7 100644
+--- a/deps/Framework/src/PathUtils.cpp
++++ b/deps/Framework/src/PathUtils.cpp
+@@ -6,6 +6,9 @@ using namespace Framework;
+ 
+ #ifdef _WIN32
+ 
++#ifndef WINAPI_FAMILY_ONE_PARTITION
++#define WINAPI_FAMILY_ONE_PARTITION(family, partition) 0
++#endif
+ #if WINAPI_FAMILY_ONE_PARTITION(WINAPI_FAMILY, WINAPI_PARTITION_APP)
+ 
+ fs::path PathUtils::GetPersonalDataPath()
+@@ -188,6 +191,11 @@ void PathUtils::EnsurePathExists(const fs::path& path)
+ 		pathIterator != path.end(); pathIterator++)
+ 	{
+ 		buildPath /= (*pathIterator);
++#if defined(_WIN32) && !defined(_MSC_VER)
++		// Dreamports: a drive by its name alone, as C:, is no folder to look for or to make, and GCC's library says it
++		// is not there and then that it can't be made
++		if(buildPath.has_root_name() && !buildPath.has_root_directory() && !buildPath.has_relative_path()) continue;
++#endif
+ 		std::error_code existsErrorCode;
+ 		bool exists = fs::exists(buildPath, existsErrorCode);
+ 		if(existsErrorCode)
+diff --git a/deps/Framework/src/StdStream.cpp b/deps/Framework/src/StdStream.cpp
+index ddd8df1..9d8a7cb 100644
+--- a/deps/Framework/src/StdStream.cpp
++++ b/deps/Framework/src/StdStream.cpp
+@@ -30,7 +30,7 @@ CStdStream::CStdStream(const char* path, const char* options)
+ 
+ CStdStream::CStdStream(const wchar_t* path, const wchar_t* options)
+ {
+-#ifdef _MSC_VER
++#ifdef _WIN32
+ 	m_file = _wfopen(path, options);
+ #else
+ 	m_file = nullptr;
+diff --git a/deps/Framework/src/ThreadUtils.cpp b/deps/Framework/src/ThreadUtils.cpp
+index fe4c691..0f41585 100644
+--- a/deps/Framework/src/ThreadUtils.cpp
++++ b/deps/Framework/src/ThreadUtils.cpp
+@@ -4,7 +4,7 @@
+ #include <string>
+ #include <mutex>
+ 
+-#if defined(WIN32)
++#if defined(WIN32) && !defined(__MINGW32__)
+ #include <Windows.h>
+ #include <tchar.h>
+ #include "string_cast.h"
+@@ -17,7 +17,7 @@ using namespace Framework;
+ 
+ void ThreadUtils::SetThreadName(std::thread& thread, const char* name)
+ {
+-#if defined(WIN32)
++#if defined(WIN32) && !defined(__MINGW32__)
+ 	static std::once_flag initFlag;
+ 	std::call_once(initFlag,
+ 	               []() {
+diff --git a/deps/Dependencies/cmake-modules/Header.cmake b/deps/Dependencies/cmake-modules/Header.cmake
+index 3195f06..74acf4b 100644
+--- a/deps/Dependencies/cmake-modules/Header.cmake
++++ b/deps/Dependencies/cmake-modules/Header.cmake
+@@ -41,7 +41,7 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL "${CMAKE_SOURCE_DIR}")
+ 	
+ 	set(CMAKE_CXX_STANDARD 17)
+ 	set(CMAKE_CXX_STANDARD_REQUIRED ON)
+-	if(TARGET_PLATFORM_WIN32)
++	if(TARGET_PLATFORM_WIN32 AND MSVC)
+ 		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /EHsc /MP")
+ 	endif()
+ 
