@@ -12,6 +12,8 @@
 // on the VR4300 `beqzl` and `bnezl`. The PlayStation's assembler encodes with the same tables (../ps1/assemble.mjs), so
 // what one writes the other reads back.
 
+import { decodeAllegrex } from './allegrex.mjs';
+
 /** The registers by the names MIPS code gives them, in the processor's order. */
 export const REGISTERS = ['zero', 'at', 'v0', 'v1', 'a0', 'a1', 'a2', 'a3', 't0', 't1', 't2', 't3', 't4', 't5', 't6', 't7',
   's0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 't8', 't9', 'k0', 'k1', 'gp', 'sp', 'fp', 'ra'];
@@ -91,7 +93,7 @@ const RSP_SPECIAL = new Set([0, 2, 3, 4, 6, 7, 8, 9, 13, 32, 33, 34, 35, 36, 37,
 const RSP_PRIMARY = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 32, 33, 35, 36, 37, 40, 41, 43]);
 
 /** The processors this reads, by the name `processor` takes. */
-export const PROCESSORS = ['r3000a', 'vr4300', 'rsp'];
+export const PROCESSORS = ['r3000a', 'vr4300', 'rsp', 'allegrex'];
 
 const r = n => `$${REGISTERS[n]}`;
 const f = n => `$f${n}`;
@@ -112,6 +114,8 @@ const BYTES = { lb: 1, lbu: 1, sb: 1, lh: 2, lhu: 2, sh: 2, ld: 8, ldl: 8, ldr: 
 export function decode(word, address = 0, processor = 'r3000a') {
   word >>>= 0;
   if (processor === 'rsp') return decodeRsp(word, address);
+  // the PlayStation Portable's processor has a file of its own (allegrex.mjs)
+  if (processor === 'allegrex') return decodeAllegrex(word, address);
   const iii = processor === 'vr4300';
   const op = word >>> 26, rs = (word >>> 21) & 31, rt = (word >>> 16) & 31, rd = (word >>> 11) & 31, sa = (word >>> 6) & 31, fn = word & 63;
   const imm = (word << 16) >> 16, unsignedImm = word & 0xFFFF;

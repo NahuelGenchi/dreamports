@@ -379,7 +379,8 @@ function treeOf(folder, deep = true) {
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (deep && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'proof') files[entry.name] = treeOf(join(folder, entry.name));
-    } else if (/\.(c|h|inc)$/.test(entry.name)) files[entry.name] = readFileSync(join(folder, entry.name));
+    // and a kit's tables, which its C takes in whole with #embed, as the PlayStation Portable's vector unit's
+    } else if (/\.(c|h|inc|dat)$/.test(entry.name)) files[entry.name] = readFileSync(join(folder, entry.name));
   }
   return files;
 }
