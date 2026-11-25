@@ -7,8 +7,9 @@
 // and says so. Then one line of the twins is changed at a time, and the check has to find each: a difference for a sum,
 // a shift left by 32 or more that keeps bits, a division by zero that gives 0 whatever the sign, a 64-bit sum short of
 // its carry, a case of a switch one off, the square's colours the other way round, a line of the controller's blocks
-// short, a register of the serial interface one off, C's own float sums where the processor rounds its own way, and a
-// twin that never comes back. Last, the same program as a game
+// short, a register of the serial interface one off, C's own float sums where the processor rounds its own way, the
+// sums of an x86 computer and of an ARM one with each one's own NaNs, whichever this computer is, and a twin that never
+// comes back. Last, the same program as a game
 // of its own, through the tool everyone runs, npm run dp -- twin, which keeps a proof once the version is made a
 // function at a time, the original's side read from the program twin kept on this computer, and loses it when its twin
 // changes.
@@ -29,6 +30,20 @@ import * as made from './made-up-gamecube.mjs';
 const GAME = fileURLToPath(new URL('./gamecube-twin/game.c', import.meta.url));
 const work = join(LOCAL, 'tmp', 'gamecube-twin-test');
 const CALLS = 500;
+// a sum or a product of singles as a computer's own processor gives it, worked out from the bits so it's the same on
+// any: a NaN given back quiet, an ARM's signaling one first, and a NaN of its own, an x86's with its sign set
+const OWN_SUMS = `static unsigned own_bits(float f) { union { float f; unsigned u; } b = { f }; return b.u; }
+static float own_float(unsigned u) { union { unsigned u; float f; } b = { u }; return b.f; }
+static int own_nan(unsigned u) { return (u & 0x7FFFFFFFu) > 0x7F800000u; }
+static float own(float a, float b, float made, int arm) {
+  unsigned x = own_bits(a), y = own_bits(b);
+  if (arm && own_nan(x) && !(x & 0x400000u)) return own_float(x | 0x400000u);
+  if (arm && own_nan(y) && !(y & 0x400000u)) return own_float(y | 0x400000u);
+  if (own_nan(x)) return own_float(x | 0x400000u);
+  if (own_nan(y)) return own_float(y | 0x400000u);
+  return own_nan(own_bits(made)) ? own_float(arm ? 0x7FC00000u : 0xFFC00000u) : made;
+}
+`;
 
 const failures = [];
 const check = (ok, what) => {
@@ -108,6 +123,12 @@ try {
   await wrong('bits', [['line = 0x8;', 'line = 0x7;']], 'differs', 'a line of each block short', /in the console's memory/);
   await wrong('setup', [['*(volatile unsigned *)0xCC006430u = ', '*(volatile unsigned *)0xCC006430u = 1 + ']], 'differs', 'a register of the serial interface one off', /in the hardware's registers/);
   await wrong('mix', [['return gc_muls(gc_adds(a, b), c);', 'return (a + b) * c;']], 'differs', 'C\'s own sum and product of singles, where the processor rounds and makes a NaN its own way', /the twin gave back .* and the original/);
+  // C's own sums give the NaN of the computer they run on, so the sums of both kinds of computer are worked out from
+  // their bits here, to be caught on any: an x86's NaN of its own sign, and an ARM's, which is the processor's own, but
+  // gives a signaling NaN before a quiet one
+  const own = arm => [['#include "gamecube.h"\n', `#include "gamecube.h"\n${OWN_SUMS}`], ['return gc_muls(gc_adds(a, b), c);', `float sum = own(a, b, a + b, ${arm}); return own(sum, c, sum * c, ${arm});`]];
+  await wrong('mix', own(0), 'differs', 'an x86 computer\'s own sum and product of singles, which make a NaN of its own sign', /the twin gave back .* and the original/);
+  await wrong('mix', own(1), 'differs', 'an ARM computer\'s own sum and product of singles, which give a signaling NaN before a quiet one', /the twin gave back .* and the original/);
   await wrong('scale', [['return gc_madds(a, b, c);', 'return a * b + c;']], 'differs', 'a multiply and an add each rounded, where the processor rounds once');
   await wrong('toint', [['return gc_tointz(x);', 'return (int)x;']], 'differs', 'C\'s whole number of a double, which saturates as WebAssembly does and gives 0 for what isn\'t a number');
   await wrong('compare', [['int compare(int a, int b) {\n', 'int compare(int a, int b) {\n  if (a == b) for (;;) {}\n']], 'never', 'a twin that never comes back is stopped after its second', /was still going after 1 second/);

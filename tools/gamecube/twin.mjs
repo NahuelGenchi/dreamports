@@ -16,10 +16,10 @@
 //
 // A call is made as the console's compilers make one, by the PowerPC's embedded ABI: whole numbers and pointers take
 // r3 to r10 in turn, a 64-bit number a pair of them from an odd one, high word first, and floats and doubles f1 to f8,
-// each kept as a double, as the floating-point unit keeps a single. A function gives back what its C says in r3, a
-// 64-bit number in r3 and r4, or a float or a double in f1, and keeps r1, r2, r13 to r31 and f14 to f31, and the
-// condition register's fields 2 to 4. Each call gets any value in every other register, so a function that reads one it
-// wasn't given differs. A function that takes more than fits in those registers isn't checked yet.
+// each kept as a double, as the floating-point unit keeps a single, a NaN's bits and all. A function gives back what
+// its C says in r3, a 64-bit number in r3 and r4, or a float or a double in f1, and keeps r1, r2, r13 to r31 and f14 to
+// f31, and the condition register's fields 2 to 4. Each call gets any value in every other register, so a function
+// that reads one it wasn't given differs. A function that takes more than fits in those registers isn't checked yet.
 //
 // What a function is given decides which of its paths run, so the check learns as it goes, as the other consoles' do:
 // later calls change a few of the values earlier ones read and give pointers it read as arguments, but never a word that
@@ -78,23 +78,32 @@ const KEPT_CR = 0x000FFF00;
 // the numbers that sit at the edges of what a value can hold
 const EDGES = [0, 1, 2, 3, 4, 7, 8, 0xF, 0x10, 0x7F, 0x80, 0xFF, 0x100, 0x7FFF, 0x8000, 0xFFFF, 0x10000, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFF];
 // doubles at the edges of what the floating-point unit holds, as their bits: zeros, ones, the smallest and largest
-// ordinary ones, infinities, a number that isn't one, and singles' edges as doubles
+// ordinary ones, infinities, a number that isn't one, quiet and signaling, and singles' edges as doubles
 const DOUBLE_EDGES = [0n, 0x8000000000000000n, 0x3FF0000000000000n, 0xBFF0000000000000n, 0x0010000000000000n, 0x7FEFFFFFFFFFFFFFn, 0x7FF0000000000000n, 0x7FF8000000000000n,
-  0x400921FB54442D18n, 0x3810000000000000n, 0x47EFFFFFE0000000n, 0x3FE0000000000000n];
+  0x7FF4000000000000n, 0xFFF0000000000001n, 0x400921FB54442D18n, 0x3810000000000000n, 0x47EFFFFFE0000000n, 0x3FE0000000000000n];
+// singles at the edges, as their bits: zeros, ones, the smallest and largest ordinary ones, an infinity, and numbers
+// that aren't one, quiet and signaling. The processor keeps a signaling one as it was loaded, and gives back the first
+// operand that is a NaN, made quiet; a computer's own sums don't all do that, an ARM processor's giving a signaling
+// one before a quiet one, and an x86's a NaN of its own sign, so a twin with them is caught on either
+const SINGLE_EDGES = [0, 0x80000000, 0x3F800000, 0xBF800000, 0x00800000, 0x7F7FFFFF, 0x7F800000, 0x7FC00000, 0x7FA00000, 0xFF800001];
 
 const count = n => n.toLocaleString('en-US');
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 const at = address => `0x${hex(Number(BigInt.asUintN(32, BigInt(address))))}`;
 const inMemory = value => (value >>> 0) >= 0x80000000 && (value >>> 0) < 0x80000000 + RAM;
-// a double's bits from a single's, as the floating-point unit keeps a single
+// a double's bits from a single's, as the floating-point unit keeps a single: a NaN with its bits where a double has
+// them, as lfs loads it, signaling still, where JavaScript's own conversion makes every NaN quiet
 const doubleOf = bits => {
+  if ((bits & 0x7F800000) === 0x7F800000 && bits & 0x007FFFFF) return (BigInt(bits >>> 31) << 63n) | 0x7FF0000000000000n | (BigInt(bits & 0x007FFFFF) << 29n);
   const view = new DataView(new ArrayBuffer(8));
   view.setFloat32(0, new DataView(Uint32Array.of(bits).buffer).getFloat32(0, true));
   view.setFloat64(0, view.getFloat32(0));
   return view.getBigUint64(0);
 };
-// a single's bits from a double's, as a single that a double register holds
+// a single's bits from a double's, as a single that a double register holds: a NaN with the high bits of what it
+// carries, as stfs stores it, signaling or not
 const singleOf = bits => {
+  if ((bits & 0x7FF0000000000000n) === 0x7FF0000000000000n && bits & 0x000FFFFFFFFFFFFFn) return ((Number(bits >> 63n) << 31) | 0x7F800000 | Number((bits >> 29n) & 0x7FFFFFn)) >>> 0;
   const view = new DataView(new ArrayBuffer(8));
   view.setBigUint64(0, bits);
   view.setFloat32(0, view.getFloat64(0));
@@ -123,7 +132,7 @@ export function chooser(seed) {
      *  double's bits. */
     value(type, pointers) {
       if (type.pointer) return place(pointers);
-      if (type.float && type.bits === 32) return doubleOf([() => [0, 0x80000000, 0x3F800000, 0xBF800000, 0x00800000, 0x7F7FFFFF, 0x7F800000, 0x7FC00000][below(8)], next, () => (0x3E000000 + below(0x2000000)) >>> 0][below(3)]() >>> 0);
+      if (type.float && type.bits === 32) return doubleOf([() => SINGLE_EDGES[below(SINGLE_EDGES.length)], next, () => (0x3E000000 + below(0x2000000)) >>> 0][below(3)]() >>> 0);
       if (type.float) return [() => DOUBLE_EDGES[below(DOUBLE_EDGES.length)], () => (BigInt(next()) << 32n) | BigInt(next()), () => (BigInt(0x3FC00000 + below(0x800000)) << 32n) | BigInt(next())][below(3)]();
       if (type.bits === 64) return BigInt.asUintN(64, (BigInt(number()) << 32n) | BigInt(number()));
       const value = number();
