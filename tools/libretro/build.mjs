@@ -125,8 +125,8 @@ function buildHere(machine, log, tools) {
   } else {
     // on Windows a core's Makefile is told so, as every libretro core's takes it: it reads the computer's kind from
     // uname, and the compiler the tools get says Windows_NT there, which the Makefiles take for Linux, linking a .so
-    // with settings Windows' linker doesn't have
-    const settings = [...(core.make ?? []), ...(WINDOWS ? ['platform=win'] : [])];
+    // with settings Windows' linker doesn't have; and what one kind of computer has to say besides, `makeOn`
+    const settings = [...new Set([...(core.make ?? []), ...(core.makeOn?.[process.platform] ?? []), ...(WINDOWS ? ['platform=win'] : [])])];
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
