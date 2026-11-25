@@ -203,19 +203,30 @@ spiwait:
 
 // a program as the console starts it, in ARM code, which goes straight to the program in Thumb: ldr r0, [pc]; bx r0
 function programOf(text, address) {
+  return programWithNames(text, address).bytes;
+}
+
+/** A program as programOf makes it, with where each of its names is in memory: { bytes, at: { name: address } }. */
+export function programWithNames(text, address) {
   const { sections, symbols, relocations } = assemble(text);
   const code = Buffer.from(sections['.text'].bytes), start = Buffer.alloc(12);
   // the assembler links nothing, so each call to a function of the program is filled in here: Thumb's bl, in two halves
-  for (const { at, kind, name } of relocations) {
+  for (const { at, kind, name, addend = 0 } of relocations) {
     const target = symbols.get(name);
-    if (kind !== 'call' || !target) throw new Error(`the made-up program names something it doesn't have: ${name}`);
+    if (!target || (kind !== 'call' && kind !== 'word')) throw new Error(`the made-up program names something it doesn't have: ${name}`);
+    // a word that holds one of the program's own addresses, where the program is in memory
+    if (kind === 'word') {
+      code.writeUInt32LE((address + 12 + target.at + addend) >>> 0, at);
+      continue;
+    }
     const offset = target.at - (at + 4);
     code.writeUInt16LE(0xF000 | ((offset >> 12) & 0x7FF), at);
     code.writeUInt16LE(0xF800 | ((offset >> 1) & 0x7FF), at + 2);
   }
   [0xE59F0000, 0xE12FFF10, address + 12 + 1].forEach((word, i) => start.writeUInt32LE(word >>> 0, 4 * i));
   const program = Buffer.concat([start, code]);
-  return Buffer.concat([program, Buffer.alloc(-program.length & 3)]);
+  const at = Object.fromEntries([...symbols].map(([name, { at: offset }]) => [name, address + 12 + offset]));
+  return { bytes: Buffer.concat([program, Buffer.alloc(-program.length & 3)]), at };
 }
 
 /** The checksum a Nintendo DS header keeps of itself: CRC-16 as Modbus has it. */
@@ -230,7 +241,12 @@ export function crc16(bytes) {
 
 /** The cartridge's bytes, with the title and code in its header, and its SHA-1, as original.json would have it. */
 export function madeUpNds({ title = 'MADE UP DS', code = 'MDUE' } = {}) {
-  const rom = Buffer.alloc(0x10000), arm9 = programOf(ARM9_PROGRAM, ARM9.address), arm7 = programOf(ARM7_PROGRAM, ARM7.address);
+  return cartridgeWith({ title, code, arm9: programOf(ARM9_PROGRAM, ARM9.address), arm7: programOf(ARM7_PROGRAM, ARM7.address) });
+}
+
+/** A cartridge with these two programs, each as programOf makes it, at the places ARM9 and ARM7 say, with its SHA-1. */
+export function cartridgeWith({ title, code, arm9, arm7 }) {
+  const rom = Buffer.alloc(0x10000);
   rom.write(title.slice(0, 12), 0, 'latin1');
   rom.write(code.slice(0, 4), 0xC, 'latin1');
   rom.write('00', 0x10, 'latin1');

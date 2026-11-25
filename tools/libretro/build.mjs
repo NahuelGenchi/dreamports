@@ -1,10 +1,11 @@
 // Builds what runs the original of a console other than the Game Boy Advance, on this computer, once: the program that
 // drives any libretro core (host.c) and the console's core, from its makers' source at a fixed commit. On Windows it gets a
-// compiler for itself and builds in a folder with a plain name, keeping only the programs (../gba/windows.mjs).
+// compiler for itself and builds in a folder with a plain name, keeping only the programs (../gba/windows.mjs), and for
+// a core that draws with OpenGL it gets Mesa's build for Windows, which draws on the processor there (MESA).
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -46,7 +47,72 @@ const builtWith = core => {
   for (const [from] of copiesOf(core)) hash.update(readFileSync(join(REPO, from)));
   return `-${hash.digest('hex').slice(0, 8)}`;
 };
+// Mesa for Windows, for a core that draws with OpenGL there: Windows' own OpenGL draws on the graphics card, and with
+// none it stops at OpenGL 1.1, so the tools fetch Mesa's, whose llvmpipe draws on the processor as it does on Linux. It's
+// mesa-dist-win's build of Mesa (MIT), at a fixed version and checked against its hash, of which two files are kept,
+// the OpenGL library and what it draws with, in a folder of their own that host.c is told of (DP_OPENGL). Nothing is
+// installed, and Windows' own OpenGL stays as it is for everything else.
+const MESA = {
+  version: '26.3.1',
+  url: 'https://github.com/pal1000/mesa-dist-win/releases/download/26.3.1/mesa3d-26.3.1-release-msvc.7z',
+  sha256: '64e84cf13d67dd354640bf443ed0445e6a83afd06a5729f0750b3744d633b3f1',
+  files: ['opengl32.dll', 'libgallium_wgl.dll'],
+};
+/** Where Mesa's OpenGL for Windows is kept on this computer, once ensureOpenGl has fetched it. */
+export const OPENGL = join(FOLDER, `mesa-${MESA.version}`);
+
+/** Gets Mesa's OpenGL for Windows if this computer hasn't it yet, for a core that draws with OpenGL. Nothing elsewhere. */
+export function ensureOpenGl(core, log) {
+  if (!WINDOWS || !core.graphics || MESA.files.every(name => existsSync(join(OPENGL, name)))) return;
+  log(`Getting Mesa ${MESA.version}, which draws a console's 3D on the processor, about 66 MB, once…`);
+  // fetched and unpacked by the curl and the tar that come with Windows, in a folder with a plain name, as a build's
+  // tools are (../gba/windows.mjs), and of its own, as a build clears that one
+  const work = join(process.env.ProgramData ?? 'C:\\ProgramData', `dreamports-mesa-${process.pid}`), making = `${OPENGL}.making-${process.pid}`;
+  const fromWindows = program => join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', program);
+  const step = (what, program, args) => {
+    const result = spawnSync(program, args, { cwd: work, stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf8' });
+    if (result.status !== 0) throw new Error(`${what} failed: ${(result.stderr || result.error?.message || '').trim().split('\n').slice(-3).join(' ')}`);
+  };
+  rmSync(work, { recursive: true, force: true });
+  mkdirSync(work, { recursive: true });
+  try {
+    step('Getting Mesa', fromWindows('curl.exe'), ['--fail', '--silent', '--show-error', '--location', '--retry', '3', '--output', 'mesa.7z', MESA.url]);
+    // a wrong file is never unpacked
+    if (createHash('sha256').update(readFileSync(join(work, 'mesa.7z'))).digest('hex') !== MESA.sha256) {
+      throw new Error('What was downloaded for Mesa isn\'t the file it should be, so it wasn\'t used. Try again, and if it says this again, ask the Dreamports team.');
+    }
+    step('Unpacking Mesa', fromWindows('tar.exe'), ['-xf', 'mesa.7z', ...MESA.files.map(name => `x64/${name}`)]);
+    rmSync(making, { recursive: true, force: true });
+    mkdirSync(making, { recursive: true });
+    for (const name of MESA.files) copyFileSync(join(work, 'x64', name), join(making, name));
+    rmSync(OPENGL, { recursive: true, force: true });
+    renameSync(making, OPENGL);
+  } finally {
+    rmSync(making, { recursive: true, force: true });
+    try { rmSync(work, { recursive: true, force: true }); } catch {}
+  }
+}
+
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
+
+/** The folder a console's emulator reads its own files from, .dreamports/libretro/system/<console>, with what
+ *  tools/consoles.mjs says it takes from the repository laid in it as they are in the repository now. */
+export function systemFolder(machine) {
+  const folder = join(LOCAL, 'libretro', 'system', machine.id);
+  mkdirSync(folder, { recursive: true });
+  for (const [to, from] of Object.entries(machine.core.system ?? {})) {
+    mkdirSync(join(folder, to), { recursive: true });
+    for (const name of readdirSync(join(REPO, from))) {
+      const source = join(REPO, from, name), target = join(folder, to, name), bytes = readFileSync(source);
+      if (existsSync(target) && readFileSync(target).equals(bytes)) continue;
+      // written beside it and then put in its place, so a core another recording is starting never reads half of one
+      const part = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}`;
+      writeFileSync(part, bytes);
+      renameSync(part, target);
+    }
+  }
+  return folder;
+}
 
 function run(what, program, args, cwd, env) {
   try {
@@ -80,7 +146,8 @@ export function fetchSource({ core, name }) {
   }
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
-  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1'], source);
+  // all of them, or the ones a list names, where an emulator's source has many it isn't built from
+  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1', '--force', ...(Array.isArray(core.submodules) ? ['--', ...core.submodules] : [])], source);
   if (core.patch) {
     // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
     // emulator's own files, and the patch won't write over it
@@ -96,6 +163,45 @@ export function fetchSource({ core, name }) {
   return source;
 }
 
+// one target of an emulator CMake builds, in its source's build/: on Windows, with the compiler and make the tools got
+// for themselves (../gba/windows.mjs)
+function cmakeTarget(what, source, core, target, tools) {
+  const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
+  run(what, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
+  run(what, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', target, '-j', String(buildJobs())], source, tools?.env);
+}
+
+/**
+ * Builds a program of the tools' own from a console's emulator's source, with the emulator's own CMake build and its
+ * settings, as the emulator itself is built: `files`, the tools' files to put in the source first, each a path here
+ * to a path there, `target`, what CMake calls the program, and `out`, where it's kept. The Nintendo DS's function
+ * check builds the program that runs one function in melonDS's processors this way (../nds/original.mjs).
+ */
+export function buildProgram(machine, { what, files = {}, target, out, log = console.log }) {
+  const work = tools => {
+    const source = fetchSource(machine);
+    for (const [from, to] of Object.entries(files)) {
+      mkdirSync(dirname(join(source, to)), { recursive: true });
+      copyFileSync(from, join(source, to));
+    }
+    cmakeTarget(what, source, machine.core, target, tools);
+    mkdirSync(dirname(out), { recursive: true });
+    copyFileSync(join(source, 'build', `${target}${WINDOWS ? '.exe' : ''}`), out);
+  };
+  if (!WINDOWS) return work(null);
+  rmSync(WINDOWS_BUILD, { recursive: true, force: true });
+  try {
+    work(windowsTools(log));
+  } finally {
+    // it's about a gigabyte, and one that won't go is emptied by the next build
+    try { rmSync(WINDOWS_BUILD, { recursive: true, force: true }); } catch {}
+  }
+}
+
+/** What names a build from a console's emulator's source beside its commit: the hash of its patch, its settings and
+ *  the project's files built into it, as its emulator's own file has it (coreFile). */
+export const builtWithOf = core => builtWith(core);
+
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
   compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
@@ -108,12 +214,10 @@ function buildHere(machine, log, tools) {
   }
   log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
   const source = fetchSource(machine);
-  const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
+  // where it leaves what it built: `folderOn` for one kind of computer, as a CMake build can put a library elsewhere there
+  const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
-    // on Windows, with the compiler and make the tools got for themselves (../gba/windows.mjs)
-    const withTools = tools ? ['-G', 'MinGW Makefiles', `-DCMAKE_MAKE_PROGRAM=${tools.make}`, `-DCMAKE_C_COMPILER=${tools.gcc}`, `-DCMAKE_CXX_COMPILER=${tools.gcc.replace(/gcc\.exe$/, 'g++.exe')}`] : [];
-    run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
-    run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
+    cmakeTarget(building, source, core, core.target, tools);
   } else {
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
     // and what one kind of computer has to say besides: Gambatte's makefile takes the tools' compiler on Windows for a
@@ -129,10 +233,9 @@ function buildHere(machine, log, tools) {
 export function buildReference(machine, log) {
   const { core, name } = machine;
   if (core.needs) throw new Error(`${name} can't run in the tools yet: ${core.needs} (docs/CONSOLES.md).`);
-  // said before a build of several minutes that couldn't run here
-  if (core.graphics && process.platform === 'win32') throw new Error(`${name} can't run in the tools on Windows yet: its emulator draws with OpenGL, and the tools give it a context only on Linux and macOS so far (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
   const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  ensureOpenGl(core, log);
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);
   rmSync(WINDOWS_BUILD, { recursive: true, force: true });
