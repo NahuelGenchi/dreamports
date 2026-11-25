@@ -261,7 +261,7 @@ test('once its line is taken out, they run again in full, unless another pull re
 
 // what main's rules require of a pull request, and the workflows that run heavy tests on one
 const REQUIRED = ['Check', 'Clips'];
-const HEAVY = ['check', 'clips', 'gb', 'gba', 'mac', 'nds', 'nes', 'ps1', 'psp', 'snes-n64'];
+const HEAVY = ['check', 'clips', 'gamecube', 'gb', 'gba', 'mac', 'nds', 'nes', 'ps1', 'psp', 'snes-n64'];
 const workflow = name => parse(readFileSync(new URL(name, WORKFLOWS), 'utf8'));
 const STATUS = /\b(always|cancelled|failure)\(\)/;
 
