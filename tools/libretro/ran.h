@@ -139,9 +139,11 @@ static void ranStretch(const struct ranPlayed* p, int what) {
 	fwrite(record, 4, 5, ran.playedFile);
 }
 
+// a stretch begins when nothing came before it, which is -1, and so is the frame before frame 0: so a first one at frame
+// 0 begins too, and its first frame isn't left as the memory happened to hold it
 static void ranHappened(struct ranPlayed* p, int what) {
 	if (p->last[what] == ran.frame) return;
-	if (p->last[what] != ran.frame - 1) {
+	if (p->last[what] < 0 || p->last[what] != ran.frame - 1) {
 		if (p->last[what] >= 0) ranStretch(p, what);
 		p->start[what] = (uint32_t) ran.frame;
 	}
