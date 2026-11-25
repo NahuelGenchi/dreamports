@@ -5,7 +5,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -95,6 +95,25 @@ export function ensureOpenGl(core, log) {
 
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
+/** The folder a console's emulator reads its own files from, .dreamports/libretro/system/<console>, with what
+ *  tools/consoles.mjs says it takes from the repository laid in it as they are in the repository now. */
+export function systemFolder(machine) {
+  const folder = join(LOCAL, 'libretro', 'system', machine.id);
+  mkdirSync(folder, { recursive: true });
+  for (const [to, from] of Object.entries(machine.core.system ?? {})) {
+    mkdirSync(join(folder, to), { recursive: true });
+    for (const name of readdirSync(join(REPO, from))) {
+      const source = join(REPO, from, name), target = join(folder, to, name), bytes = readFileSync(source);
+      if (existsSync(target) && readFileSync(target).equals(bytes)) continue;
+      // written beside it and then put in its place, so a core another recording is starting never reads half of one
+      const part = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}`;
+      writeFileSync(part, bytes);
+      renameSync(part, target);
+    }
+  }
+  return folder;
+}
+
 function run(what, program, args, cwd, env) {
   try {
     execFileSync(program, args, { cwd, env, stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 2 ** 28 });
@@ -127,7 +146,8 @@ export function fetchSource({ core, name }) {
   }
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
-  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1', '--force'], source);
+  // all of them, or the ones a list names, where an emulator's source has many it isn't built from
+  if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1', '--force', ...(Array.isArray(core.submodules) ? ['--', ...core.submodules] : [])], source);
   if (core.patch) {
     // a file the patch adds is still there from the last time it was applied, as the checkout only puts back the
     // emulator's own files, and the patch won't write over it
@@ -194,7 +214,8 @@ function buildHere(machine, log, tools) {
   }
   log(`Building ${name}'s emulator from its makers' source, once, which takes a few minutes…`);
   const source = fetchSource(machine);
-  const folder = join(source, core.folder ?? ''), building = `Building ${name}'s emulator`;
+  // where it leaves what it built: `folderOn` for one kind of computer, as a CMake build can put a library elsewhere there
+  const folder = join(source, core.folderOn?.[process.platform] ?? core.folder ?? ''), building = `Building ${name}'s emulator`;
   if (core.cmake) {
     cmakeTarget(building, source, core, core.target, tools);
   } else {
