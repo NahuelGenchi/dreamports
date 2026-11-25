@@ -14,11 +14,13 @@ const SONY = { ...BASICS, ...STICK, CROSS: 'B', CIRCLE: 'A', SQUARE: 'Y', TRIANG
 
 const libretro = name => `https://github.com/libretro/${name}.git`;
 // `source` at `commit`, `make` being what builds it in its `folder`, leaving `built`, or `cmake` the settings CMake builds
-// its `target` with, into `folder`, with `cmakeOn` the settings for one kind of computer. `graphics` says it draws with
+// its `target` with, into `folder`, with `cmakeOn` the settings for one kind of computer, as `makeOn` is for `make`. `graphics` says it draws with
 // OpenGL, in the context host.c gives it, on Linux and macOS so far. `patch` is a change of the project's own the tools
 // make to its source before building it. `ran` says it tells the tools of every instruction it runs, as FCEUmm and Snes9x
-// do with the tools' changes to them (libretro/fceumm.patch, libretro/snes9x.patch, libretro/ran.h), or 'blocks' that it tells them of each block of
-// instructions it runs, as Play! does with the tools' (libretro/play.patch, libretro/ran-ps2.h). `holds` says it tells
+// do with the tools' changes to them (libretro/fceumm.patch, libretro/snes9x.patch, libretro/ran.h), or 'sm83' that it tells them of each instruction of the Game Boy's processor, which has no registers in common with
+// those two, as Gambatte does with the tools' change (libretro/gambatte.patch), or 'blocks' that it tells them of each block of
+// instructions it runs, as Play! does with the tools' (libretro/play.patch, libretro/ran-ps2.h), or 'functions' that it
+// says itself which of the code map's functions ran in a frame, as melonDS does with the tools' front (nds/melonds/). `holds` says it tells
 // them where it keeps the console's memory and its memory cards, as Play! does with the same change (libretro/held.h). `options` are the settings that keep it the same for everyone.
 // `make` may set how its own C is built: Parallel N64's makers build it with -Ofast, which lets the compiler drop a sum's
 // rounding and a check for a number that isn't one, so the tools build it as IEEE 754 asks, as the console's own
@@ -28,9 +30,9 @@ const libretro = name => `https://github.com/libretro/${name}.git`;
 // The Nintendo DS's is melonDS, its makers' own source with a front of the tools' own built into it (nds/melonds/), as
 // melonDS's libretro cores are other people's ports of older versions of it.
 const CORES = {
-  nes: { source: libretro('libretro-fceumm'), commit: 'e0f3086a8104f8fbbe49a2615b10401504a9533f', make: ['-f', 'Makefile.libretro'], built: 'fceumm_libretro', patch: 'tools/libretro/fceumm.patch', ran: true, options: { fceumm_overscan_h_left: '0', fceumm_overscan_h_right: '0', fceumm_overscan_v_top: '0', fceumm_overscan_v_bottom: '0', fceumm_hdpacks: 'disabled', fceumm_sndrate_hint: '48KHz' }, pad: { ...BASICS, A: 'A', B: 'B' } },
+  nes: { source: libretro('libretro-fceumm'), commit: 'e0f3086a8104f8fbbe49a2615b10401504a9533f', make: ['-f', 'Makefile.libretro'], makeOn: { win32: ['platform=win'] }, built: 'fceumm_libretro', patch: 'tools/libretro/fceumm.patch', ran: true, options: { fceumm_overscan_h_left: '0', fceumm_overscan_h_right: '0', fceumm_overscan_v_top: '0', fceumm_overscan_v_bottom: '0', fceumm_hdpacks: 'disabled', fceumm_sndrate_hint: '48KHz' }, pad: { ...BASICS, A: 'A', B: 'B' } },
   snes: { source: libretro('snes9x'), commit: 'fae2fea08f74180759ef540ee94259213f503480', folder: 'libretro', built: 'snes9x_libretro', patch: 'tools/libretro/snes9x.patch', ran: true, pad: { ...BASICS, ...SAME(['A', 'B', 'X', 'Y', 'L', 'R']) } },
-  gb: { source: libretro('gambatte-libretro'), commit: '77f2567d718b8973d02caa2daa8dce4953faf811', built: 'gambatte_libretro', options: { gambatte_gb_colorization: 'disabled', gambatte_gb_internal_palette: 'GB - DMG', gambatte_gb_bootloader: 'disabled' }, pad: { ...BASICS, A: 'A', B: 'B' } },
+  gb: { source: libretro('gambatte-libretro'), commit: '77f2567d718b8973d02caa2daa8dce4953faf811', built: 'gambatte_libretro', makeOn: { win32: ['platform=win'] }, patch: 'tools/libretro/gambatte.patch', ran: 'sm83', options: { gambatte_gb_colorization: 'disabled', gambatte_gb_internal_palette: 'GB - DMG', gambatte_gb_bootloader: 'disabled', gambatte_gbc_color_correction: 'disabled', gambatte_up_down_allowed: 'enabled' }, pad: { ...BASICS, A: 'A', B: 'B' } },
   md: { source: libretro('Genesis-Plus-GX'), commit: 'f27655b592ef43f317272d79883bcaa10d3ac8ad', make: ['-f', 'Makefile.libretro'], built: 'genesis_plus_gx_libretro', pad: { UP: 'UP', DOWN: 'DOWN', LEFT: 'LEFT', RIGHT: 'RIGHT', START: 'START', A: 'Y', B: 'B', C: 'A', X: 'L', Y: 'X', Z: 'R', MODE: 'SELECT' } },
   ps1: { source: libretro('pcsx_rearmed'), commit: '7b0e8f8fadfbce3d170d195b9d9eecaabfa08c8e', make: ['-f', 'Makefile.libretro'], built: 'pcsx_rearmed_libretro', submodules: true, patch: 'tools/libretro/pcsx.patch', options: { pcsx_rearmed_drc: 'disabled', pcsx_rearmed_gpu_thread_rendering: 'disabled', pcsx_rearmed_bios: 'HLE', pcsx_rearmed_dithering: 'enabled', pcsx_rearmed_spu_interpolation: 'gaussian', pcsx_rearmed_spu_reverb: 'enabled', pcsx_rearmed_spu_thread: 'disabled', pcsx_rearmed_fractional_framerate: 'enabled', pcsx_rearmed_cd_turbo: 'disabled', pcsx_rearmed_show_bios_bootlogo: 'disabled', pcsx_rearmed_region: 'auto', pcsx_rearmed_noxadecoding: 'enabled', pcsx_rearmed_nocdaudio: 'enabled' }, pad: SONY },
   // its libretro.c includes OpenGL's headers whatever it's built with, though nothing of them is linked
@@ -63,6 +65,7 @@ export const touchBits = (x, y) => ((1 << 15) | (x << 16) | (y << 24)) >>> 0;
 // turns a recording's buttons into what the emulator is given takes a touch as one more button
 function keysWithTouch(keys, [, , width, height]) {
   return new Proxy(keys, {
+    has(target, name) { return this.get(target, name) !== undefined; },
     get(target, name) {
       const touch = typeof name === 'string' ? TOUCH.exec(name) : null;
       if (!touch) return target[name];

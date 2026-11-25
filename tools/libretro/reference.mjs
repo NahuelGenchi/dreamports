@@ -62,8 +62,9 @@ export function libretroReference(machine) {
     // as each function started
     // as every function's start, on a core that tells of each instruction but whose record of every instruction and branch
     // the tools can't read into gameplay proven yet, as the PlayStation Portable's ('starts'): its functions in each
-    // frame are still counted, for a part's list (lib/part-functions.mjs)
-    seesInstructions: !!core.ran && core.ran !== 'starts',
+    // frame are still counted, for a part's list (lib/part-functions.mjs), and the same on one that says itself which
+    // functions ran in a frame, as the Nintendo DS's does ('functions')
+    seesInstructions: !!core.ran && core.ran !== 'starts' && core.ran !== 'functions',
     seesEntries: core.ran === true,
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
     // went by (DP_WHY, libretro/ran-ps2.h)

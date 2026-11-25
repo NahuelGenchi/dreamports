@@ -35,6 +35,8 @@ beforeEach(() => {
   git('init', '-q', '-b', 'main');
   git('config', 'user.name', 'Test');
   git('config', 'user.email', 'test@example.com');
+  // the same files on every computer, whatever its own git turns line endings into (#2004)
+  git('config', 'core.autocrlf', 'false');
   put({ 'docs/STATUS.md': readme('table 0'), [MAP]: 'map 0', [PORT]: 'port 0', [PROGRESS]: progress({ a: { matched: 5 } }), 'games/one/code.js': 'a\nb\nc\n' });
   git('switch', '-qc', 'work');
 });
