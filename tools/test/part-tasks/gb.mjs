@@ -64,19 +64,18 @@ export function gameBoy({ colour = false } = {}) {
     },
 
     /** The version's code, by its path in the version's folder, with the twins of `twins` written, by name, `wrong` for
-     *  the one twin written wrong, and `late` for the game's step a frame late. A function that isn't a twin yet is
-     *  there as C with no contract, so twin gives it no proof. It isn't left out as a stop, as the NES's side does
-     *  (docs/STANDARD.md#stops): a twin proven by the same memory runs the C of each function it calls, so vblank, in
-     *  the first part, could never be proven while paint, which it calls from the 50th picture on and which is the
-     *  second part's, did nothing. */
+     *  the one twin written wrong, and `late` for the game's step a frame late. A function with no twin yet is left out
+     *  and marked as a stop, as the NES's side does (docs/STANDARD.md#stops). vblank, in the first part, calls paint
+     *  from the 50th picture on, which is the second part's, and twin runs the original's paint for it there. */
     source({ twins, wrong = false, late = false }) {
       // its first day: the game the tools start it with, which runs nothing of the program
       if (!twins.length) return {};
       let code = read('twins.c'), game = read('main.c');
       for (const name of Object.keys(this.functions).filter(each => !twins.includes(each))) {
-        const contract = new RegExp(`^// dp:twin \\w+ ${name}\\(\\)\\n`, 'm');
-        if (!contract.test(code)) throw new Error(`gb/twins.c has no contract for ${name} for the test to leave out.`);
-        code = code.replace(contract, '');
+        const block = new RegExp(`^// dp:twin (\\w+) ${name}\\(\\)\\nvoid ${name}\\(void\\) \\{\\n[^]*?\\n\\}\\n`, 'm'), label = code.match(block)?.[1];
+        if (!label) throw new Error(`gb/twins.c has no ${name} for the test to leave out.`);
+        // dp:stop names the function of the original that has no C yet
+        code = code.replace(block, `// ${name}, at ${label}, isn't ported yet. dp:stop ${label}\nvoid ${name}(void) {}\n`);
       }
       const change = (text, { from, to }, where) => {
         if (!text.includes(from)) throw new Error(`${where} has no "${from}" for the test to change.`);

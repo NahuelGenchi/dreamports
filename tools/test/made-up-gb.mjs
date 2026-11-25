@@ -353,6 +353,13 @@ export const TWIN = {
   clear: 0x05A0,
   // in bank 1: the byte at $5000 + D of its own bank, to $C032
   own: 0x4100,
+  // calls bump, then add with B in A, and jumps to add with B in A again, so add's return is its own: a test of a twin
+  // that calls a function the game hasn't written yet, a stop
+  twice: 0x05C0,
+  // counts the call at $C035
+  bump: 0x05E0,
+  // jumps to add with B in A, and pushes nothing
+  again: 0x05F0,
   // the game keeps the bank it switched in at $C010
   bank: 0xC010,
   /** The byte at `at` of the table every bank has at $5000, and of the table at $0600. */
@@ -365,7 +372,7 @@ export function madeUpTwins() {
   put(0x0100, [0x00, 0xC3, ...word(0x0150)]);
   // where the game starts: a call of each, bank 1 switched in for the one that's there, and then nothing for ever
   put(0x0150, [0xCD, ...word(TWIN.add), 0xCD, ...word(TWIN.pick), 0xCD, ...word(TWIN.send), 0xCD, ...word(TWIN.look), 0xCD, ...word(TWIN.switchTo), 0xCD, ...word(TWIN.clear),
-    0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(TWIN.own), 0x18, 0xFE]);
+    0xCD, ...word(TWIN.twice), 0xCD, ...word(TWIN.again), 0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(TWIN.own), 0x18, 0xFE]);
   // LD HL,$C020, ADD A,(HL), LD (HL+),A, JR NC past the next, INC (HL), LD A,($C022), INC A, LD ($C022),A, RET
   put(TWIN.add, [0x21, ...word(0xC020), 0x86, 0x22, 0x30, 0x01, 0x34, 0xFA, ...word(0xC022), 0x3C, 0xEA, ...word(0xC022), 0xC9]);
   // LD A,B, ADD A,A, ADD A,A, LD L,A, LD H,$06, LD A,(HL), LD ($C030),A, RET
@@ -380,6 +387,12 @@ export function madeUpTwins() {
   put(TWIN.clear, [0xAF, 0x22, 0x05, 0x20, 0xFC, 0xC9]);
   // LD H,$50, LD L,D, LD A,(HL), LD ($C032),A, RET
   put(TWIN.own, [0x26, 0x50, 0x6A, 0x7E, 0xEA, ...word(0xC032), 0xC9], 1);
+  // CALL bump, LD A,B, CALL add, LD A,B, JP add
+  put(TWIN.twice, [0xCD, ...word(TWIN.bump), 0x78, 0xCD, ...word(TWIN.add), 0x78, 0xC3, ...word(TWIN.add)]);
+  // LD HL,$C035, INC (HL), RET
+  put(TWIN.bump, [0x21, ...word(0xC035), 0x34, 0xC9]);
+  // LD A,B, JP add
+  put(TWIN.again, [0x78, 0xC3, ...word(TWIN.add)]);
   put(0x0600, Array.from({ length: 0x100 }, (_, at) => TWIN.inTable(at)));
   // each bank's table at $5000: the first bank's is what the console sees there when the chip switches bank 0 in
   for (let bank = 0; bank < 4; bank++) Buffer.from(Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at))).copy(rom, bank * BANK + 0x1000);

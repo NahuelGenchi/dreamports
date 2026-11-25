@@ -64,3 +64,29 @@ void clear(uint16_t *from, uint8_t count) {
   do gb_write((*from)++, 0);
   while (--count);
 }
+
+/** sub_05E0: counts the call at $C035. */
+// dp:twin sub_05E0 bump()
+void bump(void) {
+  RAM(0xC035)++;
+  gb_spend(40);
+}
+
+/** sub_05C0: bump, then adds `amount` to the total twice, the second time by a jump, and whether the low byte of that
+ *  sum went past 255. Each call counts its CALL, and the jump its JP. */
+// dp:twin sub_05C0 twice(B) -> CF
+int twice(uint8_t amount) {
+  gb_spend(24);
+  bump();
+  gb_spend(28);
+  add_to_total(amount);
+  gb_spend(20);
+  return add_to_total(amount);
+}
+
+/** sub_05F0: adds `amount` to the total, by a jump, so nothing of it is on the stack. */
+// dp:twin sub_05F0 again(B) -> CF
+int again(uint8_t amount) {
+  gb_spend(20);
+  return add_to_total(amount);
+}
