@@ -36,6 +36,11 @@ on:
 permissions:
   contents: read
 
+# a new push cancels the pull request's older run, as only the newest commit's checks count for a merge (#2011)
+concurrency:
+  group: check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     name: Check (${{ matrix.part }})
