@@ -53,7 +53,7 @@ export function libretroReference(machine) {
     // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
     // Documents folder, which CFFIXED_USER_HOME moves there too
     const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
-    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(machine.touch !== undefined && { DP_TOUCH: '1' }), ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
@@ -61,7 +61,7 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    // one that tells only where its processor is about to run says which functions ran in each frame, and no more
+    // one that says only which functions ran in each frame, as the PlayStation's and the Nintendo DS's do, says no more
     seesInstructions: !!core.ran && core.ran !== 'functions',
     seesEntries: core.ran === true,
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch

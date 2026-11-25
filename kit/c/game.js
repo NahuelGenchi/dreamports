@@ -134,6 +134,7 @@ export function buttonsOf(input, id) {
 /**
  * Loads the game's WebAssembly from `url` and starts it with the player's copy, `bytes`, or its disc, `disc`, on console
  * `console` (an id in kit/consoles.js) with no kit in C of its own, and returns { step(buttons), draw(), sound }.
+ * `step(buttons, touch)` also says where the console's touched screen is touched, { x, y } or null (input.js).
  * `step` runs a frame with buttonsOf's buttons held, and `draw` draws the last one, as { pixels, width, height }, the
  * words an ImageData of that size holds, at the size the game shows now. With a disc, `step` returns a promise when
  * the frame needs sectors the page hasn't given it yet: the page then runs no other frame, and draws none, until it
@@ -196,7 +197,8 @@ export async function loadGame(url, bytes, { console: id, save = null, query, di
     sound.frameDone();
   };
   return {
-    step(buttons) {
+    step(buttons, touch = null) {
+      game.dp_touch?.(touch ? touch.x : 0, touch ? touch.y : 0, touch ? 1 : 0);
       game.dp_step(buttons);
       if (sectors?.wanted) return goOn(buttons).then(frameDone);
       frameDone();
