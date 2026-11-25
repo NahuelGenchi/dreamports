@@ -11,6 +11,8 @@ import { looksLikeAnyCopy, openDisc, readAnyCopy, readDiscFile } from '../lib/re
 import { openDisc as openDiscOf } from '../../kit/copy/disc.js';
 import { readFileOn, whatDisc } from '../../kit/copy/iso9660.js';
 import { blobSource } from '../../kit/copy/source.js';
+import { dolHeader, dolOf, filesOf, headerOf, readGcmFile, whatGcm } from '../../kit/copy/gcm.js';
+import { DISC_FILES, madeUpGameCube, madeUpGameCubeDisc } from './made-up-gamecube.mjs';
 import { lzmaDecode } from '../../kit/copy/lzma.js';
 import { inflateRaw } from '../../kit/copy/inflate.js';
 import { flacDecode } from '../../kit/copy/flac.js';
@@ -286,4 +288,60 @@ test('a disc of several gigabytes is read a few sectors at a time, its far secto
     closeSync(handle);
   }
   assert.ok(process.memoryUsage().rss - before < 64 * 1024 * 1024, 'reading it takes little memory');
+});
+
+test('a GameCube disc says what it is, and gives its boot program and its files, as an ISO or a GCM', async () => {
+  const program = madeUpGameCube(), made = madeUpGameCubeDisc({ program });
+  for (const name of ['cube.iso', 'cube.gcm']) {
+    const path = write(name, made.image), copy = await readAnyCopy(path);
+    assert.deepEqual([copy.console, copy.code, copy.title, copy.region, copy.format, copy.kind], ['gamecube', 'GMUE00', 'Made-up program', 'USA', 'gcm', 'dvd'], name);
+    assert.equal(copy.sha1, createHash('sha1').update(made.image).digest('hex'), name);
+    assert.equal(looksLikeAnyCopy(made.image), true, name);
+    const disc = await openDisc(path);
+    try {
+      const header = await headerOf(disc), dol = await dolOf(disc);
+      assert.deepEqual([header.game, header.maker, header.disc, header.version, header.dol], ['GMUE', '00', 0, 0, made.dolAt]);
+      assert.deepEqual(Buffer.from(dol.bytes), program.dol, 'the program it boots, whole');
+      assert.equal(dol.entry, program.entry);
+      assert.deepEqual(dol.sections.map(({ kind, address }) => [kind, address]), [['text', program.text.address], ['data', program.data.address]]);
+      // each section's bytes are where its header says, in the program and so on the disc
+      for (const [n, section] of [program.text, program.data].entries()) {
+        assert.deepEqual(Buffer.from(dol.bytes.subarray(dol.sections[n].at, dol.sections[n].at + section.bytes.length)), section.bytes);
+      }
+      const byName = (a, b) => a.name.localeCompare(b.name);
+      assert.deepEqual((await filesOf(disc)).sort(byName), [...made.files].sort(byName), 'every file, with its folder, its place and its size');
+      for (const file of DISC_FILES) assert.deepEqual(Buffer.from(await readGcmFile(disc, file.name.toUpperCase())), file.bytes, file.name);
+      assert.equal(await readGcmFile(disc, 'stage/third.map'), null);
+      // and a disc of another console's has none of this
+      assert.equal(await whatDisc(disc), null);
+    } finally {
+      await disc.close();
+    }
+  }
+  // the same disc as the page reads it, from the File a player chose
+  const blobDisc = await openDiscOf(blobSource(new Blob([made.image]), 'cube.iso'));
+  assert.deepEqual(await whatGcm(blobDisc), { console: 'gamecube', title: 'Made-up program', code: 'GMUE00', region: 'USA' });
+  const other = await openDisc(write('ps2.iso', disc({ system: 'PLAYSTATION', title: 'MADE UP', files: {} })));
+  try {
+    assert.equal(await headerOf(other), null);
+  } finally {
+    await other.close();
+  }
+});
+
+test('a GameCube program alone is told by its header fitting the console and the file', async () => {
+  const { dol } = madeUpGameCube();
+  assert.equal((await readAnyCopy(write('program.dol', dol))).console, 'gamecube');
+  assert.equal(looksLikeAnyCopy(dol), true);
+  // one byte more or fewer than its sections say, a section outside the console's memory, or a start outside its code: not one
+  assert.equal(dolHeader(dol).size, dol.length);
+  assert.equal(await readAnyCopy(write('longer.dol', Buffer.concat([dol, Buffer.alloc(1)]))), null);
+  const outside = Buffer.from(dol);
+  outside.writeUInt32BE(0x90000000, 0x48);
+  assert.equal(dolHeader(outside), null);
+  const nowhere = Buffer.from(dol);
+  nowhere.writeUInt32BE(0x80004000, 0xE0);
+  assert.equal(dolHeader(nowhere), null);
+  assert.equal(dolHeader(Buffer.alloc(0x100)), null);
+  assert.equal(looksLikeAnyCopy(Buffer.alloc(0x400)), false);
 });

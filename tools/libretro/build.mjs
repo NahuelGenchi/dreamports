@@ -5,7 +5,7 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -21,6 +21,8 @@ const EXPLORE = join(HERE, '..', 'lib', 'explore.h');
 const RAN = join(HERE, 'ran.h'), RAN_PS2 = join(HERE, 'ran-ps2.h');
 // and what the console holds, its memory and its memory cards (held.h)
 const HELD = join(HERE, 'held.h');
+// and a function of the console's program run by itself, for the function check (calls.h)
+const CALLS = join(HERE, 'calls.h');
 const EXTENSION = { win32: '.dll', darwin: '.dylib' }[process.platform] ?? '.so';
 const WINDOWS = process.platform === 'win32';
 // On a Mac the host and the emulator are built for the processor Node.js runs as, arm64 on Apple's chip, named to the
@@ -93,6 +95,9 @@ export function ensureOpenGl(core, log) {
   }
 }
 
+/** Where an emulator's own files are kept, those it reads as it runs and its makers publish with its source (`data`), such
+ *  as Dolphin's stand-ins for the sound processor's ROMs: a folder beside the built emulator, named for the same commit. */
+export const coreSystem = core => core.data ? join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}-system`) : null;
 export const coreFile = core => join(FOLDER, `${core.built}-${core.commit.slice(0, 12)}${builtWith(core)}${EXTENSION}`);
 
 /** The folder a console's emulator reads its own files from, .dreamports/libretro/system/<console>, with what
@@ -146,6 +151,9 @@ export function fetchSource({ core, name }) {
   }
   run(what, 'git', ['fetch', '-q', '--depth', '1', 'origin', core.commit], source);
   run(what, 'git', ['checkout', '-q', '--force', 'FETCH_HEAD'], source);
+  // the libraries its source keeps as git's submodules, but for those only a program with a window needs, or its makers'
+  // own tests, which can be a gigabyte
+  for (const left of core.withoutSubmodules ?? []) run(what, 'git', ['config', `submodule.${left}.update`, 'none'], source);
   // all of them, or the ones a list names, where an emulator's source has many it isn't built from
   if (core.submodules) run(what, 'git', ['submodule', 'update', '-q', '--init', '--recursive', '--depth', '1', '--force', ...(Array.isArray(core.submodules) ? ['--', ...core.submodules] : [])], source);
   if (core.patch) {
@@ -204,7 +212,7 @@ export const builtWithOf = core => builtWith(core);
 
 function buildHere(machine, log, tools) {
   const { core, name } = machine;
-  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD]);
+  compile('Building the tools\' program that runs an emulator', HOST_SOURCE, HOST, ['-I', dirname(EXPLORE), ...(WINDOWS ? [] : ['-ldl']), ...(process.platform === 'linux' ? ['-lpthread'] : [])], tools, [EXPLORE, RAN, RAN_PS2, HELD, CALLS]);
   const file = coreFile(core);
   if (core.local) return compile(`Building ${name}'s emulator`, join(REPO, core.local), file, ['-shared', '-fPIC', '-lm'], tools);
   if (existsSync(file)) return;
@@ -226,6 +234,14 @@ function buildHere(machine, log, tools) {
     run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
   }
+  // its own files first, whole, so a built emulator always has them
+  if (core.data) {
+    const system = coreSystem(core);
+    rmSync(system, { recursive: true, force: true });
+    rmSync(`${system}.new`, { recursive: true, force: true });
+    for (const [from, to] of Object.entries(core.data)) cpSync(join(source, from), join(`${system}.new`, to), { recursive: true });
+    renameSync(`${system}.new`, system);
+  }
   copyFileSync(join(folder, `${core.built}${EXTENSION}`), file);
 }
 
@@ -234,7 +250,7 @@ export function buildReference(machine, log) {
   const { core, name } = machine;
   if (core.needs) throw new Error(`${name} can't run in the tools yet: ${core.needs} (docs/CONSOLES.md).`);
   mkdirSync(FOLDER, { recursive: true });
-  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
+  const built = existsSync(HOST) && isCurrent(HOST_SOURCE, HOST, [EXPLORE, RAN, RAN_PS2, HELD, CALLS]) && (core.local ? isCurrent(join(REPO, core.local), coreFile(core)) : existsSync(coreFile(core)));
   ensureOpenGl(core, log);
   if (built) return;
   if (!WINDOWS) return buildHere(machine, log, null);

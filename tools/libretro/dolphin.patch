@@ -1,0 +1,712 @@
+Dolphin (https://github.com/libretro/dolphin, the libretro front of https://github.com/dolphin-emu/dolphin,
+GPL-2.0-or-later, Copyright the Dolphin Emulator Project) runs the GameCube. The tools apply this change of Dreamports'
+own to its source before building it on the contributor's computer (tools/consoles.mjs, tools/libretro/build.mjs), so
+that its software renderer, which draws on the processor in whole numbers, the same picture on every computer, runs
+with no window and no graphics card, and so that the sound the tools hear is the console's own samples.
+
+As its makers publish it, the libretro front starts each renderer when the graphics context it asked whoever runs it
+for arrives. The software renderer asks for none, so nothing starts it, and when it is started it still wants an OpenGL
+context, only to put its finished picture in a window. With this change the front starts the software renderer itself,
+before the console boots, as the others are; the renderer makes no OpenGL context under libretro; and each picture it
+shows is handed to whoever runs the core as it is in memory, the stretch of it that's shown, with a pixel's colours in
+the order libretro's XRGB8888 has them, where the renderer's texture has red first.
+
+Dolphin's mixer makes the computer's sound from the console's, at another rate, in floats, stretched as the computer's
+speed asks. With this change the samples the console's audio interface takes from its memory by DMA are handed on as
+they are, 8 at a time, at the interface's own rate, which whoever runs the core is told each time a game changes it.
+Sound a game streams from its disc isn't among them yet.
+
+For the function check, the front has an entry of its own, dreamports_gamecube_call, which runs one function of the console's
+program by itself on the interpreter, from the registers and memory it's given, until it comes back, telling of each
+instruction it runs and each read it makes. Each call starts from the processor as the program left it after its
+frames, and ends at the first exception it meets, which is left for it to tell. While it runs, no time passes for the rest of the console, the hardware's
+registers are memory of their own, read and written as they're kept, and the graphics chip's FIFO and the embedded
+framebuffer stop the call; nothing of that changes how a game plays, as the entry runs only when the check asks.
+
+For a game's parts, the interpreter also tells whoever runs the core where the processor is before each instruction
+it runs in play, through retro_dreamports_ran_at, as the tools' change to Parallel N64 does, so the tools know which of
+a game's functions ran in each frame. It only looks, so the console runs the same with it or without.
+
+Two settings Dolphin takes from the computer are fixed, so the same copy plays the same everywhere: a program given
+alone, or a disc with no region of its own, runs as an American console's, where Dolphin would take the computer's
+country, which sets the video interface's rate as the console starts; and the console's clock starts at the first of
+January 2002 and moves with the emulated time, as it does for one of Dolphin's movies, where it would follow the
+computer's own clock.
+
+It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
+Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
+kept the program from ending on Windows.
+
+Nothing of the console changes: the processor, the video interface, the renderer's drawing and the audio interface are
+as Dolphin has them. Nothing of Dolphin is in the repository but the lines of its own this change sits between.
+
+diff --git a/Source/Core/AudioCommon/AudioCommon.cpp b/Source/Core/AudioCommon/AudioCommon.cpp
+index 86cd50b..5d44598 100644
+--- a/Source/Core/AudioCommon/AudioCommon.cpp
++++ b/Source/Core/AudioCommon/AudioCommon.cpp
+@@ -23,6 +23,7 @@
+ #include "Core/ConfigManager.h"
+ #include "Core/System.h"
+ #ifdef __LIBRETRO__
++#include "Core/HW/AudioInterface.h"
+ #include "DolphinLibretro/Audio.h"
+ #endif
+ 
+@@ -226,7 +227,10 @@ void SendAIBuffer(Core::System& system, const short* samples, unsigned int num_s
+   {
+     mixer->PushSamples(samples, num_samples);
+ #ifdef __LIBRETRO__
+-    const_cast<SoundStream*>(sound_stream)->Update(num_samples);
++    // Dreamports: the samples the audio interface takes from the console's memory go to whoever runs the core as they
++    // are, at the interface's own rate, in place of what Dolphin's mixer would make of them
++    Libretro::Audio::PushConsoleSamples(samples, num_samples,
++                                        system.GetAudioInterface().GetAIDSampleRateDivisor());
+ #endif
+   }
+ }
+diff --git a/Source/Core/Core/PowerPC/DreamportsCall.h b/Source/Core/Core/PowerPC/DreamportsCall.h
+new file mode 100644
+index 0000000..98bfef6
+--- /dev/null
++++ b/Source/Core/Core/PowerPC/DreamportsCall.h
+@@ -0,0 +1,23 @@
++// Dreamports: what a call of the function check needs of the memory (MMU.cpp, DolphinLibretro/Main.cpp), in a header
++// of its own so that nothing else is built again for it.
++
++#pragma once
++
++#include "Common/CommonTypes.h"
++
++struct DreamportsCallState
++{
++  bool on = false;
++  u8 hardware[0x10000]{};
++  bool used_hardware = false;
++  bool elsewhere = false;
++  u32 elsewhere_at = 0;
++  void (*read)(u32 address, u32 bytes, u64 value) = nullptr;
++};
++extern DreamportsCallState DreamportsCall;
++
++// Dreamports: what the tools' program asks to be told of where the processor is before each instruction the interpreter
++// runs in play: its address, and its place in the console's memory, which the processor sees through the cache at
++// 0x80000000 and round it at 0xC0000000, or 0xFFFFFFFF for anywhere else (Interpreter.cpp, DolphinLibretro/Main.cpp).
++// It only looks, so the console runs the same with it or without.
++extern void (*DreamportsRanAt)(u32 address, u32 place);
+diff --git a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
+index 5ff6fa0..3fbbbe0 100644
+--- a/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
++++ b/Source/Core/Core/PowerPC/Interpreter/Interpreter.cpp
+@@ -20,6 +20,7 @@
+ #include "Core/HW/CPU.h"
+ #include "Core/PowerPC/Interpreter/ExceptionUtils.h"
+ #include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/DreamportsCall.h"
+ #include "Core/PowerPC/PPCTables.h"
+ #include "Core/PowerPC/PowerPC.h"
+ #include "Core/System.h"
+@@ -115,6 +116,8 @@ bool Interpreter::HandleFunctionHooking(u32 address)
+   return result.type != HLE::HookType::Start;
+ }
+ 
++void (*DreamportsRanAt)(u32 address, u32 place) = nullptr;
++
+ int Interpreter::SingleStepInner()
+ {
+   if (HandleFunctionHooking(m_ppc_state.pc))
+@@ -126,6 +129,14 @@ int Interpreter::SingleStepInner()
+     return PPCTables::GetOpInfo(m_prev_inst, m_ppc_state.pc)->num_cycles;
+   }
+ 
++  // Dreamports: where the processor is, told before the instruction runs, and not in a call of the function check,
++  // which tells its own
++  if (DreamportsRanAt && !DreamportsCall.on)
++  {
++    const u32 at = m_ppc_state.pc, place = at & 0x3FFFFFFF;
++    DreamportsRanAt(at, at >= 0x80000000 && place < 0x01800000 ? place : 0xFFFFFFFF);
++  }
++
+   m_ppc_state.npc = m_ppc_state.pc + sizeof(UGeckoInstruction);
+   m_prev_inst.hex = m_mmu.Read_Opcode(m_ppc_state.pc);
+ 
+@@ -147,17 +158,21 @@ int Interpreter::SingleStepInner()
+     Trace(m_prev_inst);
+   }
+ 
++  // Dreamports: in a call of the function check an exception is left for the call to tell, as it ends there, and a
++  // word of nothing the processor fetched is the illegal instruction it is
++  const bool dreamports_call = DreamportsCall.on;
+   if (m_prev_inst.hex != 0)
+   {
+     if (IsInvalidPairedSingleExecution(m_prev_inst))
+     {
+       GenerateProgramException(m_ppc_state, ProgramExceptionCause::IllegalInstruction);
+-      CheckExceptions();
++      if (!dreamports_call)
++        CheckExceptions();
+     }
+     else if (m_ppc_state.msr.FP)
+     {
+       RunInterpreterOp(*this, m_prev_inst);
+-      if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0)
++      if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0 && !dreamports_call)
+       {
+         CheckExceptions();
+       }
+@@ -168,18 +183,24 @@ int Interpreter::SingleStepInner()
+       if ((opinfo->flags & FL_USE_FPU) != 0)
+       {
+         m_ppc_state.Exceptions |= EXCEPTION_FPU_UNAVAILABLE;
+-        CheckExceptions();
++        if (!dreamports_call)
++          CheckExceptions();
+       }
+       else
+       {
+         RunInterpreterOp(*this, m_prev_inst);
+-        if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0)
++        if ((m_ppc_state.Exceptions & EXCEPTION_DSI) != 0 && !dreamports_call)
+         {
+           CheckExceptions();
+         }
+       }
+     }
+   }
++  else if (dreamports_call)
++  {
++    if (m_ppc_state.Exceptions == 0)
++      GenerateProgramException(m_ppc_state, ProgramExceptionCause::IllegalInstruction);
++  }
+   else
+   {
+     // Memory exception on instruction fetch
+diff --git a/Source/Core/Core/PowerPC/MMU.cpp b/Source/Core/Core/PowerPC/MMU.cpp
+index 940e93c..8570bf8 100644
+--- a/Source/Core/Core/PowerPC/MMU.cpp
++++ b/Source/Core/Core/PowerPC/MMU.cpp
+@@ -24,6 +24,10 @@
+  */
+ 
+ #include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/DreamportsCall.h"
++
++// Dreamports: the function check's call (DreamportsCall.h)
++DreamportsCallState DreamportsCall;
+ 
+ #include <algorithm>
+ #include <bit>
+@@ -189,6 +193,17 @@ static void EFB_Write(u32 data, u32 addr)
+   }
+ }
+ 
++// Dreamports: what a call of the function check (DolphinLibretro/Main.cpp) needs of the memory: while it's on, the
++// hardware's registers, 64 KB from 0x0C000000, are memory of their own, highest byte first, read and written as they're
++// kept and doing nothing else, every read the processor makes is told to the check, and a read or a write of anything
++// else, the embedded framebuffer, the graphics chip's FIFO or what's past the console's 24 MB, which Dolphin sees as the
++// memory again, stops the call, with where.
++
++static bool DreamportsHardware(u32 address, u32 size)
++{
++  return address >= 0x0C000000 && address + size <= 0x0C010000;
++}
++
+ template <XCheckTLBFlag flag, std::unsigned_integral T, bool never_translate>
+ T MMU::ReadFromHardware(u32 em_address)
+ {
+@@ -230,6 +245,29 @@ T MMU::ReadFromHardware(u32 em_address)
+     wi = translated_addr.wi;
+   }
+ 
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) != 0x08000000 &&
++      em_address >= m_memory.GetRamSizeReal())
++  {
++    DreamportsCall.elsewhere = true;
++    DreamportsCall.elsewhere_at = em_address;
++    return 0;
++  }
++
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) == 0x08000000)
++  {
++    if (!DreamportsHardware(em_address, sizeof(T)))
++    {
++      DreamportsCall.elsewhere = true;
++      DreamportsCall.elsewhere_at = em_address;
++      return 0;
++    }
++    T value = 0;
++    for (u32 i = 0; i < sizeof(T); i++)
++      value = static_cast<T>((value << 8) | DreamportsCall.hardware[(em_address & 0xFFFF) + i]);
++    DreamportsCall.used_hardware = true;
++    return value;
++  }
++
+   if (flag == XCheckTLBFlag::Read && (em_address & 0xF8000000) == 0x08000000)
+   {
+     if (em_address < 0x0c000000)
+@@ -367,6 +405,28 @@ void MMU::WriteToHardware(u32 em_address, const u32 data, const u32 size)
+   // not all zero will result in incorrect data in the buffer." So, it's possible that in some cases
+   // writes which do not exactly match the masking behave differently, but Pac-Man World 3's writes
+   // happen to behave correctly.
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Write && (em_address & 0xF8000000) != 0x08000000 &&
++      em_address >= m_memory.GetRamSizeReal())
++  {
++    DreamportsCall.elsewhere = true;
++    DreamportsCall.elsewhere_at = em_address;
++    return;
++  }
++
++  if (DreamportsCall.on && flag == XCheckTLBFlag::Write && (em_address & 0xF8000000) == 0x08000000)
++  {
++    if (!DreamportsHardware(em_address, size) || (em_address & 0xFFFFF000) == GPFifo::GATHER_PIPE_PHYSICAL_ADDRESS)
++    {
++      DreamportsCall.elsewhere = true;
++      DreamportsCall.elsewhere_at = em_address;
++      return;
++    }
++    for (u32 i = 0; i < size; i++)
++      DreamportsCall.hardware[(em_address & 0xFFFF) + i] = static_cast<u8>(data >> ((size - 1 - i) * 8));
++    DreamportsCall.used_hardware = true;
++    return;
++  }
++
+   if (flag == XCheckTLBFlag::Write &&
+       (em_address & 0xFFFFF000) == GPFifo::GATHER_PIPE_PHYSICAL_ADDRESS)
+   {
+@@ -639,6 +699,8 @@ template <std::unsigned_integral T>
+ T MMU::Read(const u32 address)
+ {
+   T var = ReadFromHardware<XCheckTLBFlag::Read, T>(address);
++  if (DreamportsCall.on && DreamportsCall.read)
++    DreamportsCall.read(address, sizeof(T), static_cast<u64>(var));
+   Memcheck(address, var, false, sizeof(T));
+   return var;
+ }
+diff --git a/Source/Core/DolphinLibretro/Audio.cpp b/Source/Core/DolphinLibretro/Audio.cpp
+index 04deefa..f65c8bb 100644
+--- a/Source/Core/DolphinLibretro/Audio.cpp
++++ b/Source/Core/DolphinLibretro/Audio.cpp
+@@ -1,3 +1,5 @@
++#include <cstdint>
++#include <vector>
+ #include <libretro.h>
+ #include "Audio.h"
+ #include "Common/Logging/Log.h"
+@@ -75,6 +77,34 @@ unsigned int GetActiveSampleRate()
+   return GetRetroSampleRate();
+ }
+ 
++// Dreamports: the samples the console's audio interface takes by DMA, 8 at a time, handed on as they are: each a pair,
++// right and then left, highest byte first, turned to libretro's left and right in the computer's order. The interface
++// plays them at one of two rates, 108,000,000 over its divisor, 48,042.7 or 32,028.5 a second on a GameCube, which
++// whoever runs the core is told each time it changes. Sound a game streams from its disc isn't among them yet.
++void PushConsoleSamples(const short* samples, unsigned int num_samples, unsigned int rate_divisor)
++{
++  static unsigned int told_divisor = 0;
++  static std::vector<int16_t> pairs;
++  if (!batch_cb || !samples || !num_samples)
++    return;
++  if (rate_divisor && rate_divisor != told_divisor)
++  {
++    told_divisor = rate_divisor;
++    retro_system_av_info info;
++    retro_get_system_av_info(&info);
++    info.timing.sample_rate = 108000000.0 / rate_divisor;
++    Libretro::environ_cb(RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO, &info);
++  }
++  pairs.resize(static_cast<size_t>(num_samples) * 2);
++  for (unsigned int i = 0; i < num_samples; i++)
++  {
++    const uint16_t right = static_cast<uint16_t>(samples[i * 2]), left = static_cast<uint16_t>(samples[i * 2 + 1]);
++    pairs[i * 2] = static_cast<int16_t>(static_cast<uint16_t>((left >> 8) | (left << 8)));
++    pairs[i * 2 + 1] = static_cast<int16_t>(static_cast<uint16_t>((right >> 8) | (right << 8)));
++  }
++  batch_cb(pairs.data(), num_samples);
++}
++
+ void Reset()
+ {
+   g_use_call_back_audio = Libretro::Options::GetCached<int>(Libretro::Options::audio::CALL_BACK_AUDIO,
+diff --git a/Source/Core/DolphinLibretro/Audio.h b/Source/Core/DolphinLibretro/Audio.h
+index 4aa4f14..b46677d 100644
+--- a/Source/Core/DolphinLibretro/Audio.h
++++ b/Source/Core/DolphinLibretro/Audio.h
+@@ -18,6 +18,8 @@ static constexpr unsigned int DEFAULT_SAMPLE_RATE = 48000;
+ static constexpr unsigned int LEGACY_DEFAULT_SAMPLE_RATE = 32000;
+ 
+ void Reset();
++// Dreamports: the console's own samples, as its audio interface takes them (Audio.cpp)
++void PushConsoleSamples(const short* samples, unsigned int num_samples, unsigned int rate_divisor);
+ void Init();
+ unsigned int GetCoreSampleRate();
+ unsigned int GetRetroSampleRate();
+diff --git a/Source/Core/DolphinLibretro/Input.cpp b/Source/Core/DolphinLibretro/Input.cpp
+index 4ced7bf..024afc9 100644
+--- a/Source/Core/DolphinLibretro/Input.cpp
++++ b/Source/Core/DolphinLibretro/Input.cpp
+@@ -552,7 +552,8 @@ void Init(const WindowSystemInfo& wsi)
+   g_controller_interface.Initialize(wsi);
+   g_controller_interface.AddDevice(std::make_shared<Device>(RETRO_DEVICE_KEYBOARD, 0));
+ 
+-  GCAdapter::Init();
++  // Dreamports: no real adapter for GameCube controllers is looked for on the computer: the buttons come from whoever
++  // runs the core, and nothing else
+   Pad::Initialize();
+   Pad::InitializeGBA();
+   Keyboard::Initialize();
+diff --git a/Source/Core/DolphinLibretro/Main.cpp b/Source/Core/DolphinLibretro/Main.cpp
+index 97ba667..8fca362 100644
+--- a/Source/Core/DolphinLibretro/Main.cpp
++++ b/Source/Core/DolphinLibretro/Main.cpp
+@@ -36,6 +36,11 @@
+ #include "Core/PatchEngine.h"
+ #include "Core/State.h"
+ #include "Core/System.h"
++#include "Core/PowerPC/DreamportsCall.h"
++#include "Core/PowerPC/Interpreter/Interpreter.h"
++#include "Core/PowerPC/JitInterface.h"
++#include "Core/PowerPC/MMU.h"
++#include "Core/PowerPC/PowerPC.h"
+ #include "DolphinLibretro/Audio.h"
+ #include "DolphinLibretro/Input.h"
+ #include "DolphinLibretro/Common/Options.h"
+@@ -242,6 +247,146 @@ void retro_reset(void)
+   Core::System::GetInstance().GetProcessorInterface().ResetButton_Tap();
+ }
+ 
++// Dreamports: one function of the console's program run by itself on Dolphin's own interpreter, the processor `prove`
++// runs a game on, for the function check (tools/libretro/host.c, its call mode). Whoever runs the core has booted a
++// program and stopped between frames; it gives the registers a call starts with, and the interpreter runs an
++// instruction at a time from `pc` until the processor comes back to `sentinel`, which the link register is set to,
++// runs `most` instructions, meets an exception, or reaches what the check can't follow. No time passes for the rest of
++// the console meanwhile, the hardware's registers are memory of their own (Core/PowerPC/MMU.cpp), and the data cache is
++// written back to memory and emptied as the call ends, so what the function stored is in memory either way and the
++// next call starts as this one did.
++//
++// `state` holds, in 32-bit words: the 32 general registers; the 32 floating-point registers' first halves, then their
++// second halves, two words each, the high one first; CR, XER, LR, CTR, FPSCR and the eight GQRs. It's read as the call
++// starts and written as it ends. `hardware` is the 64 KB of the hardware's registers, read and written. `ran` is told
++// of each instruction as it runs: its address, and for a conditional branch 1 when it went to its target and 2 when it
++// went on past it; `read` of each read: its address, how many bytes and the value. Returns how the call ended: 0 it
++// came back, 1 it ran out of instructions, 2 an exception, with `detail` the exceptions' bits, 3 it reached what the
++// check can't follow, with `detail` the address; and `at` where it was, `steps` how many instructions ran, and
++// `used` whether it read or wrote the hardware's registers.
++extern "C" RETRO_API int dreamports_gamecube_call(uint32_t pc, uint32_t sentinel, uint32_t most, uint32_t* state,
++                                                  uint8_t* hardware, void (*ran)(uint32_t, uint32_t),
++                                                  void (*read)(uint32_t, uint32_t, uint64_t), uint32_t* detail,
++                                                  uint32_t* at, uint32_t* steps, uint32_t* used)
++{
++  auto& system = Core::System::GetInstance();
++  auto& ppc = system.GetPPCState();
++  auto& memory = system.GetMemory();
++  auto& mmu = system.GetMMU();
++  auto& interpreter = system.GetInterpreter();
++  // the processor's state as the program left it after its frames, which every call starts from: its machine state,
++  // its special registers and its segments, so that what one call did to them, or an exception it met, isn't the next
++  // one's start
++  static bool kept = false;
++  static u32 kept_msr, kept_spr[1024], kept_sr[16];
++  if (!kept)
++  {
++    kept = true;
++    kept_msr = ppc.msr.Hex;
++    std::memcpy(kept_spr, ppc.spr, sizeof kept_spr);
++    std::memcpy(kept_sr, ppc.sr.data(), sizeof kept_sr);
++  }
++  ppc.msr.Hex = kept_msr;
++  std::memcpy(ppc.spr, kept_spr, sizeof kept_spr);
++  std::memcpy(ppc.sr.data(), kept_sr, sizeof kept_sr);
++  mmu.DBATUpdated();
++  mmu.IBATUpdated();
++  for (int i = 0; i < 32; i++)
++    ppc.gpr[i] = state[i];
++  for (int i = 0; i < 32; i++)
++  {
++    ppc.ps[i].SetPS0((u64(state[32 + i * 2]) << 32) | state[33 + i * 2]);
++    ppc.ps[i].SetPS1((u64(state[96 + i * 2]) << 32) | state[97 + i * 2]);
++  }
++  ppc.cr.Set(state[160]);
++  ppc.SetXER(UReg_XER(state[161]));
++  LR(ppc) = sentinel;
++  CTR(ppc) = state[163];
++  ppc.fpscr.Hex = state[164];
++  for (int i = 0; i < 8; i++)
++    ppc.spr[SPR_GQR0 + i] = state[165 + i];
++  // the caches emptied, as memory is what the check just gave it, and the floating-point unit on, as a game's code
++  // runs with it
++  ppc.dCache.Reset();
++  ppc.iCache.Reset(system.GetJitInterface());
++  ppc.msr.FP = 1;
++  ppc.pc = pc;
++  ppc.npc = pc + 4;
++  ppc.Exceptions = 0;
++  std::memcpy(DreamportsCall.hardware, hardware, sizeof DreamportsCall.hardware);
++  DreamportsCall.used_hardware = false;
++  DreamportsCall.elsewhere = false;
++  DreamportsCall.read = read;
++  DreamportsCall.on = true;
++  int end = 1;
++  uint32_t count = 0;
++  *detail = 0;
++  while (count < most)
++  {
++    if (ppc.pc == sentinel)
++    {
++      end = 0;
++      break;
++    }
++    const u32 here = ppc.pc;
++    const u32 word = mmu.Read_Opcode(here);
++    interpreter.SingleStepInner();
++    count++;
++    const u32 op = word >> 26, xo = (word >> 1) & 0x3FF;
++    const bool conditional = (op == 16 || (op == 19 && (xo == 16 || xo == 528))) && ((word >> 21) & 0x14) != 0x14;
++    if (ran)
++      ran(here, conditional ? (ppc.pc == here + 4 ? 2 : 1) : 0);
++    if (DreamportsCall.elsewhere)
++    {
++      end = 3;
++      *detail = DreamportsCall.elsewhere_at;
++      ppc.pc = here;
++      break;
++    }
++    if (ppc.Exceptions != 0)
++    {
++      end = 2;
++      *detail = ppc.Exceptions;
++      ppc.Exceptions = 0;
++      ppc.pc = here;
++      break;
++    }
++  }
++  DreamportsCall.on = false;
++  DreamportsCall.read = nullptr;
++  *at = ppc.pc;
++  *steps = count;
++  *used = DreamportsCall.used_hardware ? 1 : 0;
++  ppc.dCache.FlushAll(memory);
++  ppc.dCache.Reset();
++  std::memcpy(hardware, DreamportsCall.hardware, sizeof DreamportsCall.hardware);
++  for (int i = 0; i < 32; i++)
++    state[i] = ppc.gpr[i];
++  for (int i = 0; i < 32; i++)
++  {
++    state[32 + i * 2] = u32(ppc.ps[i].PS0AsU64() >> 32);
++    state[33 + i * 2] = u32(ppc.ps[i].PS0AsU64());
++    state[96 + i * 2] = u32(ppc.ps[i].PS1AsU64() >> 32);
++    state[97 + i * 2] = u32(ppc.ps[i].PS1AsU64());
++  }
++  state[160] = ppc.cr.Get();
++  state[161] = ppc.GetXER().Hex;
++  state[162] = LR(ppc);
++  state[163] = CTR(ppc);
++  state[164] = ppc.fpscr.Hex;
++  for (int i = 0; i < 8; i++)
++    state[165 + i] = ppc.spr[SPR_GQR0 + i];
++  return end;
++}
++
++// Dreamports: the interpreter tells the tools' program where the processor is before each instruction it runs
++// (Interpreter.cpp), and retro_dreamports_ran_at gives the function to tell, or none, as the Nintendo 64's core does.
++// Its name starts as libretro's own do.
++extern "C" RETRO_API void retro_dreamports_ran_at(void (*told)(uint32_t, uint32_t))
++{
++  DreamportsRanAt = told;
++}
++
+ void retro_run(void)
+ {
+   Libretro::Input::InitSensors();
+@@ -283,6 +428,11 @@ void retro_run(void)
+   if (Core::GetState(system) == Core::State::Starting &&
+       !Libretro::g_emuthread_launched)
+   {
++    // Dreamports: the other renderers are started when the graphics context they asked for arrives. The software
++    // renderer asks for none, so nothing started it: it's started here, before the console boots, as they are
++    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
++      Libretro::Video::Video_InitializeBackend();
++
+     WindowSystemInfo wsi(WindowSystemType::Libretro, nullptr, nullptr, nullptr);
+     if (system.IsDualCoreMode())
+     {
+@@ -299,12 +449,7 @@ void retro_run(void)
+ 
+     Libretro::g_emuthread_launched = true;
+ 
+-    if(Config::Get(Config::MAIN_GFX_BACKEND) == "Software Renderer")
+-    {
+-      g_gfx.reset();
+-      g_gfx = std::make_unique<Libretro::Video::SWGfx>();
+-    }
+-    else if (Config::Get(Config::MAIN_GFX_BACKEND) == "Null")
++    if (Config::Get(Config::MAIN_GFX_BACKEND) == "Null")
+     {
+       g_gfx.reset();
+       g_gfx = std::make_unique<Libretro::Video::NullGfx>();
+@@ -527,7 +672,9 @@ void retro_run(void)
+     Config::SetCurrent(Config::MAIN_WIIMOTE_CONTINUOUS_SCANNING,
+       Libretro::Options::GetCached<bool>(Libretro::Options::sysconf::WIIMOTE_CONTINUOUS_SCANNING) ||
+       Libretro::Options::GetCached<std::string>(Libretro::Options::wiimote::DEFAULT_DEVICE) == "real");
+-    WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
++    // Dreamports: no real Wii Remote is looked for on the computer, over Bluetooth, for a GameCube game
++    if (system.IsWii())
++      WiimoteReal::Initialize(Wiimote::InitializeMode::DO_NOT_WAIT_FOR_WIIMOTES);
+   }
+ 
+   if (wiimoteDeviceUpdated)
+diff --git a/Source/Core/DolphinLibretro/Video.cpp b/Source/Core/DolphinLibretro/Video.cpp
+index a2366e7..14cced2 100644
+--- a/Source/Core/DolphinLibretro/Video.cpp
++++ b/Source/Core/DolphinLibretro/Video.cpp
+@@ -475,6 +475,28 @@ void ContextReset(void)
+     g_context_status.MarkInitialized();
+ }
+ 
++// Dreamports: a picture of the software renderer's, handed to whoever runs the core: the stretch of the texture that's
++// shown, in the order libretro's XRGB8888 has a pixel's colours, where the texture has red first
++void ShowSoftwareImage(const u8* data, u32 texture_width, const MathUtil::Rectangle<int>& shown)
++{
++  static std::vector<u32> picture;
++  const int width = shown.GetWidth(), height = shown.GetHeight();
++  if (!video_cb || width <= 0 || height <= 0)
++    return;
++  picture.resize(static_cast<size_t>(width) * height);
++  for (int y = 0; y < height; y++)
++  {
++    const u8* row = data + (static_cast<size_t>(shown.top + y) * texture_width + shown.left) * 4;
++    for (int x = 0; x < width; x++)
++    {
++      picture[static_cast<size_t>(y) * width + x] =
++          0xFF000000u | (u32(row[x * 4]) << 16) | (u32(row[x * 4 + 1]) << 8) | row[x * 4 + 2];
++    }
++  }
++  video_cb(picture.data(), width, height, static_cast<size_t>(width) * 4);
++  UpdateActiveConfig();
++}
++
+ bool Video_InitializeBackend()
+ {
+   WindowSystemInfo wsi = {};
+diff --git a/Source/Core/VideoBackends/Software/SWGfx.cpp b/Source/Core/VideoBackends/Software/SWGfx.cpp
+index 7004c50..bce94af 100644
+--- a/Source/Core/VideoBackends/Software/SWGfx.cpp
++++ b/Source/Core/VideoBackends/Software/SWGfx.cpp
+@@ -62,6 +62,8 @@ bool SWGfx::BindBackbuffer(const ClearColor& clear_color)
+     return true;
+ 
+   GLContext* context = m_window->GetContext();
++  if (!context)
++    return true;
+   context->Update();
+   g_presenter->SetBackbuffer(context->GetBackBufferWidth(), context->GetBackBufferHeight());
+   return true;
+@@ -106,12 +108,28 @@ std::unique_ptr<AbstractPipeline> SWGfx::CreatePipeline(const AbstractPipelineCo
+   return std::make_unique<SWPipeline>();
+ }
+ 
++}  // namespace SW
++
++#if defined(__LIBRETRO__)
++// Dreamports: the libretro front takes each picture as it's shown (DolphinLibretro/Video.cpp)
++namespace Libretro::Video
++{
++void ShowSoftwareImage(const u8* data, u32 texture_width, const MathUtil::Rectangle<int>& shown);
++}
++#endif
++
++namespace SW
++{
+ // Called on the GPU thread
+ void SWGfx::ShowImage(const AbstractTexture* source_texture,
+                       const MathUtil::Rectangle<int>& source_rc)
+ {
+   if (!IsHeadless())
+     m_window->ShowImage(source_texture, source_rc);
++#if defined(__LIBRETRO__)
++  Libretro::Video::ShowSoftwareImage(static_cast<const SWTexture*>(source_texture)->GetData(0, 0),
++                                     source_texture->GetWidth(), source_rc);
++#endif
+ }
+ 
+ void SWGfx::ClearRegion(const MathUtil::Rectangle<int>& target_rc, bool colorEnable,
+@@ -138,6 +156,9 @@ void SWGfx::SetScissorRect(const MathUtil::Rectangle<int>& rc)
+ SurfaceInfo SWGfx::GetSurfaceInfo() const
+ {
+   GLContext* context = m_window->GetContext();
++  // Dreamports: with no window, the size of the console's own framebuffer
++  if (!context)
++    return {640u, 528u, 1.0f, AbstractTextureFormat::RGBA8};
+   return {std::max(context->GetBackBufferWidth(), 1u), std::max(context->GetBackBufferHeight(), 1u),
+           1.0f, AbstractTextureFormat::RGBA8};
+ }
+diff --git a/Source/Core/VideoBackends/Software/SWOGLWindow.cpp b/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
+index a002e3e..41c1ae6 100644
+--- a/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
++++ b/Source/Core/VideoBackends/Software/SWOGLWindow.cpp
+@@ -29,11 +29,18 @@ std::unique_ptr<SWOGLWindow> SWOGLWindow::Create(const WindowSystemInfo& wsi)
+ 
+ bool SWOGLWindow::IsHeadless() const
+ {
+-  return m_gl_context->IsHeadless();
++  // Dreamports: with no OpenGL context there's still a picture to show, which the libretro front hands over itself
++  return m_gl_context ? m_gl_context->IsHeadless() : false;
+ }
+ 
+ bool SWOGLWindow::Initialize(const WindowSystemInfo& wsi)
+ {
++#if defined(__LIBRETRO__)
++  // Dreamports: the software renderer draws on the processor and its picture is already in memory, so under libretro
++  // it needs no OpenGL context to put it in a window: the front gives the picture to whoever runs it (Video.h)
++  if (wsi.type == WindowSystemType::Libretro)
++    return true;
++#endif
+   m_gl_context = GLContext::Create(wsi);
+   if (!m_gl_context)
+     return false;
+@@ -87,6 +94,8 @@ bool SWOGLWindow::Initialize(const WindowSystemInfo& wsi)
+ void SWOGLWindow::ShowImage(const AbstractTexture* image,
+                             const MathUtil::Rectangle<int>& xfb_region)
+ {
++  if (!m_gl_context)
++    return;
+   const SW::SWTexture* sw_image = static_cast<const SW::SWTexture*>(image);
+   m_gl_context->Update();  // just updates the render window position and the backbuffer size
+ 
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp b/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
+index 82650ff..ebfd8de 100644
+--- a/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
+@@ -419,9 +419,17 @@ u32 CEXIIPL::GetEmulatedTime(Core::System& system, u32 epoch)
+   }
+   else
+   {
++#ifdef __LIBRETRO__
++    // Dreamports: the console's clock starts at the same moment on every run, the first of January 2002, and moves with
++    // the emulated time, as it does for a movie, rather than with the computer's own clock, so a game that reads it
++    // plays the same on every computer and every time
++    constexpr u64 DREAMPORTS_START = 1009843200;
++    ltime = DREAMPORTS_START + system.GetCoreTiming().GetTicks() / system.GetSystemTimers().GetTicksPerSecond();
++#else
+     ASSERT(!Core::WantsDeterminism());
+     ltime = Common::Timer::GetLocalTimeSinceJan1970() -
+             system.GetSystemTimers().GetLocalTimeRTCOffset();
++#endif
+   }
+ 
+   return static_cast<u32>(ltime) - epoch;
+diff --git a/Source/Core/DolphinLibretro/Boot.cpp b/Source/Core/DolphinLibretro/Boot.cpp
+index 6cee24f..5042344 100644
+--- a/Source/Core/DolphinLibretro/Boot.cpp
++++ b/Source/Core/DolphinLibretro/Boot.cpp
+@@ -423,6 +423,12 @@ bool retro_load_game(const struct retro_game_info* game)
+   Config::SetBase(Config::SYSCONF_LANGUAGE, language);
+   Config::SetBase(Config::MAIN_GC_LANGUAGE, DiscIO::ToGameCubeLanguage(static_cast<DiscIO::Language>(language)));
+ 
++  // Dreamports: a program given alone, or a disc with no region of its own, would run in the region of the computer's
++  // country, on Windows, or Switzerland's, where none is found, and the region sets the video interface's rate as the
++  // console starts, so the same program would start a frame at another moment on another computer. It runs as an
++  // American console's, as a disc for one does.
++  Config::SetBase(Config::MAIN_FALLBACK_REGION, DiscIO::Region::NTSC_U);
++
+   Config::SetBase(Config::MAIN_DPL2_DECODER, false);
+   Config::SetBase(Config::MAIN_AUDIO_LATENCY, 0);
+   Config::SetBase(Config::MAIN_AUDIO_FILL_GAPS, false);

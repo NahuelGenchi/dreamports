@@ -55,6 +55,7 @@ import { readNes } from './nes/read.mjs';
 import { readPs1 } from './ps1/read.mjs';
 import { readN64 } from './n64/read.mjs';
 import { readPs2 } from './ps2/read.mjs';
+import { readGamecube } from './gamecube/read.mjs';
 import { readSnes } from './snes/read.mjs';
 
 const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc] [--rsp <address>]';
@@ -67,10 +68,10 @@ const SOME_BYTES = 256, FRAMES = 60;
 // a line of an instruction or of data, not the line that says the mode changes
 const LINE = /^[0-9A-F]{8}:/;
 // the consoles whose instructions read knows, and what reads each
-const READERS = { gba: readGba, nes: readNes, snes: readSnes, ps1: readPs1, n64: readN64, ps2: readPs2 };
+const READERS = { gba: readGba, nes: readNes, snes: readSnes, ps1: readPs1, n64: readN64, ps2: readPs2, gamecube: readGamecube };
 // the consoles whose reader reads the copy itself, the program a disc boots or a cartridge in the console's byte order,
 // rather than the whole copy as it is
-const OFF_DISC = new Set(['ps1', 'n64', 'ps2']);
+const OFF_DISC = new Set(['ps1', 'n64', 'ps2', 'gamecube']);
 const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(', ').replace(/, ([^,]+)$/, ' and $1');
 
 export async function run(args) {

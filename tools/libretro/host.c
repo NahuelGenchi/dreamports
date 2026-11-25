@@ -4,6 +4,7 @@
 // host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]
 // host CORE ROM route SPEC [KEY=VALUE…]
+// host CORE ROM call [KEY=VALUE…]
 //
 // BUTTONS holds each frame's buttons, 32 bits each, PICTURES the frames whose picture is wanted, SETS the values to write
 // to the console's work memory ({ frame, address, bytes, value }, 32 bits each) and KEY=VALUE the core's settings. For
@@ -57,6 +58,13 @@
 // llvmpipe there too. It stops with a sentence on a computer that can't give one. The environment's DP_ANY_GRAPHICS lets it
 // draw on whatever the computer has instead, only for the check that shows why it mustn't (tools/test/ps2-3d.mjs). The JSON
 // on stderr says what drew, under "drawnBy".
+//
+// `call` runs one function of the console's program at a time, on a core that can, for the function check: on the
+// GameCube's Dolphin as calls.h says, and on any other core as `call` below says.
+//
+// The environment's DP_LEAVE, when it's set, has the program end the moment its work is written, without the core's own
+// ending, for a core whose ending can fail or never come, as Dolphin's does on Windows: nothing of a run is kept past
+// it anyway.
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -172,6 +180,7 @@ static size_t sizeCount, sizeRoom;
 #include "ran-ps2.h"
 #include "held.h"
 #include "starts.h"
+#include "calls.h"
 
 static void* readAll(const char* path, size_t* size) {
 	*size = 0;
@@ -910,7 +919,22 @@ static int serveCalls(void* library) {
 	}
 }
 
+static int run(int argc, char** argv);
+
 int main(int argc, char** argv) {
+	int code = run(argc, argv);
+	if (getenv("DP_LEAVE")) {
+		fflush(NULL);
+#ifdef _WIN32
+		TerminateProcess(GetCurrentProcess(), (UINT) code);
+#else
+		_exit(code);
+#endif
+	}
+	return code;
+}
+
+static int run(int argc, char** argv) {
 	bool live = argc >= 6 && !strcmp(argv[3], "live"), route = argc >= 5 && !strcmp(argv[3], "route"), calls = argc >= 4 && !strcmp(argv[3], "call");
 	if (argc < (live ? 6 : route ? 5 : calls ? 4 : 12)) {
 		fprintf(stderr, "Usage: host CORE ROM FRAMES BUTTONS FUNCTIONS PICTURES SOUND SETS - WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM live WIDTH HEIGHT [KEY=VALUE…]\n       host CORE ROM route SPEC [KEY=VALUE…]\n       host CORE ROM call [KEY=VALUE…]\n");
@@ -929,7 +953,7 @@ int main(int argc, char** argv) {
 	static char outBuffer[1 << 16];
 	setvbuf(out, outBuffer, _IOFBF, sizeof outBuffer);
 
-	// a search shows no picture, so it's given no size for one
+	// a search and a call show no picture, so they're given no size for one
 	int at = live ? 4 : route ? 3 : calls ? 2 : 10;
 	wantedW = route || calls ? 0 : atoi(argv[at]);
 	wantedH = route || calls ? 0 : atoi(argv[at + 1]);
@@ -1054,6 +1078,8 @@ int main(int argc, char** argv) {
 		graphics->contextReset();
 	}
 	wantedRate = getenv("DP_SOUND_RATE") ? atof(getenv("DP_SOUND_RATE")) : 0;
+	// the GameCube's Dolphin answers a call its own way (calls.h); any other core, below
+	if (calls && dlsym(library, "dreamports_gamecube_call")) return callServe(library);
 
 	if (route) {
 		// what the search says goes where the tools read it, which the core's own words never reach
@@ -1151,6 +1177,11 @@ int main(int argc, char** argv) {
 		ran.frame = frame;
 		startsFrame((uint32_t) frame);
 		retro_run();
+		// a core that makes the console's memory as it boots, in its first frame, has none to give before that
+		if (!memory) {
+			memory = retro_get_memory_data(MEMORY_SYSTEM_RAM);
+			memorySize = retro_get_memory_size(MEMORY_SYSTEM_RAM);
+		}
 		noteSize(frame);
 		// a core that starts its console in its first frame, as PPSSPP does, has its memory only then
 		if (!memory || !memorySize) {

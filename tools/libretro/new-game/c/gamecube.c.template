@@ -1,0 +1,39 @@
+// @TITLE_C@: the game's own code, in C, on the GameCube's kit in C (kit/gamecube/c/gamecube.h), with the console's
+// screen, frame, sound and buttons in console.h, which the build makes from kit/consoles.js. src/main.js runs it on
+// the page, built to WebAssembly as src/game.wasm (kit/gamecube/c/README.md).
+
+#include "gamecube.h"
+
+// where the picture is kept in memory, 640 by 480 pixels, two to a word, written round the processor's cache
+#define FRAMEBUFFER 0x00100000
+#define UNCACHED 0xC0000000
+#define WIDTH 640
+#define HEIGHT 480
+
+// the video interface's registers for 640 by 480 in two fields, as the console's own programs set them, each where it
+// is and its value, the framebuffer's address in 32-byte steps
+static const uint16_t video[][2] = {
+  { 0x00, 0x0F06 }, { 0x04, 0x4769 }, { 0x06, 0x01AD }, { 0x08, 0x02EA }, { 0x0A, 0x5140 }, { 0x0C, 0x0003 }, { 0x0E, 0x0018 },
+  { 0x10, 0x0002 }, { 0x12, 0x0019 }, { 0x14, 0x410C }, { 0x16, 0x410C }, { 0x18, 0x40ED }, { 0x1A, 0x40ED },
+  { 0x1C, 0x1000 | FRAMEBUFFER >> 21 }, { 0x1E, (FRAMEBUFFER >> 5) & 0xFFFF },
+  { 0x24, 0x1000 | (FRAMEBUFFER + WIDTH * 2) >> 21 }, { 0x26, ((FRAMEBUFFER + WIDTH * 2) >> 5) & 0xFFFF },
+  { 0x48, 0x2850 }, { 0x4A, 0x0100 }, { 0x6C, 0x0000 }, { 0x02, 0x0001 },
+};
+
+// once, with the player's disc in the drive: the video interface showing the framebuffer
+void game_start(void) {
+  for (unsigned i = 0; i < sizeof video / sizeof video[0]; i++) gc_write16(0xCC002000 + video[i][0], video[i][1]);
+}
+
+// what the original does each field, writing the console as it does. To begin with, the whole picture blue, and
+// green while a button is held, two pixels a word: brightness, blue's difference, brightness, red's
+void game_step(uint32_t buttons) {
+  uint32_t colour = buttons ? 0x90359022 : 0x29F0296E;
+  for (uint32_t at = 0; at < WIDTH * HEIGHT * 2; at += 4) gc_write32(UNCACHED | (FRAMEBUFFER + at), colour);
+}
+
+// its picture: the field the video interface shows
+void game_draw(void) { gc_show(); }
+
+// its sound: what the audio interface plays, silence until the game hands it samples
+void game_sound(float *left, float *right, int count) { gc_sound(left, right, count); }

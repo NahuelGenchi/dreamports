@@ -10,8 +10,9 @@ Like the rest of the kits it's under [GPL-3.0-or-later](LICENSE), and nothing fr
 
 | File | What it does |
 | :--- | :--- |
-| `disc.js` | `openDisc(source)`: a disc, from an ISO, a BIN with or without its `.cue`, a CHD, a CSO or a ZSO. Each gives the same disc: its tracks, its sectors as the console's drive reads them, the data on them, and the copy's bytes as the image it was made from holds them, for its SHA-1 |
+| `disc.js` | `openDisc(source)`: a disc, from an ISO, a BIN with or without its `.cue`, a CHD, a CSO or a ZSO, or a GameCube disc as an ISO or a GCM. Each gives the same disc: its tracks, its sectors as the console's drive reads them, the data on them, and the copy's bytes as the image it was made from holds them, for its SHA-1 |
 | `iso9660.js` | The files on a disc, by name, and which console it's for, from its `SYSTEM.CNF` or `UMD_DATA.BIN` |
+| `gcm.js` | A GameCube disc, which has a file system of its own in place of ISO 9660: its header with the game's code, the program it boots, a DOL, its apploader and its files by name. `dolHeader` reads a DOL given alone |
 | `cd.js` | A CD's sectors as a drive reads them whole, 2352 bytes: the sync, header, subheader, EDC and ECC that a copy keeping only data, as an ISO does, leaves out, made again |
 | `chd.js` | MAME's CHD, versions 3, 4 and 5, a hunk at a time, with every codec chdman uses: zlib, LZMA, Huffman, FLAC, and their CD forms. zstd is read where Node can undo it, the tools, and not in a browser |
 | `cso.js` | CSO, versions 1 and 2, and ZSO, a block at a time |

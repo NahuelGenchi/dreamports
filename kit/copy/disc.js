@@ -1,5 +1,6 @@
 // A player's disc, whatever file it comes in, read a few sectors at a time as a game asks for them, so a disc of
-// several gigabytes never has to be in memory: an ISO, a BIN with or without its .cue, a CHD, or a CSO or ZSO. Each
+// several gigabytes never has to be in memory: an ISO, a BIN with or without its .cue, a CHD, a CSO or ZSO, or a GameCube
+// disc (an ISO or a GCM, gcm.js). Each
 // gives the same disc: its tracks, its sectors as the console's drive reads them, and the data on them. The page reads
 // it from the file the player chose, and the tools from the file on their computer (copy.js has both).
 //
@@ -9,6 +10,7 @@
 import { DATA, RAW, makeSector, msf } from './cd.js';
 import { FRAME, chdTracks, isChd, openChd } from './chd.js';
 import { isCso, openCso } from './cso.js';
+import { isGcm } from './gcm.js';
 
 /** How many sectors a single-layer DVD holds: a disc with more has two layers. */
 export const DVD_LAYER = 2295104;
@@ -54,6 +56,8 @@ export async function openDisc(source, { open = null, zstd = null, inflate } = {
     return sectorDisc(cso.format, cso, { files: [source.name] });
   }
   if (looksLikeCue(head)) return cueDisc(source, open);
+  // a GameCube disc, which has its own file system in place of a volume (gcm.js): its data, 2048 bytes a sector
+  if (isGcm(head)) return plainDisc('gcm', source, { files: [source.name] });
   // a BIN: raw sectors, the mode in the first one's header, or where its volume is
   const mode = hasSync(head) && (head[15] === 1 || head[15] === 2) ? head[15] : has(head, 16 * RAW + 25, 'CD001') ? 2 : has(head, 16 * RAW + 17, 'CD001') ? 1 : 0;
   if (mode) {
@@ -109,6 +113,19 @@ async function sectorDisc(format, source, { files, image = fileImage([source]) }
     data: (lba, count) => read(lba, clamp(lba, count, sectors)),
     image,
   };
+}
+// a disc of one track of data in 2048-byte sectors with nothing more to tell of it, read as a DVD is
+function plainDisc(format, source, { files, image = fileImage([source]) }) {
+  const sectors = Math.ceil(source.size / DATA);
+  const read = async (lba, count) => {
+    const wanted = clamp(lba, count, sectors) * DATA, bytes = await source.read(lba * DATA, wanted);
+    // a file that ends partway through a sector, as a program's own small disc can, ends in zeros
+    if (bytes.length === wanted) return bytes;
+    const whole = new Uint8Array(wanted);
+    whole.set(bytes);
+    return whole;
+  };
+  return { format, kind: 'dvd', sectors, layerBreak: 0, files, whole: true, tracks: [{ number: 1, type: 'mode1', first: 0, pregap: 0, sectors }], read, data: read, image };
 }
 const clamp = (lba, count, sectors) => Math.max(0, Math.min(count, sectors - lba));
 

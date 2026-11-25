@@ -19,6 +19,7 @@ import { nesProgram } from '../nes/functions.mjs';
 import { exeReader, ps1Program, readProgram } from '../ps1/functions.mjs';
 import { readCartridge } from '../snes/cartridge.mjs';
 import { loadCopy, loadedCopy } from '../ps2/ledger.mjs';
+import { dolReader, gamecubeCode, readGamecubeCode } from '../gamecube/functions.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -202,6 +203,10 @@ export function cartridgeOf(path, console = 'gba') {
     const exe = () => readProgram(path) ?? (() => { throw new Error(`The tools haven't read the program ${path} boots yet: lib/proof-files.mjs's prepareCopy reads it first.`); })();
     return Object.assign((address, count) => (program ??= exeReader(exe()))(address, count), { copy: exe });
   }
+  if (console === 'gamecube') {
+    const code = () => readGamecubeCode(path) ?? (() => { throw new Error(`The tools haven't read the program ${path} boots yet: lib/proof-files.mjs's prepareCopy reads it first.`); })();
+    return Object.assign((address, count) => (program ??= dolReader(code().boot))(address, count), { copy: () => code().boot });
+  }
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : console === 'snes'
@@ -213,11 +218,12 @@ export function cartridgeOf(path, console = 'gba') {
 }
 
 /** Reads what a copy's console needs read at once before cartridgeOf can give its bytes: a PlayStation 2's program
- *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs), and the program a PlayStation
- *  disc boots. Nothing for another console. */
+ *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs), the program a PlayStation disc
+ *  boots, and a GameCube disc's program and modules. Nothing for another console. */
 export async function prepareCopy(path, console) {
   if (console === 'ps2') await loadCopy(path);
   if (console === 'ps1') await ps1Program(path);
+  if (console === 'gamecube') await gamecubeCode(path);
 }
 
 /** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its

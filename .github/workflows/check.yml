@@ -25,12 +25,13 @@ name: Check
 # Parallel N64 with an eleventh, its RSP's microcodes and every sum of its vector unit among it, and
 # npm run test:real-gb, which proves the Game Boy's and the Game Boy Color's kit in C against Gambatte with a twelfth,
 # every pixel and every sample of its sound, and npm run test:gb-twin, which tries the Game Boy's function check on
-# Gambatte's own processor with a thirteenth. A pull request's code runs here, with a token that can only read and no
+# Gambatte's own processor with a thirteenth, and npm run test:gamecube-codemap, which makes, names and reads the code
+# map of a fourteenth, a GameCube disc. A pull request's code runs here, with a token that can only read and no
 # secrets.
 #
-# The tests run in eleven jobs side by side, as one after another they came near the 15-minute limit (#1503, #1558, #1695,
+# The tests run in fourteen jobs side by side, as one after another they came near the 15-minute limit (#1503, #1558, #1695,
 # #1742, #1744), the Super Nintendo's kit in two of them (#1641). The check main requires, and the Readme workflow and
-# the first-entry bot read, is the last job, Check, which passes only when all eleven have.
+# the first-entry bot read, is the last job, Check, which passes only when all fourteen have.
 on:
   pull_request:
 
@@ -165,6 +166,10 @@ jobs:
           # its 15 minutes (#1744); it builds Play!'s processors and Sony's compiler again for itself
           - part: ps2 programs
             run: npm run test:ps2-twin-programs
+          # the GameCube, as far as it goes with no emulator, which takes most of an hour to build and has a workflow of
+          # its own: a made-up disc's code map, made, named and read through the tools as they're typed (#1944)
+          - part: gamecube
+            run: npm run test:gamecube-codemap
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

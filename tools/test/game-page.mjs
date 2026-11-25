@@ -14,6 +14,7 @@ import { openDreamport } from '../lib/dreamport.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { madeUpPs2Disc } from './made-up-disc.mjs';
+import { madeUpGameCubeDisc } from './made-up-gamecube.mjs';
 import { madeUpGb } from './made-up-gb.mjs';
 import { buildGame } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
@@ -239,9 +240,10 @@ try {
     const theirs = { console: id, name: 'Made Up Game (World)', title: 'MADE UP GAME', code: 'MADE', sha1 };
     write(gameFolder(game), { 'proof/original.json': JSON.stringify(theirs) });
     write(gameFolder(`${game}/c`), startingFiles(game, theirs, { language: 'c' }));
-    // a console whose games come on discs is given a made-up disc, which its page reads a few sectors at a time
-    // and a Game Boy or a Game Boy Color a copy whose header says which it's for, as the console goes by it
-    writeFileSync(join(temporary, copyName(id)), CONSOLES[id].disc ? madeUpPs2Disc({ console: id }) : id === 'gb' || id === 'gbc' ? madeUpGb({ colour: id === 'gbc' }).rom : rom);
+    // a console whose games come on discs is given a made-up disc of its own kind, which its page reads a few sectors
+    // at a time: the GameCube's has a header of its own, where the PlayStations' discs are ISO 9660; and a Game Boy or
+    // a Game Boy Color a copy whose header says which it's for, as the console goes by it
+    writeFileSync(join(temporary, copyName(id)), CONSOLES[id].disc ? (id === 'gamecube' ? madeUpGameCubeDisc().image : madeUpPs2Disc({ console: id })) : id === 'gb' || id === 'gbc' ? madeUpGb({ colour: id === 'gbc' }).rom : rom);
   }
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });

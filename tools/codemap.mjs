@@ -42,6 +42,7 @@ import * as ps2Functions from './ps2/functions.mjs';
 import * as pspFunctions from './psp/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
 import * as ndsFunctions from './nds/functions.mjs';
+import * as gamecubeFunctions from './gamecube/functions.mjs';
 import { layoutOf, readCartridge } from './snes/cartridge.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -135,6 +136,19 @@ const FINDERS = {
     fill: (code, listed) => ps2Functions.discFunctions(code, listed),
     address: address => address,
   },
+  // a GameCube game's program, read off its disc, and every module the disc has beside it, each found on its own; a
+  // list is of the program the disc boots
+  gamecube: {
+    file: 'tools/gamecube/functions.mjs',
+    read: path => gamecubeFunctions.gamecubeDisc(path),
+    inCode: code => gamecubeFunctions.inCode(code.boot),
+    startsInData: (code, listed) => gamecubeFunctions.startsInData(code.boot, listed.filter(f => !f.program)),
+    findFunctions: (code, listed) => gamecubeFunctions.discFunctions(code, listed),
+    fill: (code, listed) => gamecubeFunctions.discFunctions(code, listed),
+    address: address => address,
+    // where the program the disc boots starts, kept in the code map, so that function is known with no copy (lib/proofs.mjs)
+    layout: code => ({ entry: hex(gamecubeFunctions.codeOf(code.boot).entry) }),
+  },
 };
 
 FINDERS.gbc = FINDERS.gb;
@@ -218,9 +232,10 @@ export async function run(args) {
   const others = functions.filter(f => f.program && !f.vu), vu = functions.filter(f => f.vu);
   if (others.length || vu.length) {
     const sum = list => list.reduce((total, f) => total + f.size, 0).toLocaleString('en');
+    const programs = `${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc`;
     console.log(original.console === 'nds'
       ? `Of those, ${sum(others)} bytes are in the ARM7's program and ${new Set(others.map(f => f.program)).size - (others.some(f => f.program === 'ARM7') ? 1 : 0)} overlays.`
-      : `Of those, ${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc, and ${sum(vu)} bytes in ${vu.length} vector unit programs.`);
+      : original.console === 'ps2' ? `Of those, ${programs}, and ${sum(vu)} bytes in ${vu.length} vector unit programs.` : `Of those, ${programs}.`);
   }
   return 0;
 }

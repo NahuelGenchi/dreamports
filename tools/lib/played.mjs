@@ -77,8 +77,9 @@ const isGb = codeMap => codeMap.console === 'gb' || codeMap.console === 'gbc';
 // Nintendo, the Game Boy and the Game Boy Color
 const byBytes = codeMap => isNes(codeMap) || isSnes(codeMap) || isGb(codeMap);
 
-/** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven. */
-export const followsContent = codeMap => !byBytes(codeMap);
+/** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven:
+ *  not on the GameCube yet, whose emulator doesn't tell the tools what a game reads in play. */
+export const followsContent = codeMap => !byBytes(codeMap) && codeMap.console !== 'gamecube';
 
 // the cells of the cartridge's or disc's data, and those that hold anything: { count, holds }
 function cellsHeld(codeMap, cartridge) {

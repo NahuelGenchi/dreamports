@@ -55,13 +55,14 @@ import { n64Cartridge, programOf as n64ProgramOf } from '../n64/functions.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
+import { functionBytes, keptGamecubeCode, readGamecubeCode } from '../gamecube/functions.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds', 'gamecube'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -99,6 +100,8 @@ export function beyondProof(codeMap, f) {
   if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
   // and on the Nintendo 64, the function at the address the code loads at, where the boot code jumps to
   if (codeMap.console === 'n64') return /^[0-9A-F]{8}$/.test(codeMap.layout?.load ?? '') && f.address === parseInt(codeMap.layout.load, 16) ? 'reset' : null;
+  // and on the GameCube, the function the program its disc boots starts at
+  if (codeMap.console === 'gamecube') return /^[0-9A-F]{8}$/.test(codeMap.layout?.entry ?? '') && !f.program && f.address === parseInt(codeMap.layout.entry, 16) ? 'reset' : null;
   // a Game Boy game starts at $0100 and never comes back from there
   if ((codeMap.console === 'gb' || codeMap.console === 'gbc') && f.address === GB_START) return 'start';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
@@ -298,6 +301,12 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
       const { load, text } = program ??= n64ProgramOf(n64Cartridge(copy.path)), at = f.address - load;
       return at < 0 || at + f.size > text.length ? null : markOf(Buffer.concat([Buffer.from(`${load.toString(16).toUpperCase().padStart(8, '0')}\n`), text.subarray(at, at + f.size)]));
     };
+  }
+  // a GameCube game's, from the program its disc boots or the module a function's key names, as twin keeps them on
+  // this computer as it reads them, and until one has nothing is known of them
+  if ((codeMap?.console ?? original.console) === 'gamecube') {
+    const code = readGamecubeCode(copy.path) ?? keptGamecubeCode(original.sha1);
+    return code && (f => (functionBytes(code, f) ? markOf(functionBytes(code, f)) : null));
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   // a Nintendo DS game's, from whichever program or overlay of the cartridge the function is in, or nothing known of

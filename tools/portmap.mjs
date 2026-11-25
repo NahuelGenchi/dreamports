@@ -65,12 +65,16 @@ const PS2_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(00(?:[1-9A-Fa-f][0-9A-Fa-f]|0
 // such as sub_08804120
 const PSP_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(0(?:8[89A-Fa-f]|9[0-9A-Fa-f]|[ABab][0-9A-Fa-f])[0-9A-Fa-f]{5})\b/g;
 
+// a GameCube address in the console's 24 MB, as a number or in a label, such as fn_80003100
+const GAMECUBE_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(8(?:0[0-9A-Fa-f]|1[0-7])[0-9A-Fa-f]{5})\b/g;
+
 /** How a console's code names an address: `pattern`, whose first group is a label's word and second its digits,
  *  `bases`, the addresses code uses as the base of others and not as names, and `address(digits)`, the address. A
  *  Game Boy Advance address's lowest bit says Thumb code, which a function's start doesn't have. */
 export function namesOf(console) {
   // a Nintendo 64 address in the console's 8 MB is written as a PlayStation one is, 0x80246000 or func_80246000
   if (console === 'ps1' || console === 'n64') return { pattern: PS1_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
+  if (console === 'gamecube') return { pattern: GAMECUBE_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
   if (console === 'ps2') return { pattern: PS2_NAME, bases: new Set(), address: digits => parseInt(digits, 16) };
   if (console === 'psp') return { pattern: PSP_NAME, bases: new Set([0x08800000]), address: digits => parseInt(digits, 16) };
   return { pattern: NAME, bases: BASES, address: digits => parseInt(digits, 16) & ~1 };

@@ -278,6 +278,23 @@ test('a game on another console comes in the same way, as its copy\'s header say
     'a place, as only a PlayStation 2 disc has': [['08804000@PADMAN.IRX', 8]],
     'bytes, as only the Game Boy Advance has': [['08804000/E92D4000E3A00001', 232]],
   })) assert.equal(entry(map(functions), 'c', psp).why, 'proof', what);
+  // a GameCube game's code is its disc's six letters, its program's functions are in the console's 24 MB, and its
+  // modules' are each in a place of their own, by the module's file, whose name can have small letters (#1944)
+  const gamecube = { ...nes, console: 'gamecube', code: 'GMUE00' };
+  const cube = [['80003100', 72], ['80003148', 168], ['00000058@stage/first.rel', 36], ['0000007C@stage/first.rel', 8], ['00000040@Menu.rel', 12]];
+  assert.equal(entry(map(cube), 'c', gamecube).why, undefined);
+  assert.deepEqual(readOriginal(`${JSON.stringify(gamecube, null, 2)}\n`), gamecube);
+  assert.ok(readOriginal(`${JSON.stringify({ ...gamecube, code: '' }, null, 2)}\n`), 'a program with no disc');
+  for (const code of ['GMUE0', 'GMUE000', 'gmue00', 'GMUE 0', 'SLUS_200.02']) {
+    assert.equal(readOriginal(`${JSON.stringify({ ...gamecube, code }, null, 2)}\n`), null, code);
+  }
+  for (const [what, functions] of Object.entries({
+    'a function outside the console\'s memory': [['81800000', 72]],
+    'a function where the Game Boy Advance\'s cartridge is': [['08000100', 72]],
+    'a module out of order': [['80003100', 72], ['0000007C@stage/first.rel', 8], ['00000058@stage/first.rel', 36]],
+    'words for a module': [['80003100', 72], ['00000058@see https://example.com', 36]],
+    'a vector unit\'s program, which only the PlayStation 2 has': [['80003100~vu', 72]],
+  })) assert.equal(entry(map(functions), 'c', gamecube).why, 'proof', what);
   // a Nintendo DS game's code is in its ARM9 program, its ARM7 program and its overlays, each a place, and its map
   // says which functions are Thumb code
   const nds = { ...original, console: 'nds', title: 'MADE UP DS', code: 'MDUE' };
