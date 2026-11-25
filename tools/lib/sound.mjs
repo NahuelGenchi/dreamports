@@ -103,7 +103,12 @@ function narrow(dBs) {
 export function soundOf(original, machine = { sound: 65536, frame: [280896, 16777216] }) {
   // how far the original's sound is looked for, before or after the frame's, in samples: a frame
   const FRAME = machine.sound * machine.frame[0] / machine.frame[1], REACH = Math.round(FRAME);
-  const filter = makeFilter(machine.sound), { lengths } = original, starts = new Float64Array(lengths.length + 1);
+  const { lengths } = original, starts = new Float64Array(lengths.length + 1);
+  // The page's filters start with the Dreamport's first frame, having heard nothing before it, so the original's start
+  // again at the frame that one is heard against: the same sound is then heard the same from the first frame on. A
+  // console that's silent before then is heard as before, and one that isn't, as a Game Boy, whose first sound channel
+  // holds a level from power-on, has no ring at the first frame on one side alone. `coldFrom` is that frame.
+  let filter = makeFilter(machine.sound), coldFrom = null;
   for (let g = 0; g < lengths.length; g++) starts[g + 1] = starts[g] + lengths[g];
   const blocks = Math.ceil(starts[lengths.length] / STEP) + 1;
   // the original's energy in each band up to the end of each block of STEP samples. A long recording has millions of
@@ -121,6 +126,7 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
   const reach = wanted => {
     while (ended < wanted && read < lengths.length) {
       const samples = original.read(read), n = lengths[read];
+      if (read === coldFrom) filter = makeFilter(machine.sound);
       if (each.length < KEYS * n) each = new Float64Array(KEYS * n);
       filter(samples, energies, each);
       for (let i = 0; i < n; i++) {
@@ -149,6 +155,7 @@ export function soundOf(original, machine = { sound: 65536, frame: [280896, 1677
     return allowed;
   };
   const compare = (dreamport, originalOf, f) => {
+    coldFrom ??= originalOf[0];
     // the frame with the one before and the one after, so a sound's quick changes weigh less than what goes on
     const first = Math.max(0, f - WIDE), last = Math.min(dreamport.length - 1, f + WIDE);
     let n = 0;

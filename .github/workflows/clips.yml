@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+# a new push or a new text cancels the pull request's older run, as only the newest one counts for a merge (#2011)
+concurrency:
+  group: clips-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   clips:
     name: Clips
