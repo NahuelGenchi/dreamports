@@ -1,7 +1,7 @@
-// The parts program of the Super Nintendo's test of a game made a part at a time, each part a function at a time
-// (../made-up-snes.mjs, madeUpPartsCartridge, and ../snes-parts.mjs) in C, on the console's kit (kit/snes/c/): a twin
-// of each function its V-blank runs, with its contract beside it (../../snes/contracts.mjs), and the game's start and
-// step, which call them as the original does. The test fills in each function's label, between two at signs.
+// The twins of the parts program's functions (../../made-up-snes.mjs, madeUpPartsCartridge), each with its contract
+// beside it, which says what of the 65816's registers and flags it's given and gives back (../../../snes/contracts.mjs).
+// Each keeps its values where the original does, at the console's own addresses, and reads and writes the hardware
+// through the kit, as the original's loads and stores do. The test fills in each function's label, between two at signs.
 
 #include "snes.h"
 
@@ -10,6 +10,12 @@
 #define WORD(address) (*(volatile uint16_t *)(uintptr_t)(address))
 // where the direct page's byte `at` is, in the work memory, as the console has it below $2000 of every low bank
 #define DIRECT(d, at) (0x7E0000 | (uint16_t)((d) + (at)))
+
+// dp:twin @NMI@ a8i16 nmi(D) if D < 0x1E00 && (DB & 0x40) == 0
+void nmi(uint16_t d) {
+  snes_read(0x4210);
+  BYTE(DIRECT(d, 2)) = (uint8_t)(BYTE(DIRECT(d, 2)) + 1);
+}
 
 // dp:twin @COUNT@ a8i16 count(D) if D < 0x1E00
 void count(uint16_t d) {
@@ -34,26 +40,9 @@ void blue(uint16_t *a, uint16_t d) {
   *a = (uint16_t)((*a & 0xFF00) | level);
 }
 
-// dp:twin @NMI@ a8i16 nmi(&A, D) if D < 0x1E00 && (DB & 0x40) == 0
-void nmi(uint16_t *a, uint16_t d) {
-  snes_read(0x4210);
-  count(d);
-  if (BYTE(DIRECT(d, 0)) >= 60) blue(a, d);
-  else red(a, d);
+// dp:twin @BONUS@ a8i16 bonus(&A, D) if D < 0x1E00
+void bonus(uint16_t *a, uint16_t d) {
+  BYTE(DIRECT(d, 4)) = 0x01;
+  *a = (uint16_t)((*a & 0xFF00) | 0x01);
 }
 
-void game_start(void) {
-  SNES_RAM[0] = SNES_RAM[1] = 0;
-  snes_write(0x2100, 0x0F);
-  snes_write(0x4200, 0x80);
-}
-
-// the V-blank, with the direct page at 0, where the original's start leaves it
-void game_step(uint32_t buttons) {
-  (void)buttons;
-  uint16_t a = 0;
-  nmi(&a, 0);
-}
-
-void game_draw(void) {}
-void game_sound(float *left, float *right, int samples) { (void)left; (void)right; (void)samples; }

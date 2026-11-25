@@ -60,6 +60,10 @@ const OTHER = { title: /^[A-Za-z0-9][A-Za-z0-9 _.!&',:+()-]{0,59}$/, code: /^[A-
 const HEADER = {
   gba: { title: /^[A-Za-z0-9 _.!&'-]{1,12}$/, code: /^[A-Z0-9]{4}$/, address: /^0[89]/, named: () => true },
   ps2: { ...OTHER, code: /^(?:[A-Z]{4}_[0-9]{3}\.[0-9]{2})?$/, places: true },
+  // a Nintendo DS cartridge's header has a title of up to 12 letters and a code of 4, and its code is the ARM9's
+  // program, in the main memory or copied to the fast memory below it, with the ARM7's program and each overlay a
+  // place of its own, as 02380000@ARM7 and 02100000@OVERLAY9_0003 (tools/nds/functions.mjs)
+  nds: { title: /^[A-Za-z0-9 _.!&'-]{1,12}$/, code: /^[A-Z0-9]{4}$/, address: /^0[12]/, named: () => true, places: true },
   other: OTHER,
 };
 const headerOf = console => HEADER[console] ?? HEADER.other;
@@ -88,7 +92,7 @@ export function readOriginal(text) {
 // On a disc with more places than one, a function not in the program the disc boots says where it is after its
 // address: `@` and the file's path, with the module or the place inside it after a colon, and `~vu` for a vector
 // unit's code, as 00000000@IOPRP254.IMG:CDVDFSV and 003599B8~vu
-const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}":\s*"(?:a8i8|a8i16|a16i8|a16i16|e)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
+const CODE_MAP = /^\{\s*"original":\s*"([0-9a-f]{40})",\s*"from":\s*"([A-Za-z0-9 _.,:()/'-]{1,200})",\s*"functions":\s*\[\s*(?:\["[0-9A-F]{8}(?:\/[0-9A-F]{16}|(?:@[A-Z0-9_.-]{1,32}(?:\/[A-Z0-9_.-]{1,32}){0,5}(?::(?:[A-Z0-9_]{1,32}|0x[0-9A-Fa-f]{1,8}))?)?(?:~vu)?)?",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\](?:,\s*"copies":\s*\[\s*(?:\["[0-9A-F]{8}",\s*"[0-9A-F]{8}",\s*[1-9][0-9]{0,8}\](?:,\s*)?)+\s*\])?(?:,\s*"modes":\s*\{\s*(?:"[0-9A-F]{8}(?:@[A-Z0-9_]{1,32})?":\s*"(?:a8i8|a8i16|a16i8|a16i16|e|thumb)"(?:,\s*)?)+\s*\})?\s*\}\s*$/;
 
 /** The code map's source, when the code map has only functions in order, of this copy, where its console's code is, or else null.
  *  A Super Nintendo game's map also says the processor's mode each function starts in (tools/snes/functions.mjs). */

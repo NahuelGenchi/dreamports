@@ -6,11 +6,11 @@ name: Linux, Mac and Windows (Super Nintendo and Nintendo 64)
 # npm run test:snes-call, which builds the program that runs one function of a cartridge in Snes9x's own 65816 and
 # tries it, and npm run test:snes-twin, the function check on a made-up cartridge's twins, with each proof kept, going
 # stale and held by proofs --check. Linux runs both in Check. Then each of the three, Linux too, runs
-# npm run test:snes-parts (#1921): a made-up game whose tasks are its parts, each made a function at a time, from
-# proofs --start --parts to ready --task passing, with Snes9x built there with the tools' change to it, each twin
-# proven and every frame compared in the computer's own browser. It's here and not in Check, whose jobs have 15
-# minutes each, as it runs ready whole three times. Nothing from any game's copy is needed, and nothing is sent
-# anywhere: GitHub is a stand-in the test starts.
+# npm run test:part-tasks -- snes (#1921): a made-up game whose tasks are its parts, each made a function at a time,
+# from proofs --start --parts to its last task done, with Snes9x built there with the tools' change to it, each twin
+# proven and every frame compared in the computer's own browser. It's here and not in Check, as ready builds the
+# site in it. Nothing from any game's copy is needed, and nothing is sent anywhere: GitHub is a stand-in the test
+# starts.
 #
 # The Nintendo 64's (#1929): npm run test:n64-call, which builds the program that runs one function of a cartridge in
 # Parallel N64's own processor and tries it, and npm run test:n64-twin, the function check on a made-up program's
@@ -41,7 +41,10 @@ on:
       - 'tools/snes/**'
       - 'tools/n64/**'
       - 'tools/test/made-up-snes.mjs'
-      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/snes*'
+      - 'tools/test/part-tasks/snes/**'
+      - 'tools/test/stand-in/**'
       - 'tools/test/made-up-n64.mjs'
       - 'tools/test/snes-*'
       - 'tools/test/snes-*/**'
@@ -66,7 +69,10 @@ on:
       - 'tools/snes/**'
       - 'tools/n64/**'
       - 'tools/test/made-up-snes.mjs'
-      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/snes*'
+      - 'tools/test/part-tasks/snes/**'
+      - 'tools/test/stand-in/**'
       - 'tools/test/made-up-n64.mjs'
       - 'tools/test/snes-*'
       - 'tools/test/snes-*/**'
@@ -99,7 +105,7 @@ jobs:
           check-latest: true
           cache: npm
       - run: npm ci
-      - run: npm run test:snes-parts
+      - run: npm run test:part-tasks -- snes
 
   linux-n64:
     name: Linux (Nintendo 64)
@@ -147,7 +153,7 @@ jobs:
           npm ci
       - run: npm run test:snes-call
       - run: npm run test:snes-twin
-      - run: npm run test:snes-parts
+      - run: npm run test:part-tasks -- snes
 
   mac-n64:
     name: Mac (Nintendo 64)
@@ -195,7 +201,7 @@ jobs:
       - run: npm ci
       - run: npm run test:snes-call
       - run: npm run test:snes-twin
-      - run: npm run test:snes-parts
+      - run: npm run test:part-tasks -- snes
 
   windows-n64:
     name: Windows (Nintendo 64)
