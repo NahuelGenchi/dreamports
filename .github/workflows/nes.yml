@@ -6,7 +6,11 @@ name: Mac and Windows (NES)
 # test:nes-twin, the function check, which builds a program of its own each time it runs: with Apple's compiler on a
 # Mac, and on Windows with w64devkit's, which the tools get once and keep (#1957). GitHub's Windows has a gcc of its
 # own on the PATH, which a person's seldom has, so that job takes it off the PATH first, and the tools get their own.
+# Then each builds the NES's reference emulator, FCEUmm, from its makers' source, as setup does on a person's computer,
+# and runs test:real-console, which proves a program of the project's own on it in the computer's own browser (#1967).
 # Linux runs it in Check. Nothing from any game's copy is needed, and nothing is sent anywhere.
+#
+# Each also runs test:part-tasks, a game whose parts are its tasks, as far as the NES's tools reach (#1970).
 #
 # It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
 # what those tools are made of, after they merge, every week, and by hand.
@@ -24,8 +28,11 @@ on:
       - 'tools/libretro/**'
       - 'tools/nes/**'
       - 'tools/test/made-up-nes*'
+      - 'tools/test/part-tasks*'
+      - 'tools/test/part-tasks/**'
       - 'tools/test/nes-*'
       - 'tools/test/nes-twin/**'
+      - 'tools/test/real-console.mjs'
       - '!tools/**/*.md'
   push:
     branches: [main]
@@ -41,8 +48,11 @@ on:
       - 'tools/libretro/**'
       - 'tools/nes/**'
       - 'tools/test/made-up-nes*'
+      - 'tools/test/part-tasks*'
+      - 'tools/test/part-tasks/**'
       - 'tools/test/nes-*'
       - 'tools/test/nes-twin/**'
+      - 'tools/test/real-console.mjs'
       - '!tools/**/*.md'
   schedule:
     - cron: '17 7 * * 1'
@@ -83,7 +93,11 @@ jobs:
           test "$(command -v node)" = "$(brew --prefix)/bin/node"
           node --version
           npm ci
+      # it builds the emulator itself, as prove does the first time it needs it
+      - run: npm run test:part-tasks -- nes
       - run: npm run test:nes-twin
+      - run: npm run dp -- setup nes
+      - run: npm run test:real-console
 
   windows:
     name: Windows (NES)
@@ -100,6 +114,8 @@ jobs:
           check-latest: true
           cache: npm
       - run: npm ci
+      # it builds the emulator itself, as prove does the first time it needs it, with GitHub's own gcc for the function check
+      - run: npm run test:part-tasks -- nes
       # no compiler of the computer's own, as on most people's Windows: the tools get their own
       - name: No gcc on the PATH
         shell: pwsh
@@ -112,3 +128,5 @@ jobs:
           if (Get-Command gcc -ErrorAction SilentlyContinue) { throw 'gcc is still on the PATH' }
           npm run test:nes-twin
           if (-not (Test-Path "$env:ProgramData\dreamports-compiler\w64devkit\bin\gcc.exe")) { throw 'the tools kept no compiler' }
+      - run: npm run dp -- setup nes
+      - run: npm run test:real-console
