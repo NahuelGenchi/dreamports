@@ -11,6 +11,9 @@ name: Mac
 # Apple's chip, and npm run test:ps2-memories on both, which takes a made-up program's memories of play in Play! itself.
 # And on the Mac, npm run test:ps2-disc, test:ps2-cards, test:ps2-ledger and test:ps2-memory: the kit's disc reads and
 # memory cards against Play!'s, what the tools learn as a game plays, and the console's memories prove compares.
+# And on Windows (#1909), on GitHub's own, with only Node.js and git there: setup gets its compiler, CMake and Mesa, whose
+# llvmpipe draws the console's pictures on the processor as on Linux, and builds Play! with them, and the same tests
+# run, with npm run test:ps2-same compared with Linux's as the Mac's is.
 # Nothing from any game is needed, and nothing is sent anywhere.
 #
 # It isn't part of Check, as building Play! takes a while. It runs on pull requests that touch what the PlayStation 2's
@@ -24,12 +27,14 @@ on:
       - 'kit/consoles.js'
       - 'kit/ps2/**'
       - 'tools/consoles.mjs'
+      - 'tools/gba/windows.mjs'
       - 'tools/libretro/**'
       - 'tools/lib/draw-lists.mjs'
       - 'tools/ps2/**'
       - 'tools/setup.mjs'
       - 'tools/lib/sound.mjs'
       - 'tools/test/made-up-ps2*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/ps2-*'
       - 'tools/test/real-ps2.mjs'
   push:
@@ -40,12 +45,14 @@ on:
       - 'kit/consoles.js'
       - 'kit/ps2/**'
       - 'tools/consoles.mjs'
+      - 'tools/gba/windows.mjs'
       - 'tools/libretro/**'
       - 'tools/lib/draw-lists.mjs'
       - 'tools/ps2/**'
       - 'tools/setup.mjs'
       - 'tools/lib/sound.mjs'
       - 'tools/test/made-up-ps2*'
+      - 'tools/test/parts-flow.mjs'
       - 'tools/test/ps2-*'
       - 'tools/test/real-ps2.mjs'
   schedule:
@@ -95,6 +102,9 @@ jobs:
           retention-days: 7
       # the function check's memories of play, taken in Play! itself, which Check doesn't build
       - run: npm run test:ps2-memories
+      # what prove says each part of a game runs, a function of each kind in the part it first runs in (#1927)
+      - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
 
   mac:
     name: Mac (PlayStation 2)
@@ -183,6 +193,8 @@ jobs:
       - run: npm run test:ps2-ledger
       - run: npm run test:ps2-memory
       - run: npm run test:ps2-cards
+      - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
       - run: npm run test:ps2-flow -- --safari
 
       # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
@@ -190,10 +202,71 @@ jobs:
         if: always()
         run: test ! -e "$HOME/Documents/Play Data Files"
 
+  windows:
+    name: Windows (PlayStation 2)
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js, and Edge, which comes with Windows. setup gets the
+      # compiler and CMake itself (tools/gba/windows.mjs), and Mesa, which draws the console's pictures on the
+      # processor there (tools/libretro/build.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'schedule'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dll
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs', 'tools/gba/windows.mjs') }}
+      - run: npm run dp -- setup ps2
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: github.event_name != 'pull_request'
+        with:
+          path: .dreamports/libretro/play_libretro-*.dll
+          key: play-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/consoles.mjs', 'tools/libretro/play.patch', 'tools/libretro/build.mjs', 'tools/gba/windows.mjs') }}
+
+      - run: npm run test:ps2-same -- --write ps2-same-windows.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ps2-same-windows
+          path: ps2-same-windows.json
+          retention-days: 7
+
+      - run: npm run test:real-ps2
+      - run: npm run test:ps2-3d
+      - run: npm run test:ps2-kit
+      - run: npm run test:ps2-gs
+      - run: npm run test:ps2-sound
+      - run: npm run test:ps2-iop-time
+      - run: npm run test:ps2-cards
+      # the function check: Play!'s processors built by themselves with the compiler setup gets, and memories of play
+      - run: npm run test:ps2-call
+      - run: npm run test:ps2-twin
+      - run: npm run test:ps2-twin-programs
+      - run: npm run test:ps2-memories
+      - run: npm run test:ps2-disc
+      - run: npm run test:ps2-ledger
+      - run: npm run test:ps2-memory
+      - run: npm run test:ps2-part-functions
+      - run: npm run test:ps2-parts
+      - run: npm run test:ps2-flow
+
+      # Play! keeps its settings and memory cards in the Documents folder, which each run's own folder stands in for
+      - name: Nothing left in the person's own folders
+        if: always()
+        shell: bash
+        run: test ! -e "$USERPROFILE/Documents/Play Data Files"
+
   same:
-    name: Same on Linux and a Mac (PlayStation 2)
-    needs: [linux, mac]
-    # even when a later test on the Mac failed, as its fingerprints are taken before them
+    name: Same on Linux, a Mac and Windows (PlayStation 2)
+    needs: [linux, mac, windows]
+    # even when a later test on the Mac or Windows failed, as their fingerprints are taken before them
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -206,3 +279,4 @@ jobs:
           pattern: ps2-same-*
           merge-multiple: true
       - run: node tools/test/ps2-same.mjs --compare ps2-same-linux.json ps2-same-mac.json
+      - run: node tools/test/ps2-same.mjs --compare ps2-same-linux.json ps2-same-windows.json

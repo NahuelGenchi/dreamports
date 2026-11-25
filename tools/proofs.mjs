@@ -170,7 +170,8 @@ const summary = counts => `${count(counts.bytes + counts.memory)} of ${plural(co
 export function groupLines(group, states) {
   return group.functions.map(f => {
     const state = states.get(f.key), twin = state.twin ? `${state.twin.name}, ${state.twin.file}:${state.twin.line}: ` : '';
-    return `  0x${hex(f.address)}  ${String(f.size).padStart(5)} bytes  ${f.name ? `${f.name}, ` : ''}${twin}${stateText(state)}`;
+    // one of another program of a PlayStation 2 disc, or a vector unit's, as its twin's comment names it
+    return `  0x${hex(f.address)}${f.program ? `@${f.program}` : ''}${f.vu ? '~vu' : ''}  ${String(f.size).padStart(5)} bytes  ${f.name ? `${f.name}, ` : ''}${twin}${stateText(state)}`;
   });
 }
 
@@ -211,7 +212,7 @@ function showAlone(version, named, codeMap, states, groups) {
 function begin(version) {
   const { game, language } = versionOf(version), original = readOriginal(version);
   if (writtenIn(language) !== 'c') throw new Error(`A function's proof is of a twin in C: name the game's version in C, such as ${game}/c.`);
-  if (!KEEPS_PROOFS.includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES, the Super Nintendo, the PlayStation, the PlayStation 2 and the Nintendo DS, and on no other console yet (docs/CONSOLES.md).');
+  if (!KEEPS_PROOFS.includes(original.console)) throw new Error('The tools prove a function on the Game Boy Advance, the NES, the Super Nintendo, the Nintendo 64, the Game Boy, the Game Boy Color, the PlayStation, the PlayStation 2 and the Nintendo DS, and on no other console yet (docs/CONSOLES.md).');
   if (!readCodeMap(version)) throw new Error(`games/${game}/proof/ has no code map yet, and its functions are the tasks: npm run dp -- codemap ${game} makes one.`);
   console.log(startProofs(version)
     ? `Written: games/${version}/proof/${PROOFS}, with no proof in it yet. ${version} is made a function at a time from here on: npm run dp -- tasks ${version} opens its tasks from its code map, and npm run dp -- match and npm run dp -- twin keep each proof they find.`
