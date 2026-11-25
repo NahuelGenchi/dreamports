@@ -3,9 +3,11 @@
 // original's side is Gambatte's own processor, which the check builds from its makers' source, fetched as the reference
 // emulator's is. Every twin has to be the same as its original. Then one line of the twins is changed at a time, and
 // the check has to find each: a wrong number, a wrong flag in a contract, a register a contract leaves out, a place in
-// a table that doesn't wrap round at 256, a wrong time, a twin that falls over, and one that never returns. Last, the
-// same program as a game of its own, checked through the tool everyone runs, npm run dp -- twin (../twin.mjs), which
-// hands the Game Boy's check the command, with its proofs kept: a twin whose calls leave a path out isn't proven.
+// a table that doesn't wrap round at 256, a wrong time, a twin that falls over, and one that never returns. Then two
+// functions are left as stops, and the twins that call them have to be the same as their originals, with the
+// original's functions run for the stops, and still differ when they call them wrong. Last, the same program as a game
+// of its own, checked through the tool everyone runs, npm run dp -- twin (../twin.mjs), which hands the Game Boy's
+// check the command, with its proofs kept: a twin whose calls leave a path out isn't proven.
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -14,7 +16,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO, gameFolder, proofFolder } from '../lib/paths.mjs';
 import { startingFiles } from '../lib/new-game.mjs';
-import { buildCheck, checkTwins, contractsIn } from '../gbc/twin.mjs';
+import { buildCheck, checkTwins, contractsIn, stopsIn } from '../gbc/twin.mjs';
 import { madeUpTwins } from './made-up-gb.mjs';
 
 const GAME = fileURLToPath(new URL('./gb-twin/game.c', import.meta.url));
@@ -46,14 +48,15 @@ function tried(name, changes = [], options = {}) {
   writeFileSync(join(sources, 'game.c'), text);
   const built = buildCheck({ rom: readFileSync(copy), sources, work: join(work, name), log: quiet });
   const { results, same } = checkTwins({ built, copy, calls: CALLS, log: quiet, ...options });
-  return { same, results, of: Object.fromEntries(results.map(result => [result.call.match(/^\w+/)[0], result])) };
+  return { built, same, results, of: Object.fromEntries(results.map(result => [result.call.match(/^\w+/)[0], result])) };
 }
-const others = (run, name) => run.results.filter(result => result !== run.of[name]).every(result => result.same);
+// every twin but those named is the same as its original
+const others = (run, ...names) => run.results.filter(result => !names.some(name => result === run.of[name])).every(result => result.same);
 
 console.log('The contracts as they\'re read:');
 {
   const { contracts, bank, errors } = contractsIn(game, 4);
-  check(contracts.length === 7 && !errors.length && bank === 0xC010, `seven contracts and the bank's byte, $C010 (${contracts.length}, ${errors.length} unread)`);
+  check(contracts.length === 10 && !errors.length && bank === 0xC010, `ten contracts and the bank's byte, $C010 (${contracts.length}, ${errors.length} unread)`);
   const add = contracts.find(contract => contract.name === 'sub_0500'), send = contracts.find(contract => contract.name === 'sub_0540'), clear = contracts.find(contract => contract.name === 'sub_05A0');
   check(add?.call === 'add_to_total(A)' && add.back === 'CF' && add.given === null && add.offset === 0x0500, 'a call, and after -> what its result equals');
   check(send?.byAddress === 0b100 && send.back === null, 'a register given with & is one the twin changes');
@@ -67,14 +70,15 @@ console.log('The contracts as they\'re read:');
 
 console.log('The twins as they are, from random memories:');
 const right = tried('right');
-check(right.same === 7, `all seven twins are the same as their originals (${right.same})`);
+check(right.same === 10, `all ten twins are the same as their originals (${right.same})`);
 check(right.results.every(result => result.changed.calls === CALLS), `each on ${CALLS} calls, none left out`);
 check(right.of.add_to_total.counts && right.of.pick.counts && !right.of.send.counts, 'the time is compared for the twins that count it');
 
 console.log('One line changed at a time:');
 {
   let run = tried('number', [['RAM(0xC022)++;', 'RAM(0xC022) += 2;']]), changed = run.of.add_to_total.changed;
-  check(!run.of.add_to_total.same && changed.memory === 0 && changed.gives === CALLS && changed.differs[0]?.[0] === 0xC022 && others(run, 'add_to_total'), 'a wrong number is found, with the byte it leaves different, and no other twin differs');
+  check(!run.of.add_to_total.same && changed.memory === 0 && changed.gives === CALLS && changed.differs[0]?.[0] === 0xC022 && !run.of.twice.same && !run.of.again.same && others(run, 'add_to_total', 'twice', 'again'),
+    'a wrong number is found, with the byte it leaves different, and no other twin differs but twice and again, which call it');
 
   run = tried('flag', [['add_to_total(A) -> CF', 'add_to_total(A) -> ZF']]);
   changed = run.of.add_to_total.changed;
@@ -121,6 +125,56 @@ console.log('One line changed at a time:');
   check(/didn't build/.test(said) && /add_to_total/.test(said) && /game\.c/.test(said), 'a contract that calls a function the C doesn\'t have stops the build, naming it');
 }
 
+// Twins that call functions the game hasn't written yet, stops: bump, with no contract, and add_to_total, whose
+// contract says what goes in A and what comes back. The check runs the original's for each call twice and again make
+// to them. again's original only jumps to add, so nothing of the call is on its stack, nor may be on the twin's.
+const asStops = [
+  ['// dp:twin sub_05E0 bump()\nvoid bump(void) {\n  RAM(0xC035)++;\n  gb_spend(40);\n}', '// bump, at sub_05E0, isn\'t ported yet. dp:stop sub_05E0\nvoid bump(void) {}'],
+  [game.match(/int add_to_total\(uint8_t amount\) \{\n[^]*?\n\}/)[0], '// dp:stop sub_0500\nint add_to_total(uint8_t amount) { return 0; }'],
+];
+const withStops = asStops.reduce((text, [from, to]) => text.replace(from, to), game);
+console.log('A twin that calls a stop:');
+{
+  const { stops, notes } = stopsIn(withStops, 4, contractsIn(withStops, 4).contracts);
+  check(stops.length === 2 && !notes.length && stops.find(stop => stop.definition.name === 'bump')?.offset === 0x05E0 && stops.find(stop => stop.definition.name === 'add_to_total')?.contract?.back === 'CF',
+    'a stop in the comment above a function is read, with its contract when it has one');
+  const forms = stopsIn([
+    'void first(void) {\n  // dp:stop sub_0600\n}',
+    'int second(uint8_t a) {\n  /* dp:stop sub_0610 */\n  return 0;\n}',
+    'void third(void) {} // dp:stop sub_0620',
+    '/** sub_0640: a twin with a path not ported yet. */\nvoid fourth(void) {\n  // dp:stop sub_0630\n}',
+    'void fifth(void) {\n  first();\n  // dp:stop sub_0650\n}',
+    '// dp:twin sub_0660 sixth()\n// dp:stop sub_0670\nvoid sixth(void) {}',
+    '// dp:stop sub_0680\nvoid seventh(uint8_t a) {}',
+    '// dp:twin sub_0690 eighth(A + 1)\n// dp:stop sub_0690\nvoid eighth(uint8_t a) {}',
+  ].join('\n\n'), 4, contractsIn('// dp:twin sub_0660 sixth()\n// dp:twin sub_0610 second(A) -> A\n// dp:twin sub_0690 eighth(A + 1)', 4).contracts);
+  check(forms.stops.map(stop => stop.definition.name).join() === 'first,second,third', `first in a body and on the line a function starts on too, and not for a path in a function, or another's (${forms.stops.map(stop => stop.definition.name).join(', ')})`);
+  check(forms.notes.length === 2 && /seventh is a stop for sub_0680.*takes a value, and no contract says which register/.test(forms.notes[0].note) && /isn't a register or a pair alone/.test(forms.notes[1].note),
+    'a stop that takes a value with no contract to say where, or with a contract that gives it more than a register, is said');
+
+  const run = tried('stops', asStops);
+  check(run.results.length === 8 && run.of.twice?.same && run.of.twice.changed.calls === CALLS && run.of.twice.counts && others(run),
+    'twice, which calls two stops, is the same as its original on every call, with its time, so the original\'s functions ran for them, and add_to_total\'s contract isn\'t checked');
+  check(run.of.again?.same && run.of.again.changed.calls === CALLS, 'and again, whose original only jumps to one, leaves nothing of the call on the stack either');
+  let said = '';
+  try {
+    checkTwins({ built: run.built, copy, calls: 10, only: ['bump'], log: quiet });
+  } catch (error) {
+    said = error.message;
+  }
+  check(/bump, at .*game\.c:\d+, is a stop for sub_05E0, so it has no twin to check yet/.test(said), 'a stop named to check is said to have no twin yet');
+
+  let wrong = tried('stop-wrong', [...asStops, ['return add_to_total(amount);', 'return add_to_total((uint8_t)(amount + 1));']]);
+  check(!wrong.of.twice.same && wrong.of.twice.changed.memory < CALLS && others(wrong, 'twice'), 'a twin that calls a stop with the wrong value differs');
+  wrong = tried('stop-once', [...asStops, ['  gb_spend(24);\n  bump();\n', '  gb_spend(24);\n']]);
+  check(!wrong.of.twice.same && wrong.of.twice.changed.differs[0]?.[0] === 0xC035, 'and so does one that doesn\'t call it, at the byte it leaves');
+  wrong = tried('stop-time', [...asStops, ['gb_spend(20);', 'gb_spend(16);']]);
+  check(!wrong.of.twice.same && wrong.of.twice.changed.same === CALLS && /4 cycles short/.test(wrong.of.twice.why.join(' ')), 'and one that counts the time apart from the original\'s, where the stop\'s is the original function\'s');
+  wrong = tried('stop-blind', [...asStops, ['// dp:twin sub_0500 add_to_total(A) -> CF\n', '']]);
+  check(!wrong.of.twice.same && wrong.built.notes.some(note => /add_to_total is a stop for sub_0500, and a twin that calls it runs its C as it is: it takes a value/.test(note)),
+    'a stop with no contract to say what it takes runs its C, which is said, and its caller differs');
+}
+
 // The tool as it's typed: the program as a game in games/, for as long as this takes, with its copy shown to the tools.
 {
   console.log('Through npm run dp -- twin:');
@@ -147,25 +201,25 @@ console.log('One line changed at a time:');
     let run = dp('rom', copy);
     check(run.status === 0 && run.out.includes(NAME), 'rom knows the program\'s copy');
     run = dp('twin', VERSION, '--calls', '300');
-    check(run.status === 0 && /7 of 7 twins the same as the original on every call/.test(run.out), `every twin of a version is checked, and it ends with 0: ${run.out.trim().split('\n').at(-1)}`);
-    check(/300 calls from a memory of random bytes/.test(run.out) && (run.out.match(/the same on all 300 calls/g) ?? []).length === 7, 'with as many calls as --calls says, a line for each twin');
+    check(run.status === 0 && /10 of 10 twins the same as the original on every call/.test(run.out), `every twin of a version is checked, and it ends with 0: ${run.out.trim().split('\n').at(-1)}`);
+    check(/300 calls from a memory of random bytes/.test(run.out) && (run.out.match(/the same on all 300 calls/g) ?? []).length === 10, 'with as many calls as --calls says, a line for each twin');
     run = dp('twin', '--seed', '9', VERSION, 'add_to_total', 'sub_0540', '--calls', '300', '--seconds', '1');
     check(run.status === 0 && /2 of 2 twins the same/.test(run.out), `functions are named by the twin's name or the original's, with an option before the version: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', NAME, 'pick', '--calls', '300');
     check(run.status === 0 && /1 of 1 twins the same/.test(run.out), 'the game\'s name alone means its version in C');
     // a version that keeps its proofs (../lib/proofs.mjs): each twin whose calls took every path of the original's is kept
     run = dp('codemap', NAME);
-    check(run.status === 0 && /8 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 0 && /11 functions/.test(run.out), `its code map is made from the copy: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION, '--start');
     check(run.status === 0 && existsSync(join(proofFolder(VERSION), 'proofs.json')), 'its proofs start with none');
     const lines = () => JSON.parse(readFileSync(join(proofFolder(VERSION), 'proofs.json'), 'utf8')).functions;
     run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 0 && /7 of those 7 took every path of the original's function/.test(run.out) && /7 functions kept as proven by the same memory/.test(run.out) && lines().length === 7 && lines().every(line => line[1] === 'memory' && line[4] === 1000),
+    check(run.status === 0 && /10 of those 10 took every path of the original's function/.test(run.out) && /10 functions kept as proven by the same memory/.test(run.out) && lines().length === 10 && lines().every(line => line[1] === 'memory' && line[4] === 1000),
       `each twin whose calls took every path of the original's is kept as proven by the same memory: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('proofs', VERSION, '--check');
     check(run.status === 0, 'and every proof kept holds');
     run = dp('proofs', VERSION);
-    check(run.status === 0 && /7 of 8 functions proven/.test(run.out) && /Functions 00000500 to 000005A0 +proven/.test(run.out) && /Function 00004100 +proven/.test(run.out),
+    check(run.status === 0 && /10 of 11 functions proven/.test(run.out) && /Functions 00000500 to 000005F0 +proven/.test(run.out) && /Function 00004100 +proven/.test(run.out),
       `its start at $0100, which never comes back to a caller, is the one no proof can be given of, and its tasks are its other functions, a bank each: ${run.out.trim().split('\n').find(line => line.includes('functions proven'))}`);
     write(game.replace('add_to_total(A) -> CF', 'add_to_total(A) -> CF if A < 200'));
     run = dp('proofs', VERSION, '--check');
@@ -179,15 +233,20 @@ console.log('One line changed at a time:');
     check(run.status === 1 && /clear in src\/game\.c/.test(run.out), 'and its old proof, of another contract, no longer holds');
     write(game.replace('RAM(0xC022)++;', 'RAM(0xC022) += 2;'));
     run = dp('twin', VERSION, '--calls', '1000');
-    check(run.status === 3 && lines().length === 6, 'a twin that differs loses its line');
+    check(run.status === 3 && lines().length === 7, 'a twin that differs, and twice and again, which call it, lose their lines');
     run = dp('twin', VERSION, '--calls', '300');
-    check(run.status === 3 && /6 of 7 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the other consoles: ${run.out.trim().split('\n').at(-1)}`);
+    check(run.status === 3 && /7 of 10 twins the same/.test(run.out) && /add_to_total\(A\): differs/.test(run.out), `a twin that differs ends it with 3, as on the other consoles: ${run.out.trim().split('\n').at(-1)}`);
     run = dp('twin', VERSION, '--frames', '10');
     check(run.status === 1 && /--frames isn't one of its options/.test(run.out) && /npm run dp -- twin/.test(run.out), 'an option of another console\'s check is refused, with how the tool is typed');
     run = dp('twin', VERSION, '--memories');
     check(run.status === 1 && /can't start a call from a memory of play on the Game Boy yet/.test(run.out), 'and so are memories of play, which it can\'t take yet, with why');
     run = dp('twin', VERSION, 'nothing_here');
     check(run.status === 1 && /No contract is for nothing_here/.test(run.out), 'and so is a function with no contract');
+    // with stops for two of the functions the code map has, twice and again are proven again, by the original's for them
+    write(withStops);
+    run = dp('twin', VERSION, '--calls', '1000');
+    check(run.status === 0 && /Where a twin calls add_to_total, bump, which are stops, the original's functions run instead: sub_0500, sub_05E0\./.test(run.out) && /8 of 8 twins the same/.test(run.out)
+      && ['000005C0', '000005F0'].every(key => lines().some(line => line[0] === key && line[4] === 1000)), `a twin that calls stops is kept as proven, as the original's functions ran for them: ${run.out.trim().split('\n').at(-1)}`);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);
