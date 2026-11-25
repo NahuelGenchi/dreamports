@@ -167,6 +167,30 @@ async function wholeGame(cartridge, sizes) {
     const listing = join(LOCAL, 'match', VERSION, '80000700.txt');
     check(run.status === 0 && /The same {2}0x80000700 func_80000700/.test(run.out) && existsSync(listing) && readFileSync(listing, 'utf8').includes('jal'),
       'one function asked for by its label is compared alone, with its instructions beside the original\'s kept out of the repository');
+
+    console.log('Its proofs, from proofs --start on:');
+    const proofs = join(proofFolder(VERSION), 'proofs.json'), kept = () => JSON.parse(readFileSync(proofs, 'utf8')).functions;
+    const program = join(gameFolder(VERSION), 'src', 'program.c'), source = readFileSync(join(HERE, 'program.c'), 'utf8');
+    check(!existsSync(proofs), 'a version made a part at a time keeps nothing');
+    run = dp('proofs', VERSION, '--start');
+    check(run.status === 0 && existsSync(proofs) && kept().length === 0, 'its proofs start with none');
+    run = dp('match', VERSION);
+    check(run.status === 0 && /4 functions kept as proven by the same bytes/.test(run.out) && kept().length === 4 && kept().every(line => /^80[0-9A-F]{6}$/.test(line[0]) && line[1] === 'bytes' && line.length === 4),
+      `match keeps each function it finds the same, by its address: ${run.out.trim().split('\n').at(-1)}`);
+    const asMatchLeft = readFileSync(proofs, 'utf8');
+    check(dp('proofs', VERSION, '--check').status === 0, 'proofs --check holds them');
+    writeFileSync(program, source.replace('return x + 1;', 'return x + 2;'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && (run.out.match(/changed since/g) ?? []).length === 1, `a proof goes stale when its twin's C changes, its own and no other's: ${run.out.trim().split('\n')[0]}`);
+    run = dp('match', VERSION);
+    check(run.status === 0 && /3 of 4 functions the same/.test(run.out) && kept().length === 3, 'match finds the changed twin differs, and its line goes');
+    writeFileSync(program, source);
+    run = dp('match', VERSION);
+    check(run.status === 0 && readFileSync(proofs, 'utf8') === asMatchLeft, 'and with the twin as it was, the file is as it was');
+    writeFileSync(proofs, asMatchLeft.replace(/(\["80[0-9A-F]{6}","bytes","[0-9a-f]{16}",)"[0-9a-f]{16}"/, '$1"0123456789abcdef"'));
+    run = dp('proofs', VERSION, '--check');
+    check(run.status === 1 && /is kept as proven and the copy has other bytes there/.test(run.out), 'a line of another original than the copy\'s, its bytes or where they load, doesn\'t pass for a proof');
+    writeFileSync(proofs, asMatchLeft);
   } finally {
     tidy();
     if (copies) writeFileSync(COPIES, copies);

@@ -39,12 +39,12 @@ import { copyWith } from '../lib/copies.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { twinsFolder } from '../lib/c.mjs';
 import { versionTwins } from '../lib/twins.mjs';
-import { asksForProofs } from '../lib/proofs.mjs';
+import { asksForProofs, keepProofs, keptText } from '../lib/proofs.mjs';
 import { readUnreachable, waysLeft } from '../lib/played.mjs';
 import { foldAddresses } from '../lib/wasm-fold.mjs';
 import { decode } from '../lib/mips.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
-import { openBuild } from '../gba/twin.mjs';
+import { KEPT_FROM, openBuild } from '../gba/twin.mjs';
 import { signatureOf, wrapOf } from '../ps2/twin.mjs';
 import { ps1Resolve } from '../ps1/read.mjs';
 import { findFunctions, n64Cartridge, programOf } from './functions.mjs';
@@ -475,6 +475,7 @@ export async function twin(asked, options = {}, log = console.log) {
   const { ways: ruledOut } = readUnreachable(game);
   const totals = { same: 0, differs: 0, never: 0, stopped: 0, few: 0, unchecked: 0 }, failed = [], unnamed = new Set();
   let proven = 0;
+  const kept = [], differing = [];
   const caller = new Original(buildCaller(log));
   try {
     for (const file of chosen) {
@@ -500,6 +501,8 @@ export async function twin(asked, options = {}, log = console.log) {
         }
         totals[f.kind]++;
         if (f.whole) proven++;
+        if (f.whole) kept.push({ key: hex(f.address), calls: f.compared });
+        else if (['differs', 'never', 'stopped'].includes(f.kind)) differing.push(hex(f.address));
         log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}${f.kind === 'same' ? ', ' : ': '}${f.line}`);
         if (f.kind === 'same' && f.left.length) log(`    Its calls left out ${count(f.left.length)} of its ${count(f.total)} instructions and branch ways, such as ${f.left.slice(0, 3).map(([address, how]) => `${at(address)} ${how}`).join(', ')}: it isn't proven until calls take those too.`);
       }
@@ -512,6 +515,10 @@ export async function twin(asked, options = {}, log = console.log) {
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, from the code the cartridge starts (seed ${all.seed}).`);
   if (totals.same) log(`${count(proven)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
-  if (asksForProofs(game)) log('Nothing was kept as proven: a Nintendo 64 version\'s proofs aren\'t kept in its proofs.json yet (#1644).');
+  // a proof is found with the game's own names, and over enough calls to be worth the name, as on the other consoles
+  if (!asksForProofs(game)) return totals.differs || totals.never || totals.stopped ? 3 : 0;
+  if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
+  else if (all.calls < KEPT_FROM) log(`Nothing was kept as proven: a proof by the same memory is over ${count(KEPT_FROM)} calls or more.`);
+  else for (const line of keptText(game, keepProofs(game, { kind: 'memory', proven: kept, failed: differing }), 'memory')) log(line);
   return totals.differs || totals.never || totals.stopped ? 3 : 0;
 }

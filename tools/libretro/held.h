@@ -27,9 +27,14 @@
 #ifndef DP_LIBRETRO_HELD_H
 #define DP_LIBRETRO_HELD_H
 
-#ifndef _WIN32
+// the compiler the tools build with on Windows has these too, and its own name for making a folder
 #include <dirent.h>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define heldMkdir(path) _mkdir(path)
+#else
+#define heldMkdir(path) mkdir(path, 0755)
 #endif
 
 static struct {
@@ -97,7 +102,6 @@ static void heldPut(struct heldBytes* b, const void* data, size_t size) {
 }
 static int heldByName(const void* a, const void* b) { return strcmp(*(char* const*) a, *(char* const*) b); }
 
-#ifndef _WIN32
 static void heldFolder(struct heldBytes* b, const char* folder, const char* path) {
 	DIR* dir = opendir(folder);
 	if (!dir) return;
@@ -145,20 +149,18 @@ static void heldFolder(struct heldBytes* b, const char* folder, const char* path
 	}
 	free(names);
 }
-#endif
 
-#ifndef _WIN32
-// a folder and those it's in, as `mkdir -p` makes them
+// a folder and those it's in, as `mkdir -p` makes them: Windows names a folder with either stroke
 static void heldFolders(char* path) {
 	for (char* c = path + 1; *c; c++) {
-		if (*c != '/') continue;
+		char stroke = *c;
+		if (stroke != '/' && stroke != '\\') continue;
 		*c = 0;
-		mkdir(path, 0755);
-		*c = '/';
+		heldMkdir(path);
+		*c = stroke;
 	}
-	mkdir(path, 0755);
+	heldMkdir(path);
 }
-#endif
 
 /** Before the game loads: the cards it starts from, for DP_SAVE_START, with the core's `card`. */
 static void heldStart(const char* (*card)(uint32_t, uint32_t*)) {
@@ -168,7 +170,6 @@ static void heldStart(const char* (*card)(uint32_t, uint32_t*)) {
 	size_t size;
 	uint8_t* bytes = readAll(start, &size);
 	if (!bytes) heldCant("DP_SAVE_START names no file");
-#ifndef _WIN32
 	uint32_t changes;
 	char folders[2][4096];
 	for (uint32_t port = 0; port < 2; port++) snprintf(folders[port], sizeof folders[port], "%s", card(port, &changes));
@@ -204,7 +205,6 @@ static void heldStart(const char* (*card)(uint32_t, uint32_t*)) {
 		fclose(file);
 		at += fileSize;
 	}
-#endif
 	// what DP_SAVES writes is what changed since
 	holds.cards = bytes;
 	holds.cardsBytes = size;
@@ -234,10 +234,8 @@ static void heldFrame(long frame) {
 		holds.seen = 1;
 		holds.changes = changes;
 		struct heldBytes b = { 0 };
-#ifndef _WIN32
 		heldFolder(&b, folders[0], "mc0/");
 		heldFolder(&b, folders[1], "mc1/");
-#endif
 		if (b.size == holds.cardsBytes && (!b.size || !memcmp(b.data, holds.cards, b.size))) { free(b.data); return; }
 		free(holds.cards);
 		holds.cards = b.data;

@@ -114,6 +114,9 @@ export async function run(args) {
   if (original.console === 'n64') return (await import('./n64/match.mjs')).matchGame({ game, what, more, whole, original });
   // a Super Nintendo game was written by hand in its processor's own language, or with a compiler no one can have, so
   // there's no compiler to give its bytes back, and the same memory is its functions' proof (docs/CONSOLES.md)
+  // a PlayStation Portable game was built with Sony's SDK compiler or SN Systems', which no one can have freely, and a
+  // GCC of another version gives other bytes, which would prove nothing: the same memory is its proof (docs/CONSOLES.md)
+  if (original.console === 'psp') throw new Error('match builds a twin with the compiler its game was built with and compares the bytes, and a PlayStation Portable game was built with Sony\'s compiler or SN Systems\', which the tools can\'t give you: its functions are proven by the same memory, npm run dp -- twin (docs/CONSOLES.md).');
   if (original.console === 'snes') throw new Error('match builds a twin with the compiler its game was built with and compares the bytes, and a Super Nintendo game was written by hand in its processor\'s own language, or with a compiler no one can have now: its functions are proven by the same memory, npm run dp -- twin (docs/CONSOLES.md).');
   if (original.console !== 'gba') throw new Error(`match knows the Game Boy Advance's, the PlayStation's, the PlayStation 2's and the Nintendo 64's compilers and no other console's yet (docs/CONSOLES.md).`);
   if (writtenIn(language) !== 'c') throw new Error(`match builds C: name a game's version in C, such as ${base}/c.`);

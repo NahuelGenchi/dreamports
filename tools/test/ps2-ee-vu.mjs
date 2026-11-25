@@ -6,7 +6,7 @@
 // three of the GIF's paths. Where they first part, it says which write of the list or which bytes of which memory.
 //
 // Its files are in .dreamports/test-ps2-ee-vu/, which it empties first and removes after. It needs the emulator, built
-// once by the tools, so it isn't run on every pull request, and it runs on Linux and macOS (docs/CONSOLES.md).
+// once by the tools, so it isn't run on every pull request, and it runs on Linux and macOS, and on Windows with a C compiler named in CC (docs/CONSOLES.md).
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
