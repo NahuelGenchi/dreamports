@@ -27,6 +27,12 @@ For a game's parts, the interpreter also tells whoever runs the core where the p
 it runs in play, through retro_dreamports_ran_at, as the tools' change to Parallel N64 does, so the tools know which of
 a game's functions ran in each frame. It only looks, so the console runs the same with it or without.
 
+Two settings Dolphin takes from the computer are fixed, so the same copy plays the same everywhere: a program given
+alone, or a disc with no region of its own, runs as an American console's, where Dolphin would take the computer's
+country, which sets the video interface's rate as the console starts; and the console's clock starts at the first of
+January 2002 and moves with the emulated time, as it does for one of Dolphin's movies, where it would follow the
+computer's own clock.
+
 It also has the front look for no real controller on the computer, a GameCube controller adapter over USB or a Wii
 Remote over Bluetooth: a run's buttons are the ones the tools give it and nothing else, and a search for a Wii Remote
 kept the program from ending on Windows.
@@ -665,3 +671,42 @@ index a002e3e..41c1ae6 100644
    const SW::SWTexture* sw_image = static_cast<const SW::SWTexture*>(image);
    m_gl_context->Update();  // just updates the render window position and the backbuffer size
  
+diff --git a/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp b/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
+index 82650ff..ebfd8de 100644
+--- a/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
++++ b/Source/Core/Core/HW/EXI/EXI_DeviceIPL.cpp
+@@ -419,9 +419,17 @@ u32 CEXIIPL::GetEmulatedTime(Core::System& system, u32 epoch)
+   }
+   else
+   {
++#ifdef __LIBRETRO__
++    // Dreamports: the console's clock starts at the same moment on every run, the first of January 2002, and moves with
++    // the emulated time, as it does for a movie, rather than with the computer's own clock, so a game that reads it
++    // plays the same on every computer and every time
++    constexpr u64 DREAMPORTS_START = 1009843200;
++    ltime = DREAMPORTS_START + system.GetCoreTiming().GetTicks() / system.GetSystemTimers().GetTicksPerSecond();
++#else
+     ASSERT(!Core::WantsDeterminism());
+     ltime = Common::Timer::GetLocalTimeSinceJan1970() -
+             system.GetSystemTimers().GetLocalTimeRTCOffset();
++#endif
+   }
+ 
+   return static_cast<u32>(ltime) - epoch;
+diff --git a/Source/Core/DolphinLibretro/Boot.cpp b/Source/Core/DolphinLibretro/Boot.cpp
+index 6cee24f..5042344 100644
+--- a/Source/Core/DolphinLibretro/Boot.cpp
++++ b/Source/Core/DolphinLibretro/Boot.cpp
+@@ -423,6 +423,12 @@ bool retro_load_game(const struct retro_game_info* game)
+   Config::SetBase(Config::SYSCONF_LANGUAGE, language);
+   Config::SetBase(Config::MAIN_GC_LANGUAGE, DiscIO::ToGameCubeLanguage(static_cast<DiscIO::Language>(language)));
+ 
++  // Dreamports: a program given alone, or a disc with no region of its own, would run in the region of the computer's
++  // country, on Windows, or Switzerland's, where none is found, and the region sets the video interface's rate as the
++  // console starts, so the same program would start a frame at another moment on another computer. It runs as an
++  // American console's, as a disc for one does.
++  Config::SetBase(Config::MAIN_FALLBACK_REGION, DiscIO::Region::NTSC_U);
++
+   Config::SetBase(Config::MAIN_DPL2_DECODER, false);
+   Config::SetBase(Config::MAIN_AUDIO_LATENCY, 0);
+   Config::SetBase(Config::MAIN_AUDIO_FILL_GAPS, false);
