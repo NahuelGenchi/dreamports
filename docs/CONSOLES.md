@@ -115,6 +115,8 @@ So the tools patch Play!'s libretro front as they build it, with [`tools/libretr
 
 **What's left out.** The microphone hears nothing, the lid stays open, and nothing is in the slot for Game Boy Advance cartridges. A recording can't hold any of them yet. Wireless play isn't there either. The Nintendo DSi's own games aren't run.
 
+**What ran.** The tools' patch has melonDS tell the front of each place either processor is sent to, by a call, a branch or a return, and the front says which of the code map's functions ran in each frame: one whose processor was sent to its address while the memory there held the function's first 8 bytes. A Nintendo DS game's code is all in memory, and two overlays can have the same place, so the bytes say which one is there. So `prove` lists the functions that ran in matching play, the ARM7's and an overlay's among them. It doesn't follow each instruction, so `untouched` and gameplay proven by instructions aren't there yet, and a function the processor only falls into from the one before it isn't counted.
+
 **Its memory.** The tools read and write the console's main memory, 4 MB at `0x02000000`, by its own addresses. The emulator's front says where it starts, and `host.c` counts from there.
 
 The workflow [`.github/workflows/nds.yml`](../.github/workflows/nds.yml) runs `npm run test:real-nds` on Linux, on GitHub's Mac with Apple's chip and on Windows, for pull requests that touch the Nintendo DS's files or what its emulator is built with, after they merge and every week.
