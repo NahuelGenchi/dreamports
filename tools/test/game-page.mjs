@@ -15,11 +15,15 @@ import { startingFiles } from '../lib/new-game.mjs';
 import { madeUpGame } from './made-up-game.mjs';
 import { madeUpPs2Disc } from './made-up-disc.mjs';
 import { madeUpGameCubeDisc } from './made-up-gamecube.mjs';
+import { madeUpGb } from './made-up-gb.mjs';
 import { buildGame } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const BLUE = 'blue', GREEN = 'green';
+// a Game Boy has four shades of one colour, so a new game on it shows light where the others show blue, and dark
+// where they show green
+const shownOn = (machine, colour) => (machine !== 'gb' ? colour : colour === BLUE ? 'light' : 'dark');
 
 // a controller nobody holds, whose buttons the test presses. It takes the place of any on this computer
 const STAND_IN = `
@@ -31,7 +35,7 @@ const STAND_IN = `
 `;
 // the middle of the screen, as the game's backdrop is all that a new game draws, and a console's picture can have a
 // black border round it, as the Nintendo 64's has where its emulator shows no picture
-const COLOUR = `(() => { const screen = document.getElementById('screen'); const [r, g, b] = screen.getContext('2d').getImageData(screen.width >> 1, screen.height >> 1, 1, 1).data; return g > b ? 'green' : b > g ? 'blue' : 'neither'; })()`;
+const COLOUR = `(() => { const screen = document.getElementById('screen'); const [r, g, b] = screen.getContext('2d').getImageData(screen.width >> 1, screen.height >> 1, 1, 1).data; return g > b ? 'green' : b > g ? 'blue' : r > 128 ? 'light' : 'dark'; })()`;
 
 // a step failed that the ones after it need: the test ends there and says so, in place of whatever those would throw
 class Stopped extends Error {}
@@ -51,7 +55,7 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
     await openDreamport(page, server, game, rom, { start: false });
   };
   const brand = () => page.evaluate(`document.querySelector('.setup-brand')?.textContent ?? ''`);
-  const colour = wanted => until(page, `${COLOUR} === '${wanted}'`, `the screen to turn ${wanted}`, 5000).then(() => true, () => false);
+  const colour = wanted => until(page, `${COLOUR} === '${shownOn(machine, wanted)}'`, `the screen to turn ${shownOn(machine, wanted)}`, 5000).then(() => true, () => false);
   const key = async (type, code, name = code) => page.send('Input.dispatchKeyEvent', { type, code, key: name });
 
   await start();
@@ -89,7 +93,7 @@ async function tryGame(page, server, game, rom, machine = 'gba') {
   // held until the settings have read it, two frames on
   await page.evaluate(`__press(0, true); new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))`);
   await wait(200);
-  check(await page.evaluate(`${COLOUR} === 'blue'`), 'the game waits while they\'re open');
+  check(await page.evaluate(`${COLOUR} === '${shownOn(machine, BLUE)}'`), 'the game waits while they\'re open');
   // A acts as it's let go, on what's picked, and the settings open with Back to the game picked
   await page.evaluate(`__press(0, false)`);
   check(await until(page, `!(${open})`, 'the settings to close', 5000).then(() => true, () => false), 'letting go of A presses Back to the game');
@@ -237,8 +241,9 @@ try {
     write(gameFolder(game), { 'proof/original.json': JSON.stringify(theirs) });
     write(gameFolder(`${game}/c`), startingFiles(game, theirs, { language: 'c' }));
     // a console whose games come on discs is given a made-up disc of its own kind, which its page reads a few sectors
-    // at a time: the GameCube's has a header of its own, where the PlayStations' discs are ISO 9660
-    writeFileSync(join(temporary, copyName(id)), CONSOLES[id].disc ? (id === 'gamecube' ? madeUpGameCubeDisc().image : madeUpPs2Disc({ console: id })) : rom);
+    // at a time: the GameCube's has a header of its own, where the PlayStations' discs are ISO 9660; and a Game Boy or
+    // a Game Boy Color a copy whose header says which it's for, as the console goes by it
+    writeFileSync(join(temporary, copyName(id)), CONSOLES[id].disc ? (id === 'gamecube' ? madeUpGameCubeDisc().image : madeUpPs2Disc({ console: id })) : id === 'gb' || id === 'gbc' ? madeUpGb({ colour: id === 'gbc' }).rom : rom);
   }
   page = await openChrome({ profile: join(LOCAL, 'chrome', 'test-game'), headless: true, controllers: true });
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: STAND_IN });
