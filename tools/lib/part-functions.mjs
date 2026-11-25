@@ -27,6 +27,7 @@ import { join } from 'node:path';
 import { sharedProofFolder } from './paths.mjs';
 import { readParts } from './proof-files.mjs';
 import { beyondProof, groupsOf } from './proofs.mjs';
+import { layoutOf, playedIn, startedIn } from './played.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 
 export const PART_FUNCTIONS = 'part-functions.json';
@@ -84,6 +85,23 @@ export function keepPartFunctions(game, original, found, names = readParts(game)
   if (text === before) return false;
   writeFileSync(file, text);
   return true;
+}
+
+/**
+ * What the original ran in each part of a recording whose program says what ran and in which frames, and not which
+ * functions started in each frame, as the one that links several consoles does (gba/linked.mjs, #1919): for each of
+ * `parts`, those of the game that name the recording, with their `frames`, [its name, the keys of the code map's
+ * functions whose first instruction ran, on any console, in one of the part's frames or in the frame after one], as
+ * `prove` keeps it for a recording one console plays (#1899). `records` is what ran, as lib/played.mjs reads it, with
+ * the page's frame f the original's own frame f, `frames` how many the recording has, and `find` finderOf's.
+ */
+export function partsRanIn(parts, frames, codeMap, records, find) {
+  const layout = layoutOf(codeMap);
+  return parts.map(({ name, frames: [a, b] }) => {
+    const inPart = new Uint8Array(frames + 1);
+    for (let frame = Math.max(0, a); frame <= b && frame < frames; frame++) inPart[frame] = inPart[frame + 1] = 1;
+    return [name, startedIn(playedIn(records, inPart, layout, find), codeMap).sort()];
+  });
 }
 
 /**
