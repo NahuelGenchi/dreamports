@@ -3,21 +3,47 @@
 // small program written here (made-up-nds.mjs), so no game's copy is needed. It checks what the console's entry in
 // kit/consoles.js says against what the emulator does, that a recording's buttons and touches reach the program on the
 // frame they're given, that the program's two screens and its sound come out as the program makes them, and that every
-// frame's picture and every sample is the same in each run and on every computer, by a hash kept here.
+// frame's picture and every sample is the same in each run and on every computer, by a hash kept here. Then prove
+// compares a Dreamport of the program in C (made-up-nds.c), in a folder of its own that it removes after, with the
+// emulator on every frame, both screens and the sound, and finds one that puts a touch in the wrong place.
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
+import { startingEntry, startingFiles } from '../lib/new-game.mjs';
 import { expand, readRecording, writeRecording } from '../lib/recording.mjs';
 import { readAnyCopy } from '../lib/read-copy.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { libretroReference } from '../libretro/reference.mjs';
 import { readNdsHeader } from '../nds/header.mjs';
+import { readCodeMap } from '../lib/proof-files.mjs';
 import { ARM7, ARM9, PITCH, SHARED, madeUpNds } from './made-up-nds.mjs';
 
 const WORK = join(LOCAL, 'test-real-nds');
+const GAME = 'test-real-nds', C_GAME = `${GAME}/c`;
+const COPIES = join(LOCAL, 'copies.json');
+const STATUS = join(REPO, 'docs', 'STATUS.md');
+const MEDIA = join(REPO, 'public', 'media');
+
+const dp = (...args) => {
+  const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 26 });
+  return { status, out: stdout + stderr };
+};
+const report = recording => JSON.parse(readFileSync(join(resultFolder(C_GAME, recording), 'report.json'), 'utf8'));
+
+function tidy() {
+  const kept = readdirSync(MEDIA).filter(file => file.startsWith(GAME)).map(file => join(MEDIA, file));
+  for (const path of [gameFolder(GAME), WORK, join(LOCAL, 'results', GAME), join(LOCAL, 'captures', GAME), join(REPO, '.github', 'readme', 'progress', `${GAME}.svg`), ...kept]) rmSync(path, { recursive: true, force: true });
+}
+
+// the Dreamport in C, with the program's pitch filled in; `moved` makes one that reads a touch that far to the right
+function writeGameInC({ moved = 0 } = {}) {
+  const numbers = { MOVED: moved, PITCH };
+  writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'made-up-nds.c'), 'utf8').replace(/@([A-Z_]+)@/g, (_, key) => numbers[key]));
+}
 // every frame's picture and every sample of the recording below, as this test first heard them, on Windows
 const SAME_EVERYWHERE = '82db3813fdd5827d7279ba03c84eb6a83bb1e6d3';
 
@@ -34,7 +60,7 @@ const OTHER = { X: 1, Y: 2 };
 const TOUCH = /^TOUCH@(\d+),(\d+)$/;
 
 async function main() {
-  rmSync(WORK, { recursive: true, force: true });
+  tidy();
   mkdirSync(WORK, { recursive: true });
   const { rom, sha1 } = madeUpNds();
   const copy = join(WORK, 'program.nds');
@@ -133,13 +159,53 @@ async function main() {
   second.sound.close();
   check(digest === again && new Set(first.hashes).size > 100, 'a second run gives the same pictures and the same samples');
   check(digest === SAME_EVERYWHERE, `and they're the ones kept here, the same on every computer: ${digest}`);
+
+  console.log('The same program as a Dreamport in C, on what every console\'s kit in C shares');
+  const original = { console: 'nds', name: 'Test Real DS (World)', title: header.title, code: header.code, sha1 };
+  mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
+  writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
+  let run = dp('rom', copy);
+  check(run.status === 0 && run.out.includes(GAME), `rom knows the copy for the game's: ${run.out.trim().split('\n')[1]?.trim()}`);
+  run = dp('codemap', GAME);
+  const mapped = readCodeMap(GAME)?.functions ?? [];
+  check(run.status === 0 && mapped.some(f => f.address === ARM9.address && !f.program) && mapped.some(f => f.program === 'ARM7' && f.address === ARM7.address) && mapped.filter(f => f.mode === 'thumb').length >= 4,
+    `codemap finds the functions of both of its programs, in ARM and in Thumb code: ${run.out.trim().split('\n').slice(-2).join(' ')}`);
+  if (run.status) console.log(run.out);
+  const files = { 'entry.md': startingEntry(GAME, original, { issue: 1, lead: 'nobody', added: '2026-01-01' }) };
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(gameFolder(GAME), name), text);
+  for (const [name, text] of Object.entries(startingFiles(GAME, original, { language: 'c' }))) {
+    mkdirSync(join(gameFolder(C_GAME), name, '..'), { recursive: true });
+    writeFileSync(join(gameFolder(C_GAME), name), text);
+  }
+  writeRecording(join(proofFolder(GAME), 'recordings', 'buttons.json'), { about: 'Each button, some together, four touches, and a note.', frames: FRAMES, held });
+  run = dp('prove', C_GAME, 'buttons');
+  const started = existsSync(join(resultFolder(C_GAME, 'buttons'), 'report.json')) ? report('buttons') : null;
+  if (!started) console.log(run.out);
+  check(run.status !== 0 && started?.firstDifference?.frame <= 1, `what new writes in C opens at both screens' size and differs at once, being one colour: ${JSON.stringify(started?.firstDifference)}`);
+  writeGameInC();
+  run = dp('prove', C_GAME, 'buttons');
+  const same = report('buttons');
+  check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `every frame of both screens and the sound matches the emulator, buttons and touches from the recording: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
+  if (run.status) console.log(run.out);
+  const ran = JSON.parse(readFileSync(join(proofFolder(C_GAME), 'progress.json'), 'utf8')).recordings.buttons?.functions ?? [];
+  check(ran.length === mapped.length && ran.includes('02000000') && ran.filter(key => key.endsWith('@ARM7')).length === 4, `prove says which functions ran in matching play, on both processors, the one that asks the touch screen's chip among them: ${ran.join(', ')}`);
+  writeGameInC({ moved: 8 });
+  run = dp('prove', C_GAME, 'buttons');
+  check(run.status !== 0 && report('buttons').firstDifference?.frame === 161, `a touch read eight pixels to the right is found where it first shows, at frame 161: ${JSON.stringify(report('buttons').firstDifference)}`);
 }
 
+const kept = { status: readFileSync(STATUS), copies: existsSync(COPIES) ? readFileSync(COPIES) : null };
+const untouched = () => execFileSync('git', ['status', '--porcelain', '--', 'docs/STATUS.md', '.github/readme/progress', 'public/media', 'games'], { cwd: REPO, encoding: 'utf8' });
+const dirtyBefore = untouched();
 try {
   await main();
 } finally {
-  rmSync(WORK, { recursive: true, force: true });
+  tidy();
+  writeFileSync(STATUS, kept.status);
+  if (kept.copies) writeFileSync(COPIES, kept.copies);
+  else rmSync(COPIES, { force: true });
 }
+check(untouched() === dirtyBefore, 'nothing is left behind');
 
 if (failures.length) {
   console.log(`\n${failures.length} failed.`);

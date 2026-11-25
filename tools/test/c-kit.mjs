@@ -26,6 +26,7 @@ import { C_BASE, buildGame, buildNative, buildWasm, cKit } from '../lib/c.mjs';
 import { CONSOLES } from '../../kit/consoles.js';
 import { madeUpGame } from './made-up-game.mjs';
 import { PALETTE_AT, RAM, START as NES_START, TIMER, madeUpNes } from './made-up-nes.mjs';
+import { madeUpGb, numbersFor } from './made-up-gb.mjs';
 import { madeUpSongs, playBoth, randomCall, randomTimedCall, SONIC_ADVANCE_TIMING } from './c-kit/songs.mjs';
 import { copyOf } from '../lib/copies.mjs';
 import { Rom } from '../../kit/gba/rom/rom.js';
@@ -537,6 +538,34 @@ console.log('\nThe NES kit in C');
   pad2.dp_step(0xA55A);
   const pad2Color = new Uint32Array(pad2.memory.buffer, pad2.dp_draw(), 1)[0];
   check(pad2Color === GREEN, 'the NES second controller ($4017) shifts bits 8-15 and then 0x41');
+}
+
+// the Game Boy kit in C (kit/gbc/c/), for the Game Boy and the Game Boy Color: the made-up program's Dreamport
+// (made-up-gb.c), which test:real-gb proves on the real emulator, and the starting point there, each the same both ways
+console.log('\nThe Game Boy kit in C');
+for (const id of ['gb', 'gbc']) {
+  const GB = cKit(id), machine = CONSOLES[id], colour = id === 'gbc';
+  const { rom } = madeUpGb({ colour });
+  const numbers = numbersFor({ colour, playsFrom: 8 });
+  const program = join(work, `made-up-${id}.c`), start = join(work, `start-${id}.c`);
+  writeFileSync(program, readFileSync(fileURLToPath(new URL('./made-up-gb.c', import.meta.url)), 'utf8').replace(/@([A-Z_]+)@/g, (_, key) => numbers[key]));
+  writeFileSync(start, startingFiles(`test-${id}`, { console: id, name: 'Test (World)', title: 'TEST', code: '', sha1: '' }, { language: 'c' })['src/main.c']);
+  const r = random(SEED + 5 + (colour ? 1 : 0));
+  const held = Array.from({ length: 240 }, () => (r.chance(0.5) ? 0 : 1 << r.int(machine.buttons.length)));
+  const eight = five => five << 3 | five >> 2;
+  const word = c => (0xFF000000 | eight(c >> 10 & 31) << 16 | eight(c >> 5 & 31) << 8 | eight(c & 31)) >>> 0;
+  for (const words of ['proof', 'proof&scroll=50']) {
+    const { firsts, loudest } = await bothWays({ what: `the made-up ${machine.name} program${words === 'proof' ? '' : ' from a start point'}`, name: `made-up-${id}`, source: program, kit: GB, machine, cartridge: rom, words, held });
+    if (words === 'proof') {
+      check(new Set(firsts).size > 2, `the made-up ${machine.name} program: its picture, which scrolls`);
+      check(loudest > 20, `the made-up ${machine.name} program: its four channels' sound, as loud as ${loudest} of the console's steps`);
+    }
+  }
+  // what a new game shows: on a Game Boy Color blue, and green while a button is held, and on a Game Boy light and dark
+  const [plain, pressed] = colour ? [word(0x7C00), word(0x03E0)] : [word(0x5294), word(0x294A)];
+  const { firsts } = await bothWays({ what: `the ${machine.name} starting point`, name: `start-${id}`, source: start, kit: GB, machine, cartridge: rom, words: 'proof', held });
+  const wrong = held.findIndex((buttons, n) => firsts[n] !== (buttons ? pressed : plain));
+  check(wrong < 0, `the ${machine.name} starting point: ${colour ? 'blue, and green' : 'light, and dark'} while a button is held${wrong < 0 ? '' : `, but not frame ${wrong}`}`);
 }
 
 rmSync(work, { recursive: true, force: true });
