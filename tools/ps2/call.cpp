@@ -74,6 +74,7 @@
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
+#include <malloc.h>
 #endif
 #include "MIPS.h"
 #include "COP_SCU.h"
@@ -143,7 +144,15 @@ static size_t regionCount;
 static uint32 imageSize;
 static uint8 *base, *image;
 static std::vector<uint8> dirty;
+#ifdef _WIN32
+// Windows' longjmp goes back up the stack a frame at a time, by what each frame's code says of itself, and the code the
+// emulator makes as it runs says nothing: the compiler's own pair only puts the registers back, as longjmp does elsewhere
+static void *out[5];
+#define setjmp(buffer) __builtin_setjmp(buffer)
+#define longjmp(buffer, value) __builtin_longjmp(buffer, 1)
+#else
 static jmp_buf out;
+#endif
 // kept in memory, never in a register: a call ends by jumping out of the middle of it (stop), and what a compiler
 // keeps in a register then goes back to what it was when the call began, as it did on Apple's chip
 static volatile uint32 ended, detail, steps, hardware, readCount;
@@ -414,7 +423,12 @@ int main(int argc, char **argv) {
   imageSize = kind == EE ? EE_IMAGE : kind == IOP ? IOP_IMAGE : VU1_IMAGE;
   const uint32 registerWords = (kind == EE ? sizeof(EeRegisters) : kind == IOP ? sizeof(IopRegisters) : sizeof(VuRegisters)) / 4;
   base = static_cast<uint8 *>(calloc(imageSize, 1));
+#ifdef _WIN32
+  // Windows' C library has its own name for it
+  image = static_cast<uint8 *>(_aligned_malloc(imageSize, 16));
+#else
   image = static_cast<uint8 *>(aligned_alloc(16, imageSize));
+#endif
   dirty.assign(imageSize / CHUNK + 1, 0);
   readBefore.assign(imageSize + 16, 0);
   codePages.assign(imageSize / 0x1000 + 1, 0);

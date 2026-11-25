@@ -9,7 +9,7 @@
 //   when the drive's time for it has passed, with the clock, which moves on a second every sixty frames;
 // - a Dreamport that reads the sector after the one asked for is found on its first frame.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';

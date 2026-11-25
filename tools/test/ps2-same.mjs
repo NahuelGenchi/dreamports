@@ -2,10 +2,10 @@
 // on every computer the tools run on. --write runs the small programs of made-up-ps2.mjs in Play!, 300 frames each, and
 // writes what a proof compares of them: each frame's draw list and how many things it held, each frame's sound, sample
 // by sample, and the program's own bytes in the console's memory every 30 frames, where it keeps what changes, with each
-// frame's picture. --compare reads two such files, one from Linux and one from a Mac in the Mac workflow, and fails on
+// frame's picture. --compare reads two such files, Linux's and a Mac's or Windows' in the Mac workflow, and fails on
 // any draw list, sound or memory that isn't the same in both, and on any picture of a program proven by its pictures.
 // The pictures of one proven by its draw list are drawn by each computer's own renderer, llvmpipe or Apple's, and are
-// only counted (docs/CONSOLES.md). A program added to PROGRAMS is compared too. It runs on Linux and macOS alone, where
+// only counted (docs/CONSOLES.md). A program added to PROGRAMS is compared too. It runs on Linux, macOS and Windows, where
 // the tools give the emulator a graphics context.
 
 import { createHash } from 'node:crypto';
