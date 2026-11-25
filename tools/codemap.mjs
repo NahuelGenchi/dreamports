@@ -39,6 +39,7 @@ import * as ps1Functions from './ps1/functions.mjs';
 import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
+import * as ndsFunctions from './nds/functions.mjs';
 import { layoutOf, readCartridge } from './snes/cartridge.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
@@ -88,6 +89,17 @@ const FINDERS = {
     ...n64Functions,
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
+    address: address => address,
+  },
+  // a Nintendo DS game's programs, read off its cartridge a piece at a time: the ARM9's, the ARM7's and each overlay,
+  // each found on its own; a list is of the ARM9's program
+  nds: {
+    file: 'tools/nds/functions.mjs',
+    read: path => ndsFunctions.ndsCartridge(path),
+    inCode: ndsFunctions.inCode,
+    startsInData: ndsFunctions.startsInData,
+    findFunctions: (code, listed) => ndsFunctions.findFunctions(code, listed),
+    fill: (code, listed) => ndsFunctions.findFunctions(code, listed),
     address: address => address,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
@@ -180,7 +192,9 @@ export async function run(args) {
   const others = functions.filter(f => f.program && !f.vu), vu = functions.filter(f => f.vu);
   if (others.length || vu.length) {
     const sum = list => list.reduce((total, f) => total + f.size, 0).toLocaleString('en');
-    console.log(`Of those, ${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc, and ${sum(vu)} bytes in ${vu.length} vector unit programs.`);
+    console.log(original.console === 'nds'
+      ? `Of those, ${sum(others)} bytes are in the ARM7's program and ${new Set(others.map(f => f.program)).size - (others.some(f => f.program === 'ARM7') ? 1 : 0)} overlays.`
+      : `Of those, ${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc, and ${sum(vu)} bytes in ${vu.length} vector unit programs.`);
   }
   return 0;
 }
