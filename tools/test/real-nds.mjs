@@ -20,7 +20,7 @@ import { CONSOLES } from '../../kit/consoles.js';
 import { libretroReference } from '../libretro/reference.mjs';
 import { readNdsHeader } from '../nds/header.mjs';
 import { readCodeMap } from '../lib/proof-files.mjs';
-import { ARM7, ARM9, PITCH, SHARED, madeUpNds } from './made-up-nds.mjs';
+import { ARM7, ARM9, PITCH, SHARED, TIMER, madeUpNds } from './made-up-nds.mjs';
 
 const WORK = join(LOCAL, 'test-real-nds');
 const GAME = 'test-real-nds', C_GAME = `${GAME}/c`;
@@ -41,11 +41,11 @@ function tidy() {
 
 // the Dreamport in C, with the program's pitch filled in; `moved` makes one that reads a touch that far to the right
 function writeGameInC({ moved = 0 } = {}) {
-  const numbers = { MOVED: moved, PITCH };
+  const numbers = { MOVED: moved, TIMER };
   writeFileSync(join(gameFolder(C_GAME), 'src', 'main.c'), readFileSync(join(REPO, 'tools', 'test', 'made-up-nds.c'), 'utf8').replace(/@([A-Z_]+)@/g, (_, key) => numbers[key]));
 }
 // every frame's picture and every sample of the recording below, as this test first heard them, on Windows
-const SAME_EVERYWHERE = '82db3813fdd5827d7279ba03c84eb6a83bb1e6d3';
+const SAME_EVERYWHERE = 'eb1f633a4a75f4a1c10d5f28c475704bdbebc7f2';
 
 const failures = [];
 const check = (ok, what) => {
@@ -146,7 +146,10 @@ async function main() {
   check(note.every(sample => sample === 255 || sample === -256) && Math.abs(pitch - PITCH) < 3, `a square wave as loud as the mixer goes while it is, at the pitch its timer gives: ${pitch.toFixed(1)} Hz for ${PITCH.toFixed(1)}`);
   let samples = 0;
   for (let frame = 0; frame < FRAMES; frame++) samples += first.sound.read(frame).length / 2;
-  check(Math.abs(samples - FRAMES * sound * ticks / clock) < 2, `every frame has the samples it lasts: ${samples} in ${FRAMES} frames`);
+  // a frame's sound runs from one V-blank's start to the next's (../nds/melonds/libretro.cpp), and the mixer makes a pair
+  // every 1,024 ticks from tick 1,024 on, so the frames' samples are every mix before the last frame's V-blank
+  const mixes = Math.floor((((FRAMES - 1) * ticks + 192 * 2130) - 1) / 1024);
+  check(samples === mixes, `every frame has the samples mixed from one V-blank to the next: ${samples} in ${FRAMES} frames, every mix before the last V-blank`);
 
   const digestOf = run => {
     const hash = createHash('sha1').update(Buffer.from(run.hashes.buffer));
@@ -160,7 +163,7 @@ async function main() {
   check(digest === again && new Set(first.hashes).size > 100, 'a second run gives the same pictures and the same samples');
   check(digest === SAME_EVERYWHERE, `and they're the ones kept here, the same on every computer: ${digest}`);
 
-  console.log('The same program as a Dreamport in C, on what every console\'s kit in C shares');
+  console.log('The same program as a Dreamport in C, on the Nintendo DS\'s kit in C');
   const original = { console: 'nds', name: 'Test Real DS (World)', title: header.title, code: header.code, sha1 };
   mkdirSync(join(proofFolder(GAME), 'recordings'), { recursive: true });
   writeFileSync(join(proofFolder(GAME), 'original.json'), `${JSON.stringify(original, null, 2)}\n`);
@@ -181,11 +184,11 @@ async function main() {
   run = dp('prove', C_GAME, 'buttons');
   const started = existsSync(join(resultFolder(C_GAME, 'buttons'), 'report.json')) ? report('buttons') : null;
   if (!started) console.log(run.out);
-  check(run.status !== 0 && started?.firstDifference?.frame <= 1, `what new writes in C opens at both screens' size and differs at once, being one colour: ${JSON.stringify(started?.firstDifference)}`);
+  check(run.status !== 0 && started?.firstDifference?.frame <= 1, `what new writes in C, on the kit, opens at both screens' size and differs at once: ${JSON.stringify(started?.firstDifference)}`);
   writeGameInC();
   run = dp('prove', C_GAME, 'buttons');
   const same = report('buttons');
-  check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `every frame of both screens and the sound matches the emulator, buttons and touches from the recording: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
+  check(run.status === 0 && same.matched === FRAMES && same.sound.heard, `its two programs written again on the kit match the emulator on every frame of both screens and the sound, buttons and touches from the recording: ${same.matched} of ${same.frames}, ${JSON.stringify(same.firstDifference)}, ${JSON.stringify(same.sound.firstDifference)}`);
   if (run.status) console.log(run.out);
   const ran = JSON.parse(readFileSync(join(proofFolder(C_GAME), 'progress.json'), 'utf8')).recordings.buttons?.functions ?? [];
   check(ran.length === mapped.length && ran.includes('02000000') && ran.filter(key => key.endsWith('@ARM7')).length === 4, `prove says which functions ran in matching play, on both processors, the one that asks the touch screen's chip among them: ${ran.join(', ')}`);
