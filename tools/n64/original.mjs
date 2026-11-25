@@ -11,12 +11,14 @@
 // exception, or went where the check can't follow, such as the cartridge.
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
+import { withBuildTools } from '../gba/build.mjs';
+import { WINDOWS_BUILD } from '../gba/windows.mjs';
 
 const CALL = fileURLToPath(new URL('./call.c', import.meta.url));
 // the emulator's own files the program is built from: its processor, in mupen64plus-core/src/device/r4300/, and the
@@ -109,21 +111,33 @@ function programFile() {
 
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export function buildCaller(log = console.log) {
-  const program = programFile(), stamp = `${program}.source`, text = `${readFileSync(CALL, 'utf8')}\n${FLOAT_RULES.join(' ')}`;
+  // built again when call.c changes, or how it's compiled, or the tools' change to the emulator's source it's built from
+  const { core } = consoleOf('n64'), patch = core.patch ? readFileSync(join(REPO, core.patch), 'utf8') : '';
+  const program = programFile(), stamp = `${program}.source`, text = `${readFileSync(CALL, 'utf8')}\n${FLOAT_RULES.join(' ')}\n${patch}`;
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('n64');
   log(`Getting the Nintendo 64's processor from its emulator's source, at ${machine.core.source}…`);
-  const source = fetchSource(machine), core = join(source, 'mupen64plus-core');
   mkdirSync(FOLDER, { recursive: true });
   rmSync(program, { force: true });
-  const compiler = process.env.CC || (process.platform === 'win32' ? 'gcc' : 'cc');
-  const includes = [join(core, 'src'), join(core, 'src', 'api'), join(core, 'custom'), join(source, 'include'), join(source, 'libretro-common', 'include'), join(source, 'libretro')];
-  const result = spawnSync(compiler, ['-std=gnu11', ...FLOAT_RULES, '-w', '-DNDEBUG', '-D__LIBRETRO__', '-DM64P_PLUGIN_API', '-DM64P_CORE_PROTOTYPES', ...includes.flatMap(folder => ['-I', folder]),
-    '-o', program, CALL, ...PROCESSOR.map(name => join(core, 'src', 'device', 'r4300', name)), ...ALSO.map(name => join(source, name)), '-lm'], { encoding: 'utf8', maxBuffer: 2 ** 26 });
-  if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
-  if (result.status !== 0) throw new Error(`The program that calls the Nintendo 64's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  // on Windows with the compiler the tools get for a build, in its folder with a plain name, where the emulator's
+  // source is fetched too, and with the compiler's own libraries built in, as that folder goes once it's built
+  // (../gba/windows.mjs); anywhere else with the computer's own
+  withBuildTools(log, tools => buildWith(tools, machine, program));
   writeFileSync(stamp, text);
   return program;
+}
+
+function buildWith(tools, machine, program) {
+  const source = fetchSource(machine), core = join(source, 'mupen64plus-core');
+  const compiler = process.env.CC || tools?.gcc || 'cc';
+  const [from, to] = tools ? [join(WINDOWS_BUILD, 'n64-call.c'), join(WINDOWS_BUILD, 'n64-call.exe')] : [CALL, program];
+  if (tools) copyFileSync(CALL, from);
+  const includes = [join(core, 'src'), join(core, 'src', 'api'), join(core, 'custom'), join(source, 'include'), join(source, 'libretro-common', 'include'), join(source, 'libretro')];
+  const result = spawnSync(compiler, ['-std=gnu11', ...FLOAT_RULES, '-w', '-DNDEBUG', '-D__LIBRETRO__', '-DM64P_PLUGIN_API', '-DM64P_CORE_PROTOTYPES', ...includes.flatMap(folder => ['-I', folder]),
+    ...(tools ? ['-static'] : []), '-o', to, from, ...PROCESSOR.map(name => join(core, 'src', 'device', 'r4300', name)), ...ALSO.map(name => join(source, name)), '-lm'], { encoding: 'utf8', maxBuffer: 2 ** 26, env: tools?.env });
+  if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
+  if (result.status !== 0) throw new Error(`The program that calls the Nintendo 64's functions didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
+  if (tools) copyFileSync(to, program);
 }
 
 const word = value => {
@@ -140,13 +154,14 @@ const dword = value => {
 /**
  * The original, kept running: `image(bytes)` sets the memory every call starts from, `call(...)` runs a function,
  * and `close()` ends it. Each answers in turn. The program runs with at most 6 GB of memory, as one with no limits
- * once took a computer down.
+ * once took a computer down: on Linux, where a shell can set that. A Mac's refuses the limit, so the program starts
+ * there without it, and Windows has none a shell sets.
  */
 export class Original {
   constructor(program = buildCaller()) {
     this.child = process.platform === 'win32'
       ? spawn(program, [], { stdio: ['pipe', 'pipe', 'pipe'] })
-      : spawn('/bin/sh', ['-c', 'ulimit -v 6000000 && exec "$0"', program], { stdio: ['pipe', 'pipe', 'pipe'] });
+      : spawn('/bin/sh', ['-c', process.platform === 'darwin' ? 'ulimit -v 6000000 2>/dev/null; exec "$0"' : 'ulimit -v 6000000 && exec "$0"', program], { stdio: ['pipe', 'pipe', 'pipe'] });
     this.held = [];
     this.bytes = 0;
     this.wake = null;
