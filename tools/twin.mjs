@@ -23,7 +23,9 @@
 // and on the PlayStation (ps1/twin.mjs) and the PlayStation 2 (ps2/twin.mjs) a call starts from the program as the
 // console loads it, with no --frames, or with --memories from each function's memories as it starts in play, in the
 // console's emulator, and --addresses is as on the Game Boy Advance; on the PlayStation 2 a function can also be named
-// by its code map's key, as 120@SOUND.IRX, when it's in another program of the disc; and on the NES, where
+// by its code map's key, as 120@SOUND.IRX, when it's in another program of the disc; on the Game Boy and the Game Boy
+// Color each twin has a contract beside it too, with the processor's own registers, and several functions can be
+// named (gbc/twin.mjs); and on the NES, where
 // each twin has a contract beside it and several functions can be named (nes/twin.mjs):
 //   --from      another folder of the game's C than its src/
 //   --without   bytes of the work memory left out of what's compared
@@ -48,7 +50,7 @@ const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- h
 // the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
 const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]]`;
 // the consoles the check knows, and where each one's is
-const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs', snes: './snes/twin.mjs', ps1: './ps1/twin.mjs', n64: './n64/twin.mjs', ps2: './ps2/twin.mjs', gamecube: './gamecube/twin.mjs' };
+const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs', gb: './gbc/twin.mjs', gbc: './gbc/twin.mjs', snes: './snes/twin.mjs', ps1: './ps1/twin.mjs', n64: './n64/twin.mjs', ps2: './ps2/twin.mjs', gamecube: './gamecube/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
 
 // how a console's check ended, as a number: its own, or 3 when not every twin tried was the same

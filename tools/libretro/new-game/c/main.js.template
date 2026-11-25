@@ -23,7 +23,9 @@ const stage = document.getElementById('stage');
 const screen = document.getElementById('screen');
 const input = createInput(layoutOf(@CONSOLE_JS@));
 proof?.watch(screen, input);   // for the proof tools: ?proof plays recorded buttons, ?proof=record keeps them
-const touch = createTouch(stage, input, { screen, key: @FOLDER_JS@ });
+const touch = createTouch(stage, input, { screen, key: @FOLDER_JS@, size: () => [screen.width, screen.height] });
+// on a console with a screen that's touched, a finger or the mouse on it touches the game's
+if (MACHINE.touch !== undefined) input.bindScreen(screen, MACHINE.screens[MACHINE.touch]);
 createSettings(stage, input, { touch });
 // the player's copy: a cartridge's bytes, or a disc, read a few sectors at a time as the game asks for them
 let rom = null, disc = null;
@@ -71,6 +73,7 @@ async function start() {
     [screen.width, screen.height] = [width, height];
     image = out.createImageData(width, height);
     pixels = new Uint32Array(image.data.buffer);
+    touch.fit();
   };
   sizeTo(@SCREEN_JS@);
   const show = () => {
@@ -92,7 +95,7 @@ async function start() {
     let ran = false;
     for (let n = waiting ? 0 : clock.steps(now); n > 0 && !waiting; n--) {
       input.poll();
-      const later = game.step(buttonsOf(input, @CONSOLE_JS@));
+      const later = game.step(buttonsOf(input, @CONSOLE_JS@), input.touch);
       ran = true;
       if (later) {
         waiting = later.then(show).finally(() => { waiting = null; });
