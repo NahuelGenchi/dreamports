@@ -29,7 +29,7 @@ export const CONSOLES = {
   // the console shows a field at a time, 240 of a picture's 480 lines, as the Nintendo 64 does; its two triggers are each a button with a way to press it partway: L and R are a trigger pressed all the way, to its click, and L_ANALOG and R_ANALOG one pressed short of it
   gamecube: { name: 'Nintendo GameCube', screen: [640, 240], frame: [1001, 60000], sound: 48000, disc: true, files: ['.iso', '.gcm', '.dol', '.elf'], largest: 1400 * MB, buttons: ['A', 'B', 'X', 'Y', 'Z', 'L', 'R', 'L_ANALOG', 'R_ANALOG', 'START', ...PAD, ...STICK, 'C_UP', 'C_DOWN', 'C_LEFT', 'C_RIGHT'] },
   nds: { name: 'Nintendo DS', screen: [256, 384], screens: [[0, 0, 256, 192], [0, 192, 256, 192]], touch: 1, frame: [560190, 33513982], sound: 33513982 / 1024, files: ['.nds', '.srl'], largest: 512 * MB, buttons: ['A', 'B', 'X', 'Y', 'L', 'R', 'SELECT', 'START', ...PAD] },
-  psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, disc: true, files: ['.iso', '.cso', '.zso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
+  psp: { name: 'PlayStation Portable', screen: [480, 272], frame: [1001, 59940], sound: 44100, soundBy: 'sound lists', disc: true, files: ['.iso', '.cso', '.zso', '.chd', '.pbp', '.elf'], largest: 1800 * MB, buttons: ['CROSS', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'L', 'R', 'SELECT', 'START', ...PAD, ...STICK] },
   // a console that was never made, whose emulator is tools/test/made-up-core.c: the tools' own test of everything here, on any computer
   'made-up': { name: 'Made-up console', screen: [64, 48], frame: [1, 50], sound: 44100, files: ['.mu'], largest: MB, buttons: ['A', 'B', 'START', ...PAD] },
 };

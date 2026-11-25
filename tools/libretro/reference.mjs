@@ -6,7 +6,7 @@ import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
-import { HOST, buildReference, coreFile, coreSystem } from './build.mjs';
+import { HOST, OPENGL, buildReference, coreFile, coreSystem, systemFolder } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
 
@@ -46,15 +46,16 @@ export function libretroReference(machine) {
   const forRun = copy => {
     const run = `${process.pid}-${threadId}-${++runs}`, named = plainlyNamed(copy, run);
     // an emulator with files of its own finds them where the tools put them as they built it (build.mjs)
-    const system = coreSystem(core) ?? join(LOCAL, 'libretro', 'system', machine.id), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
+    const system = coreSystem(core) ?? systemFolder(machine), saves = join(LOCAL, 'libretro', 'saves', machine.id, run);
     rmSync(saves, { recursive: true, force: true });
     mkdirSync(saves, { recursive: true });
-    mkdirSync(system, { recursive: true });
     // a core that keeps its settings and memory cards in the person's home folder, as Play! does, finds them in that empty
     // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
     // Documents folder, which CFFIXED_USER_HOME moves there too
     const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
-    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(machine.touch !== undefined && { DP_TOUCH: '1' }), ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }), ...(core.leaves && { DP_LEAVE: '1' }) };
+    // and on Windows, where one that draws with OpenGL finds Mesa's, which draws on the processor (build.mjs)
+    const openGl = core.graphics && process.platform === 'win32' && { DP_OPENGL: OPENGL };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...openGl, ...(machine.touch !== undefined && { DP_TOUCH: '1' }), ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }), ...(core.leaves && { DP_LEAVE: '1' }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
@@ -62,6 +63,10 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
+    // one that says only which functions ran in each frame, as the PlayStation's and the Nintendo DS's do, or only where
+    // the processor is, as the Nintendo 64's does, says no more, and nor does one that tells of each instruction but
+    // whose record of every instruction and branch the tools can't read into gameplay proven yet, as the PlayStation
+    // Portable's: its functions in each frame are still counted, for a part's list (lib/part-functions.mjs)
     seesInstructions: !!core.ran && core.ran !== 'functions' && core.ran !== 'starts',
     seesEntries: core.ran === true,
     // and one that only tells where the processor is, as the Nintendo 64's does, still says which of the code map's

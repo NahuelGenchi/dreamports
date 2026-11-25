@@ -8,7 +8,7 @@ each part of a game runs (tools/lib/part-functions.mjs).
 
 The interpreter only calls the function it was given, when it was given one, just before it runs an instruction:
 nothing of the console changes, so every frame's picture and sound are the same with it or without, which
-tools/test/n64-parts.mjs checks. Its own steps that are no instruction of the game, the end of a block of instructions
+tools/test/n64-kit.mjs checks. Its own steps that are no instruction of the game, the end of a block of instructions
 and code it hasn't read yet, aren't told: each goes on to the instruction it stands for, which is told there, so every
 instruction is told once. Nothing of Parallel N64 is in the repository but the lines of its own this change sits
 between.
@@ -22,11 +22,51 @@ build with no dynarec never cleared. So the first frame ended, the flag stayed s
 frame for one already stopped, and the emulator never came back from its second frame. The change clears that flag
 too. On Linux for x86-64 the two are one, so nothing changes there, and no frame's picture or sound changes anywhere.
 
+And it makes the floating-point unit the same on every computer, in the emulator and in the program that calls one
+function of a game in its processor (tools/n64/original.mjs), which is built from the same source. On x86 Parallel N64
+has SSE make a result too small to be an ordinary number a zero of its sign, by the flush mode it gives SSE from FCR31
+whenever a game writes it, as the VR4300 does with the FS bit games set. A computer without SSE, as a Mac with
+Apple's chip, has nothing doing that, so the same sum or product came out a small number there and zero on Linux and
+Windows. The change does the same without SSE, by the same rule, to the result of each operation SSE's mode flushes:
+a sum, a difference, a product, a quotient, a square root and a double made a float, and not an absolute value or a
+negation, which SSE makes with its logic and leaves as they are. A number given that is too small is used as it is,
+as the emulator leaves SSE's mode for those off. On a computer with SSE nothing changes. Checked on x86 against SSE's
+own flush, over 72 million results near the smallest ordinary number in each of the four rounding modes, 12 million
+of them flushed: every bit the same.
+
+And it lets the emulator build on a Mac, where it had never been built for the tools before. Its r4300.h makes macros of
+hi and lo, and the GL header libretro.c includes after it reads Apple's MacTypes.h there, whose structs have members
+of those names, so Apple's compiler stopped at them. The two are put aside while that header is read, and nothing
+else is; on another computer the header reads nothing of Apple's.
+
 diff --git a/libretro/libretro.c b/libretro/libretro.c
-index 4302bb4..5bf8703 100644
+index 4302bb4..f4e6472 100644
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -3753,6 +3753,25 @@ static void glsm_enter(void)
+@@ -42,6 +42,13 @@
+ #include "../mupen64plus-video-angrylion/vdac.h"
+ #endif
+ 
++/* Dreamports: the GL header below reads Apple's MacTypes.h on a Mac, through libretro-common's apple_compat.h, and its
++ * structs have members named hi and lo, which r4300.h, included above, makes macros of; so they're put aside while it's
++ * read. Nothing else is, and on another computer the header reads nothing of Apple's. */
++#pragma push_macro("hi")
++#pragma push_macro("lo")
++#undef hi
++#undef lo
+ #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
+ #include <glsm/glsmsym.h>
+ #else
+@@ -54,6 +61,8 @@
+ #include <glsm/glsm.h>
+ bool glsm_ctl(enum glsm_state_ctl state, void *data) { return false; }
+ #endif
++#pragma pop_macro("lo")
++#pragma pop_macro("hi")
+ 
+ /* libretro-fork compat: legacy CONT_* controller-presence + M64CMD_DDROM_OPEN +
+  * mempak format defaults, retained for the fork's libretro glue (next dropped
+@@ -3753,6 +3762,25 @@ static void glsm_enter(void)
  #define RETRO_AV_ENABLE_AUDIO (1 << 1)
  #endif
  
@@ -150,6 +190,145 @@ index 1ed9088..ba39460 100644
          (*r4300_pc_struct(r4300))->ops();
      }
  }
+diff --git a/mupen64plus-core/src/device/r4300/fpu.h b/mupen64plus-core/src/device/r4300/fpu.h
+index 7691dcd..950145c 100644
+--- a/mupen64plus-core/src/device/r4300/fpu.h
++++ b/mupen64plus-core/src/device/r4300/fpu.h
+@@ -67,6 +67,46 @@ static __inline float  truncf(float x) { return (float)(int)x; }
+ #define FCR31_FLAG_INVALIDOP_BIT UINT32_C(0x000040)
+ 
+ 
++/* Dreamports: on x86 the emulator has SSE make a result too small to be an ordinary number a zero of its sign, by
++ * the flush mode update_x86_rounding_mode gives it from FCR31 (cp1.c). A computer without SSE, as a Mac with Apple's
++ * chip, has nothing doing that, and kept the small number, so the same function came out otherwise there. Without SSE
++ * the same is done here, by the same rule, to the result of each operation SSE's mode flushes: a sum, a difference, a
++ * product, a quotient, a square root and a double made a float, and not an absolute value or a negation, which SSE
++ * makes with its logic and leaves as they are. A number given that is too small is used as it is, as the emulator
++ * leaves SSE's mode for those off (r4300_core.c). */
++#include "osal/preproc.h"
++#ifdef OSAL_SSE
++#define fpu_flush_float(fcr31, value) ((void)0)
++#define fpu_flush_double(fcr31, value) ((void)0)
++#else
++M64P_FPU_INLINE int fpu_flushes(uint32_t fcr31)
++{
++    return (fcr31 & 2) ? !(fcr31 & UINT32_C(0x1000000)) : 1;
++}
++
++M64P_FPU_INLINE void fpu_flush_float(uint32_t fcr31, float* value)
++{
++    uint32_t bits;
++    memcpy(&bits, value, sizeof bits);
++    if (fpu_flushes(fcr31) && (bits & UINT32_C(0x7F800000)) == 0 && (bits & UINT32_C(0x7FFFFF)) != 0)
++    {
++        bits &= UINT32_C(0x80000000);
++        memcpy(value, &bits, sizeof bits);
++    }
++}
++
++M64P_FPU_INLINE void fpu_flush_double(uint32_t fcr31, double* value)
++{
++    uint64_t bits;
++    memcpy(&bits, value, sizeof bits);
++    if (fpu_flushes(fcr31) && (bits & UINT64_C(0x7FF0000000000000)) == 0 && (bits & UINT64_C(0xFFFFFFFFFFFFF)) != 0)
++    {
++        bits &= UINT64_C(0x8000000000000000);
++        memcpy(value, &bits, sizeof bits);
++    }
++}
++#endif
++
+ M64P_FPU_INLINE void set_rounding(uint32_t fcr31)
+ {
+ #if !defined(VITA) && !defined(__SWITCH__)
+@@ -297,6 +337,7 @@ M64P_FPU_INLINE void cvt_s_d(uint32_t* fcr31, const double* source, float* dest)
+     fpu_reset_exceptions();
+ 
+     *dest = (float)*source;
++    fpu_flush_float(*fcr31, dest);
+ 
+     fpu_check_exceptions(fcr31);
+     fpu_check_output_float(fcr31, dest);
+@@ -996,6 +1037,7 @@ M64P_FPU_INLINE void add_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 + *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1012,6 +1054,7 @@ M64P_FPU_INLINE void sub_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 - *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1028,6 +1071,7 @@ M64P_FPU_INLINE void mul_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 * *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1044,6 +1088,7 @@ M64P_FPU_INLINE void div_s(uint32_t* fcr31, const float* source1, const float* s
+     fpu_reset_exceptions();
+ 
+     *target = *source1 / *source2;
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1059,6 +1104,7 @@ M64P_FPU_INLINE void sqrt_s(uint32_t* fcr31, const float* source, float* target)
+     fpu_reset_exceptions();
+ 
+     *target = sqrtf(*source);
++    fpu_flush_float(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1097,6 +1143,7 @@ M64P_FPU_INLINE void add_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 + *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1113,6 +1160,7 @@ M64P_FPU_INLINE void sub_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 - *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1129,6 +1177,7 @@ M64P_FPU_INLINE void mul_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 * *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1145,6 +1194,7 @@ M64P_FPU_INLINE void div_d(uint32_t* fcr31, const double* source1, const double*
+     fpu_reset_exceptions();
+ 
+     *target = *source1 / *source2;
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
+@@ -1161,6 +1211,7 @@ M64P_FPU_INLINE void sqrt_d(uint32_t* fcr31, const double* source, double* targe
+     fpu_reset_exceptions();
+ 
+     *target = sqrt(*source);
++    fpu_flush_double(*fcr31, target);
+ 
+     fpu_check_exceptions(fcr31);
+ 
 diff --git a/mupen64plus-core/src/main/main.c b/mupen64plus-core/src/main/main.c
 index 0f959c8..84815c7 100644
 --- a/mupen64plus-core/src/main/main.c

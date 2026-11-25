@@ -26,7 +26,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sharedProofFolder } from './paths.mjs';
 import { readParts } from './proof-files.mjs';
-import { beyondProof, groupsOf } from './proofs.mjs';
+import { beyondProof, groupsOf, inProgramOrder } from './proofs.mjs';
 import { layoutOf, playedIn, startedIn } from './played.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 
@@ -116,7 +116,8 @@ export function partGroups(parts, ran, codeMap) {
   const taken = new Set();
   const groups = parts.map(({ name }) => {
     const keys = ran.get(name);
-    const functions = (keys ?? []).map(key => byKey.get(key)).filter(f => f && !beyondProof(codeMap, f) && !taken.has(f.key));
+    // a program at a time on a PlayStation 2 disc, as a group of functions is, so a module's are together and in order
+    const functions = inProgramOrder(codeMap, (keys ?? []).map(key => byKey.get(key)).filter(f => f && !beyondProof(codeMap, f) && !taken.has(f.key)));
     for (const f of functions) taken.add(f.key);
     return { name, part: true, recorded: Boolean(keys), first: functions[0]?.key ?? null, functions };
   });

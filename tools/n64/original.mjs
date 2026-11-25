@@ -14,7 +14,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LOCAL } from '../lib/paths.mjs';
+import { LOCAL, REPO } from '../lib/paths.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
 import { withBuildTools } from '../gba/build.mjs';
@@ -111,7 +111,9 @@ function programFile() {
 
 /** Builds the program that calls the original's functions, if this computer hasn't yet: its file. */
 export function buildCaller(log = console.log) {
-  const program = programFile(), stamp = `${program}.source`, text = `${readFileSync(CALL, 'utf8')}\n${FLOAT_RULES.join(' ')}`;
+  // built again when call.c changes, or how it's compiled, or the tools' change to the emulator's source it's built from
+  const { core } = consoleOf('n64'), patch = core.patch ? readFileSync(join(REPO, core.patch), 'utf8') : '';
+  const program = programFile(), stamp = `${program}.source`, text = `${readFileSync(CALL, 'utf8')}\n${FLOAT_RULES.join(' ')}\n${patch}`;
   if (existsSync(program) && existsSync(stamp) && readFileSync(stamp, 'utf8') === text) return program;
   const machine = consoleOf('n64');
   log(`Getting the Nintendo 64's processor from its emulator's source, at ${machine.core.source}…`);

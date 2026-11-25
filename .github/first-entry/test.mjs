@@ -260,6 +260,24 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.equal(entry(map([['00004450', 139], ['00000000@PADMAN.IRX', 8]]), 'c', nes).why, 'proof', 'places, on a console with one');
   assert.equal(entry(map([['00004450', 139], ['00004500~vu', 8]]), 'c', nes).why, 'proof');
   assert.equal(readCodeMap(`{"original":"${SHA1}","from":"The tools","functions":[["08000000",4],["080000C0@PADMAN.IRX",200]]}\n`, SHA1), null);
+  // a PlayStation Portable game's code is its UMD's, or none, and its functions are in the console's memory for games
+  const psp = { ...nes, console: 'psp', code: 'ULUS-10041' };
+  assert.equal(entry(map([['08804000', 1104], ['08804450', 60], ['0BFFFF00', 8]]), 'c', psp).why, undefined);
+  assert.deepEqual(readOriginal(`${JSON.stringify(psp, null, 2)}\n`), psp);
+  assert.ok(readOriginal(`${JSON.stringify({ ...psp, code: '' }, null, 2)}\n`), 'a program or a download');
+  assert.ok(readOriginal(`${JSON.stringify({ ...psp, code: 'NPJH50001', keysAfterVBlank: true }, null, 2)}\n`));
+  for (const code of ['ULUS-10041|', 'ulus-10041', 'ROMS EXAMPLE', 'SLUS_200.02']) assert.equal(readOriginal(`${JSON.stringify({ ...psp, code }, null, 2)}\n`), null, code);
+  // its code map says where the program starts, a function no call can prove
+  const started = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/psp/functions.mjs)","functions":[["08804000",140],["0880408C",24]],${text}}\n`);
+  assert.equal(entry(started('"start":"08804000"'), 'c', psp).why, undefined);
+  assert.equal(entry(started('"start":"see example.com"'), 'c', psp).why, 'proof');
+  for (const [what, functions] of Object.entries({
+    'the kernel\'s memory': [['88000000', 8]],
+    'below a game\'s memory': [['08000000', 8]],
+    'past the console\'s memory': [['0C000000', 8]],
+    'a place, as only a PlayStation 2 disc has': [['08804000@PADMAN.IRX', 8]],
+    'bytes, as only the Game Boy Advance has': [['08804000/E92D4000E3A00001', 232]],
+  })) assert.equal(entry(map(functions), 'c', psp).why, 'proof', what);
   // a GameCube game's code is its disc's six letters, its program's functions are in the console's 24 MB, and its
   // modules' are each in a place of their own, by the module's file, whose name can have small letters (#1944)
   const gamecube = { ...nes, console: 'gamecube', code: 'GMUE00' };
