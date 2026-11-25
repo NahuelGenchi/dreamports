@@ -48,6 +48,7 @@ import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
 import { cartOfLayout, mapOf, placeIn, readCartridge, ROM } from '../snes/cartridge.mjs';
 import { addressOf as snesAddressOf } from '../snes/functions.mjs';
+import { contractsIn as gbContractsIn } from '../gbc/twin.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
@@ -57,7 +58,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'ps1', 'ps2'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'gb', 'gbc', 'ps1', 'ps2'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -67,6 +68,8 @@ const MARK = /^[0-9a-f]{16}$/;
 // of the cartridge that isn't a function, which is the game's data
 const MOST_FUNCTIONS = 12, MOST_BYTES = 2048, WIDEST_GAP = 0x400;
 
+// where the console starts a Game Boy game
+const GB_START = 0x0100;
 // where a Game Boy Advance cartridge starts, and where its code does, after its header
 const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
 
@@ -84,6 +87,8 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
   if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
+  // a Game Boy game starts at $0100 and never comes back from there
+  if ((codeMap.console === 'gb' || codeMap.console === 'gbc') && f.address === GB_START) return 'start';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
 }
@@ -216,11 +221,13 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
     if (key === undefined || marks.has(key) || !twin.code) return;
     marks.set(key, { name: twin.name, file: inFolder(file), line: twin.line, mark: markOf(`${more}${twin.code}\n${built(file)}`) });
   };
-  if (codeMap.console === 'nes') {
+  if (codeMap.console === 'nes' || codeMap.console === 'gb' || codeMap.console === 'gbc') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
+    // a twin with a contract beside it, as each of these consoles' check reads them (nes/twin.mjs, gbc/twin.mjs)
+    const read_ = codeMap.console === 'nes' ? (text, file) => contractsIn(text, banks, givenOf(file)) : text => gbContractsIn(text, banks);
     for (const file of files) {
       const defined = new Map(twinsOf.get(file).map(twin => [twin.name, twin]));
-      for (const contract of contractsIn(read(file) ?? '', banks, givenOf(file)).contracts) {
+      for (const contract of read_(read(file) ?? '', file).contracts) {
         const twin = defined.get(/^[A-Za-z_]\w*/.exec(contract.call)?.[0]);
         if (twin) keep(contract.offset, twin, file, `${contract.text}\n`);
       }
@@ -417,7 +424,7 @@ export function inProgramOrder(codeMap, functions) {
 export function groupsOf(codeMap) {
   const groups = [];
   let group = null, bytes = 0;
-  const bank = f => (codeMap.console === 'nes' ? Math.floor(f.address / 0x4000) : 0);
+  const bank = f => (['nes', 'gb', 'gbc'].includes(codeMap.console) ? Math.floor(f.address / 0x4000) : 0);
   for (const f of inProgramOrder(codeMap, codeMap.functions.filter(f => !beyondProof(codeMap, f)))) {
     const last = group?.at(-1);
     if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last) || program(f) !== program(last)) {
