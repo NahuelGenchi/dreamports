@@ -6,7 +6,7 @@ import { threadId } from 'node:worker_threads';
 import { LOCAL } from '../lib/paths.mjs';
 import { playReference, runReference } from '../lib/run-reference.mjs';
 import { checkSizes } from '../lib/screens.mjs';
-import { HOST, buildReference, coreFile } from './build.mjs';
+import { HOST, OPENGL, buildReference, coreFile } from './build.mjs';
 
 const FROM = join(LOCAL, 'tmp');
 
@@ -53,7 +53,9 @@ export function libretroReference(machine) {
     // one instead, so nothing carries from one run to the next. On a Mac Play! asks Apple's CoreFoundation for the
     // Documents folder, which CFFIXED_USER_HOME moves there too
     const home = { XDG_CONFIG_HOME: saves, XDG_DATA_HOME: saves, XDG_CACHE_HOME: saves, ...(process.platform === 'darwin' && { CFFIXED_USER_HOME: saves }) };
-    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...(machine.touch !== undefined && { DP_TOUCH: '1' }), ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
+    // and on Windows, where one that draws with OpenGL finds Mesa's, which draws on the processor (build.mjs)
+    const openGl = core.graphics && process.platform === 'win32' && { DP_OPENGL: OPENGL };
+    const env = { DP_SYSTEM: system, DP_SAVE_FOLDER: saves, ...home, ...openGl, ...(machine.touch !== undefined && { DP_TOUCH: '1' }), ...(core.gameChoosesRate && { DP_SOUND_RATE: String(machine.sound) }) };
     return { env, path: named.path, done: () => { named.done(); rmSync(saves, { recursive: true, force: true }); } };
   };
   return {
@@ -61,10 +63,10 @@ export function libretroReference(machine) {
     // an emulator that tells the tools of every instruction it runs says which functions ran, every instruction and each
     // way every branch went (lib/played.mjs, ran.h), where play sent the processor, for the code map, and what it held
     // as each function started
-    // as every function's start, on a core that tells of each instruction but whose record of every instruction and branch
-    // the tools can't read into gameplay proven yet, as the PlayStation Portable's ('starts'): its functions in each
-    // frame are still counted, for a part's list (lib/part-functions.mjs), and the same on one that says itself which
-    // functions ran in a frame, as the Nintendo DS's does ('functions')
+    // one that says only which functions ran in each frame, as the PlayStation's and the Nintendo DS's do, says no more,
+    // and nor does one that tells of each instruction but whose record of every instruction and branch the tools can't
+    // read into gameplay proven yet, as the PlayStation Portable's ('starts'): its functions in each frame are still
+    // counted, for a part's list (lib/part-functions.mjs)
     seesInstructions: !!core.ran && core.ran !== 'starts' && core.ran !== 'functions',
     seesEntries: core.ran === true,
     // and one that tells of each block, as the PlayStation 2's does, follows the EE's registers to say what a branch
