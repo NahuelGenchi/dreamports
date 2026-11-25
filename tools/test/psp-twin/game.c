@@ -148,6 +148,12 @@ unsigned inverse_square(const float *v) {
   return psp_vfpu_get(0x48620001u);
 }
 
+/** @RECIPROCAL@: one over the vector unit's S000, as its bits */
+unsigned reciprocal(void) {
+  psp_vfpu(0xD0100001u);
+  return psp_vfpu_get(0x48620001u);
+}
+
 /** @SPIN@: angle's sine and cosine, left in the vector unit */
 void spin(unsigned angle) {
   psp_vfpu_set(0x48E40000u, angle);

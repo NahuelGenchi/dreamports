@@ -107,6 +107,25 @@ static inline float flt(uint32_t u) {
   __builtin_memcpy(&f, &u, 4);
   return f;
 }
+// A float's sign taken off or turned over by its bits, with a sign bit read from memory: the compiler and Binaryen's
+// optimizer, which a game's module goes through, take a NaN's sign to be theirs to choose, so they turn a mask they can
+// see back into a float's abs and then drop it where the float came from a square root, which gave a Dreamport the
+// other of the console's NaNs
+static volatile uint32_t sign_bit = 0x80000000u;
+static inline float absolute(float f) {
+  uint32_t u;
+  __builtin_memcpy(&u, &f, 4);
+  u &= ~sign_bit;
+  __builtin_memcpy(&f, &u, 4);
+  return f;
+}
+static inline float negated(float f) {
+  uint32_t u;
+  __builtin_memcpy(&u, &f, 4);
+  u ^= sign_bit;
+  __builtin_memcpy(&f, &u, 4);
+  return f;
+}
 static inline int is_nan(float f) { return (bits(f) & 0x7FFFFFFFu) > 0x7F800000u; }
 static inline int is_inf(float f) { return (bits(f) & 0x7FFFFFFFu) == 0x7F800000u; }
 static inline int is_nan_or_inf(float f) { return (bits(f) & 0x7F800000u) == 0x7F800000u; }
@@ -793,10 +812,10 @@ static void vv2op(uint32_t op) {
     case 19: d[i] = vfpu_cos(v); break;
     case 20: d[i] = vfpu_exp2(v); break;
     case 21: d[i] = vfpu_log2(v); break;
-    case 22: d[i] = USE_VFPU_SQRT ? vfpu_sqrt(v) : __builtin_fabsf(root(v)); break;
+    case 22: d[i] = USE_VFPU_SQRT ? vfpu_sqrt(v) : absolute(root(v)); break;
     case 23: d[i] = vfpu_asin(v); break;
-    case 24: d[i] = -vfpu_rcp(v); break;
-    case 26: d[i] = -vfpu_sin(v); break;
+    case 24: d[i] = negated(vfpu_rcp(v)); break;
+    case 26: d[i] = negated(vfpu_sin(v)); break;
     case 28: d[i] = vfpu_rexp2(v); break;
     }
   }
@@ -818,7 +837,7 @@ static void vocp(uint32_t op) {
   // S forces the negate flags; T forces constants of 1, so abs makes another and negate still works.
   prefix_st(s, rewrite(PFX_S, 0, NEGATE(1, 1, 1, 1)), n, 0.0f);
   prefix_st(t, rewrite(PFX_T, ANY_SWIZZLE, constants_of(ONE, ONE, ONE, ONE)), n, 0.0f);
-  for (int i = 0; i < n; i++) d[i] = is_nan(s[i]) ? __builtin_fabsf(s[i]) : plus(t[i], s[i]); // NaN always positive
+  for (int i = 0; i < n; i++) d[i] = is_nan(s[i]) ? absolute(s[i]) : plus(t[i], s[i]); // NaN always positive
   retain_invalid(d, n);
   prefix_d(d, n, 0);
   write_vector(d, n, VD);
@@ -1074,7 +1093,7 @@ static void vhdp(uint32_t op) {
   // each product added in front of the sum so far, in the emulator's build
   float sum = plus(times(t[0], s[0]), 0.0f);
   for (int i = 1; i < 4; i++) sum = plus(times(t[i], s[i]), sum);
-  d = is_nan(sum) ? __builtin_fabsf(sum) : sum;
+  d = is_nan(sum) ? absolute(sum) : sum;
   prefix_d(&d, 1, 0);
   write_vector(&d, 1, VD);
   eat_prefixes();
@@ -1203,7 +1222,7 @@ static void vrot(uint32_t op) {
   if (CTRL[PFX_S] == 0xE4) {
     sine = vfpu_sin(flt(*single(vs)));
     cosine = vfpu_cos(flt(*single(vs)));
-    if (neg_sin) sine = -sine;
+    if (neg_sin) sine = negated(sine);
   } else {
     // S swizzles only the sine, with negate applied later; the cosine ignores all prefixes.
     float s[4] = { 0 };
@@ -1211,7 +1230,7 @@ static void vrot(uint32_t op) {
     prefix_st(s, rewrite(PFX_S, NEGATE(1, 0, 0, 0), 0), 1, 0.0f);
     cosine = vfpu_cos(flt(*single(vs)));
     sine = vfpu_sin(s[0]);
-    if (neg_sin) sine = -sine;
+    if (neg_sin) sine = negated(sine);
     retain_invalid(&sine, 1);
   }
   if (sine_lane == cosine_lane) {

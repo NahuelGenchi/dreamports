@@ -103,9 +103,9 @@ try {
     check(['differs', 'stopped'].includes(run.cut?.kind), `a float cast as C casts it, where the console gives the nearest whole number a word holds: ${run.cut?.kind} ${run.cut?.line}`);
   }
   await wrong('quotient', [['return (int)psp_div(a, b).lo;', 'return (int)psp_div(a, b).hi;']], 'differs', 'the remainder for the quotient');
-  // one over S010 as C divides, in place of the unit's vrcp.s
-  const rcpInC = '  float x;\n  __builtin_memcpy(&x, &psp_vfpu_state.v[4], 4);\n  x = 1.0f / x;\n  __builtin_memcpy(&psp_vfpu_state.v[4], &x, 4);\n';
-  await wrong('inverse_square', [['  psp_vfpu(0xD0100101u);\n', rcpInC]], 'differs', 'a reciprocal as C divides, where the vector unit gives its own', /the twin gave back/);
+  // one over S000 as C divides, into S010, in place of the unit's vrcp.s
+  const rcpInC = '  float x;\n  __builtin_memcpy(&x, &psp_vfpu_state.v[0], 4);\n  x = 1.0f / x;\n  __builtin_memcpy(&psp_vfpu_state.v[4], &x, 4);\n';
+  await wrong('reciprocal', [['  psp_vfpu(0xD0100001u);\n', rcpInC]], 'differs', 'a reciprocal as C divides, where the vector unit gives its own', /the twin gave back/);
   await wrong('spin', [['  psp_vfpu(0xD0130003u);\n', '']], 'differs', 'a cosine left out, which only the vector unit\'s registers show', /in the vector unit's S030/);
 } finally {
   original.close();

@@ -366,6 +366,8 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
     await original.image(image, regions);
     await runner.set(image, regions);
     const choose = chooser(all.seed, RAM + regions[0].bytes);
+    // the vector unit's, from a seed of their own, so the calls are the same as without it
+    const chooseVectors = chooser((all.seed ^ 0x9E3779B9) >>> 0, RAM + regions[0].bytes);
     for (const call of linked.calls) {
       const size = sizeOf(call.address);
       if (!size) {
@@ -383,7 +385,7 @@ export async function checkFile({ elf, build, file, only = null, addressOf, size
         continue;
       }
       const f = { ...call, params, returns, size, code: { from: call.address, to: call.address + size } };
-      const checked = await checkFunction({ f, original, runner, program, regions, options: all, choose });
+      const checked = await checkFunction({ f, original, runner, program, regions, options: all, choose, chooseVectors });
       const { kind, line } = outcome(f, checked, all);
       const { total, left } = waysLeft(instructionsOf(program, f), f.address, checked.ran, ruledOut);
       functions.push({ name: f.name, address: f.address, kind, line, compared: checked.compared, whole: kind === 'same' && !left.length, left, total });

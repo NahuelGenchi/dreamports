@@ -30,6 +30,7 @@
 //   turned(x, n)         rotrv: x turned right by n
 //   inverse_square(v)    one over the four floats at v dotted with themselves, by the vector unit: lv.q, vdot.q,
 //                        vrcp.s and mfv
+//   reciprocal()         one over the vector unit's S000, vrcp.s and mfv
 //   spin(angle)          the vector unit's sine and cosine of a float, mtv, vsin.s and vcos.s, left in its registers
 //   start                the program's start, which comes straight back
 
@@ -62,7 +63,7 @@ const F0 = 0, F1 = 1, F12 = 12, F13 = 13, A3 = 7;
 
 /** The functions, by name, in the order they're in the program. */
 export const NAMES = ['start', 'sum', 'fill', 'lookup', 'twice', 'pick', 'bigger', 'middle', 'clock', 'half', 'scale', 'whole', 'cut', 'floor_of', 'ceil_of',
-  'nearest', 'less', 'root', 'from_whole', 'leading', 'swapped', 'reversed', 'quotient', 'rest', 'dot', 'turned', 'inverse_square', 'spin'];
+  'nearest', 'less', 'root', 'from_whole', 'leading', 'swapped', 'reversed', 'quotient', 'rest', 'dot', 'turned', 'inverse_square', 'reciprocal', 'spin'];
 /** Those that use the floating-point unit, the vector unit or the Allegrex's own instructions. */
 export const UNITS = NAMES.slice(NAMES.indexOf('half'));
 /** The table `lookup` reads. */
@@ -148,6 +149,7 @@ export function madeUpPspTwin() {
     here('dot'), mult(A0, A1), madd(A2, A3), jr(RA), mflo(V0),
     here('turned'), jr(RA), rotrv(V0, A0, A1),
     here('inverse_square'), lvq(0, 0, A0), vdot('q', 1, 0, 0), vrcp('s', 1, 1), jr(RA), mfv(V0, 1),
+    here('reciprocal'), vrcp('s', 1, 0), jr(RA), mfv(V0, 1),
     here('spin'), mtv(A0, 0), vsin('s', 2, 0), jr(RA), vcos('s', 3, 0),
   ];
   return pspProgram({
