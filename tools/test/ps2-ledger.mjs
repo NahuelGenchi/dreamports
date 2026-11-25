@@ -9,7 +9,7 @@
 // with the module among its files: the IOP loads it wherever it has room, the emulator says where, and what the IOP
 // runs there counts for the module's functions in the code map. The same play twice tells the same, and the pictures are the same as with nothing told. Like the
 // other checks on the real emulator, it isn't run on every pull request, as the emulator takes minutes to build, and runs
-// on Linux and macOS alone (docs/CONSOLES.md).
+// on Linux, macOS and Windows (docs/CONSOLES.md).
 //
 // Then the same disc is a game's copy, in a folder of its own that it removes after, with the program's Dreamport in C
 // (made-up-ps2.c), and `prove` writes its played.json, with the program's code and the disc's sectors, and `untouched`

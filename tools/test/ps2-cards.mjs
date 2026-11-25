@@ -11,7 +11,7 @@
 // - the cards themselves, every file's bytes, are the emulator's after the last frame;
 // - a Dreamport that writes the frame after's number is found by the card it leaves, though every answer is the same.
 //
-// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux and macOS alone (docs/CONSOLES.md).
+// It isn't run on every pull request, as the emulator takes minutes to build, and on Linux, macOS and Windows (docs/CONSOLES.md).
 
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
