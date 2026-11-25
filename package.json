@@ -63,6 +63,7 @@
     "test:same-memory": "node tools/test/same-memory.mjs",
     "test:gba-same": "node tools/test/gba-same.mjs",
     "test:function-tasks": "node tools/test/function-tasks.mjs",
+    "test:part-tasks": "node tools/test/part-tasks.mjs",
     "test:libraries": "node tools/test/libraries.mjs",
     "test:nes-libraries": "node tools/test/nes-libraries.mjs",
     "test:function-homes": "node tools/test/function-homes.mjs",
