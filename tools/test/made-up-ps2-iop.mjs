@@ -21,7 +21,7 @@
 // writes it again, and every TIMED_EVERY frames waits once more, for longer than a frame, and writes it a third time.
 // The EE only loads it and draws, with no server to call.
 
-import { LOAD_AT, lw as eeLw, sw as eeSw, addiu as eeAddiu, li as eeLi, here, bne as eeBne, j as eeJ, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET } from './made-up-ps2.mjs';
+import { LOAD_AT, imm as eeImm, lw as eeLw, sw as eeSw, addiu as eeAddiu, li as eeLi, here, bne as eeBne, j as eeJ, SYSCALL, NOP, setUp, waitForVBlank, send, elfOf, PACKET } from './made-up-ps2.mjs';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The sound
@@ -442,7 +442,7 @@ export const timedIrx = () => irxOf(timedModule().words, 'dp_timed');
 export const IRX_BODY = 0x80;
 export const moduleData = () => {
   const { places } = soundModule();
-  return { tone: places.tone, click: places.click, rpcBuffer: places.rpcBuffer };
+  return { tone: places.tone, click: places.click, rpcBuffer: places.rpcBuffer, start: places.start, run: places.run, serve: places.serve, answer: places.answer };
 };
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -469,7 +469,14 @@ export const SIF_INIT = 0x80000002, SIF_REND = 0x80000008, SIF_BIND = 0x80000009
 // the place the RPC library sends a call's arguments to, which the emulator's SIF knows them by
 const RPC_ARGUMENTS = 0xDEADBEF0;
 
-export function madeUpPs2Sound({ timed = false } = {}) {
+/**
+ * The program. With `serveFrom`, it calls the module's server only from that frame of its own count on, so the
+ * server's function first runs in a frame the caller chose. `more` adds to it, for a program built on this one
+ * (made-up-ps2-parts.mjs): `data(put)` puts more data after the module, `frame({ at, frame })` gives the code each
+ * frame runs first, `at` giving a piece of data's address and `frame` the register that counts frames, and
+ * `after({ at })` the code after the loop, its functions. With neither, it's the program it always was.
+ */
+export function madeUpPs2Sound({ timed = false, serveFrom = 0, more = null } = {}) {
   const irx = timed ? timedIrx() : soundIrx();
   // the data after the GS's packet, each on a 16-byte boundary, in words from the start of it
   const layout = {}, data = [...PACKET];
@@ -488,6 +495,7 @@ export function madeUpPs2Sound({ timed = false } = {}) {
   put('arguments', [IRX_IN_IOP, 0, ...Array(126).fill(0)]);
   const irxWords = Array.from({ length: Math.ceil(irx.length / 4) }, (_, i) => irx.length >= i * 4 + 4 ? irx.readUInt32LE(i * 4) : Buffer.concat([irx.subarray(i * 4), Buffer.alloc(4)]).readUInt32LE(0));
   put('irx', irxWords);
+  more?.data?.(put);
   // a GIF packet of GS LABEL writes, which change nothing drawn, each carrying one thing the SIF gave the program, so
   // they're in its draw list (LABEL_NAMES)
   put('labels', [LABEL_NAMES.length | 0x8000, 0x10000000, 0xE, 0, ...LABEL_NAMES.flatMap(() => [0, 0, 0x62, 0])]);
@@ -568,15 +576,18 @@ export function madeUpPs2Sound({ timed = false } = {}) {
       ...eeLi(E.S3, addressOf(packetAt, 'labels')), eeAddiu(E.S5, E.ZERO, 0),
       here('frame'),
       ...waitForVBlank,
+      ...(more?.frame?.({ at: name => addressOf(packetAt, name), frame: E.S5 }) ?? []),
       // and called each frame with the frame's number, its answer kept
       ...(timed ? [] : [
+        ...(serveFrom ? [eeImm(0x0A, E.S5, E.T2, serveFrom), eeBne(E.T2, E.ZERO, 'noServe'), NOP] : []),
         ...eeLi(E.T1, addressOf(packetAt, 'serverArguments')), eeSw(E.S5, 0, E.T1),
         ...sendTo('serverCall', 2, [1]), ...waitForReply('ServerCall', null),
-        ...keepWord('answer', addressOf(packetAt, 'answered')), eeAddiu(E.S5, E.S5, 1),
+        ...keepWord('answer', addressOf(packetAt, 'answered')), ...(serveFrom ? [here('noServe')] : []), eeAddiu(E.S5, E.S5, 1),
       ]),
       ...send(PACKET),
       ...send(LABELS_SIZE, GIF_DMA, E.S3, 'labels'),
       eeJ('frame'), NOP,
+      ...(more?.after?.({ at: name => addressOf(packetAt, name) }) ?? []),
     ];
   };
   // the code's size doesn't depend on where its data is, so the data is made for the place elfOf puts it at

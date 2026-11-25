@@ -405,6 +405,16 @@ export function keptText(version, result, kind) {
   ];
 }
 
+// the program of a PlayStation 2 disc a function is in, the one the disc boots being none, and a vector unit's apart
+const program = f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`;
+
+/** Some of a code map's functions in the order a task lists them: a PlayStation 2 disc's programs one after another,
+ *  the one it boots first, as each one's addresses are its own, and each program's in the code map's order. */
+export function inProgramOrder(codeMap, functions) {
+  const place = new Map(codeMap.functions.map((f, n) => [f.key, n]));
+  return [...functions].sort((a, b) => (program(a) < program(b) ? -1 : program(a) > program(b) ? 1 : place.get(a.key) - place.get(b.key)));
+}
+
 /**
  * A version's tasks: the code map's functions that a proof can be given of (beyondProof), in groups that sit together,
  * [{ name, first, functions }], each `functions` those of the map. A group ends after 12 functions or two
@@ -415,10 +425,7 @@ export function groupsOf(codeMap) {
   const groups = [];
   let group = null, bytes = 0;
   const bank = f => (['nes', 'gb', 'gbc'].includes(codeMap.console) ? Math.floor(f.address / 0x4000) : 0);
-  // a PlayStation 2 disc's programs one after another, the one it boots first, as each one's addresses are its own
-  const program = f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`;
-  const inOrder = codeMap.functions.filter(f => !beyondProof(codeMap, f)).map((f, n) => [f, n]).sort(([a, x], [b, y]) => (program(a) < program(b) ? -1 : program(a) > program(b) ? 1 : x - y)).map(([f]) => f);
-  for (const f of inOrder) {
+  for (const f of inProgramOrder(codeMap, codeMap.functions.filter(f => !beyondProof(codeMap, f)))) {
     const last = group?.at(-1);
     if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last) || program(f) !== program(last)) {
       group = [];

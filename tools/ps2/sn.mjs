@@ -13,8 +13,8 @@
 // They run through wibo (decompals/wibo, MIT), which runs 32-bit Windows command-line programs, fetched the same way:
 // on Linux as it is, and on a Mac its build for Intel's chip, which a Mac with Apple's chip runs through Rosetta 2,
 // Apple's own translator, when the person has installed it (`softwareupdate --install-rosetta`, which setup asks
-// before running). A build is kept only once it compiles a file of the tools' own to the object it's known to make,
-// so a wibo or a computer that runs it differently is found out at once.
+// before running). Windows runs them as they are, with no wibo. A build is kept only once it compiles a file of the
+// tools' own to the object it's known to make, so a wibo or a computer that runs it differently is found out at once.
 
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
@@ -56,8 +56,9 @@ const FOLDER = join(LOCAL, 'ps2', 'sn-gcc');
 /** Whether a Mac with Apple's chip has Rosetta 2, which runs wibo's build for Intel's chip. */
 export const hasRosetta = () => spawnSync('arch', ['-x86_64', '/usr/bin/true']).status === 0;
 
-/** wibo, fetched if this computer hasn't it yet: where it is. */
+/** wibo, fetched if this computer hasn't it yet: where it is, or null on Windows, which runs its own programs. */
 export async function ensureWibo(log = console.log) {
+  if (platform() === 'win32') return null;
   const known = WIBO[`${platform()}-${arch()}`];
   if (!known) throw new Error(`SN Systems' compilers are programs for Windows, which wibo runs on Linux on Intel's or AMD's chip and on a Mac, and not on ${platform()} ${arch()}: on Windows, the tools run in WSL.`);
   if (known.rosetta && !hasRosetta()) throw new Error('SN Systems\' compilers run through wibo, which a Mac with Apple\'s chip runs through Rosetta 2, Apple\'s own translator, and this Mac hasn\'t it yet: softwareupdate --install-rosetta installs it, from Apple.');
@@ -70,9 +71,10 @@ export async function ensureWibo(log = console.log) {
   return file;
 }
 
-// runs the driver of a build in `cwd`, its temporary files in `temporary`
+// runs the driver of a build in `cwd`, its temporary files in `temporary`: through wibo, or by itself on Windows
 function drive(wibo, folder, args, cwd, temporary) {
-  const result = spawnSync(wibo, [join(folder, 'bin', 'ee-gcc.exe'), ...args], { cwd, env: { ...process.env, LC_ALL: 'C', TMP: temporary, TEMP: temporary, TMPDIR: temporary }, encoding: 'utf8', timeout: 120000 });
+  const driver = join(folder, 'bin', 'ee-gcc.exe');
+  const result = spawnSync(wibo ?? driver, [...(wibo ? [driver] : []), ...args], { cwd, env: { ...process.env, LC_ALL: 'C', TMP: temporary, TEMP: temporary, TMPDIR: temporary }, encoding: 'utf8', timeout: 120000 });
   return { ok: !result.error && result.status === 0, said: `${result.stdout ?? ''}${result.stderr ?? ''}`.replace(/\r/g, '').trim() || result.error?.message || '' };
 }
 
@@ -84,7 +86,7 @@ export function selftestOf(wibo, folder) {
   try {
     writeFileSync(join(work, 'selftest.c'), SELFTEST);
     const built = drive(wibo, folder, ['-O2', '-G0', '-c', 'selftest.c', '-o', 'selftest.o'], work, work);
-    if (!built.ok || !existsSync(join(work, 'selftest.o'))) throw new Error(`SN Systems' compiler didn't run through wibo on this computer: ${built.said.split('\n')[0] || 'it made nothing'}`);
+    if (!built.ok || !existsSync(join(work, 'selftest.o'))) throw new Error(`SN Systems' compiler didn't run ${wibo ? 'through wibo ' : ''}on this computer: ${built.said.split('\n')[0] || 'it made nothing'}`);
     return createHash('sha256').update(readFileSync(join(work, 'selftest.o'))).digest('hex');
   } finally {
     rmSync(work, { recursive: true, force: true });
