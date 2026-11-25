@@ -12,7 +12,7 @@ export interface System {
 
 // The consoles with a drawing in public/systems/, each from the single-colour icons of libretro/retroarch-assets
 // (CC BY 4.0, credited in About), with only its shapes kept.
-const DRAWN = ['nes', 'gb', 'gbc', 'gba', 'snes', 'md', 'n64', 'gamecube', 'ps1', 'ps2', 'psp'];
+const DRAWN = ['nes', 'gb', 'gbc', 'gba', 'nds', 'snes', 'md', 'n64', 'gamecube', 'ps1', 'ps2', 'psp'];
 
 /** A console as the launcher shows it. The build stops on one Dreamports doesn't know, or with no drawing yet. */
 export function systemOf(console: string | undefined, game: string): System {
