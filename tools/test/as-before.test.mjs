@@ -76,6 +76,8 @@ test('before is the last commit, and the better of both sides while a merge is o
     git('init', '-q', '-b', 'main');
     git('config', 'user.name', 'Test');
     git('config', 'user.email', 'test@example.com');
+    // the same files on every computer, whatever its own git turns line endings into (#2004)
+    git('config', 'core.autocrlf', 'false');
     assert.deepEqual(provenBefore('one/c', cwd), {});
     put({ a: row(100, [[50, 99]]), b: row(100, [[50, 99]]) });
     git('switch', '-qc', 'work');

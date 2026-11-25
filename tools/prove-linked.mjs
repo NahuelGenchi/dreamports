@@ -8,6 +8,7 @@ import { join, relative } from 'node:path';
 import { REPO, resultFolder } from './lib/paths.mjs';
 import { cartridgeOf, readParts } from './lib/proof-files.mjs';
 import { CELL, contentIn, finderOf, layoutOf, playedIn, startedIn } from './lib/played.mjs';
+import { partsRanIn } from './lib/part-functions.mjs';
 import { expand } from './lib/recording.mjs';
 import { openDreamport } from './lib/dreamport.mjs';
 import { runLinked } from './gba/linked.mjs';
@@ -175,12 +176,16 @@ export async function proveLinked({ page, game, recording, copy, server, main = 
   // page's frame f is the original's frame f + 1, which the original works out in its frame f. The cartridge's data
   // those frames used counts the same way, and the functions that started in them are those the row lists as found
   // running.
-  let played = null;
+  let played = null, partsRan = [];
   if (seesPlayed) {
     const matchedInOriginal = new Uint8Array(frames + 1), differing = new Set(differ);
     for (let f = 0; f < hashes.length; f++) if (!differing.has(f)) matchedInOriginal[f] = 1;
     const cartridge = cartridgeOf(copy);
-    played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), finderOf(codeMap, cartridge, new Map())), made: [], used: contentIn(first.played.content, matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
+    const find = finderOf(codeMap, cartridge, new Map());
+    played = { set: playedIn(first.played.records, matchedInOriginal, layoutOf(codeMap), find), made: [], used: contentIn(first.played.content, matchedInOriginal, Math.ceil(cartridge(0x08000000, 0x02000000).length / CELL)) };
+    // what the original ran, on any console, in each part's frames and the frame after each, whether or not they
+    // matched: the part's functions, for a version whose tasks are its parts (lib/part-functions.mjs)
+    partsRan = partsRanIn(readParts(game).filter(p => p.recording === name && Array.isArray(p.frames) && p.frames.length === 2 && p.frames.every(Number.isInteger)), frames, codeMap, first.played.records, find);
   }
-  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, functions: played ? startedIn(played.set, codeMap) : [] };
+  return { frames, matched: quick ? matched : matched, differs: stretches, soundDiffers: [], neverInPlay: [], ...(played ? { played } : {}), changed: !!changed, ...(partsRan.length ? { partsRan } : {}), functions: played ? startedIn(played.set, codeMap) : [] };
 }

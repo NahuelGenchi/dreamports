@@ -31,7 +31,7 @@
 // copy's bytes that are proven code, data used in play or explained, on a computer with the copy. That number is the
 // tools' own: nothing writes it in a proof file, and the site doesn't show it.
 
-import { cartridgeOf, hex, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
+import { cartridgeOf, hex, inBootProgram, keptVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { asksForProofs, countsOf, groupNamed, KEEPS_PROOFS, KINDS, PROOFS, readProofs, startProofs, stateOf, stateText } from './lib/proofs.mjs';
 import { accountOf, ACCOUNTED, KINDS as BYTES } from './lib/rebuild.mjs';
 import { followsContent, readUnreachable, usedCells } from './lib/played.mjs';
@@ -77,6 +77,7 @@ export async function run(args) {
   if (bytes) return showBytes(version, bytesAccounted(version, { codeMap, states: [...states.values()] }), all);
   if (named) {
     const group = groupNamed(groups, named);
+    if (!group && showAlone(version, named, codeMap, states, groups)) return 0;
     if (!group) throw new Error(`No task of ${version} goes by "${named}": name one as npm run dp -- proofs ${version} lists them, or the address of one of its functions.`);
     show(version, group, states);
     return 0;
@@ -178,6 +179,33 @@ function show(version, group, states) {
   if (group.part && !group.recorded) return console.log(`${group.name} of ${version} is a part of the game with no recording of the original yet, so nothing says which functions it runs: tools/README.md#proving-a-part, then npm run dp -- prove ${version}.`);
   console.log(`${group.name} of ${version}, ${plural(group.functions.length, 'function')}${group.part ? ' the original runs in it that no part before it does' : ''}, ${count(proven)} proven:`);
   for (const line of groupLines(group, states)) console.log(line);
+}
+
+/**
+ * What `proofs <version> <address>` says of a function no task has yet (#1919), as lines, or null when `named` isn't
+ * the address of one: a function no part's recording runs, while a part of the game still has no list, and one
+ * neither proof reaches. `groups` are the version's tasks and `states` its functions' by key.
+ */
+export function aloneLines(version, named, codeMap, states, groups) {
+  const digits = /^(?:0x|\$)?([0-9a-f]{4,8})$/i.exec(String(named).trim())?.[1];
+  if (!digits) return null;
+  const address = parseInt(digits, 16);
+  const f = codeMap.functions.find(each => inBootProgram(each) && address >= each.address && address < each.address + each.size);
+  if (!f || groups.some(group => group.functions.includes(f))) return null;
+  const state = states.get(f.key), waiting = groups.filter(group => group.part && !group.recorded).length;
+  const why = state.beyond ? 'which neither proof reaches yet'
+    : `as no part's recording runs it so far, and ${plural(waiting, 'part')} of the game ${waiting === 1 ? 'has' : 'have'} no recording of the original yet. If none of those runs it either, it comes after the parts, in a group of the functions no recording ran`;
+  return [
+    `0x${hex(f.address)} of ${version} is in no task yet, ${why}:`,
+    ...groupLines({ functions: [f] }, states),
+    ...(state.beyond ? [] : ['Its twin can be written and proven now all the same: npm run dp -- match and npm run dp -- twin keep a function\'s proof whatever task it\'s in, and another function\'s twin can name it before then.']),
+  ];
+}
+
+function showAlone(version, named, codeMap, states, groups) {
+  const lines = aloneLines(version, named, codeMap, states, groups);
+  for (const line of lines ?? []) console.log(line);
+  return Boolean(lines);
 }
 
 function begin(version) {
