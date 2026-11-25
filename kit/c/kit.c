@@ -235,6 +235,15 @@ EXPORT("dp_start_point") char *dp_start_point(uint32_t size) {
   start_words_ready = 0;
   return start_text;
 }
+// where the touched screen is touched, as the page says before each frame (game.js)
+static int touch_x, touch_y, touch_down;
+EXPORT("dp_touch") void dp_touch(int x, int y, int down) { touch_x = x; touch_y = y; touch_down = down; }
+int kit_touch(int *x, int *y) {
+  if (!touch_down) return 0;
+  *x = touch_x;
+  *y = touch_y;
+  return 1;
+}
 /** The picture's size as the game last gave it to kit_screen, for the page to show it at that size. */
 EXPORT("dp_width") int dp_width(void) { return screen_width; }
 EXPORT("dp_height") int dp_height(void) { return screen_height; }
