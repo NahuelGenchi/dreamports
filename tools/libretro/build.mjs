@@ -115,11 +115,10 @@ function buildHere(machine, log, tools) {
     run(building, tools?.cmake ?? 'cmake', ['-S', source, '-B', join(source, 'build'), ...withTools, ...cmakeSettings(core)], source, tools?.env);
     run(building, tools?.cmake ?? 'cmake', ['--build', join(source, 'build'), '--target', core.target, '-j', String(buildJobs())], source, tools?.env);
   } else {
-    // On Windows the platform is named: libretro's makefiles tell it from `uname -a`, which there is w64devkit's, saying
-    // Windows_NT, the computer's name and MS/Windows, and take Windows only for MINGW or a small "win" in it, which only a
-    // computer's name gives. Taken for Unix, PCSX ReARMed builds a recompiler that needs Unix's headers (#1938)
-    const settings = [...(core.make ?? []), ...(tools ? ['platform=win'] : [])];
     // what an earlier build left in the source's folder was built with its own settings, which make wouldn't build again
+    // and what one kind of computer has to say besides: Gambatte's makefile takes the tools' compiler on Windows for a
+    // Unix one, as it goes by what `uname` answers
+    const settings = [...(core.make ?? []), ...(core.makeOn?.[process.platform] ?? [])];
     run(building, tools?.make ?? 'make', [...settings, 'clean'], folder, tools?.env);
     run(building, tools?.make ?? 'make', [`-j${buildJobs()}`, ...settings], folder, tools?.env);
   }

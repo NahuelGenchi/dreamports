@@ -171,23 +171,31 @@ export function madeUpCartridge() {
   return { rom, labels, functions };
 }
 
-// The parts program, for the test of a game whose tasks are its parts (snes-parts.mjs): a start that turns the screen
-// on, with no layer on it, and lets the V-blank's interrupt in, and that interrupt's handler, which reads $4210, calls
-// count, which adds one to the frame's count, a word at $00 of the direct page, and then red while the count is under
-// 60 and blue from then on. Each gives colour 0, the backdrop, a level from the count's low five bits: red in the
-// colour's low byte, blue in its high one. With A of 8 bits and X and Y of 16
+// The parts program, for the test of a game whose tasks are its parts (part-tasks/snes.mjs): a start that turns the
+// screen on, with no layer on it, lets the V-blank's interrupt in and goes round its main loop, which waits for the
+// interrupt's handler, nmi, to move a flag on, at $02 of the direct page. Each turn calls count, which adds one to the
+// frame's count, a word at $00, and then red while the count is under 60 and blue from then on, and bonus only once the
+// count is 1,000 or more. red and blue each give colour 0, the backdrop, a level from the count's low five bits: red in
+// the colour's low byte, blue in its high one. nmi reads $4210, as the console asks of an interrupt's handler, with
+// BIT, which leaves A as the loop has it. The start never comes back, and no function calls another, so each one's
+// twin can be proven by itself. With A of 8 bits and X and Y of 16
 const PARTS_PROGRAM = [
-  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01,
+  here('start'), 0x78, 0x18, 0xFB, 0xC2, 0x10, 0xE2, 0x20, 0xA2, ...w(STACK), 0x9A, 0x64, 0x00, 0x64, 0x01, 0x64, 0x02, 0x64, 0x04,
   0xA9, 0x0F, 0x8D, ...w(0x2100), 0xA9, 0x80, 0x8D, ...w(0x4200),
-  here('spin'), 0x80, rel('spin'),
-  here('nmi'), 0xE2, 0x20, 0xC2, 0x10, 0xAD, ...w(0x4210), 0x20, abs('count'), 0xA5, 0x00, 0xC9, 60, 0xB0, rel('later'), 0x20, abs('red'), 0x40,
-  here('later'), 0x20, abs('blue'), 0x40,
+  here('loop'), 0xA5, 0x02,
+  here('wait'), 0xC5, 0x02, 0xF0, rel('wait'),
+  0x20, abs('count'),
+  0xC2, 0x20, 0xA5, 0x00, 0xC9, ...w(1000), 0xE2, 0x20, 0x90, rel('early'), 0x20, abs('bonus'),
+  here('early'), 0xA5, 0x00, 0xC9, 60, 0xB0, rel('later'), 0x20, abs('red'), 0x80, rel('loop'),
+  here('later'), 0x20, abs('blue'), 0x80, rel('loop'),
+  here('nmi'), 0x2C, ...w(0x4210), 0xE6, 0x02, 0x40,
   here('count'), 0xC2, 0x20, 0xE6, 0x00, 0xE2, 0x20, 0x60,
   here('red'), 0xA5, 0x00, 0x29, 0x1F, 0x9C, ...w(0x2121), 0x8D, ...w(0x2122), 0x9C, ...w(0x2122), 0x60,
   here('blue'), 0xA5, 0x00, 0x29, 0x1F, 0x0A, 0x0A, 0x9C, ...w(0x2121), 0x9C, ...w(0x2122), 0x8D, ...w(0x2122), 0x60,
+  here('bonus'), 0xA9, 0x01, 0x85, 0x04, 0x60,
 ];
 
-/** The parts program's cartridge: { rom, labels }, `labels` the address of start, nmi, count, red and blue. */
+/** The parts program's cartridge: { rom, labels }, `labels` the address of start, nmi, count, red, blue and bonus. */
 export function madeUpPartsCartridge() {
   const { rom, labels } = assemble(PARTS_PROGRAM, { title: 'DREAMPORTS PARTS', nmi: 'nmi' });
   return { rom, labels };
