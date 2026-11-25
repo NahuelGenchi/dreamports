@@ -98,7 +98,7 @@ export async function runReference({ program, args, env, width, height, stateByt
   };
   writeFileSync(files.buttons, new Uint8Array((buttonBytes === 4 ? Uint32Array : Uint16Array).from(buttons).buffer));
   const list = new Uint32Array(functions.length * 6);
-  functions.forEach((f, i) => list.set([f.address, f.size, f.index ?? i, f.bytes ? 1 : 0, f.bytes?.[0] ?? 0, f.bytes?.[1] ?? 0], i * 6));
+  functions.forEach((f, i) => list.set([f.address, f.size, f.index ?? i, (f.bytes ? 1 : 0) | (f.arm7 ? 2 : 0), f.bytes?.[0] ?? 0, f.bytes?.[1] ?? 0], i * 6));
   writeFileSync(files.functions, new Uint8Array(list.buffer));
   writeFileSync(files.pictures, new Uint8Array(Uint32Array.from(pictures).buffer));
   writeFileSync(files.sets, new Uint8Array(Uint32Array.from(sets.flatMap(({ frame, address, bytes, value }) => [frame, address, bytes, value])).buffer));
