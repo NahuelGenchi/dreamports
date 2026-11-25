@@ -105,7 +105,8 @@ async function main() {
   console.log(`  the emulator runs at ${first.outside.fps} frames a second and mixes ${first.outside.rate} samples a second; the square shows from frame ${shownFrom}`);
   if (written) {
     const sound = lengths.map((_, frame) => createHash('sha1').update(Buffer.from(Int16Array.from(first.sound.read(frame)).buffer)).digest('hex').slice(0, 16));
-    writeFileSync(written, `${JSON.stringify({ pictures: first.hashes, sound })}\n`);
+    // as plain lists, which JSON keeps as they are, where it would write the hashes' typed array as an object
+    writeFileSync(written, `${JSON.stringify({ pictures: Array.from(first.hashes), sound })}\n`);
   }
   first.sound.close();
   second.sound.close();
