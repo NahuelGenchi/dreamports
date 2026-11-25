@@ -12,6 +12,34 @@ index d193d1e..77e9a5b 100644
  if (BUILD_QT_SDL)
      add_subdirectory(src/frontend/qt_sdl)
  endif()
+diff --git a/src/ARM.cpp b/src/ARM.cpp
+index 3937a99..c8261e5 100644
+--- a/src/ARM.cpp
++++ b/src/ARM.cpp
+@@ -291,8 +291,14 @@ void ARM::SetupCodeMem(u32 addr)
+     }
+ }
+ 
++// Dreamports: each place either processor is sent to, by a call, a branch or a return, for the tools' front
++// (dreamports/libretro.cpp), which says from it which functions ran
++void (*DreamportsJumped)(u32 processor, u32 addr) = nullptr;
++
+ void ARMv5::JumpTo(u32 addr, bool restorecpsr)
+ {
++    if (DreamportsJumped) DreamportsJumped(0, addr & ~1);
++
+     if (restorecpsr)
+     {
+         RestoreCPSR();
+@@ -361,6 +367,8 @@ void ARMv5::JumpTo(u32 addr, bool restorecpsr)
+ 
+ void ARMv4::JumpTo(u32 addr, bool restorecpsr)
+ {
++    if (DreamportsJumped) DreamportsJumped(1, addr & ~1);
++
+     if (restorecpsr)
+     {
+         RestoreCPSR();
 diff --git a/src/SPU.cpp b/src/SPU.cpp
 index e1d49f9..6f20687 100644
 --- a/src/SPU.cpp
