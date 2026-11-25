@@ -228,6 +228,14 @@ test('a game on another console comes in the same way, as its copy\'s header say
   assert.equal(readOriginal(`${JSON.stringify({ ...nes, title: 'Buy at romsite.example' }, null, 2)}\n`), null, 'a title that isn\'t the game\'s name');
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'MADE UP' }, null, 2)}\n`));
   assert.ok(readOriginal(`${JSON.stringify({ ...nes, title: 'Made Up (USA)' }, null, 2)}\n`), 'the copy\'s own name');
+  // a Game Boy game's header names it in its own words, as a Game Boy Advance's does, and its code is in its program
+  const gb = { console: 'gb', name: 'Made Up (World)', title: 'MADEUP TITLE', code: '', sha1: SHA1 };
+  assert.deepEqual(readOriginal(`${JSON.stringify(gb, null, 2)}\n`), gb);
+  assert.ok(readOriginal(`${JSON.stringify({ ...gb, console: 'gbc', title: 'MADEUP GBC', code: 'AXYE' }, null, 2)}\n`));
+  assert.equal(readOriginal(`${JSON.stringify({ ...gb, code: 'AXYE' }, null, 2)}\n`), null, 'only a Game Boy Color copy has a code');
+  assert.equal(readOriginal(`${JSON.stringify({ ...gb, title: 'Buy at romsite.example' }, null, 2)}\n`), null, 'too long for its header, and not the game\'s name');
+  assert.equal(entry(edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/gbc/functions.mjs)","functions":[["00000040",3],["00000100",388],["00008123",12]]}\n`), 'c', gb).why, undefined);
+  assert.equal(entry(map([['00000100', 388], ['08000000', 4]]), 'c', gb).why, 'proof', 'past the largest cartridge');
   // a PlayStation 2 game's code is the name of the program its disc boots, and its functions are in more places than
   // one: the program, the vector units' code, and the disc's other programs and modules, each in order (#1859)
   const ps2 = { ...nes, console: 'ps2', code: 'SLUS_200.02' };
@@ -269,6 +277,18 @@ test('a game on another console comes in the same way, as its copy\'s header say
     'words for a module': [['80003100', 72], ['00000058@see https://example.com', 36]],
     'a vector unit\'s program, which only the PlayStation 2 has': [['80003100~vu', 72]],
   })) assert.equal(entry(map(functions), 'c', gamecube).why, 'proof', what);
+  // a Nintendo DS game's code is in its ARM9 program, its ARM7 program and its overlays, each a place, and its map
+  // says which functions are Thumb code
+  const nds = { ...original, console: 'nds', title: 'MADE UP DS', code: 'MDUE' };
+  assert.deepEqual(readOriginal(`${JSON.stringify(nds, null, 2)}\n`), nds);
+  const ndsMap = (functions, modes = '') => `{"original":"${SHA1}","from":"The tools","functions":[${functions.map(f => JSON.stringify(f)).join(',')}]${modes}}\n`;
+  const cartridge = [['01FF8000', 12], ['02000000', 8], ['02000800', 40], ['02380000@ARM7', 8], ['02100000@OVERLAY9_0003', 6], ['02100000@OVERLAY9_0004', 20]];
+  assert.ok(readCodeMap(ndsMap(cartridge, ',"modes":{"02000800":"thumb","02100000@OVERLAY9_0003":"thumb"}'), SHA1, 'nds'));
+  assert.ok(readCodeMap(ndsMap(cartridge), SHA1, 'nds'));
+  assert.equal(readCodeMap(ndsMap([['08000000', 8]]), SHA1, 'nds'), null, 'not where a Nintendo DS game\'s code is');
+  assert.equal(readCodeMap(ndsMap([['02000000', 8], ['02380000@ARM7', 8], ['02000800', 40]]), SHA1, 'nds'), null, 'a place in two parts');
+  assert.equal(readCodeMap(ndsMap(cartridge, ',"modes":{"02000800":"see https://example.com"}'), SHA1, 'nds'), null, 'words for a mode');
+  assert.equal(readOriginal(`${JSON.stringify({ ...nds, code: 'MADE UP' }, null, 2)}\n`), null);
   // a Super Nintendo game's map says the mode each function starts in, and nothing else
   const snes = { ...nes, console: 'snes' };
   const modes = text => edit(file('proof/code-map.json'), () => `{"original":"${SHA1}","from":"Found in the copy by the proof tools (tools/snes/functions.mjs)","functions":[["00000000",24],["00000018",72]],"modes":${text}}\n`);

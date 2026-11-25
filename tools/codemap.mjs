@@ -35,11 +35,14 @@ import { atOnce } from './lib/at-once.mjs';
 import * as gbaFunctions from './gba/functions.mjs';
 import { UNPACKED_BY, unpack } from './gba/unpack.mjs';
 import * as nesFunctions from './nes/functions.mjs';
+import * as gbFunctions from './gbc/functions.mjs';
 import * as ps1Functions from './ps1/functions.mjs';
 import * as n64Functions from './n64/functions.mjs';
 import * as ps2Functions from './ps2/functions.mjs';
 import * as snesFunctions from './snes/functions.mjs';
+import * as ndsFunctions from './nds/functions.mjs';
 import * as gamecubeFunctions from './gamecube/functions.mjs';
+import { layoutOf, readCartridge } from './snes/cartridge.mjs';
 
 // where code runs on the Game Boy Advance: the cartridge and the two work RAMs
 const CODE = [[0x08000000, 0x0A000000], [0x03000000, 0x03008000], [0x02000000, 0x02040000]];
@@ -64,6 +67,15 @@ const FINDERS = {
     play: true,
     name: (value, copy) => nesFunctions.nesNames(value, nesFunctions.nesProgram(copy).banks)[0]?.[1],
   },
+  // a Game Boy or Game Boy Color game's program, its addresses the offsets in it, which say the bank, followed from
+  // where the console starts it and from its interrupts (gbc/functions.mjs)
+  gb: {
+    ...gbFunctions,
+    file: 'tools/gbc/functions.mjs',
+    inCode: copy => offset => offset >= 0 && offset < copy.length,
+    address: address => address,
+    name: (value, copy) => gbFunctions.gbNames(value, gbFunctions.gbProgram(copy).banks)[0]?.[1],
+  },
   // a Super Nintendo game's cartridge, its addresses the offsets in its ROM, followed from its vectors with the
   // processor's mode carried along, and from where play sent it in the mode it ran in (snes/functions.mjs)
   snes: {
@@ -73,6 +85,8 @@ const FINDERS = {
     play: true,
     name: (value, copy) => snesFunctions.snesNames(value, snesFunctions.snesProgram(copy).map)[0]?.[1],
     fromPlay: (copy, functions, sent) => snesFunctions.fromPlay(copy, functions, sent),
+    // how the cartridge is laid out, kept in the code map, so a label finds its function with no copy (lib/proofs.mjs)
+    layout: copy => layoutOf(readCartridge(copy)),
   },
   // a PlayStation or PlayStation 2 game's program, read off its disc, as a disc can be far larger than its program
   ps1: {
@@ -86,6 +100,17 @@ const FINDERS = {
     ...n64Functions,
     file: 'tools/n64/functions.mjs',
     read: n64Functions.n64Cartridge,
+    address: address => address,
+  },
+  // a Nintendo DS game's programs, read off its cartridge a piece at a time: the ARM9's, the ARM7's and each overlay,
+  // each found on its own; a list is of the ARM9's program
+  nds: {
+    file: 'tools/nds/functions.mjs',
+    read: path => ndsFunctions.ndsCartridge(path),
+    inCode: ndsFunctions.inCode,
+    startsInData: ndsFunctions.startsInData,
+    findFunctions: (code, listed) => ndsFunctions.findFunctions(code, listed),
+    fill: (code, listed) => ndsFunctions.findFunctions(code, listed),
     address: address => address,
   },
   // a PlayStation 2 game's every program, module and vector unit program on its disc, each found on its own; a list
@@ -111,6 +136,8 @@ const FINDERS = {
     address: address => address,
   },
 };
+
+FINDERS.gbc = FINDERS.gb;
 
 export async function run(args) {
   const game = args.find(a => !a.startsWith('--'));
@@ -181,7 +208,7 @@ export async function run(args) {
     from = `Found in the copy by ${FOUND}`;
   }
   if (!functions.length) throw new Error('No functions found.');
-  writeCodeMap(game, { original: original.sha1, from, functions, copies });
+  writeCodeMap(game, { original: original.sha1, from, functions, copies, layout: finder?.layout?.(theCopy) ?? null });
   const bytes = functions.reduce((sum, f) => sum + f.size, 0), inRam = functions.filter(f => f.bytes);
   console.log(`games/${game}/proof/code-map.json: ${functions.length} functions, ${bytes.toLocaleString('en')} bytes of code`
     + (inRam.length || copies.length ? `, of which ${inRam.length} the game makes in its work RAM, and ${copies.filter(c => !c.packed).length} stretch${copies.filter(c => !c.packed).length === 1 ? '' : 'es'} of the cartridge it copies there to run.` : '.'));
@@ -190,7 +217,9 @@ export async function run(args) {
   if (others.length || vu.length) {
     const sum = list => list.reduce((total, f) => total + f.size, 0).toLocaleString('en');
     const programs = `${sum(others)} bytes are in ${new Set(others.map(f => f.program)).size} other programs and modules on the disc`;
-    console.log(original.console === 'ps2' ? `Of those, ${programs}, and ${sum(vu)} bytes in ${vu.length} vector unit programs.` : `Of those, ${programs}.`);
+    console.log(original.console === 'nds'
+      ? `Of those, ${sum(others)} bytes are in the ARM7's program and ${new Set(others.map(f => f.program)).size - (others.some(f => f.program === 'ARM7') ? 1 : 0)} overlays.`
+      : original.console === 'ps2' ? `Of those, ${programs}, and ${sum(vu)} bytes in ${vu.length} vector unit programs.` : `Of those, ${programs}.`);
   }
   return 0;
 }

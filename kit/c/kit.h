@@ -79,6 +79,12 @@ int kit_run_beside(void (*program)(void));
 void kit_wait_beside(void);
 
 /**
+ * Where the console's touched screen is touched this frame, on a console that has one, as the Nintendo DS's lower
+ * screen: 1 with the pixel in `x` and `y`, counted from that screen's top left corner, or 0 when nothing touches it.
+ */
+int kit_touch(int *x, int *y);
+
+/**
  * The picture the page shows this frame, `width` × `height` words, red in the lowest byte and 0xFF above blue, as an
  * ImageData holds them, at the size the game shows now, which can change from one frame to the next. The same words
  * as the last frame's while the size stays the same.
