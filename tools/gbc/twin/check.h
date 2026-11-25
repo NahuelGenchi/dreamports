@@ -58,6 +58,10 @@ void orig_init(const uint8_t *rom, uint32_t size, int colour, int chip);
  *  wait, with HALT or STOP. `r` gets what it left, and `cycles` how long it took, from its first instruction to the
  *  end of its return. */
 int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles);
+/** The same, for a stop the twin calls: every byte the processor reads and writes, the instruction's own and the
+ *  return address the call leaves at `r->SP` too, goes through `read` and `write`, the kit's, as the twin's C reaches
+ *  them, and nothing of the original's side's last call changes. */
+int orig_call_through(uint16_t pc, twin_regs *r, long *cycles, uint8_t (*read)(uint16_t), void (*write)(uint16_t, uint8_t));
 
 // ---- the twin's side (kit.c), which the game's C runs on
 extern twin_events kit_events;
@@ -69,6 +73,16 @@ void kit_begin(int bank);
 /** The twin's memory, as the original's is laid out. */
 void kit_memory_in(const uint8_t *from);
 void kit_memory_out(uint8_t *into);
+/** A call the twin's C makes to a function that is still a stop: the original's function at `offset` in the program,
+ *  run from `r` on the twin's memory and hardware, which gets what it leaves. Its time is added to the twin's, with
+ *  `allowance`, as its twin will count it. */
+void kit_original(uint32_t offset, int allowance, twin_regs *r);
+
+// ---- the check's own (check.c)
+/** The registers a call to a stop starts with, before its contract puts in what the twin's C gives it: each drawn, so
+ *  a function of the original that takes one its contract doesn't name differs, and the stack a call below the
+ *  twin's own. */
+void twin_stop_registers(twin_regs *r);
 
 // ---- the twins' contracts, as the build writes them from the game's `dp:twin` lines (contract.h)
 extern const twin_contract *const twin_contracts[];
