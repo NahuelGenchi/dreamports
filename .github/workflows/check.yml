@@ -24,7 +24,8 @@ name: Check
 # match on the Nintendo 64 with a tenth, and npm run test:n64-kit, which proves the Nintendo 64's kit in C against
 # Parallel N64 with an eleventh, its RSP's microcodes and every sum of its vector unit among it, and
 # npm run test:real-gb, which proves the Game Boy's and the Game Boy Color's kit in C against Gambatte with a twelfth,
-# every pixel and every sample of its sound. A pull request's code runs here, with a token that can only read and no
+# every pixel and every sample of its sound, and npm run test:gb-twin, which tries the Game Boy's function check on
+# Gambatte's own processor with a thirteenth. A pull request's code runs here, with a token that can only read and no
 # secrets.
 #
 # The tests run in eleven jobs side by side, as one after another they came near the 15-minute limit (#1503, #1558, #1695,
@@ -150,9 +151,13 @@ jobs:
               npm run test:ps2-call
               npm run test:ps2-twin
           # the Game Boy and the Game Boy Color: their kit in C, proven against Gambatte with a program of the project's
-          # own as a game of each, every frame, and then every pixel and every sample of its sound
+          # own as a game of each, every frame, and then every pixel and every sample of its sound; and their function
+          # check, with Gambatte's own processor built from its makers' source and another program's functions run on
+          # it and checked against their twins
           - part: game boy
-            run: npm run test:real-gb
+            run: |
+              npm run test:real-gb
+              npm run test:gb-twin
           # the PlayStation 2's function check on the programs a disc has beside the one it boots, an IOP module, a second
           # program for the EE and vector unit 1's programs, in a job of its own as with it the part above took 8 to 12 of
           # its 15 minutes (#1744); it builds Play!'s processors and Sony's compiler again for itself

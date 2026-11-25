@@ -80,20 +80,29 @@ static uint8_t tima, tma, tac = 0xF8, divider;
 static const uint8_t TIMER_SHIFT[4] = { 10, 4, 6, 8 };
 static uint64_t serial_ends = NEVER;
 
-static void present(void) {
+// A picture is complete. The emulator's frame, and the sound it holds, ends where the processor stops once it is:
+// at the end of the instruction it's in, or, waiting in HALT, on its own four-cycle step, `stop`. Only the first
+// frame's end is heard, as what's before it is left out.
+static void present(uint64_t stop) {
   gb_lcd_run_to(blit_time);
   gb_lcd_present(blank_next);
   gb_lcd_draw(kept + (size_t)(ended % KEPT) * SCREEN_W * SCREEN_H);
-  gb_apu_run_to(blit_time);
+  gb_apu_run_to(stop);
   sound_then[ended % KEPT] = gb_apu_total();
   ended++;
 }
+
+// the longest instruction, so a time a game spends up to that far past a picture's end is the end of the instruction
+// the processor was in
+#define LONGEST 24
+// the cycles of an interrupt the processor takes before the frame ends, when it's waiting as the picture is complete
+static uint64_t taken_too;
 
 // the console on to `to`, through each picture that completes on the way
 static void advance(uint64_t to) {
   while (blit_time <= to) {
     int on = gb_lcd_on();
-    if (on || blank_next) present();
+    if (on || blank_next) present(to - blit_time <= LONGEST ? to + taken_too : blit_time);
     blank_next = !on;
     blit_time += GB_FRAME;
   }
@@ -169,7 +178,16 @@ int gb_halt(void) {
     if ((tac & 4) && timer_asks < soon) soon = timer_asks;
     if (serial_ends < soon) soon = serial_ends;
     if (blit_time <= soon) {
-      advance(blit_time);
+      // The picture ends while it waits, and the processor stops on its own four-cycle step after it. The emulator
+      // handles every event due by then before its frame ends, so an interrupt asked for by then, as V-blank's is
+      // with the picture, is taken within the frame, and its sound with it.
+      uint64_t at = blit_time + ((halt_phase - blit_time) & 3), was = now;
+      now = at;
+      requests();
+      now = was;
+      taken_too = waiting() ? (gb_colour ? 4 : 0) + 20 : 0;
+      advance(at);
+      taken_too = 0;
       continue;
     }
     // the processor wakes on its own four-cycle step

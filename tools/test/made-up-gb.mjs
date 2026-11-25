@@ -293,3 +293,158 @@ export function madeUpGb({ colour = false } = {}) {
   rom[0x14F] = sum & 255;
   return { rom, sha1: createHash('sha1').update(rom).digest('hex'), at: { ...names }, times };
 }
+
+/** A second program, for the tools that read a game's code and never run it (gb-functions.test.mjs): a 64 KB copy of
+ *  four banks, with code in each, a bank switched in by a write and by a routine, a table a JP (HL) jumps through, and
+ *  a list of addresses after an RST that a routine reads. Its bytes are written out, with nothing from any game. */
+export function madeUpBanks() {
+  const BANK = 0x4000, rom = Buffer.alloc(4 * BANK, 0xFF);
+  const put = (address, bytes, bank = 0) => Buffer.from(bytes).copy(rom, bank ? bank * BANK + (address & 0x3FFF) : address);
+  // RST $08: reads the list after it, POP HL, twice A added to it, the address there into HL, and JP (HL)
+  put(0x0008, [0xE1, 0x87, 0x85, 0x6F, 0x30, 0x01, 0x24, 0x2A, 0x66, 0x6F, 0xE9]);
+  // the V-blank interrupt jumps to its code, and the screen's other interrupt only returns
+  put(0x0040, [0xC3, ...word(0x0240)]);
+  put(0x0048, [0xD9]);
+  put(0x0100, [0x00, 0xC3, ...word(0x0150)]);
+  // where the game starts: bank 1 by a write, a call there, bank 2 by the routine at $0200, a call there, bank 3 by a
+  // write, a call there, then a jump through the table at $0300
+  put(0x0150, [0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(0x4000), 0x3E, 0x02, 0xCD, ...word(0x0200), 0xCD, ...word(0x4010),
+    0x3E, 0x03, 0xEA, ...word(0x2000), 0xCD, ...word(0x4000),
+    0x21, ...word(0x0300), 0xFA, ...word(0xC000), 0x87, 0x5F, 0x16, 0x00, 0x19, 0x2A, 0x66, 0x6F, 0xE9]);
+  // switches to the bank in A
+  put(0x0200, [0xEA, ...word(0x2100), 0xC9]);
+  // the V-blank's code: an RST with its list after it
+  put(0x0240, [0xCF, ...word(0x0340), ...word(0x0350)]);
+  put(0x0300, [...word(0x0320), ...word(0x0330)]);
+  // a call to $4020 with no bank known: only bank 3 has code there
+  put(0x0320, [0xCD, ...word(0x4020), 0xC9]);
+  for (const address of [0x0330, 0x0340, 0x0350]) put(address, [0xC9]);
+  // code nothing leads to
+  put(0x0360, [0xFA, ...word(0xC000), 0x3C, 0xC9]);
+  // bank 1: a call inside its own bank
+  put(0x4000, [0xCD, ...word(0x4008), 0xC9], 1);
+  put(0x4008, [0xC9], 1);
+  put(0x4010, [0x06, 0x01, 0xC9], 2);
+  put(0x4000, [0xC9], 3);
+  put(0x4020, [0x3E, 0x03, 0xC9], 3);
+  rom.fill(0, 0x104, 0x150);
+  rom.write('MADEUP BANKS', 0x134, 'ascii');
+  rom[0x147] = 0x19;
+  rom[0x148] = 0x01;
+  rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
+  return rom;
+}
+
+/** A third program, for the function check (../gbc/twin.mjs, gb-twin.mjs): a 64 KB copy of four banks with a few small
+ *  functions, each written out here with what it does, and the twins of them in gb-twin/game.c. `TWIN` says where
+ *  each is and what its tables hold. */
+export const TWIN = {
+  // adds A to the 16-bit number at $C020 and $C021, counts the call at $C022, and leaves the carry of the low byte's sum
+  add: 0x0500,
+  // the byte at $0600 + 4 * B of a table, to $C030 and in A: the processor's place in the table is 8 bits, so it wraps round at 256
+  pick: 0x0520,
+  // reads the hardware's $FF44 to $C031, writes A to $FF47, and leaves C one higher
+  send: 0x0540,
+  // the byte at $5000 + E of the bank that's switched in, to $C033
+  look: 0x0560,
+  // switches to the bank in A, and keeps its number at $C010
+  switchTo: 0x0580,
+  // zeros B bytes from HL, 256 for 0, and leaves HL after them
+  clear: 0x05A0,
+  // in bank 1: the byte at $5000 + D of its own bank, to $C032
+  own: 0x4100,
+  // the game keeps the bank it switched in at $C010
+  bank: 0xC010,
+  /** The byte at `at` of the table every bank has at $5000, and of the table at $0600. */
+  inBank: (bank, at) => (at * 7 + bank * 31 + 5) & 0xFF,
+  inTable: at => (at * 13 + 3) & 0xFF,
+};
+export function madeUpTwins() {
+  const BANK = 0x4000, rom = Buffer.alloc(4 * BANK, 0xFF);
+  const put = (address, bytes, bank = 0) => Buffer.from(bytes).copy(rom, bank ? bank * BANK + (address & 0x3FFF) : address);
+  put(0x0100, [0x00, 0xC3, ...word(0x0150)]);
+  // where the game starts: a call of each, bank 1 switched in for the one that's there, and then nothing for ever
+  put(0x0150, [0xCD, ...word(TWIN.add), 0xCD, ...word(TWIN.pick), 0xCD, ...word(TWIN.send), 0xCD, ...word(TWIN.look), 0xCD, ...word(TWIN.switchTo), 0xCD, ...word(TWIN.clear),
+    0x3E, 0x01, 0xEA, ...word(0x2000), 0xCD, ...word(TWIN.own), 0x18, 0xFE]);
+  // LD HL,$C020, ADD A,(HL), LD (HL+),A, JR NC past the next, INC (HL), LD A,($C022), INC A, LD ($C022),A, RET
+  put(TWIN.add, [0x21, ...word(0xC020), 0x86, 0x22, 0x30, 0x01, 0x34, 0xFA, ...word(0xC022), 0x3C, 0xEA, ...word(0xC022), 0xC9]);
+  // LD A,B, ADD A,A, ADD A,A, LD L,A, LD H,$06, LD A,(HL), LD ($C030),A, RET
+  put(TWIN.pick, [0x78, 0x87, 0x87, 0x6F, 0x26, 0x06, 0x7E, 0xEA, ...word(0xC030), 0xC9]);
+  // PUSH AF, LDH A,($44), LD ($C031),A, POP AF, LDH ($47),A, INC C, RET
+  put(TWIN.send, [0xF5, 0xF0, 0x44, 0xEA, ...word(0xC031), 0xF1, 0xE0, 0x47, 0x0C, 0xC9]);
+  // LD H,$50, LD L,E, LD A,(HL), LD ($C033),A, RET
+  put(TWIN.look, [0x26, 0x50, 0x6B, 0x7E, 0xEA, ...word(0xC033), 0xC9]);
+  // LD ($C010),A, LD ($2000),A, RET
+  put(TWIN.switchTo, [0xEA, ...word(TWIN.bank), 0xEA, ...word(0x2000), 0xC9]);
+  // XOR A, LD (HL+),A, DEC B, JR NZ back to the store, RET
+  put(TWIN.clear, [0xAF, 0x22, 0x05, 0x20, 0xFC, 0xC9]);
+  // LD H,$50, LD L,D, LD A,(HL), LD ($C032),A, RET
+  put(TWIN.own, [0x26, 0x50, 0x6A, 0x7E, 0xEA, ...word(0xC032), 0xC9], 1);
+  put(0x0600, Array.from({ length: 0x100 }, (_, at) => TWIN.inTable(at)));
+  // each bank's table at $5000: the first bank's is what the console sees there when the chip switches bank 0 in
+  for (let bank = 0; bank < 4; bank++) Buffer.from(Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at))).copy(rom, bank * BANK + 0x1000);
+  rom.fill(0, 0x104, 0x150);
+  rom.write('MADEUP TWINS', 0x134, 'ascii');
+  rom[0x147] = 0x19;
+  rom[0x148] = 0x01;
+  rom[0x14A] = 0x01;
+  rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
+  return rom;
+}
+
+/** A fourth program, for the test of a game whose tasks are its parts (part-tasks/gb.mjs): it turns the screen off,
+ *  fills the background with a tile striped in its first two shades, or on a Game Boy Color colours, and turns the
+ *  screen on, and then only waits for the V-blank interrupt, whose code counts the pictures and scrolls the background
+ *  as far, and from the PARTS.from'th picture on gives the background's shades from the count, or on a Game Boy Color
+ *  its first colour. So it has two parts, the first with the stripes scrolling and the second with the shades given
+ *  too, which the first never runs the function for. When the count comes round to 0, after 256 pictures, a fifth
+ *  function gives the first shades back, which no part's 40 frames reach. `PARTS` says where each function is; their
+ *  twins are in part-tasks/gb/twins.c. */
+export const PARTS = { atVblank: 0x0040, start: 0x0100, vblank: 0x0200, tick: 0x0220, paint: 0x0240, secret: 0x0260, count: 0xC000, from: 50, shades: 0x03, dark: 0x0842, light: 0x5EF7, stripe: 0xF0 };
+const jrc = near => ({ near, b: [0x38], t: 8 });
+const callz = to => ({ to, b: [0xCC], t: 12 });
+const RLCA = op(4, 0x07), INC_AT_HL = op(12, 0x34);
+export function madeUpParts({ colour = false } = {}) {
+  const rom = Buffer.alloc(0x8000, 0xFF), times = {};
+  const lay = (address, list) => {
+    const laid = assemble(list, address, { colour });
+    Buffer.from(laid.bytes).copy(rom, address);
+    Object.assign(times, laid.times);
+  };
+  lay(PARTS.atVblank, [jp(PARTS.vblank)]);
+  lay(PARTS.start, [NOP, jp(0x0150)]);
+  lay(0x0150, [
+    DI, ldw('sp', 0xE000), xor('a'), mark('screenOff', HIGH), sth(IO.lcdc),
+    ldw('hl', 0x9800), ldw('bc', 0x0400),
+    here('clear'), turns(0x400, [xor('a'), STI, decw('bc'), mv('a', 'b'), or('c'), jrnz('clear')]),
+    // the first tile: each row's first byte the stripe, its second 0, so its left half is the second shade
+    ldw('hl', 0x8000), ld('b', 8),
+    here('tile'), turns(8, [ld('a', PARTS.stripe), STI, xor('a'), STI, dec('b'), jrnz('tile')]),
+    colour
+      ? [ld('a', 0x80), mark('bcps', HIGH), sth(IO.bcps), ld('a', PARTS.dark & 255), mark('low', HIGH), sth(IO.bcpd), ld('a', PARTS.dark >> 8), mark('high', HIGH), sth(IO.bcpd),
+        ld('a', PARTS.light & 255), mark('low1', HIGH), sth(IO.bcpd), ld('a', PARTS.light >> 8), mark('high1', HIGH), sth(IO.bcpd)]
+      : [ld('a', PARTS.shades), mark('bgp', HIGH), sth(IO.bgp)],
+    xor('a'), sta(PARTS.count), sth(IO.if),
+    ld('a', 0x01), mark('ie', HIGH), sth(IO.ie),
+    ld('a', 0x91), mark('screenOn', HIGH), sth(IO.lcdc),
+    EI, mark('waits'),
+    here('wait'), HALT, jr('wait'),
+  ]);
+  lay(PARTS.vblank, [call(PARTS.tick), lda(PARTS.count), cp(PARTS.from), jrc('skip'), call(PARTS.paint), here('skip'), lda(PARTS.count), or('a'), callz(PARTS.secret), RETI]);
+  lay(PARTS.tick, [ldw('hl', PARTS.count), INC_AT_HL, LD_HL, sth(IO.scx), RET]);
+  lay(PARTS.paint, colour
+    ? [ld('a', 0x80), sth(IO.bcps), lda(PARTS.count), sth(IO.bcpd), sth(IO.bcpd), RET]
+    : [lda(PARTS.count), RLCA, RLCA, sth(IO.bgp), RET]);
+  lay(PARTS.secret, colour
+    ? [ld('a', 0x80), sth(IO.bcps), ld('a', PARTS.dark & 255), sth(IO.bcpd), ld('a', PARTS.dark >> 8), sth(IO.bcpd), RET]
+    : [ld('a', PARTS.shades), sth(IO.bgp), RET]);
+  rom.fill(0, 0x104, 0x150);
+  rom.write(colour ? 'PARTS GBC' : 'MADEUP PARTS', 0x134, 'ascii');
+  rom[0x143] = colour ? 0x80 : 0x00;
+  rom[0x147] = 0x00;
+  rom[0x148] = 0x00;
+  rom[0x14A] = 0x01;
+  rom[0x14D] = rom.subarray(0x134, 0x14D).reduce((sum, byte) => (sum - byte - 1) & 255, 0);
+  const numbers = { ...Object.fromEntries(Object.entries(times).map(([name, cycles]) => [`T_${name}`, cycles])), FROM: PARTS.from, START_SHADES: PARTS.shades, DARK: PARTS.dark, LIGHT: PARTS.light, STRIPE: PARTS.stripe, COUNT: PARTS.count, COLOUR: colour ? 1 : 0 };
+  return { rom, sha1: createHash('sha1').update(rom).digest('hex'), times, NUMBERS: Object.entries(numbers).map(([name, value]) => `#define ${name} ${value}`).join('\n') };
+}
