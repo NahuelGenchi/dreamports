@@ -8,7 +8,7 @@ each part of a game runs (tools/lib/part-functions.mjs).
 
 The interpreter only calls the function it was given, when it was given one, just before it runs an instruction:
 nothing of the console changes, so every frame's picture and sound are the same with it or without, which
-tools/test/n64-parts.mjs checks. Its own steps that are no instruction of the game, the end of a block of instructions
+tools/test/n64-kit.mjs checks. Its own steps that are no instruction of the game, the end of a block of instructions
 and code it hasn't read yet, aren't told: each goes on to the instruction it stands for, which is told there, so every
 instruction is told once. Nothing of Parallel N64 is in the repository but the lines of its own this change sits
 between.
