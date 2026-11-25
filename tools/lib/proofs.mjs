@@ -24,7 +24,9 @@
 // original's mark is taken the way the console's code is laid out. A Super Nintendo function's is of its bytes in the
 // ROM with the processor's mode it starts in, as the code map says it, and the address its code runs at, bank and all
 // (snes/functions.mjs, addressOf): the same bytes read in another mode are other instructions, and run from another
-// bank they call and push other addresses.
+// bank they call and push other addresses. A Nintendo 64 function's is of its bytes in the cartridge, where the code
+// the cartridge starts has them, with the address the game's boot code loads that code at (n64/functions.mjs,
+// programOf): its jumps and calls are absolute, so the same bytes loaded elsewhere go elsewhere.
 //
 // A function `match` found different can still start as the original's does: "starts" lists each such one, its key,
 // the two marks, and how many of its first bytes are the same, `["08012D4C", "1f0c…", "9a3e…", 64]`. It's no proof of
@@ -49,6 +51,7 @@ import { contractsIn } from '../nes/twin.mjs';
 import { cartOfLayout, mapOf, placeIn, readCartridge, ROM } from '../snes/cartridge.mjs';
 import { addressOf as snesAddressOf } from '../snes/functions.mjs';
 import { contractsIn as gbContractsIn } from '../gbc/twin.mjs';
+import { n64Cartridge, programOf as n64ProgramOf } from '../n64/functions.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
@@ -58,7 +61,7 @@ import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'gb', 'gbc', 'ps1', 'ps2', 'psp'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -82,11 +85,15 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
  * have their proof by `twin` (ps2/twin.mjs). On the Super Nintendo it's 'reset' for the function the console starts
  * the cartridge at, its reset vector's: it sets the game up and goes round its main loop, and never comes back, so no
- * call of it can be compared with a twin's, and it's the frames of play that say a Dreamport does what it does.
+ * call of it can be compared with a twin's, and it's the frames of play that say a Dreamport does what it does. On
+ * the Nintendo 64 it's the function the cartridge's boot code jumps to, at the address the code loads at, which never
+ * comes back either. The code map says where each is (`layout`), so a computer with no copy of the game knows.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
   if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
+  // and on the Nintendo 64, the function at the address the code loads at, where the boot code jumps to
+  if (codeMap.console === 'n64') return /^[0-9A-F]{8}$/.test(codeMap.layout?.load ?? '') && f.address === parseInt(codeMap.layout.load, 16) ? 'reset' : null;
   // a Game Boy game starts at $0100 and never comes back from there
   if ((codeMap.console === 'gb' || codeMap.console === 'gbc') && f.address === GB_START) return 'start';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
@@ -277,6 +284,15 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
   if ((codeMap?.console ?? original.console) === 'ps1') {
     const exe = readProgram(copy.path) ?? keptPs1Program(original.sha1);
     return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
+  }
+  // a Nintendo 64 function's, from the code the cartridge starts, in the console's byte order whatever order the
+  // copy's in, with where it loads; null for one outside that code, of which nothing is known
+  if ((codeMap?.console ?? original.console) === 'n64') {
+    let program = null;
+    return f => {
+      const { load, text } = program ??= n64ProgramOf(n64Cartridge(copy.path)), at = f.address - load;
+      return at < 0 || at + f.size > text.length ? null : markOf(Buffer.concat([Buffer.from(`${load.toString(16).toUpperCase().padStart(8, '0')}\n`), text.subarray(at, at + f.size)]));
+    };
   }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
   // a Super Nintendo function's, with the mode it starts in and the address its code runs at, as the top of this
