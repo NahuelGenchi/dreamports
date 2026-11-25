@@ -66,7 +66,7 @@ const WORKER = fileURLToPath(new URL('./twin-worker.mjs', import.meta.url));
 // what openBuild names the function a call through a pointer meets when nothing built is the twin of its address
 const NO_CODE = '__twin_no_code';
 // what the function that says a twin's types is called, after the twin's own call
-const TYPES = '__types';
+export const TYPES = '__types';
 const IMAGE = KINDS.ee.image;
 // where the module keeps what the console has nothing at, the table it folds by, the map of pages a call wrote, and its
 // own values and stack: from 0x03000000, which no address of the console's folds to, and its memory to 64 MB, past
