@@ -8,6 +8,7 @@
 // load and store of its vector unit on numbers that change every frame and sends the results into the picture's rows,
 // every bit of them, so the kit's RSP is compared with the emulator's on each. Then what `new` writes in C, the
 // Dreamport without that check, and the Dreamport with its square a shade off, are each found at their first frame.
+// First, the emulator itself with the tools' change to it, which says which functions start in each frame (told).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -15,7 +16,9 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { startingEntry, startingFiles } from '../lib/new-game.mjs';
-import { KIT, KIT_COMMANDS, LOAD, VECTOR_AT, madeUpKitCartridge, madeUpKitMicrocode } from './made-up-n64.mjs';
+import { consoleOf } from '../consoles.mjs';
+import { libretroReference } from '../libretro/reference.mjs';
+import { KIT, KIT_COMMANDS, LOAD, PARTS, VECTOR_AT, madeUpKitCartridge, madeUpKitMicrocode, madeUpPartsCartridge } from './made-up-n64.mjs';
 
 const GAME = 'test-n64-kit', VERSION = `${GAME}/c`;
 const WORK = join(LOCAL, 'test-n64-kit');
@@ -55,11 +58,38 @@ function writeGame(changes = []) {
   writeFileSync(join(gameFolder(VERSION), 'src', 'main.c'), code);
 }
 
+// Parallel N64 with the tools' change to it (../libretro/parallel-n64.patch), which tells the program that plays the
+// original where the processor is before each instruction: the parts program (madeUpPartsCartridge) has to play the
+// same, picture and sound, while it tells and while it doesn't, and the functions it says start in each frame have to
+// be those the program is known to start, from its own words. No game of the repository is needed.
+async function told() {
+  console.log('Parallel N64 says which functions start in each frame:');
+  const reference = libretroReference(consoleOf('n64'));
+  reference.ensureOriginal(console.log);
+  const { cartridge, labels } = madeUpPartsCartridge(), copy = join(WORK, 'parts.z64');
+  writeFileSync(copy, cartridge);
+  const names = ['start', 'count', 'red', 'blue', 'bonus'], frames = 90, buttons = new Array(frames).fill(0);
+  const functions = names.map((name, index) => ({ address: labels[name], size: 4, index }));
+  const untold = await reference.runOriginal({ copy, frames, buttons, sound: true });
+  const heard = await reference.runOriginal({ copy, frames, buttons, sound: true, functions });
+  const same = buttons.filter((_, frame) => untold.hashes[frame] === heard.hashes[frame] && Buffer.from(untold.sound.read(frame)).equals(Buffer.from(heard.sound.read(frame)))).length;
+  untold.sound.close();
+  heard.sound.close();
+  check(same === frames, `it plays the same while it tells of every instruction: ${same} of ${frames} frames, picture and sound`);
+  const ranIn = name => heard.ran.map((list, frame) => (Array.from(list).includes(names.indexOf(name)) ? frame : -1)).filter(frame => frame >= 0);
+  const [start, count, red, blue, bonus] = names.map(ranIn);
+  check(start.length === 1 && start[0] === 0 && count.length === frames, `the start in the first frame alone, and count in each of the ${frames}: ${JSON.stringify(start)}, ${count.length}`);
+  check(red.length === PARTS.TURN - 1 && red[0] === 0 && blue.length === frames - red.length && blue[0] === red.at(-1) + 1 && !bonus.length,
+    `red in the first ${PARTS.TURN - 1} frames, blue in the rest and bonus in none: red to frame ${red.at(-1)}, blue from frame ${blue[0]}`);
+  check(untold.ran.every(list => list.length === 0), 'and with no function asked of it, none');
+}
+
 async function main() {
   const before = tracked(), copies = existsSync(COPIES) ? readFileSync(COPIES) : null;
   tidy();
   mkdirSync(WORK, { recursive: true });
   try {
+    await told();
     const cartridge = madeUpKitCartridge(), copy = join(WORK, `${GAME}.z64`);
     writeFileSync(copy, cartridge);
     const original = { console: 'n64', name: 'Test Nintendo 64 Kit (World)', title: GAME, code: '', sha1: createHash('sha1').update(cartridge).digest('hex') };
