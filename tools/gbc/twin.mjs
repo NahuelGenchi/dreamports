@@ -48,6 +48,23 @@
 // The game's C is built with DP_TWIN_CHECK defined. What it spends and what it reads and writes reach the check
 // through the kit, gb_spend, gb_read and gb_write.
 //
+// A function the twin calls that has no twin yet is a stop (docs/STANDARD.md#stops): a function in C, empty or not, with
+// `dp:stop` and the original's function in the comment just above it, on the line it starts on, or first in its body
+// with nothing after it but what it gives back:
+//
+//   // dp:twin sub_0419 copy_bytes(HL, DE, BC)
+//   // dp:stop sub_0419
+//   void copy_bytes(uint16_t from, uint16_t to, uint16_t count) {}
+//
+// The check runs the original's function for each call the twin makes to it, in Gambatte's processor, on the twin's
+// memory and through the kit, as the twin's own C reaches them, and puts back what its pushes covered, as a function in
+// C leaves nothing on the stack. So a twin is proven against the original's function where it calls a stop, as a
+// twin proven by its bytes calls whatever is at the address, and a twin that calls it wrong still differs. Its
+// contract, when it has one, says which registers its arguments go in, each a register or a pair, alone or with `&`,
+// and what it gives back, after `->`, and isn't checked: with none it takes and gives nothing. Every register its
+// contract doesn't name starts with any value, so an original's function that takes one more differs, and its time is
+// the original's, with its contract's number, if the twin counts time.
+//
 // Each call starts from random bytes, or is "changed": the original runs once to say which bytes it reads, a few of
 // those get other values, and it runs again.
 //
@@ -147,16 +164,175 @@ export function contractsIn(text, banks) {
   return { contracts, bank, errors };
 }
 
+// Each line of C without its comments, which can run from one line to the next, its strings as they are.
+function codeOf(lines) {
+  let inside = false;
+  return lines.map(line => {
+    let code = '', i = 0;
+    while (i < line.length) {
+      if (inside) {
+        const end = line.indexOf('*/', i);
+        inside = end < 0;
+        i = end < 0 ? line.length : end + 2;
+      } else if (line.startsWith('//', i)) break;
+      else if (line.startsWith('/*', i)) {
+        inside = true;
+        i += 2;
+      } else if (line[i] === '"' || line[i] === "'") {
+        let j = i + 1;
+        while (j < line.length && line[j] !== line[i]) j += line[j] === '\\' ? 2 : 1;
+        code += line.slice(i, j + 1);
+        i = j + 1;
+      } else code += line[i++];
+    }
+    return code;
+  });
+}
+
+// the start of a function's definition, up to its opening brace: what it gives back, its name and what it's given
+const DEFINITION = /^\s*((?:[A-Za-z_]\w*[\s*]+)+?)([A-Za-z_]\w*)\s*\(([^()]*)\)\s*\{/;
+const NOT_TYPES = /\b(?:if|else|while|for|switch|return|do|case|sizeof)\b/;
+const ALONE = new RegExp(`^(&\\s*)?(${[...REGISTERS, ...Object.keys(PAIRS)].join('|')})$`);
+const STORAGE = /\b(?:static|inline|extern)\b\s*/g;
+
+/** The function a C definition that starts on line `at` of `code` (its lines without comments) is: { at, end, type,
+ *  name, params }, `end` the line of its opening brace, or null when no definition starts there. */
+function definitionAt(code, at) {
+  if (at < 0 || at >= code.length || !code[at].trim()) return null;
+  const lines = code.slice(at, at + 6), text = lines.join('\n'), found = text.match(DEFINITION);
+  if (!found || NOT_TYPES.test(found[1]) || NOT_TYPES.test(found[2])) return null;
+  const end = at + text.slice(0, found[0].length).split('\n').length - 1;
+  return { at, end, type: found[1].replace(/\s+/g, ' ').trim(), name: found[2], params: found[3].replace(/\s+/g, ' ').trim() };
+}
+
+/**
+ * The stops in a file of a game's C, `text`, for a program of `banks` banks, that stand for a whole function of the
+ * original: each a `dp:stop` naming where a function starts (one of `starts`, the code map's, when there is one), in
+ * the comment just above a function in C, on the line it starts on, or first in its body with nothing after it but
+ * what it gives back, and no other function of the original named in its comment. A contract of the file for
+ * the same function, among `contracts` (contractsIn), says what goes in which register. { stops, notes }: each stop
+ * { name, offset, line, definition, contract, args }, and `notes` what a stop can't be run for, each with its line.
+ */
+export function stopsIn(text, banks, contracts, starts = null) {
+  const lines = text.split('\n').map(line => line.replace(/\r$/, '')), code = codeOf(lines), stops = [], notes = [];
+  const blank = at => at >= 0 && at < code.length && !code[at].trim();
+  lines.forEach((whole, i) => {
+    const at = whole.search(/\bdp:stop\b/);
+    if (at < 0 || code[i].includes('dp:stop')) return;
+    const named = gbNames(whole.slice(at), banks).find(([, offset]) => !starts || starts.has(offset));
+    if (!named) return;
+    // the first line of the comment just above line `k`
+    const top = k => {
+      while (k > 0 && blank(k - 1) && lines[k - 1].trim()) k--;
+      return k;
+    };
+    // on the line the function starts on, or in the comment just above it
+    let definition = definitionAt(code, i), around = [top(i), i];
+    if (!definition && blank(i)) {
+      let next = i + 1, before = i - 1;
+      while (blank(next)) next++;
+      definition = definitionAt(code, next);
+      around = [top(i), next - 1];
+      // or first in a body that holds nothing else, but what it gives back
+      const rest = code.slice(next, next + 4).join(' ');
+      if (!definition && /^\s*(?:return\b[^;{}]*;\s*)?\}/.test(rest)) {
+        while (blank(before)) before--;
+        for (let from = before; !definition && from >= Math.max(0, before - 5); from--) {
+          const found = definitionAt(code, from);
+          if (found?.end === before && /\{\s*$/.test(code[before])) definition = found;
+        }
+        if (definition) around = [top(definition.at), i];
+      }
+    }
+    if (!definition || stops.some(stop => stop.definition.at === definition.at)) return;
+    const [name, offset] = named, line = i + 1;
+    // a comment that names another function of the original with the stop is that function's, with a path of it not
+    // ported yet
+    const others = lines.slice(around[0], around[1] + 1).map((each, k) => (around[0] + k === i ? each.slice(0, at) : each))
+      .flatMap(each => gbNames(each, banks)).filter(([, where]) => where !== offset && (!starts || starts.has(where)));
+    if (others.length) return;
+    const own = contracts.filter(contract => contract.call.match(/^\w+/)[0] === definition.name);
+    // a twin of another function, with a stop in it for this one
+    if (own.length && !own.some(contract => contract.offset === offset)) return;
+    const contract = own.find(each => each.offset === offset) ?? null;
+    const params = definition.params === 'void' ? [] : definition.params ? definition.params.split(',').map(each => each.trim()) : [];
+    const gives = definition.type.replace(STORAGE, '').trim() !== 'void';
+    const args = contract ? contract.call.replace(/^\w+\s*\(/, '').replace(/\)$/, '').split(',').map(each => each.trim()).filter(Boolean) : [];
+    const why = !contract && (params.length || gives) ? `it ${params.length ? 'takes' : 'gives back'} a value, and no contract says which register`
+      : args.some(arg => !ALONE.test(arg)) ? 'its contract gives an argument that isn\'t a register or a pair alone, as HL or &A'
+      : args.length !== params.length ? `its contract gives it ${args.length} argument${args.length === 1 ? '' : 's'}, and its C takes ${params.length}`
+      : params.some(param => !/[A-Za-z_]\w*[\s*]+[A-Za-z_]\w*(\s*\[[^\]]*\])?$/.test(param)) ? 'one of its arguments has no name'
+      : contract && Boolean(contract.back) !== gives ? (gives ? 'its C gives back a value, and its contract says nothing of what, after ->' : 'its contract says what it gives back, and its C gives back nothing')
+      : null;
+    if (why) return notes.push({ line, note: `${definition.name} is a stop for ${name}, and a twin that calls it runs its C as it is: ${why}` });
+    stops.push({ name, offset, line, definition, contract, args });
+  });
+  return { stops, notes };
+}
+
+// A file of the game's C with each of its stops made the original's function: the function in C keeps its words and
+// is the stop's call, `dp_stop_<n>`, which comes after the file, with its own as `dp_stopped_<n>`, all on the lines
+// they were on, so the compiler's messages name the game's own lines.
+function withStops(file, text, stops) {
+  const lines = text.split('\n');
+  for (const stop of stops) {
+    const { at, end, type, name, params } = stop.definition, plain = type.replace(STORAGE, '').trim();
+    const names = stop.args.length ? params.split(',').map(param => param.trim().match(/([A-Za-z_]\w*)(?:\s*\[[^\]]*\])?$/)[1]) : [];
+    const call = `dp_stop_${stop.index}(${names.join(', ')})`;
+    for (let i = at; i <= end; i++) {
+      const renamed = lines[i].replace(new RegExp(`\\b${name}(\\s*\\()`), `dp_stopped_${stop.index}$1`);
+      if (renamed === lines[i]) continue;
+      lines[i] = renamed;
+      break;
+    }
+    lines[at] = `static ${plain} dp_stop_${stop.index}(${params}); ${type} ${name}(${params}) { ${plain === 'void' ? `${call};` : `return ${call};`} } ${lines[at]}`;
+  }
+  return `#line 1 ${JSON.stringify(file)}\n${lines.join('\n')}`;
+}
+
+// The stop's call after the file: the registers it starts with, each argument in the register its contract names, the
+// original's function, and what it leaves, by address and as what it gives back.
+function stopFor(file, stop, locals) {
+  const { type, params } = stop.definition, plain = type.replace(STORAGE, '').trim();
+  const own = stop.args.length ? params.split(',').map((param, k) => param.trim().replace(/([A-Za-z_]\w*)((?:\s*\[[^\]]*\])?)$/, `dp_a${k}$2`)) : [];
+  const into = [], back = [];
+  stop.args.forEach((arg, k) => {
+    const [, address, register] = arg.match(ALONE), value = address ? `(*dp_a${k})` : `(dp_a${k})`;
+    if (PAIRS[register]) {
+      const [high, low] = PAIRS[register];
+      into.push(`dp_regs.${high} = (uint8_t)(${value} >> 8); dp_regs.${low} = (uint8_t)${value};`);
+      if (address) back.push(`*dp_a${k} = (uint16_t)(dp_regs.${high} << 8 | dp_regs.${low});`);
+    } else {
+      into.push(register.endsWith('F') ? `dp_regs.${register} = !!${value};` : `dp_regs.${register} = (uint8_t)${value};`);
+      if (address) back.push(`*dp_a${k} = dp_regs.${register};`);
+    }
+  });
+  const gives = stop.contract?.back ? `  {\n    const twin_regs *dp_r = &dp_regs;\n${locals('const ')}#line ${stop.contract.line} ${JSON.stringify(file)}\n    return (${plain})(${stop.contract.back});\n  }\n` : '';
+  return `
+static ${plain} dp_stop_${stop.index}(${own.length ? own.join(', ') : 'void'}) {
+  twin_regs dp_regs;
+  twin_stop_registers(&dp_regs);
+  ${into.join(' ')}
+  kit_original(${stop.offset}, ${stop.contract?.allowance ?? 0}, &dp_regs);
+  ${back.join(' ')}
+${gives}}
+`;
+}
+
 // The game's file and, after it, each of its contracts as the functions the check calls: the twin's call with the
 // registers as C's own variables, what its result has to equal, and what the game gives it. They come after the
 // file's own code, in the same unit, so a twin no other file sees can be called, and a name of the file's own that is
-// a register's is put aside first. A pair the twin changed, given by address, goes back into its two registers.
-function unitFor(file, contracts) {
+// a register's is put aside first. A pair the twin changed, given by address, goes back into its two registers. A file
+// with stops is `copy`, the file with its stops made the original's functions (withStops), whose calls come last.
+function unitFor(file, contracts, stops = [], copy = file) {
   const locals = constant => `  ${constant}uint8_t A = dp_r->A, B = dp_r->B, C = dp_r->C, D = dp_r->D, E = dp_r->E, H = dp_r->H, L = dp_r->L; ${constant}uint16_t SP = dp_r->SP;
   ${constant}uint16_t BC = (uint16_t)(B << 8 | C), DE = (uint16_t)(D << 8 | E), HL = (uint16_t)(H << 8 | L); ${constant}int ZF = dp_r->ZF, NF = dp_r->NF, HF = dp_r->HF, CF = dp_r->CF;
   (void)A; (void)B; (void)C; (void)D; (void)E; (void)H; (void)L; (void)SP; (void)BC; (void)DE; (void)HL; (void)ZF; (void)NF; (void)HF; (void)CF;\n`;
   const at = contract => `#line ${contract.line} ${JSON.stringify(file)}\n`;
-  return `#include ${JSON.stringify(file)}\n${NAMES.map(register => `#undef ${register}\n`).join('')}#include "contract.h"\n${contracts.map(contract => `
+  return `#include ${JSON.stringify(copy)}\n${NAMES.map(register => `#undef ${register}\n`).join('')}#include "contract.h"
+void twin_stop_registers(twin_regs *r);
+void kit_original(uint32_t offset, int allowance, twin_regs *r);
+${stops.map(stop => stopFor(file, stop, locals)).join('')}${contracts.map(contract => `
 static void dp_call_${contract.index}(twin_regs *dp_r, long *dp_gave) {
 ${locals('')}  const uint16_t dp_bc = BC, dp_de = DE, dp_hl = HL;
 ${at(contract)}  ${contract.back ? `*dp_gave = (long)(${contract.call});` : `(void)dp_gave; ${contract.call};`}
@@ -226,9 +402,9 @@ function buildProcessor(log, compilers) {
 
 /**
  * Builds the check for the C in `sources` (a folder), against the copy `rom` (its bytes), in the folder `work`, and
- * gives { program, contracts, bank, notes }: the program, each contract with `file`, `line` and its place among them,
- * `index`, and what to say of them. `functions`, a code map's, says where the original's functions start, when
- * there's one.
+ * gives { program, contracts, stops, bank, notes }: the program, each contract with `file`, `line` and its place among
+ * them, `index`, each stop the original's function is run for (stopsIn), and what to say of them. `functions`, a code
+ * map's, says where the original's functions start, when there's one.
  */
 export function buildCheck({ rom, sources: folder, work: where, functions = null, log = console.log }) {
   const sources = resolve(folder), work = resolve(where);
@@ -236,15 +412,22 @@ export function buildCheck({ rom, sources: folder, work: where, functions = null
   if (!program) throw new Error("That copy isn't a Game Boy game's.");
   const files = readdirSync(sources).filter(name => name.endsWith('.c')).sort().map(name => join(sources, name));
   if (!files.length) throw new Error(`${inRepo(sources)} has no C.`);
-  const contracts = [], errors = [], notes = [];
+  const contracts = [], stops = [], errors = [], notes = [];
+  const starts = functions ? new Set(functions.map(f => f.address)) : null;
   let bank = null;
   const units = files.map(file => {
-    const found = contractsIn(readFileSync(file, 'utf8'), program.banks);
+    const text = readFileSync(file, 'utf8'), found = contractsIn(text, program.banks);
     for (const { line, error } of found.errors) errors.push(`${inRepo(file)}:${line}: ${error}.`);
     if (found.bank !== null) bank = found.bank;
-    const own = found.contracts.map(contract => ({ ...contract, file, index: contracts.length + found.contracts.indexOf(contract) }));
+    // a stop's contract says how the original's function is called for it, and isn't checked
+    const stopped = stopsIn(text, program.banks, found.contracts, starts);
+    for (const { line, note } of stopped.notes) notes.push(`${inRepo(file)}:${line}: ${note}.`);
+    const mine = stopped.stops.map(stop => ({ ...stop, file, index: stops.length + stopped.stops.indexOf(stop) }));
+    stops.push(...mine);
+    const checked = found.contracts.filter(contract => !mine.some(stop => stop.contract === contract));
+    const own = checked.map(contract => ({ ...contract, file, index: contracts.length + checked.indexOf(contract) }));
     contracts.push(...own);
-    return { file, own };
+    return { file, text, own, stops: mine };
   });
   const seen = new Map();
   for (const contract of contracts) {
@@ -259,10 +442,15 @@ export function buildCheck({ rom, sources: folder, work: where, functions = null
   const made = join(work, 'made');
   rmSync(made, { recursive: true, force: true });
   mkdirSync(made, { recursive: true });
-  const built = units.map(({ file, own }) => {
-    if (!own.length) return file;
+  const built = units.map(({ file, text, own, stops: mine }) => {
+    if (!own.length && !mine.length) return file;
     const unit = join(made, basename(file));
-    writeFileSync(unit, unitFor(file, own));
+    let copy = file;
+    if (mine.length) {
+      copy = join(made, `stops-${basename(file)}`);
+      writeFileSync(copy, withStops(file, text, mine));
+    }
+    writeFileSync(unit, unitFor(file, own, mine, copy));
     return unit;
   });
   writeFileSync(join(made, 'dp-contracts.c'), tableFor(contracts, bank));
@@ -278,7 +466,7 @@ export function buildCheck({ rom, sources: folder, work: where, functions = null
   });
   // the processor is C++, so its compiler links the whole
   compile('The check', compilers.cxx, [...compilers.more, '-o', out, ...compiled, ...objects], work, compilers.env);
-  return { program: out, contracts, bank, notes };
+  return { program: out, contracts, stops, bank, notes };
 }
 
 // one twin's calls, as the check's program counts them
@@ -316,7 +504,10 @@ export function verdict(result) {
  * twin's own name: { results, same }, each result a contract with what the check counted and its verdict.
  */
 export function checkTwins({ built, copy, calls = CALLS, seed = 1, limit = LIMIT, patience, only = [], log = console.log }) {
-  const wanted = built.contracts.filter(contract => !only.length || only.some(name => name.toLowerCase() === contract.name.toLowerCase() || new RegExp(`^${name.replace(/[^\w]/g, '')}\\s*\\(`).test(contract.call)));
+  const named = (name, original, call) => name.toLowerCase() === original.toLowerCase() || name.replace(/[^\w]/g, '') === call;
+  const wanted = built.contracts.filter(contract => !only.length || only.some(name => named(name, contract.name, contract.call.match(/^\w+/)[0])));
+  const stopped = (built.stops ?? []).filter(stop => only.some(name => named(name, stop.name, stop.definition.name)));
+  if (!wanted.length && stopped.length) throw new Error(`${stopped.map(stop => `${stop.definition.name}, at ${inRepo(stop.file)}:${stop.line}, is a stop for ${stop.name}`).join(', and ')}, so it has no twin to check yet: the check runs the original's function for each call a twin makes to it.`);
   if (!wanted.length) throw new Error(`No contract is for ${only.join(' or ')}: there are contracts for ${built.contracts.map(c => c.name).join(', ')}.`);
   const results = wanted.map(contract => {
     const result = { ...contract, ...runCheck({ program: built.program, copy, calls, seed, index: contract.index, limit, patience }) };
@@ -346,6 +537,7 @@ export async function twin(game, { functions = [], calls = CALLS, seed = 1, limi
   const built = buildCheck({ rom: readFileSync(copy.path), sources, work, functions: codeMap?.functions ?? null, log });
   for (const note of built.notes) log(note);
   log(`${count(built.contracts.length)} twin${built.contracts.length === 1 ? ' has a contract' : 's have a contract'} in ${inRepo(sources)}. Each gets ${count(calls)} calls from a memory of random bytes, with a few of the bytes it reads changed.`);
+  if (built.stops.length) log(`Where a twin calls ${built.stops.map(stop => stop.definition.name).join(', ')}, which ${built.stops.length === 1 ? 'is a stop' : 'are stops'}, the original's ${built.stops.length === 1 ? 'function runs' : 'functions run'} instead: ${built.stops.map(stop => stop.name).join(', ')}.`);
   const { results, same } = checkTwins({ built, copy: copy.path, calls, seed, limit, only: functions, log });
   log(`${count(same)} of ${count(results.length)} twins the same as the original on every call.`);
   // which of those took every path of the original's function, which is what makes the same memory a proof

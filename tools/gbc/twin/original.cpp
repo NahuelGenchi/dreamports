@@ -7,6 +7,9 @@
 // memory at $C000, with its echo above it, and the high memory at $FF80. A write to the cartridge's chip is noted, and
 // switches the bank when it's that register. The rest of the hardware isn't there: a store to it is noted, and a read
 // is noted and given a value the twin's read is given too.
+//
+// It also runs a function of the original for a twin, when the twin's C calls one that is still a stop: then every byte
+// the processor reads and writes goes through the kit, as the twin's own C reaches the memory (orig_call_through).
 
 #include <cstdlib>
 #include <cstring>
@@ -34,6 +37,13 @@ static int banks, chip, bank_said;
 static int fetching, pushing;
 static gambatte::CPU *cpu;
 static gambatte::SaveState state;
+// for a stop the twin calls: how the processor reads and writes the twin's memory and hardware, or null, and what its
+// pushes covered, which it puts back once it has returned, as a function in C leaves nothing on the stack: each place
+// of the memory a push wrote first, what was there before, and whether it was stored to other than by pushing too
+static uint8_t (*through_read)(uint16_t);
+static void (*through_write)(uint16_t, uint8_t);
+static uint8_t through_pushed[TWIN_MEMORY], through_before[TWIN_MEMORY], through_stored[TWIN_MEMORY];
+static int through_places[TWIN_MEMORY], through_count;
 
 static uint32_t place_of(unsigned address) {
   if (address < 0x4000) return address < rom_size ? address : rom_size;
@@ -42,6 +52,7 @@ static uint32_t place_of(unsigned address) {
 }
 
 unsigned dp_read(unsigned address) {
+  if (through_read) return through_read((uint16_t)address);
   if (address < 0x4000) return rom[address % rom_size];
   if (address < 0x8000) {
     if (!bank_said) orig_bank_reads++;
@@ -61,6 +72,15 @@ unsigned dp_read(unsigned address) {
 
 void dp_write(unsigned address, unsigned value) {
   int place = twin_place((uint16_t)address);
+  if (through_write) {
+    if (place >= 0 && !pushing) through_stored[place] = 1;
+    else if (place >= 0 && !through_pushed[place]) {
+      through_pushed[place] = 1;
+      through_before[place] = through_read((uint16_t)address);
+      through_places[through_count++] = place;
+    }
+    return through_write((uint16_t)address, (uint8_t)value);
+  }
   if (place >= 0) {
     orig_memory[place] = (uint8_t)value;
     if (!pushing) orig_stored[place] = 1;
@@ -103,21 +123,11 @@ static int two_ways(uint8_t op) {
   return (op & 0xE7) == 0xC0 ? 1 : 0;
 }
 
-int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
+// The processor from `r` at `pc` until it comes back to TWIN_RETURN_TO, which the caller has put at r->SP: how it
+// ended, as orig_call says. With `noting`, as the original's side's own call, it notes how low the stack went and
+// where each instruction of the program went on.
+static int run(uint16_t pc, twin_regs *r, long *cycles, int noting) {
   uint16_t sp = r->SP;
-  orig_bank = bank;
-  bank_said = bank >= 0;
-  orig_events.count = 0;
-  orig_astray = orig_bank_reads = 0;
-  for (uint32_t i = 0; i < orig_ran_count; i++) orig_ran_ways[orig_ran_at[i]] = 0;
-  orig_ran_count = 0;
-  memset(orig_stored, 0, sizeof orig_stored);
-  memset(orig_read, 0, sizeof orig_read);
-  // as the CALL that called it leaves the stack: the address to come back to, low byte first
-  int low = twin_place(sp), high = twin_place((uint16_t)(sp + 1));
-  if (low >= 0) orig_memory[low] = TWIN_RETURN_TO & 0xFF;
-  if (high >= 0) orig_memory[high] = TWIN_RETURN_TO >> 8;
-  orig_lowest = sp;
   cpu->saveState(state);
   state.cpu.cycleCounter = 0;
   state.cpu.pc = pc;
@@ -147,6 +157,7 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
     cpu->runFor(1);
     pushing = 0;
     cpu->saveState(state);
+    if (!noting) continue;
     if (state.cpu.sp < orig_lowest && (uint16_t)(orig_lowest - state.cpu.sp) < 0x1000) orig_lowest = state.cpu.sp;
     if (place < rom_size) {
       if (!orig_ran_ways[place]) orig_ran_at[orig_ran_count++] = place;
@@ -157,7 +168,47 @@ int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
   *cycles = (long)state.cpu.cycleCounter;
   r->A = state.cpu.a; r->B = state.cpu.b; r->C = state.cpu.c; r->D = state.cpu.d; r->E = state.cpu.e; r->H = state.cpu.h; r->L = state.cpu.l;
   r->ZF = !!(state.cpu.f & 0x80); r->NF = !!(state.cpu.f & 0x40); r->HF = !!(state.cpu.f & 0x20); r->CF = !!(state.cpu.f & 0x10);
-  orig_ime = cpu->mem_.ime();
   if (!how && state.cpu.sp != (uint16_t)(sp + 2)) how = 3;
+  return how;
+}
+
+int orig_call(uint16_t pc, int bank, twin_regs *r, long *cycles) {
+  uint16_t sp = r->SP;
+  orig_bank = bank;
+  bank_said = bank >= 0;
+  orig_events.count = 0;
+  orig_astray = orig_bank_reads = 0;
+  for (uint32_t i = 0; i < orig_ran_count; i++) orig_ran_ways[orig_ran_at[i]] = 0;
+  orig_ran_count = 0;
+  memset(orig_stored, 0, sizeof orig_stored);
+  memset(orig_read, 0, sizeof orig_read);
+  // as the CALL that called it leaves the stack: the address to come back to, low byte first
+  int low = twin_place(sp), high = twin_place((uint16_t)(sp + 1));
+  if (low >= 0) orig_memory[low] = TWIN_RETURN_TO & 0xFF;
+  if (high >= 0) orig_memory[high] = TWIN_RETURN_TO >> 8;
+  orig_lowest = sp;
+  int how = run(pc, r, cycles, 1);
+  orig_ime = cpu->mem_.ime();
+  return how;
+}
+
+int orig_call_through(uint16_t pc, twin_regs *r, long *cycles, uint8_t (*read)(uint16_t), void (*write)(uint16_t, uint8_t)) {
+  through_read = read;
+  through_write = write;
+  through_count = 0;
+  // as the CALL that called it leaves the stack, in the twin's memory
+  pushing = 1;
+  dp_write(r->SP, TWIN_RETURN_TO & 0xFF);
+  dp_write((uint16_t)(r->SP + 1), TWIN_RETURN_TO >> 8);
+  pushing = 0;
+  int how = run(pc, r, cycles, 0);
+  through_read = NULL;
+  through_write = NULL;
+  for (int i = 0; i < through_count; i++) {
+    int place = through_places[i];
+    if (!through_stored[place]) write(twin_address(place), through_before[place]);
+    through_pushed[place] = 0;
+  }
+  memset(through_stored, 0, sizeof through_stored);
   return how;
 }
