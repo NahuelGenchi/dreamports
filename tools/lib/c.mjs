@@ -69,6 +69,9 @@ const OWN = {
   psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c', 'mutex.c', 'vfpu.c'], header: true, trees: ['vfpu'], gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
   n64: {
     folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
+    // the function check builds it with each read and write the processor's own load or store, which its pass over
+    // the module sends to the console's memory, so a twin written on the kit is checked as it plays (n64.c)
+    checkFlags: ['-DDP_TWIN_CHECK'],
     // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
     // pointer of another type or through address 0, and no two stores the compiler sees side by side made into one, as
     // the fold pass turns round each number by its own size, which two merged in the module's own order would undo
