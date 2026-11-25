@@ -22,8 +22,8 @@ test('leaves out a part with a recording, and one with a piece, open or closed, 
 });
 
 test('a new version in C starts a function at a time on every console whose functions\' proofs the tools keep', () => {
-  for (const console of ['gba', 'nes', 'ps1', 'ps2', 'psp']) assert.equal(startsByFunction(console, 'c', []), true, console);
-  for (const console of ['snes', 'n64', 'gb', 'gbc', 'md', 'made-up']) assert.equal(startsByFunction(console, 'c', []), false, console);
+  for (const console of ['gba', 'nes', 'snes', 'gb', 'gbc', 'ps1', 'ps2', 'psp']) assert.equal(startsByFunction(console, 'c', []), true, console);
+  for (const console of ['n64', 'md', 'made-up']) assert.equal(startsByFunction(console, 'c', []), false, console);
   // a version with a task already, open or closed, stays as it is, and another language's tasks aren't its own
   assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu in C', state: 'closed' }]), false);
   assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu', state: 'open' }]), true);

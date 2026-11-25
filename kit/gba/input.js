@@ -12,6 +12,7 @@ const DEAD_ZONE = 0.5;
 const XBOX = /xbox|xinput|045e|microsoft/i;   // the names browsers give Microsoft's controllers
 const SETTINGS_COMBO = [8, 9];                 // View + Menu (Select + Start) together open the settings, not the game's
 const RESET_BUTTONS = [0, 1];                  // with A and B too, they're the game's soft reset (Sonic Advance's) instead
+const TOUCH = /^TOUCH@(\d+),(\d+)$/;         // a touch as a recording keeps it, the touched screen's pixel
 const COMBO_WAIT = 4;                          // steps a controller's Start or Select waits for the other to join it
 
 /** The Game Boy Advance's buttons, as its KEYINPUT register has them, a bit each. */
@@ -58,6 +59,10 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
   input.session = proof ? null : createSession(layout);
   for (const b of buttons) input[b] = false;
   for (const b of edges) input[`${b}Pressed`] = false;
+  // where the console's touched screen is touched, { x, y } in its pixels, or null: on a console that has one, as the
+  // Nintendo DS's lower screen (bindScreen). A recording keeps it beside the buttons, as "TOUCH@x,y"
+  input.touch = null;
+  let finger = null;                    // where a finger or the mouse is on the touched screen now
   const on = {};                        // the extras turned on
   const extraOf = {};                   // the extra each of their buttons belongs to
   for (const [name, extra] of Object.entries(extras)) for (const b of extra.buttons ?? []) extraOf[b] = name;
@@ -90,7 +95,7 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
     held.keys[button] = down; set(button);
   };
   input.release = () => {
-    held.keys = {}; held.pad = {}; held.touch = {}; touched.clear(); padFresh = true;
+    held.keys = {}; held.pad = {}; held.touch = {}; touched.clear(); padFresh = true; finger = null; input.touch = null;
     for (const b of buttons) input[b] = false;
     for (const b of edges) input[`${b}Pressed`] = false;
   };
@@ -141,10 +146,12 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
     return now;
   }
   // what the game reads at this frame, as a proof tool's frame: the buttons held and those just pressed
-  const seen = () => ({ held: buttons.filter(b => input[b]), pressed: edges.filter(b => input[`${b}Pressed`]) });
+  const seen = () => ({ held: [...buttons.filter(b => input[b]), ...(input.touch ? [`TOUCH@${input.touch.x},${input.touch.y}`] : [])], pressed: edges.filter(b => input[`${b}Pressed`]) });
   // a proof tool's frame: its buttons held, and those just pressed as it says, or else those held now and not before
   function play({ held: holding = [], pressed } = {}) {
     const now = new Set(holding.filter(b => !off(b)));
+    const touched = holding.map(b => TOUCH.exec(b)).find(Boolean);
+    input.touch = touched ? { x: Number(touched[1]), y: Number(touched[2]) } : null;
     for (const b of buttons) {
       const down = now.has(b);
       if (edges.includes(b)) input[`${b}Pressed`] = pressed ? pressed.includes(b) : input[`${b}Pressed`] || (down && !input[b]);
@@ -172,6 +179,8 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
       // the tool's frames are over and the player takes over, with the buttons they hold now
       if (replayed) for (const b of buttons) set(b);
       replayed = false;
+      // the touch the game reads this frame is where the finger is as the frame starts
+      input.touch = input.enabled && finger ? { ...finger } : null;
       read();
     }
     if (proofs() && proof.input === input) proof.record(seen());
@@ -230,6 +239,37 @@ export function createInput(layout, { keys = layout.keys, pads = connectedPads }
   });
   addEventListener('blur', () => { if (!played()) input.release(); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && !played()) input.release(); });
+
+  /**
+   * The console's touched screen: `canvas` shows the game's picture, and `[left, top, width, height]` is where that
+   * screen is in it, in the picture's pixels (kit/consoles.js `screens`). A finger or the mouse held on it touches the
+   * pixel it's on, and one that slides off it still touches the nearest pixel of its edge, until it's let go.
+   */
+  input.bindScreen = (canvas, [left, top, width, height]) => {
+    let pointer = null;
+    const place = e => {
+      const r = canvas.getBoundingClientRect();
+      return [Math.floor((e.clientX - r.left) * canvas.width / r.width) - left, Math.floor((e.clientY - r.top) * canvas.height / r.height) - top];
+    };
+    const clamp = (value, most) => Math.max(0, Math.min(most - 1, value));
+    canvas.style.touchAction = 'none';
+    canvas.addEventListener('pointerdown', e => {
+      const [x, y] = place(e);
+      if (pointer !== null || x < 0 || y < 0 || x >= width || y >= height) return;
+      e.preventDefault();
+      canvas.setPointerCapture?.(e.pointerId);
+      pointer = e.pointerId;
+      finger = { x, y };
+    });
+    canvas.addEventListener('pointermove', e => {
+      if (e.pointerId !== pointer) return;
+      const [x, y] = place(e);
+      finger = { x: clamp(x, width), y: clamp(y, height) };
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      canvas.addEventListener(type, e => { if (e.pointerId === pointer) { pointer = null; finger = null; } });
+    }
+  };
 
   /**
    * The on-screen controller: any element with data-pad-button set to an Xbox controller's button by its number in

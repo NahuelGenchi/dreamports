@@ -225,3 +225,61 @@ export function madeUpTwins() {
   for (let bank = 0; bank < 4; bank++) put(0x9000, Array.from({ length: 0x100 }, (_, at) => TWIN.inBank(bank, at)), bank);
   return rom;
 }
+
+/** A fourth program, for the test of a game whose parts are its tasks (part-tasks.mjs, part-tasks/nes.mjs): the first
+ *  program's power-on, and a V-blank that shows the last frame, reads the buttons and calls four small functions, each
+ *  ending with RTS, so the function check can prove its twin. `move` is called every frame, `title` while the byte at
+ *  PARTS.mode is 0, `play` once it's 1, which Start makes it, and `secret` only with A and B held together. PARTS says
+ *  where the program keeps what the first one doesn't. */
+export const PARTS = { mode: 0x15, secrets: 0x16 };
+const CMP = v => [0xC9, v];
+const NMI_PARTS = [
+  // what the last frame worked out, shown
+  lda(2), put(0x4014),
+  lda(0x3F), put(0x2006), lda(0), put(0x2006), load(RAM.backdrop), put(0x2007),
+  lda(0x80), put(0x2000), load(RAM.scroll), put(0x2005), lda(0), put(0x2005),
+  // the buttons: A B Select Start Up Down Left Right, from the highest bit
+  lda(1), put(0x4016), lda(0), put(0x4016), ldx(8), here('read'), [0xAD, ...word(0x4016)], LSR, rol(RAM.buttons), DEX, bne('read'),
+  jsr('move'),
+  load(PARTS.mode), bne('playing'), jsr('title'), jmp('either'),
+  here('playing'), jsr('play'),
+  here('either'), load(RAM.buttons), and(0xC0), CMP(0xC0), bne('done'), jsr('secret'),
+  here('done'), RTI,
+  // move: the arrows move the sprite, a pixel a frame
+  here('move'),
+  ifHeld(0x01, 'not right', inc(RAM.x)), ifHeld(0x02, 'not left', dec(RAM.x)), ifHeld(0x04, 'not down', inc(RAM.y)), ifHeld(0x08, 'not up', dec(RAM.y)),
+  load(RAM.y), put(0x0200), load(RAM.x), put(0x0203), RTS,
+  // title: Start begins the play, and turns the backdrop red for good
+  here('title'), ifHeld(0x10, 'not start', [lda(1), save(PARTS.mode), lda(START.pressedBackdrop), save(RAM.backdrop)]), RTS,
+  // play: the background scrolls
+  here('play'), inc(RAM.scroll), RTS,
+  // secret: counts a secret
+  here('secret'), inc(PARTS.secrets), RTS,
+];
+
+/** The fourth program as a copy of an NES game: { rom, sha1, at }, one 16 KB block of code and one 8 KB block of
+ *  tiles, with `at` where each of its functions is in the program, as a code map's address: `reset`, `nmi`, `move`,
+ *  `title`, `play` and `secret`. Its other interrupt, which nothing raises, goes to the reset, so the program has no
+ *  routine but these six. */
+export function madeUpParts() {
+  const PRG = 0xC000, palette = PRG + PALETTE_AT - 16;
+  const reset = assemble(RESET(false), PRG, { palette });
+  const nmiAt = PRG + reset.bytes.length;
+  const nmi = assemble(NMI_PARTS, nmiAt, {});
+  const prg = Buffer.alloc(0x4000, 0xFF);
+  Buffer.from(reset.bytes).copy(prg, 0);
+  Buffer.from(nmi.bytes).copy(prg, nmiAt - PRG);
+  Buffer.from(PALETTE).copy(prg, palette - PRG);
+  prg.writeUInt16LE(nmiAt, 0x3FFA);
+  prg.writeUInt16LE(PRG, 0x3FFC);
+  prg.writeUInt16LE(PRG, 0x3FFE);
+  const chr = Buffer.alloc(0x2000);
+  TILES.forEach(({ plane0, plane1 }, tile) => {
+    Buffer.from(plane0).copy(chr, tile * 16);
+    Buffer.from(plane1).copy(chr, tile * 16 + 8);
+  });
+  const header = Buffer.from([0x4E, 0x45, 0x53, 0x1A, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  const rom = Buffer.concat([header, prg, chr]);
+  const at = Object.fromEntries(['move', 'title', 'play', 'secret'].map(name => [name, nmi.names[name] - PRG]));
+  return { rom, sha1: createHash('sha1').update(rom).digest('hex'), at: { reset: 0, nmi: nmiAt - PRG, ...at } };
+}
