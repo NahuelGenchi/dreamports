@@ -34,11 +34,39 @@ as the emulator leaves SSE's mode for those off. On a computer with SSE nothing 
 own flush, over 72 million results near the smallest ordinary number in each of the four rounding modes, 12 million
 of them flushed: every bit the same.
 
+And it lets the emulator build on a Mac, where it had never been built for the tools before. Its r4300.h makes macros of
+hi and lo, and the GL header libretro.c includes after it reads Apple's MacTypes.h there, whose structs have members
+of those names, so Apple's compiler stopped at them. The two are put aside while that header is read, and nothing
+else is; on another computer the header reads nothing of Apple's.
+
 diff --git a/libretro/libretro.c b/libretro/libretro.c
-index 4302bb4..5bf8703 100644
+index 4302bb4..f4e6472 100644
 --- a/libretro/libretro.c
 +++ b/libretro/libretro.c
-@@ -3753,6 +3753,25 @@ static void glsm_enter(void)
+@@ -42,6 +42,13 @@
+ #include "../mupen64plus-video-angrylion/vdac.h"
+ #endif
+ 
++/* Dreamports: the GL header below reads Apple's MacTypes.h on a Mac, through libretro-common's apple_compat.h, and its
++ * structs have members named hi and lo, which r4300.h, included above, makes macros of; so they're put aside while it's
++ * read. Nothing else is, and on another computer the header reads nothing of Apple's. */
++#pragma push_macro("hi")
++#pragma push_macro("lo")
++#undef hi
++#undef lo
+ #if defined(HAVE_OPENGL) || defined(HAVE_OPENGLES)
+ #include <glsm/glsmsym.h>
+ #else
+@@ -54,6 +61,8 @@
+ #include <glsm/glsm.h>
+ bool glsm_ctl(enum glsm_state_ctl state, void *data) { return false; }
+ #endif
++#pragma pop_macro("lo")
++#pragma pop_macro("hi")
+ 
+ /* libretro-fork compat: legacy CONT_* controller-presence + M64CMD_DDROM_OPEN +
+  * mempak format defaults, retained for the fork's libretro glue (next dropped
+@@ -3753,6 +3762,25 @@ static void glsm_enter(void)
  #define RETRO_AV_ENABLE_AUDIO (1 << 1)
  #endif
  
@@ -162,24 +190,6 @@ index 1ed9088..ba39460 100644
          (*r4300_pc_struct(r4300))->ops();
      }
  }
-diff --git a/mupen64plus-core/src/main/main.c b/mupen64plus-core/src/main/main.c
-index 0f959c8..84815c7 100644
---- a/mupen64plus-core/src/main/main.c
-+++ b/mupen64plus-core/src/main/main.c
-@@ -839,9 +839,11 @@ m64p_error main_run(void)
-          * retro_return from arming the next frame-break. The hot-state stop only
-          * exists when the ari64 dynarec is compiled in (NEW_DYNAREC); without it
-          * there is no separate ari64 stop and *r4300_stop() above is sufficient. */
--#ifdef NEW_DYNAREC
-+        /* Dreamports: cleared whatever is built. Where the compiler says _M_X64, as MinGW's does on Windows, and on
-+         * arm64, as on a Mac with Apple's chip, the flag retro_return looks at is this one (r4300.h), also in a build
-+         * with no dynarec, as the tools' is: left set after the first frame, no later frame ever ended, and
-+         * retro_run never came back. Where the two flags are one, as on Linux for x86-64, this changes nothing. */
-         g_dev.r4300.new_dynarec_hot_state.stop = 0;
--#endif
-         run_device(&g_dev);
-         return M64ERR_SUCCESS;
-     }
 diff --git a/mupen64plus-core/src/device/r4300/fpu.h b/mupen64plus-core/src/device/r4300/fpu.h
 index 7691dcd..950145c 100644
 --- a/mupen64plus-core/src/device/r4300/fpu.h
@@ -319,3 +329,21 @@ index 7691dcd..950145c 100644
  
      fpu_check_exceptions(fcr31);
  
+diff --git a/mupen64plus-core/src/main/main.c b/mupen64plus-core/src/main/main.c
+index 0f959c8..84815c7 100644
+--- a/mupen64plus-core/src/main/main.c
++++ b/mupen64plus-core/src/main/main.c
+@@ -839,9 +839,11 @@ m64p_error main_run(void)
+          * retro_return from arming the next frame-break. The hot-state stop only
+          * exists when the ari64 dynarec is compiled in (NEW_DYNAREC); without it
+          * there is no separate ari64 stop and *r4300_stop() above is sufficient. */
+-#ifdef NEW_DYNAREC
++        /* Dreamports: cleared whatever is built. Where the compiler says _M_X64, as MinGW's does on Windows, and on
++         * arm64, as on a Mac with Apple's chip, the flag retro_return looks at is this one (r4300.h), also in a build
++         * with no dynarec, as the tools' is: left set after the first frame, no later frame ever ended, and
++         * retro_run never came back. Where the two flags are one, as on Linux for x86-64, this changes nothing. */
+         g_dev.r4300.new_dynarec_hot_state.stop = 0;
+-#endif
+         run_device(&g_dev);
+         return M64ERR_SUCCESS;
+     }
