@@ -82,6 +82,7 @@ import { referenceOf } from '../lib/reference.mjs';
 import { cKit } from '../lib/c.mjs';
 import { consoleOf } from '../consoles.mjs';
 import { fetchSource } from '../libretro/build.mjs';
+import { keptCompiler } from '../gba/windows.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 import { INSTRUCTIONS } from './6502.mjs';
 import { nesName, nesNames, nesProgram } from './functions.mjs';
@@ -190,9 +191,19 @@ const uint8_t twin_modes[256] = { ${INSTRUCTIONS.map(({ mode }) => modes[mode] ?
 `;
 }
 
+// The compiler: the one CC names, or the computer's own, and on Windows, where most computers have none, w64devkit's
+// GCC, which the tools get once and keep (../gba/windows.mjs, keptCompiler)
+let compiler = null;
+function compilerOf() {
+  if (compiler) return compiler;
+  const own = process.env.CC || (process.platform === 'win32' ? 'gcc' : 'cc');
+  const missing = spawnSync(own, ['--version'], { encoding: 'utf8' }).error?.code === 'ENOENT';
+  compiler = missing && process.platform === 'win32' && !process.env.CC ? keptCompiler(console.log) : own;
+  return compiler;
+}
+
 function compile(what, args, cwd) {
-  const compiler = process.env.CC || (process.platform === 'win32' ? 'gcc' : 'cc');
-  const result = spawnSync(compiler, args, { cwd, encoding: 'utf8', maxBuffer: 2 ** 26 });
+  const result = spawnSync(compilerOf(), args, { cwd, encoding: 'utf8', maxBuffer: 2 ** 26 });
   if (result.error?.code === 'ENOENT') throw new Error(`There's no C compiler here (${compiler}): tools/README.md says how to get one.`);
   if (result.status !== 0) throw new Error(`${what} didn't build:\n${(result.stderr || '').trim().split('\n').slice(0, 40).join('\n')}`);
 }
