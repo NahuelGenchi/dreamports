@@ -535,6 +535,7 @@ static void audioSample(int16_t left, int16_t right) {
 
 static void inputPoll(void) {}
 
+static const uint32_t* (*coreRan)(uint32_t*);   // which functions ran in the frame, from a core that says so itself
 static bool touched;   // whether the console has a screen that's touched (DP_TOUCH)
 static uint32_t memoryBase;   // where the console's work memory starts, from a core that says
 
@@ -737,12 +738,22 @@ int main(int argc, char** argv) {
 		size_t functionsSize = 0;
 		uint32_t* functions = strcmp(argv[5], "-") ? readAll(argv[5], &functionsSize) : NULL;
 		ps2Watch watch = dlsym(library, "dreamports_watch");
-		if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
+		// a core that says itself which of the functions ran in a frame, as the Nintendo DS's does, whose code is all in
+		// memory, at addresses too far apart for a table of places: it's given them, and asked after each frame
+		void (*coreFunctions)(const uint32_t*, size_t) = dlsym(library, "dreamports_functions");
+		if (coreFunctions && functions) {
+			coreFunctions(functions, functionsSize / 24);
+			coreRan = dlsym(library, "dreamports_ran_in_frame");
+		}
+		if (coreRan) ranOpen(NULL, 0, 0);
+		else if (ranOpen(functions, functionsSize / 4, !watch) || (watch && (getenv("DP_CONTENT") || getenv("DP_WHY") || getenv("DP_STARTS")))) {
 			void (*tell)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran");
 			void (*tell65816)(void (*)(uint32_t, uint32_t, uint32_t, const uint32_t*)) = dlsym(library, "retro_dreamports_ran65816");
+			void (*tellSm83)(void (*)(uint32_t, uint32_t, uint32_t, uint32_t)) = dlsym(library, "retro_dreamports_ran_sm83");
 			if (watch) ps2Open(watch, functions);
 			else if (tell) tell(ranInstruction);
 			else if (tell65816) tell65816(ranInstruction65816);
+			else if (tellSm83) tellSm83(ranInstructionSm83);
 			else {
 				fprintf(err, "The core doesn't say which instructions it runs: npm run dp -- setup builds it again, with the tools' change to it.\n");
 				return 2;
@@ -882,7 +893,7 @@ int main(int argc, char** argv) {
 		heldFrame(frame);
 		uint32_t hash, plain, ranCount;
 		hashOf(&hash, &plain);
-		const uint32_t* ranNow = ranInFrame(&ranCount);
+		const uint32_t* ranNow = coreRan ? coreRan(&ranCount) : ranInFrame(&ranCount);
 		fwrite(&hash, 4, 1, out);
 		fwrite(&plain, 4, 1, out);
 		fwrite(&ranCount, 4, 1, out);

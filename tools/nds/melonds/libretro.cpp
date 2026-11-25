@@ -13,6 +13,12 @@
 // Its buttons are libretro's pad, and a touch is libretro's pointer, which here says the lower screen's pixel, 0 to 255
 // across and 0 to 191 down, as host.c gives it. The microphone hears nothing and the lid stays open.
 //
+// What ran: host.c gives the code map's functions (dreamports_functions), each with the processor it's for and its
+// first bytes, and after each frame asks which of them ran in it (dreamports_ran_in_frame). A function ran when its
+// processor was sent to its address, by a call, a branch or a return, which melonDS tells this of with the tools'
+// patch, while the memory there held the function's first bytes: a Nintendo DS game's code is all in memory, where an
+// overlay's place holds whichever overlay the game last loaded.
+//
 // This file is built into the emulator on the contributor's computer and is never published as a program. melonDS is
 // under the GNU General Public License, version 3 or later, and so is what's built from it.
 
@@ -22,6 +28,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "Args.h"
@@ -74,6 +81,58 @@ namespace melonDS { extern void (*DreamportsMixed)(const s16* pair); }
 static void keepMixed(const s16* pair) {
 	mixed.push_back(pair[0]);
 	mixed.push_back(pair[1]);
+}
+
+// the functions to watch, by processor and address: each one's number in the code map and its first bytes
+struct Watched { uint32_t index; uint8_t bytes[8]; uint32_t count; bool ran; };
+static std::unordered_multimap<uint64_t, Watched> watched;
+static std::vector<uint32_t> ranNow;
+static std::vector<Watched*> ranOnes;
+namespace melonDS { extern void (*DreamportsJumped)(u32 processor, u32 addr); }
+
+// a byte of what a processor would run at an address, read with no time spent and nothing else changed
+static uint8_t codeAt(uint32_t processor, uint32_t address) {
+	if (processor) return console->ARM7Read8(address);
+	if (address < console->ARM9.ITCMSize) return console->ARM9.ITCM[address & (ITCMPhysicalSize - 1)];
+	return console->ARM9Read8(address);
+}
+
+static void jumped(u32 processor, u32 address) {
+	auto found = watched.equal_range((uint64_t) processor << 32 | address);
+	for (auto each = found.first; each != found.second; ++each) {
+		Watched& function = each->second;
+		if (function.ran) continue;
+		bool there = true;
+		for (uint32_t i = 0; i < function.count && there; i++) there = codeAt(processor, address + i) == function.bytes[i];
+		if (!there) continue;
+		function.ran = true;
+		ranNow.push_back(function.index);
+		ranOnes.push_back(&function);
+	}
+}
+
+// `list` is host.c's FUNCTIONS: for each function its address, its size, its number in the code map, 1 with 2 added
+// for one the ARM7 runs, and its first 8 bytes as two words
+EXPORT void dreamports_functions(const uint32_t* list, size_t count) {
+	watched.clear();
+	for (size_t i = 0; i < count; i++) {
+		const uint32_t* f = list + i * 6;
+		Watched function = { f[2], {}, f[1] < 8 ? f[1] : 8, false };
+		memcpy(function.bytes, f + 4, 8);
+		watched.emplace((uint64_t) (f[3] >> 1 & 1) << 32 | f[0], function);
+	}
+	DreamportsJumped = count ? jumped : nullptr;
+}
+
+// the numbers in the code map of the functions that ran since the last call, in the order they first ran
+EXPORT const uint32_t* dreamports_ran_in_frame(uint32_t* count) {
+	static std::vector<uint32_t> given;
+	given = ranNow;
+	for (Watched* function : ranOnes) function->ran = false;
+	ranNow.clear();
+	ranOnes.clear();
+	*count = (uint32_t) given.size();
+	return given.data();
 }
 
 EXPORT unsigned retro_api_version(void) { return 1; }
