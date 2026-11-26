@@ -50,7 +50,30 @@ export function treesNow(version) {
   try {
     if (git(['read-tree', 'HEAD'], own) === null || git(['add', '--all', '--', `games/${gameOf(version)}`, 'kit'], own) === null) return null;
     const tree = folder => git(['write-tree', `--prefix=${folder}/`], own)?.trim() ?? null;
-    return { game: tree(`games/${gameOf(version)}`), kit: tree('kit') };
+    const whole = { game: tree(`games/${gameOf(version)}`), kit: tree('kit') };
+    return { ...whole, played: withoutNotes(version, own) };
+  } finally {
+    rmSync(index, { force: true });
+  }
+}
+
+/**
+ * The game's folder as a tree without its notes, in an index of the tools' own that holds it: a note is never played,
+ * so one written after a whole proof leaves the proof standing (#2053). Every other file of the game still counts.
+ */
+function withoutNotes(version, own) {
+  const game = `games/${gameOf(version)}`;
+  if (git(['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', `${game}/notes`], own) === null) return null;
+  return git(['write-tree', `--prefix=${game}/`], own)?.trim() ?? null;
+}
+
+/** The same tree of a commit, or null when git can't say. */
+function playedAt(version, commit) {
+  const index = join(LOCAL, 'tmp', `index-${process.pid}-at`);
+  mkdirSync(dirname(index), { recursive: true });
+  const own = { GIT_INDEX_FILE: index };
+  try {
+    return git(['read-tree', commit], own) === null ? null : withoutNotes(version, own);
   } finally {
     rmSync(index, { force: true });
   }
@@ -81,7 +104,7 @@ export function stateAt(version, commit, main) {
   const shownOf = at => (textOf(at) === null ? null : sha1(framesOf(textOf(at))));
   const tree = folder => git(['rev-parse', '-q', '--verify', `${commit}:${folder}`])?.trim() ?? null;
   const recordings = (git(['ls-tree', '--name-only', `${commit}:games/${gameOf(version)}/proof/recordings/`]) ?? '').split('\n').filter(name => name.endsWith('.json')).length;
-  return { trees: { game: tree(`games/${gameOf(version)}`), kit: tree('kit') }, progress: hashOf(commit), mains: hashOf(main), shown: shownOf(commit), mainsShown: shownOf(main), recordings };
+  return { trees: { game: tree(`games/${gameOf(version)}`), kit: tree('kit'), played: playedAt(version, commit) }, progress: hashOf(commit), mains: hashOf(main), shown: shownOf(commit), mainsShown: shownOf(main), recordings };
 }
 
 /**
@@ -121,7 +144,10 @@ export function recordProblems(record, version, state) {
   if ((state.shown ?? state.progress) !== (state.mainsShown ?? state.mains)) return [`${proofOf(version)} isn't main's, so the step changes what the proof shows, and a clip shows that.`];
   const problems = [];
   if (record.progress !== state.progress) problems.push(`The last whole proof of ${version} didn't come out as the commit has it: ${again}.`);
-  if (record.trees.game !== state.trees.game || record.trees.kit !== state.trees.kit) problems.push(`The game's files or its console's kit aren't as they were when ${version} was last proven whole: ${again}.`);
+  // the game's files as they were, or all of them but its notes, which nothing plays (#2053). A record from before
+  // that has no such tree, and is held to every file as it was
+  const sameGame = record.trees.game === state.trees.game || (Boolean(record.trees.played) && record.trees.played === state.trees.played);
+  if (!sameGame || record.trees.kit !== state.trees.kit) problems.push(`The game's files or its console's kit aren't as they were when ${version} was last proven whole: ${again}.`);
   if (record.recordings !== state.recordings) problems.push(`The proof played ${record.recordings} recordings and the game has ${state.recordings}: ${again}.`);
   return problems;
 }
