@@ -111,4 +111,13 @@ void gba_stack_jump(void);
 /** The next function entered is called where the routine's table pairs no call of its own: what it pushes is left out. */
 void gba_stack_asm_unpaired(void);
 
+/** A call to the console's BIOS, the swi with `number`, said by the stub that makes it. The BIOS takes it in the mode
+ *  the game runs in and pushes on the game's stack before its work, and what it pushed stays there once it's back, as
+ *  the reference emulator's BIOS has it (mGBA's hle-bios.s): r2 and lr as the stub was called, 8 bytes under it, and
+ *  then what the call's own routine saves, a copy's (CpuSet, 11) r4, r5 and where it goes back to in the BIOS, a fast
+ *  copy's (CpuFastSet, 12) r4 to r10 and the same, and a wait's (IntrWait, 4, and VBlankIntrWait, 5) r2, r3 and the
+ *  same. `r2` is what r2 holds at the swi, or GBA_STACK_NONE where the stub's C doesn't give it. The stack pointer is
+ *  where it was afterwards, and the lowest it went is as far down as the BIOS took it. */
+void gba_stack_swi(int number, uint64_t r2);
+
 #endif

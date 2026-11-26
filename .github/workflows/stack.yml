@@ -11,7 +11,7 @@ name: Stack
 # again in full the runs Stack stopped. It reads pull requests and runs through the API, and runs nothing from them.
 on:
   pull_request:
-    types: [opened, reopened, synchronize, edited, ready_for_review, closed]
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft, closed]
 
 permissions:
   contents: read

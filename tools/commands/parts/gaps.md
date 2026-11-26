@@ -18,7 +18,7 @@ Three rules hold whatever it is:
 - Nothing of the game goes in the kit, the tools or a test. Test it with a program of the project's own, the way the tests `CONTRIBUTING.md` lists for that kit or tool do, and add yours beside them.
 - The console is the reference. Where the kit's README says how it keeps the console's time or its hardware, follow that.
 
-It's done when `npm run check` passes with the tests of what you changed. Commit it as `fix: <what it is> (#<issue>)` and open its pull request as step 12 does for a change that isn't a Dreamport's, with `Closes #<issue>`, not as a draft. Then go back to the task's branch, merge the fix's branch into it, and write `Builds on #<its pull request>` in the task's pull request, which merges after it.
+It's done when `npm run check` passes with the tests of what you changed. Commit it as `fix: <what it is> (#<issue>)` and open its pull request as step 12 does for a change that isn't a Dreamport's, with `Closes #<issue>`, not as a draft. Then go back to the task's branch, merge the fix's branch into it, and write `Builds on #<its pull request>` in the task's pull request. While the task's pull request is a draft, the fix is tested and merges by itself. Once the task's is ready for review, the fix's Check says it's tested through the task's, and the two merge through that one.
 
 ## When something has to be decided
 

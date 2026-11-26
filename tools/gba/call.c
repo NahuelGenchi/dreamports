@@ -11,7 +11,8 @@
 // 0x03000000, the palette at 0x05000000, the 96 KB of video memory at 0x06000000 and the sprites' list at 0x07000000.
 //
 //   'f' frames          plays that many frames from where the game is. Answers 0.
-//   'i'                 answers where the stack of a call starts and how long the cartridge is.
+//   'i'                 answers where the stack of a call starts, how long the cartridge is, what r4 to r11 hold
+//                       as a call starts, as the game left them, and where a call goes back to, in lr.
 //   'm'                 answers the image.
 //   's' image           puts the image in the console's memory. Answers 0.
 //   'u'                 takes the last call back, with what was changed for it. Answers 0.
@@ -880,6 +881,13 @@ int main(int argc, char** argv) {
 		} else if (command == 'i') {
 			out32(stackTop(state));
 			out32(romSize);
+			// what a call starts with in the registers a function saves for its caller: the game's own as it is now, in the
+			// mode a call runs in, which a twin on the console's stack pushes as the original does (#1896)
+			core->saveState(core, state);
+			ARMSetPrivilegeMode(cpu, MODE_SYSTEM);
+			for (int i = 4; i < 12; i++) out32((uint32_t) cpu->gprs[i]);
+			core->loadState(core, state);
+			out32(RETURN_TO | 1);
 			answer();
 		} else if (command == 'r') {
 			// the hardware's registers as the console has them now, as the calls start from them: each halfword at its

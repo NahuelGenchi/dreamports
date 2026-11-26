@@ -74,7 +74,7 @@ const KIT = '__kit', ELSEWHERE = '__from';
 // which the kit's and the version's hardware are among, the registers a version keeps itself and the kit's display
 // registers, and the console's stack's start for a call and how far down it went (twin-worker.mjs). Its video memory,
 // colours and sprites are where the console has them, as the check builds it (cKit's twinFlags)
-const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io', 'gba_io', 'gba_stack_begin', 'gba_stack_lowest'];
+const KIT_NAMES = ['kit_copy', 'kit_copy_size', '__global_base', '__data_end', 'console_io', 'gba_io', 'gba_stack_begin', 'gba_stack_lowest', 'gba_stack_reg', 'gba_stack_call'];
 // how many bytes of the hardware's registers call.c gives, which a version that keeps the console's registers itself,
 // in its own console_io, is given before each call (#1527)
 const REGISTERS = 0x400;
@@ -183,11 +183,12 @@ class Original {
     await this.take(4);
   }
 
-  /** Where a call's stack starts and how long the cartridge is. */
+  /** Where a call's stack starts, how long the cartridge is, what r4 to r11 hold as a call starts (`kept`) and where
+   *  a call goes back to (`back`). */
   async about() {
     this.ask('i');
-    const said = await this.take(8);
-    return { stack: said.readUInt32LE(0), cartridge: said.readUInt32LE(4) };
+    const said = await this.take(44);
+    return { stack: said.readUInt32LE(0), cartridge: said.readUInt32LE(4), kept: Array.from({ length: 8 }, (_, i) => said.readUInt32LE(8 + 4 * i)), back: said.readUInt32LE(40) };
   }
 
   /** The hardware's registers as the console has them now, which each call starts from: 1 KB, each halfword at its
@@ -358,8 +359,8 @@ class Twins {
 
   /** One call of a twin: { gave, image }, { stopped, unbuilt } or { never: true }, after which the thread has gone
    *  and `start` makes another. */
-  async call(name, args, changes, sp = 0) {
-    const answer = await this.said({ call: name, args, changes, sp }, this.seconds);
+  async call(name, args, changes, sp = 0, begins = null) {
+    const answer = await this.said({ call: name, args, changes, sp, begins }, this.seconds);
     if (answer.never) this.stop();
     return answer;
   }
@@ -903,7 +904,10 @@ export async function compareCalls({ original, twins, start, functions, options,
   let later = false;
   const tables = Math.ceil(calls / TABLES), tablesOn = Boolean(shapes && changing && bytesOf);
   // where the original's calls start on the stack, for twins built with the console's stack, which start there too
-  let sp = stacked ? (await original.about()).stack : 0;
+  // and what the original's call starts with in the registers a function saves for its caller, and where it goes back
+  // to, so a twin's first function pushes what the original's pushes (#1896)
+  const about = stacked ? await original.about() : null;
+  let sp = about?.stack ?? 0;
   const onTop = async address => {
     await original.top(top = address);
     if (stacked) sp = (await original.about()).stack;
@@ -1136,7 +1140,9 @@ export async function compareCalls({ original, twins, start, functions, options,
     // them pointing into one of those structs, as a copy through it then writes over one (#1767)
     const through = tablesOn && (retry?.depth ?? 0) < MADE_UP ? [...shapes.readThrough({ reads: theirs.reads, image: expected }), ...shapes.pointsInto({ reads: theirs.reads, image: expected })] : [];
     for (const run of theirs.runs) run.bytes.copy(expected, run.at);
-    const ours = await twins.call(f.call, args, changed, sp);
+    // a hand-written routine that takes r4 and up starts with those in them (#1728)
+    const begins = about && { kept: about.kept.map((value, i) => (f.registers && 4 + i < f.params.length ? args[4 + i] ?? 0 : value)), back: about.back };
+    const ours = await twins.call(f.call, args, changed, sp, begins);
     const call = { number: f.compared + f.tables.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
     if (ours.never) {
       f.result = { kind: 'never', ...call };
