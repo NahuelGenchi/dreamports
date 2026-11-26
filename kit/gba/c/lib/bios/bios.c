@@ -13,7 +13,10 @@ int console_mod(int num, int denom);
 void console_vblank_intr_wait(void);
 
 // each stub is its instructions alone, with nothing the compiler adds before or after them
-#ifdef MATCHING
+#ifndef MATCHING
+// and in a Dreamport each says its swi to the console's stack, which has what the BIOS pushes there (kit/gba/c/stack.h)
+#include "stack.h"
+#else
 void CpuFastSet(const void *src, void *dest, unsigned int control) __attribute__((naked));
 void CpuSet(const void *src, void *dest, unsigned int control) __attribute__((naked));
 int Div(int num, int denom) __attribute__((naked));
@@ -28,6 +31,7 @@ void CpuFastSet(const void *src, void *dest, unsigned int control)
 #ifdef MATCHING
     asm("swi 12\n\tbx lr");
 #else
+    gba_stack_swi(12, control);
     console_cpu_fast_set(src, dest, control);
 #endif
 }
@@ -38,6 +42,7 @@ void CpuSet(const void *src, void *dest, unsigned int control)
 #ifdef MATCHING
     asm("swi 11\n\tbx lr");
 #else
+    gba_stack_swi(11, control);
     console_cpu_set(src, dest, control);
 #endif
 }
@@ -48,6 +53,7 @@ int Div(int num, int denom)
 #ifdef MATCHING
     asm("swi 6\n\tbx lr");
 #else
+    gba_stack_swi(6, GBA_STACK_NONE);
     return console_div(num, denom);
 #endif
 }
@@ -58,6 +64,7 @@ int Mod(int num, int denom)
 #ifdef MATCHING
     asm("swi 6\n\tmov r0, r1\n\tbx lr");
 #else
+    gba_stack_swi(6, GBA_STACK_NONE);
     return console_mod(num, denom);
 #endif
 }
@@ -68,6 +75,7 @@ void VBlankIntrWait(void)
 #ifdef MATCHING
     asm("mov r2, #0\n\tswi 5\n\tbx lr");
 #else
+    gba_stack_swi(5, 0);
     console_vblank_intr_wait();
 #endif
 }

@@ -230,6 +230,41 @@ void gba_stack_interrupted(void) {
   return_known = 0;
 }
 
+// A swi. The reference emulator's BIOS (mGBA's hle-bios.s, swiBase) switches to the mode the game runs in and pushes r2
+// and lr there, calls the routine the number names, and that routine saves what it uses: where it goes back to in the
+// BIOS, the instruction after swiBase's call, and registers of the game's. A division's, and any other the emulator
+// works out by itself, saves nothing.
+enum { BIOS_SWI_BACK = 0x000000A4, SWI_INTR_WAIT = 4, SWI_VBLANK_INTR_WAIT = 5, SWI_CPU_SET = 11, SWI_CPU_FAST_SET = 12 };
+
+// a word pushed under `at`: written where something gives it, and a gap that takes its room where nothing does
+static uint32_t pushed(uint32_t at, int has, uint32_t v) {
+  at -= 4;
+  if (has) store(at, v, 4);
+  else {
+    gaps += 4;
+    if (at < low) low = at;
+  }
+  return at;
+}
+
+void gba_stack_swi(int number, uint64_t r2) {
+  if (!started) return;
+  // the stub's own call: where it goes back to is in lr still, as a stub pushes nothing
+  int in = depth >= 1 && depth <= DEPTH && calls[depth - 1].lr_known;
+  uint32_t at = sp;
+  at = pushed(at, in, in ? calls[depth - 1].lr : 0);
+  at = pushed(at, r2 != GBA_STACK_NONE, (uint32_t)r2);
+  if (number == SWI_CPU_SET || number == SWI_CPU_FAST_SET) {
+    at = pushed(at, 1, BIOS_SWI_BACK);
+    for (int reg = number == SWI_CPU_SET ? 5 : 10; reg >= 4; reg--) at = pushed(at, (known >> reg) & 1, value[reg]);
+  } else if (number == SWI_INTR_WAIT || number == SWI_VBLANK_INTR_WAIT) {
+    at = pushed(at, 1, BIOS_SWI_BACK);
+    // r3 is the stub's caller's scratch, which no C gives
+    at = pushed(at, 0, 0);
+    at = pushed(at, r2 != GBA_STACK_NONE, (uint32_t)r2);
+  }
+}
+
 uint32_t gba_stack_sp(void) { return sp; }
 
 void *gba_stack_local(int32_t at) { return (void *)(uintptr_t)(sp + (uint32_t)at); }
