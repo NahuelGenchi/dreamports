@@ -167,9 +167,13 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
   const stopped = [];
   for (const number of [...numbers].sort((a, b) => a - b)) {
     const lower = await gh.get(`/pulls/${number}`);
-    if (!lower || lower.state !== 'open') continue;
+    if (!lower || lower.state !== 'open') {
+      log(`#${number} isn't an open pull request.`);
+      continue;
+    }
     const runs = await heavyRuns(gh, lower, gated);
     if (await carries(gh, upper, lower, lower.head.sha)) {
+      log(`#${upper.number} carries #${number} at ${lower.head.sha.slice(0, 8)}: its runs that Stack let through stop.`);
       for (const run of runs.filter(run => ACTIVE.has(run.status))) {
         const jobs = await jobsOf(gh, run);
         if (leftAlone(jobs)) continue;
@@ -177,7 +181,10 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
         log(`Stopped ${run.name} on #${number} (${run.html_url}), as #${upper.number} carries it.`);
         stopped.push({ run, again: Boolean(stackOf(jobs)) });
       }
-    } else if (!(await topsOf(gh, lower)).length) {
+    } else if ((await topsOf(gh, lower)).length) {
+      log(`#${upper.number} doesn't carry #${number} at ${lower.head.sha.slice(0, 8)}, but another pull request above does.`);
+    } else {
+      log(`Nothing above carries #${number} at ${lower.head.sha.slice(0, 8)}: the runs Stack stopped run again in full.`);
       const latest = new Map();
       for (const run of runs) if (!latest.has(run.workflow_id)) latest.set(run.workflow_id, run);
       for (const run of latest.values()) {
