@@ -148,7 +148,7 @@ test('Builds on lines are read as the Builds on check reads them', async () => {
 });
 
 // runs of the heavy workflows and others, at a head, with their jobs
-const GATED = new Set(['.github/workflows/check.yml', '.github/workflows/clips.yml', '.github/workflows/gb.yml', '.github/workflows/nes.yml', '.github/workflows/ps1.yml']);
+const GATED = new Set(['check', 'clips', 'gb', 'gba', 'nes', 'ps1', 'psp', 'nds'].map(name => `.github/workflows/${name}.yml`));
 const run = (id, path, head_sha, status, conclusion = null, extra = {}) => ({
   id, path, head_sha, status, conclusion, workflow_id: path, name: path.split('/').at(-1), html_url: `https://github.com/r/${id}`,
   created_at: `2026-11-25T10:00:${String(id).padStart(2, '0')}Z`, pull_requests: [{ number: 1 }], ...extra,
@@ -171,6 +171,10 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
       run(15, '.github/workflows/builds-on.yml', 'a', 'in_progress'),
       run(16, '.github/workflows/ps1.yml', 'a', 'queued'),
       run(17, '.github/workflows/check.yml', 'z', 'in_progress'),
+      // ended before the line was there: passed in full, failed in full, and an older run of a workflow run since
+      run(18, '.github/workflows/gba.yml', 'a', 'completed', 'success'),
+      run(19, '.github/workflows/psp.yml', 'a', 'completed', 'failure'),
+      run(9, '.github/workflows/nes.yml', 'a', 'completed', 'success'),
     ],
     jobs: {
       11: [job('Stack', 'completed', 'success'), job('Check (site)', 'in_progress'), job('Check', 'queued')],
@@ -181,11 +185,14 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
       // a workflow with no Stack, which isn't stopped
       15: [job('Builds on', 'in_progress')],
       16: [],
+      18: [job('Stack', 'completed', 'success'), job('Mac (Game Boy Advance)', 'completed', 'success')],
+      19: [job('Stack', 'completed', 'success'), job('Mac (PlayStation Portable)', 'completed', 'failure')],
+      9: [job('Stack', 'completed', 'success'), job('Mac (NES)', 'completed', 'success')],
     },
   });
   await stop({ gh, event: { action: 'edited', pull_request: pull(2, 'b', { body: 'Builds on #1' }), changes: { body: { from: '' } } }, gated: GATED, log: line => lines.push(line), wait: async () => {} });
   assert.deepEqual(gh.cancelled, [12, 11]);
-  assert.deepEqual(gh.rerun, [12, 11]);
+  assert.deepEqual(gh.rerun, [18, 12, 11]);
   assert.match(lines.join('\n'), /Stopped check\.yml on #1 \(https:\/\/github\.com\/r\/11\), as #2 carries it\./);
 });
 

@@ -4,7 +4,8 @@ name: Stack
 # decide anything, and each heavy workflow's first job, Stack, stops a lower one's run (.github/stack/stack.mjs, #2034).
 # This runs on the events of a pull request from this repository that names another in a line "Builds on #<number>", or
 # did before an edit. For each one below that it now carries, it stops the heavy runs Stack had already let through, as
-# when the line is new or the one below was pushed first, and runs them again so Stack says which one to merge it through.
+# when the line is new or the one below was pushed first, and runs them and those that passed again, so Stack says which
+# one to merge it through and the one below never looks ready to merge on its own.
 # For one that nothing carries any more, as when this one is closed without merging or its line is taken out, it runs
 # again in full the runs Stack stopped. It reads pull requests and runs through the API, and runs nothing from them.
 on:

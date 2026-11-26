@@ -13,8 +13,9 @@
 //
 // node .github/stack/stack.mjs --stop runs on a pull request's own events (.github/workflows/stack.yml). For each pull
 // request its Builds on lines name, now or before the edit, that it carries, it stops the heavy runs whose Stack already
-// let them through, and runs them again so Stack says why; for one that nothing carries any more, it runs again in full
-// the runs Stack stopped. It reads only pull requests and runs through the API, and runs nothing from them.
+// let them through, and runs them and any that passed again so Stack says why; for one that nothing carries any more, it
+// runs again in full the runs Stack stopped. It reads only pull requests and runs through the API, and runs nothing from
+// them.
 import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -171,11 +172,20 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
       log(`#${number} isn't an open pull request.`);
       continue;
     }
-    const runs = await heavyRuns(gh, lower, gated);
+    // each heavy workflow's newest run at its head
+    const latest = new Map();
+    for (const run of await heavyRuns(gh, lower, gated)) if (!latest.has(run.workflow_id)) latest.set(run.workflow_id, run);
     if (await carries(gh, upper, lower, lower.head.sha)) {
       log(`#${upper.number} carries #${number} at ${lower.head.sha.slice(0, 8)}: its runs that Stack let through stop.`);
-      for (const run of runs.filter(run => ACTIVE.has(run.status))) {
+      for (const run of latest.values()) {
         const jobs = await jobsOf(gh, run);
+        // one that passed in full before #upper carried it runs again too, so it never looks ready to merge on its own
+        if (run.status === 'completed') {
+          if (run.conclusion !== 'success' || stackOf(jobs)?.conclusion !== 'success') continue;
+          await gh.post(`/actions/runs/${run.id}/rerun`);
+          log(`Ran ${run.name} on #${number} again (${run.html_url}), which passed before #${upper.number} carried it, for Stack to say which pull request carries it.`);
+          continue;
+        }
         if (leftAlone(jobs)) continue;
         await gh.post(`/actions/runs/${run.id}/cancel`);
         log(`Stopped ${run.name} on #${number} (${run.html_url}), as #${upper.number} carries it.`);
@@ -185,8 +195,6 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
       log(`#${upper.number} doesn't carry #${number} at ${lower.head.sha.slice(0, 8)}, but another pull request above does.`);
     } else {
       log(`Nothing above carries #${number} at ${lower.head.sha.slice(0, 8)}: the runs Stack stopped run again in full.`);
-      const latest = new Map();
-      for (const run of runs) if (!latest.has(run.workflow_id)) latest.set(run.workflow_id, run);
       for (const run of latest.values()) {
         if (run.status !== 'completed') continue;
         const stack = stackOf(await jobsOf(gh, run));
