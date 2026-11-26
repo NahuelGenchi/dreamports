@@ -336,7 +336,10 @@ u8 console_load8(u32 at);
 // 52 when it scrolls, the columns past the map's edge, 16 bits up, at 48, and a DMA's control or the place a turned
 // tile goes at 60.
 #ifdef MATCHING
-#define BG_FRAME_ROOM u32 frameRoom[24];
+// (the stack takes the frame's room from what the console's compiler makes of this C: the six registers it pushes for
+// it, a word it keeps beside these, and 17 words here are the original's 96 bytes, its eight pushes and sixteen words,
+// so the stack goes as far down as the original's and no further)
+#define BG_FRAME_ROOM u32 frameRoom[17];
 #define BG_FRAME_AT() ((u32)frameRoom)
 #define BG_FRAME_PUSHES(frame) ((void)0)
 #define BG_SLOT(frame, at) (*(vu32 *)((frame) + (at)))
@@ -639,8 +642,6 @@ bool32 sa2__sub_8002B20(void) {
   BG_FRAME_ROOM
   u32 frame = BG_FRAME_AT();
   BG_FRAME_PUSHES(frame);
-  // (the frame takes its room down to its first word, which the original stores only once a background is copied)
-  S(0, L(0));
   // where a wide background's row goes on, kept from one background to the next as the original keeps it
   S(4, 0);
   // (timed with nothing waiting: the way out is the function's end, reached by a `bl` the compiler wrote as a long jump)
