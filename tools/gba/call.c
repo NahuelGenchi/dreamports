@@ -168,7 +168,7 @@ static size_t ranCount;
 // each comparison of the function's own, the two values and where each came from are kept.
 enum { CAME_FROM_NOWHERE = 0, CAME_FROM_MEMORY = 1, CAME_FROM_ARGUMENT = 2 };
 enum { STEP_ADD = 1, STEP_LSL = 2, STEP_LSR = 3, STEP_ASR = 4, STEP_AND = 5, STEP_NEG = 6 };
-#define STEPS 6
+#define STEPS 10
 struct origin { uint32_t kind, bytes, where, steps, step[STEPS], by[STEPS]; };
 // a step more for where a register's value came from: two numbers added in a row are one
 static void stepped(struct origin* o, uint32_t kind, uint32_t by) {
@@ -179,6 +179,25 @@ static void stepped(struct origin* o, uint32_t kind, uint32_t by) {
 	o->by[o->steps++] = by;
 }
 static struct origin from[16];
+// What the function keeps on its own stack: where each word it stored there came from, for the load that reads it
+// back, as a function with more values than registers keeps one there across its work (#2059). A word that isn't the
+// one stored any more, as after a copy ran over the stack, came from nowhere.
+#define SLOTS 32
+static struct { uint32_t at, value; struct origin o; } slots[SLOTS];
+static size_t slotCount;
+static void keptOnStack(uint32_t at, uint32_t value, const struct origin* o) {
+	size_t i = 0;
+	while (i < slotCount && slots[i].at != at) i++;
+	if (i == slotCount) {
+		if (!o->kind || slotCount == SLOTS) return;
+		slotCount++;
+	}
+	slots[i].at = at; slots[i].value = value; slots[i].o = *o;
+}
+static struct origin readFromStack(uint32_t at, uint32_t value) {
+	for (size_t i = 0; i < slotCount; i++) if (slots[i].at == at && slots[i].value == value) return slots[i].o;
+	return (struct origin) { 0 };
+}
 static uint32_t lastRead, lastReadBytes;
 static int lastReadKept;
 #define AIMS 256
@@ -190,8 +209,15 @@ static size_t aimCount;
 static void carry(uint32_t op, const uint32_t* was) {
 	int handled = -1;
 	struct origin none = { 0 };
-	if ((op & 0xF800) == 0x4800 || (op & 0xF800) == 0x9800 || (op & 0xF000) == 0xA000 || (op & 0xF800) == 0x2000) {
-		// a number from the pool, a value from the stack, an address or a number: nothing the check can change
+	if ((op & 0xF800) == 0x9800) {
+		// a word read back from the function's own stack: where the word it stored there came from
+		handled = op >> 8 & 7;
+		from[handled] = readFromStack(was[ARM_SP] + (op & 0xFF) * 4, (uint32_t) cpu->gprs[handled]);
+	} else if ((op & 0xF800) == 0x9000) {
+		// a word kept on the stack, with where it came from
+		keptOnStack(was[ARM_SP] + (op & 0xFF) * 4, was[op >> 8 & 7], &from[op >> 8 & 7]);
+	} else if ((op & 0xF800) == 0x4800 || (op & 0xF000) == 0xA000 || (op & 0xF800) == 0x2000) {
+		// a number from the pool, an address or a number: nothing the check can change
 		handled = op >> 8 & 7;
 		from[handled] = none;
 	} else if ((op & 0xF000) == 0x5000 || (op & 0xE000) == 0x6000 || (op & 0xF000) == 0x8000) {
@@ -600,6 +626,7 @@ static void call(void* state) {
 	// the first four arguments come from the call, and r4 and up when the twin says it takes them; the rest from nowhere
 	// the check can change
 	memset(from, 0, sizeof from);
+	slotCount = 0;
 	for (uint32_t i = 0; i < 4 + highCount; i++) from[i] = (struct origin) { CAME_FROM_ARGUMENT, 4, i, 0, { 0 }, { 0 } };
 	aimCount = 0;
 	lastReadKept = 0;

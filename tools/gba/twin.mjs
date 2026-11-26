@@ -101,8 +101,8 @@ export const DEFAULTS = {
 // how many calls may be made for each one that has to be compared, and how many with nothing compared before a
 // function is given up on
 const TRIES = 4, HOPELESS = 400;
-// how call.c sends a comparison: four words, then each value's origin, three words and six steps of two
-const ORIGIN_BYTES = 4 * (2 + 2 * 6), AIM_BYTES = 16 + 2 * ORIGIN_BYTES;
+// how call.c sends a comparison: four words, then each value's origin, two words and ten steps of two
+const ORIGIN_BYTES = 4 * (2 + 2 * 10), AIM_BYTES = 16 + 2 * ORIGIN_BYTES;
 // after how many calls compared, and every how many, a function's branch ways no call took are worked out to aim
 // calls at; how many calls to keep as witnesses to each; and how many aimed calls each gets before it's left
 const AIM_AFTER = 10, AIM_EVERY = 50, WITNESSES = 8, AIM_TRIES = 48;
@@ -776,11 +776,18 @@ function throughSteps(value, steps) {
 // the nearest to what it held of all it could hold, and for a word, the one that steps of adding and turning round
 // give. Null when none does. `wanted(value)` says whether the comparison then goes the branch's other way, and `other` is the value
 // it's compared with, the likeliest to want, or one beside it.
-export function sourceFor(held, bytes, now, steps, wanted, other, seen = []) {
+export function sourceFor(held, bytes, now, steps, wanted, other, seen = [], another = null) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
   const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
   if (!read) return null;
+  if (bytes < 4 && another) {
+    // not the nearest again: any other of all it could hold that does it, as the nearest can be the one value that
+    // changes the way to the branch, as a count of none ends a function before the branch a count below none takes (#2059)
+    const all = [];
+    for (let value = 0; value <= mask; value++) if (value !== held && wanted(throughSteps(read(value), steps))) all.push(value);
+    return all.length ? all[another(all.length)] >>> 0 : null;
+  }
   if (bytes < 4) {
     // through a mask, a flag among others: one bit changed first, as the nearest number can change many (#1570)
     if (steps.some(([kind]) => kind === 5)) {
@@ -814,7 +821,7 @@ const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, othe
 
 // The call a witness was, with one value a comparison read changed so that the branch goes the way `wanted` says:
 // an argument, or what came from the image. Null when it can't be had that way.
-function withValue(witness, origin, now, wanted, other, seenAt = () => []) {
+function withValue(witness, origin, now, wanted, other, seenAt = () => [], another = null) {
   if (origin.kind === 2) {
     if (origin.where >= witness.args.length) return null;
     const value = sourceFor(witness.args[origin.where], 4, now, origin.steps, wanted, other);
@@ -826,7 +833,7 @@ function withValue(witness, origin, now, wanted, other, seenAt = () => []) {
   if (origin.kind !== 1 || ![1, 2, 4].includes(origin.bytes) || inImage(origin.where) < 0) return null;
   const { where: address, bytes } = origin;
   const set = witness.changed.find(([at, size]) => at === address && size === bytes);
-  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other, bytes === 4 ? seenAt(address) : []);
+  const value = sourceFor(set ? set[2] : read(witness.start, inImage(address), bytes), bytes, now, origin.steps, wanted, other, bytes === 4 ? seenAt(address) : [], another);
   if (value === null) return null;
   return { args: witness.args, changed: [...witness.changed.filter(([at]) => at !== address), [address, bytes, value]] };
 }
@@ -849,8 +856,14 @@ function aimed(f, choose, seenAt = () => []) {
     if (!origin.kind) continue;
     const now = side ? compare.b : compare.a;
     const wanted = value => holds(branch.cond, side ? compare.a : value, side ? value : compare.b, compare.test) === branch.taken;
-    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b, seenAt);
-    if (call) return { ...call, witness };
+    // a witness aimed from before, whose nearest value didn't take the branch or it wouldn't be aimed at still: another
+    const again = (witness.aimed?.get(branch.where) ?? 0) > 0;
+    const call = withValue(witness, origin, now, wanted, side ? compare.a : compare.b, seenAt, again ? choose.below : null);
+    if (call) {
+      witness.aimed ??= new Map();
+      witness.aimed.set(branch.where, (witness.aimed.get(branch.where) ?? 0) + 1);
+      return { ...call, witness };
+    }
   }
   return null;
 }
