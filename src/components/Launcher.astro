@@ -21,7 +21,7 @@ import SettingsCard from './SettingsCard.astro';
 import Slot from './Slot.astro';
 import TrophySprite from './TrophySprite.astro';
 import { FILTERS, SECTIONS, getGames, type Filter, type FilterKey, type Game } from '../lib/site';
-import { beingMade, fullyPorted, makeView, released, systemFor } from '../lib/dreamports';
+import { beingMade, makeView, portedEnough, released, systemFor } from '../lib/dreamports';
 import type { System } from '../lib/systems';
 import { making as readMaking } from '../lib/making';
 
@@ -36,7 +36,7 @@ interface Props {
 // a place in a row: a system, a game, a Dreamport's place in the Make row, or the way to start one
 interface Place {
   game?: Game;
-  system?: System & { unfinished: boolean };
+  system?: System & { early: boolean };
   of?: string;
   make?: boolean;
   start?: boolean;
@@ -54,16 +54,16 @@ const github = await readMaking();
 const githubOf = (game: Game) => github?.[game.data.game];
 const freeOf = (game: Game) => makeView(game.data, githubOf(game)).free;
 // A row holds the systems its games are for, then every game, both in alphabetical order, and the launcher shows one or
-// the other (src/scripts/launcher.ts). In the Make row no system counts as unfinished: it shows every Dreamport being made.
+// the other (src/scripts/launcher.ts). In the Make row no system counts as early: it shows every Dreamport being made.
 const inOrder = new Intl.Collator('en', { numeric: true, sensitivity: 'base' }).compare;
 // a title without the word every one of them ends in, so that a game comes before its sequels
 const named = (game: Game) => game.data.title.replace(/ Dreamport$/, '');
 const bySystem = (list: Game[], make = false): Place[] => {
   const games = list.map((game) => ({ game, system: systemFor(game) })).sort((a, b) => inOrder(named(a.game), named(b.game)));
   const systems = [...new Map(games.map(({ system }) => [system.id, system])).values()].sort((a, b) => inOrder(a.name, b.name));
-  const unfinished = (id: string) => !make && !games.some((g) => g.system.id === id && fullyPorted(g.game));
+  const early = (id: string) => !make && !games.some((g) => g.system.id === id && portedEnough(g.game));
   return [
-    ...systems.map((system): Place => ({ system: { ...system, unfinished: unfinished(system.id) }, make })),
+    ...systems.map((system): Place => ({ system: { ...system, early: early(system.id) }, make })),
     ...games.map(({ game, system }): Place => ({ game, of: system.id, make, free: make ? freeOf(game) : undefined })),
   ];
 };
