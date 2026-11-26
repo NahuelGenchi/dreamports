@@ -200,7 +200,7 @@ export const BUILT = {
 };
 // SERVED is what a test's page is given in a browser, the same on every system, which Check tries on Linux.
 export const SERVED = {
-  'tools/lib/server.mjs': ['kit/c/', 'public/'],
+  'tools/lib/server.mjs': ['kit/c/', 'kit/copy/', 'public/'],
   'tools/lib/preview.mjs': ['tools/preview/'],
   'tools/capture.mjs': ['tools/capture/'],
 };
@@ -398,8 +398,9 @@ export function starts(file, target, repo) {
   }
   if (file.startsWith('kit/')) {
     if (target.site) return true;
-    // reached by its imports, as the code it is, or by nothing
-    if (file === 'kit/consoles.js' || file.startsWith('kit/copy/')) return false;
+    // reached by its imports, as the code it is, or by nothing; how a page reads a copy of a game is served to it too
+    if (file === 'kit/consoles.js') return false;
+    if (file.startsWith('kit/copy/')) return read && isCode(file);
     const owners = consolesOwning(file);
     if (owners.length) return shares(owners);
     // what every console's kit in C is built on starts the tests that build a game in C or serve one, and a kit for a
