@@ -2610,8 +2610,8 @@ dialog.card[open] {
   display: none;
 }
 
-/* Unfinished Dreamports are out of the row from the first frame, before the script builds it (#1154). */
-:root[data-unfinished='hide'] .row:not([role]) .slot[data-unfinished] {
+/* Early Dreamports are out of the row from the first frame, before the script builds it (#1154, #2038). */
+:root[data-early='hide'] .row:not([role]) .slot[data-early] {
   display: none;
 }
 

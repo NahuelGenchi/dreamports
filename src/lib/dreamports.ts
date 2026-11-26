@@ -3,7 +3,7 @@
 // what it's built with; and what its page in the Make row shows, for the people making it. games/README.md describes
 // the entry.
 import { hasCode as codeIn, isBeingMade, numbersText, proofOf, shortPercent } from './entries.mjs';
-import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, versionName } from './languages.mjs';
+import { LANGUAGES, OTHER_LANGUAGES, mainLanguage, playOrder, versionName } from './languages.mjs';
 import { SOURCE_URL, makeUrl, type Game } from './site';
 import type { Making, Step } from './making';
 import { systemOf, type System } from './systems';
@@ -167,12 +167,16 @@ export const released = ({ data }: Game): boolean => hasCode(data);
 /** The system a Dreamport is for, its proof's console, for the launcher's row of systems (src/lib/systems.ts). */
 export const systemFor = ({ data }: Game): System => systemOf((proofFile(data.game, 'original') as { console?: string } | undefined)?.console, data.game);
 
+/** How much of its code, in percent, a Dreamport needs ported to have its place in the Dreamports row (#2038). */
+export const PORTED_ENOUGH = 50;
+
 /**
- * Whether all of a Dreamport's code is ported, in any of its languages. Until then the Dreamports row leaves it out,
- * unless the player's Settings show unfinished Dreamports (#1154).
+ * Whether a Dreamport has PORTED_ENOUGH of its code ported in the version a player plays first: its C one, as C is the
+ * default language, or its JavaScript one in a game with no C version (src/lib/languages.mjs). Until then the Dreamports
+ * row leaves it out, unless the player's Settings show early Dreamports (#1154, #2038).
  */
-export const fullyPorted = ({ data }: Game): boolean =>
-  languagesOf(data.game).some((language) => proofFor(data.game, language)?.ported?.percent === 100);
+export const portedEnough = ({ data }: Game): boolean =>
+  (proofFor(data.game, playOrder(languagesOf(data.game))[0])?.ported?.percent ?? 0) >= PORTED_ENOUGH;
 
 // What a Dreamport's page in the Make row shows besides its progress (#142): the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from

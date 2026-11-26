@@ -5,13 +5,13 @@
 // pieces are free to take, when there are any.
 import Tile from './Tile.astro';
 import { FILTERS, MAKE_GUIDE_URL, gameUrl, makeUrl, type Game } from '../lib/site';
-import { fullyPorted, numbersOf } from '../lib/dreamports';
+import { numbersOf, portedEnough } from '../lib/dreamports';
 import type { System } from '../lib/systems';
 
 interface Props {
   game?: Game;
-  // a system, and whether none of its Dreamports is finished, which only the Dreamports row asks
-  system?: System & { unfinished: boolean };
+  // a system, and whether all of its Dreamports are early, which only the Dreamports row asks
+  system?: System & { early: boolean };
   // the system a game is for
   of?: string;
   index: number;
@@ -26,8 +26,8 @@ interface Props {
 const { game, system, of, index, make = false, start = false, free } = Astro.props;
 const detail = game && !make ? [game.data.platform, game.data.year].filter(Boolean).join(' · ') : '';
 const numbers = make && game ? numbersOf(game.data) : undefined;
-// in its own row, a Dreamport whose code isn't all ported, which the row leaves out until Settings show it
-const unfinished = !!game && !make && !fullyPorted(game);
+// in its own row, a Dreamport without enough of its code ported, which the row leaves out until Settings show it
+const early = !!game && !make && !portedEnough(game);
 const href = game && (make ? makeUrl(game.data.game) : gameUrl(game));
 // a system's row is its own row's address with the system after a #
 const rowPath = FILTERS.find((filter) => filter.key === (make ? 'make' : 'dreamports'))!.path;
@@ -46,7 +46,7 @@ const START = {
       data-system={system.id}
       data-title={system.name}
       data-icon={system.icon}
-      data-unfinished={system.unfinished ? '' : undefined}
+      data-early={system.early ? '' : undefined}
       draggable="false"
     >
       <span class="lift">
@@ -86,7 +86,7 @@ const START = {
       data-detail={detail}
       data-numbers={numbers}
       data-help={free?.help || undefined}
-      data-unfinished={unfinished ? '' : undefined}
+      data-early={early ? '' : undefined}
       draggable="false"
     >
       <i class="glow" style={`--g: ${game.data.glow}`} />
