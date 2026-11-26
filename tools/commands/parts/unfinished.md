@@ -8,7 +8,7 @@ If the task is far too big for one session, such as a whole story mode, give it 
 
 ## Not finished
 
-Then don't give up quietly and don't ask. Commit what you have, leave a note if you found something, and do step 12 with `gh pr create --draft`, or `team send --draft`, with `Refs #<issue>` instead of `Closes`, and under the template's Limitations the first frame that differs and what you know about why. Then your last message is these sections instead, in the same plain way:
+Then don't give up quietly and don't ask. Commit what you have, leave a note if you found something, and do step 12 with `gh pr create --draft`, or `team send --draft`, with `Refs #<issue>` instead of `Closes`, and under the template's Limitations the first frame that differs and what you know about why. The why is what still differs, never a decision: nothing waits for anyone to decide (`tools/commands/parts/gaps.md`, When something has to be decided). Then your last message is these sections instead, in the same plain way:
 
 ```markdown
 ## Not finished
