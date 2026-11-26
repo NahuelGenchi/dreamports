@@ -31,7 +31,7 @@ You start each one from a terminal in the repository's folder, with `npm run dp 
 | `team` | The game's team build, the lead's branch with the team's finished pieces: `start` makes it, `join` starts a piece from it, `send` sends a piece to the lead, and `add` proves a piece and takes it in |
 | `readme` | Writes the table of Dreamports in `docs/STATUS.md`, one row for each game with its console, its numbers in C and its lead, from their [entries](../games/README.md#the-entry), and each version's progress map. A workflow runs it on `main`, so a pull request doesn't need it |
 | `commands` | Writes the `/dreamport` command, from `tools/commands/`, in the form each coding agent reads |
-| `ready` | Everything a step has to pass before it goes out, in one go: the port map, every recording, `npm run check` and the build, printing only what's wrong |
+| `ready` | Everything a step has to pass before it goes out, in one go: the port map, the notes' check, which stops it before anything is played, every recording, `npm run check` and the build, printing only what's wrong |
 | `update` | Brings a branch up to date with `main`, and with any pull request it's built on: merges it, settles conflicts in files the tools write, runs `ready` and commits ([Bringing a branch up to date](#bringing-a-branch-up-to-date)) |
 | `help` | Prints one section of these documents, the ones whose headings have the words you give, so that nobody has to read a whole one |
 
