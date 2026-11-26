@@ -211,3 +211,4 @@ console.log('\nAll passed.');
 process.exit(0);
 // A throwaway lower piece for the Stack demonstration (#2034), closed without merging.
 // A throwaway top piece for the Stack demonstration (#2034), closed without merging.
+// Its second commit, pushed before the piece on top carries it.
