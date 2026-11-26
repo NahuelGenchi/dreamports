@@ -179,15 +179,17 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
       log(`#${upper.number} carries #${number} at ${lower.head.sha.slice(0, 8)}: its runs that Stack let through stop.`);
       for (const run of latest.values()) {
         const jobs = await jobsOf(gh, run);
-        // one that passed in full before #upper carried it runs again too, so it never looks ready to merge on its own
+        // one that passed in full before #upper carried it runs again too, so it never looks ready to merge on its own, and
+        // so does one stopped before that never ran again
         if (run.status === 'completed') {
-          if (run.conclusion !== 'success' || stackOf(jobs)?.conclusion !== 'success') continue;
+          if (!['success', 'cancelled'].includes(run.conclusion) || stackOf(jobs)?.conclusion !== 'success') continue;
           await gh.post(`/actions/runs/${run.id}/rerun`);
-          log(`Ran ${run.name} on #${number} again (${run.html_url}), which passed before #${upper.number} carried it, for Stack to say which pull request carries it.`);
+          log(`Ran ${run.name} on #${number} again (${run.html_url}), which Stack let through before #${upper.number} carried it, for Stack to say which pull request carries it.`);
           continue;
         }
         if (leftAlone(jobs)) continue;
-        await gh.post(`/actions/runs/${run.id}/cancel`);
+        // forced, as Check's last job runs even on a run that is stopped, and would wait for a computer first
+        await gh.post(`/actions/runs/${run.id}/force-cancel`);
         log(`Stopped ${run.name} on #${number} (${run.html_url}), as #${upper.number} carries it.`);
         stopped.push({ run, again: Boolean(stackOf(jobs)) });
       }

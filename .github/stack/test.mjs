@@ -56,7 +56,8 @@ function stand({ pulls = [], parents = {}, runs = [], jobs = {}, endsAfter = 1, 
     },
     async post(path) {
       let found;
-      if ((found = path.match(/^\/actions\/runs\/(\d+)\/cancel$/))) gh.cancelled.push(Number(found[1]));
+      // forced, or Check's last job, which runs whatever happened, would keep a stopped run going
+      if ((found = path.match(/^\/actions\/runs\/(\d+)\/force-cancel$/))) gh.cancelled.push(Number(found[1]));
       else if ((found = path.match(/^\/actions\/runs\/(\d+)\/rerun$/))) gh.rerun.push(Number(found[1]));
       else throw new Error(`no stand-in for POST ${path}`);
       return {};
@@ -175,6 +176,8 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
       run(18, '.github/workflows/gba.yml', 'a', 'completed', 'success'),
       run(19, '.github/workflows/psp.yml', 'a', 'completed', 'failure'),
       run(9, '.github/workflows/nes.yml', 'a', 'completed', 'success'),
+      // stopped once, and never run again
+      run(20, '.github/workflows/nds.yml', 'a', 'completed', 'cancelled'),
     ],
     jobs: {
       11: [job('Stack', 'completed', 'success'), job('Check (site)', 'in_progress'), job('Check', 'queued')],
@@ -188,11 +191,12 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
       18: [job('Stack', 'completed', 'success'), job('Mac (Game Boy Advance)', 'completed', 'success')],
       19: [job('Stack', 'completed', 'success'), job('Mac (PlayStation Portable)', 'completed', 'failure')],
       9: [job('Stack', 'completed', 'success'), job('Mac (NES)', 'completed', 'success')],
+      20: [job('Stack', 'completed', 'success'), job('Mac (Nintendo DS)', 'completed', 'cancelled')],
     },
   });
   await stop({ gh, event: { action: 'edited', pull_request: pull(2, 'b', { body: 'Builds on #1' }), changes: { body: { from: '' } } }, gated: GATED, log: line => lines.push(line), wait: async () => {} });
   assert.deepEqual(gh.cancelled, [12, 11]);
-  assert.deepEqual(gh.rerun, [18, 12, 11]);
+  assert.deepEqual(gh.rerun, [20, 18, 12, 11]);
   assert.match(lines.join('\n'), /Stopped check\.yml on #1 \(https:\/\/github\.com\/r\/11\), as #2 carries it\./);
 });
 
