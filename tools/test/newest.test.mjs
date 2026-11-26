@@ -29,40 +29,41 @@ const commit = (folder, path, text, message = `change ${path}`) => {
 };
 
 let made = 0;
-/** GitHub's repository, a writer's clone of it that pushes to main, and the folder /dreamport runs in. */
+/**
+ * GitHub's repository and the folder /dreamport runs in, cloned from it. The folder reads GitHub's objects where they
+ * are, so the tests' fetch is the folder's name for main moved to GitHub's commit, with no program started to carry
+ * them: on some Windows computers git's own way between two folders fails now and then. `onMain` is what main gets
+ * after the folder was cloned.
+ */
 function folders() {
   const base = join(root, String(++made));
-  const github = join(base, 'github.git'), writer = join(base, 'writer'), folder = join(base, 'folder');
-  mkdirSync(base, { recursive: true });
-  git(base, 'init', '--quiet', '--bare', '--initial-branch=main', github);
-  git(base, 'clone', '--quiet', github, writer);
-  git(writer, 'checkout', '--quiet', '-B', 'main');
-  commit(writer, 'tools/commands/dreamport.md', 'the command, as it was\n');
-  commit(writer, 'package-lock.json', '{ "packages": 1 }\n');
-  git(writer, 'push', '--quiet', 'origin', 'main');
-  git(base, 'clone', '--quiet', github, folder);
-  /** What main gets after the folder was cloned. */
-  const onMain = (path, text) => {
-    const at = commit(writer, path, text);
-    git(writer, 'push', '--quiet', 'origin', 'main');
-    return at;
-  };
-  return { folder, onMain, head: () => git(folder, 'rev-parse', 'HEAD') };
+  const github = join(base, 'github'), folder = join(base, 'folder');
+  mkdirSync(github, { recursive: true });
+  git(github, 'init', '--quiet', '--initial-branch=main');
+  // line endings as they're written, kept in each repository's own settings: the tool runs git with the folder's
+  // settings, and a Windows computer's own would otherwise check a file out changed
+  git(github, 'config', 'core.autocrlf', 'false');
+  commit(github, 'tools/commands/dreamport.md', 'the command, as it was\n');
+  commit(github, 'package-lock.json', '{ "packages": 1 }\n');
+  git(base, 'clone', '--quiet', '--config', 'core.autocrlf=false', github, folder);
+  writeFileSync(join(folder, '.git', 'objects', 'info', 'alternates'), `${join(github, '.git', 'objects').replaceAll('\\', '/')}\n`);
+  const fetch = (run, remote) => (run(['update-ref', `refs/remotes/${remote}/main`, git(github, 'rev-parse', 'main')]).status === 0 ? null : 'the name for main didn\'t move');
+  return { folder, fetch, onMain: (path, text) => commit(github, path, text), head: () => git(folder, 'rev-parse', 'HEAD') };
 }
 
 test('a folder with main\'s last commit is left alone', () => {
-  const { folder, head } = folders();
+  const { folder, fetch, head } = folders();
   const before = head();
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'newest');
   assert.equal(head(), before);
   assert.match(newestLine(found), /has the newest main/);
 });
 
 test('a folder on main that is behind goes forward, and is told the command changed', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   const tip = onMain('tools/commands/dreamport.md', 'the command, as it is now\n');
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'moved');
   assert.equal(found.from, null);
   assert.deepEqual(found.command, ['tools/commands/dreamport.md']);
@@ -73,10 +74,10 @@ test('a folder on main that is behind goes forward, and is told the command chan
 });
 
 test('a change that isn\'t the command\'s says the command is as it was, and one to the packages says to install them', () => {
-  const { folder, onMain } = folders();
+  const { folder, fetch, onMain } = folders();
   onMain('tools/find.mjs', '// a tool\n');
   onMain('package-lock.json', '{ "packages": 2 }\n');
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'moved');
   assert.deepEqual(found.command, []);
   assert.equal(found.packages, true);
@@ -84,11 +85,11 @@ test('a change that isn\'t the command\'s says the command is as it was, and one
 });
 
 test('a folder left on a finished task\'s branch leaves it for the newest main, and the branch keeps its commits', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   git(folder, 'switch', '--quiet', '-c', 'feat/1-a-piece');
   const piece = commit(folder, 'games/a-game/src/main.c', 'int main(void) { return 0; }\n');
   const tip = onMain('tools/commands/parts/gaps.md', 'a part of the command\n');
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'moved');
   assert.equal(found.from, 'feat/1-a-piece');
   assert.deepEqual(found.command, ['tools/commands/parts/gaps.md']);
@@ -96,16 +97,16 @@ test('a folder left on a finished task\'s branch leaves it for the newest main, 
   assert.equal(git(folder, 'rev-parse', 'feat/1-a-piece'), piece);
   assert.match(newestLine(found), /off the branch feat\/1-a-piece, which keeps every commit it had/);
   // and once there, it has the newest
-  assert.equal(bringNewest({ folder }).state, 'newest');
+  assert.equal(bringNewest({ folder, fetch }).state, 'newest');
 });
 
 test('a folder with changes that aren\'t committed stays as it is, and is told where the newest command is', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   git(folder, 'switch', '--quiet', '-c', 'feat/2-half-made');
   const before = commit(folder, 'games/a-game/src/main.c', 'int main(void) { return 0; }\n');
   write(folder, 'games/a-game/src/main.c', 'int main(void) { return 1; }\n');
   onMain('tools/commands/dreamport.md', 'the command, as it is now\n');
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'left');
   assert.equal(found.why, 'changes');
   assert.equal(head(), before);
@@ -115,19 +116,19 @@ test('a folder with changes that aren\'t committed stays as it is, and is told w
 });
 
 test('a file nobody committed or added is no change, and stays where it is', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   write(folder, '.local/notes.txt', 'mine\n');
   const tip = onMain('tools/find.mjs', '// a tool\n');
-  assert.equal(bringNewest({ folder }).state, 'moved');
+  assert.equal(bringNewest({ folder, fetch }).state, 'moved');
   assert.equal(head(), tip);
   assert.equal(git(folder, 'status', '--porcelain'), '?? .local/');
 });
 
 test('a folder another session is making a task in stays as it is', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   const before = head();
   onMain('tools/find.mjs', '// a tool\n');
-  const found = bringNewest({ folder, here: () => 1901 });
+  const found = bringNewest({ folder, fetch, here: () => 1901 });
   assert.equal(found.state, 'left');
   assert.equal(found.why, 'session');
   assert.equal(head(), before);
@@ -135,24 +136,25 @@ test('a folder another session is making a task in stays as it is', () => {
 });
 
 test('a fork\'s folder takes main from upstream, not from the fork', () => {
-  const { folder, onMain, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   git(folder, 'remote', 'rename', 'origin', 'upstream');
   git(folder, 'remote', 'add', 'origin', join(root, 'no-such-fork.git'));
   const tip = onMain('tools/find.mjs', '// a tool\n');
-  const found = bringNewest({ folder });
+  const found = bringNewest({ folder, fetch });
   assert.equal(found.state, 'moved');
   assert.equal(found.main, 'upstream/main');
   assert.equal(head(), tip);
 });
 
 test('a main that can\'t be fetched leaves the folder as it was, and says so', () => {
-  const { folder, head } = folders();
+  const { folder, fetch, onMain, head } = folders();
   const before = head();
-  git(folder, 'remote', 'set-url', 'origin', join(root, 'gone.git'));
-  const found = bringNewest({ folder });
+  onMain('tools/find.mjs', '// a tool\n');
+  const found = bringNewest({ folder, fetch: () => 'Could not resolve host: github.com' });
   assert.equal(found.state, 'unreached');
   assert.equal(head(), before);
-  assert.match(newestLine(found), /couldn't be fetched/);
+  assert.match(newestLine(found), /couldn't be fetched \(Could not resolve host: github\.com\), so this folder is as it was/);
+  // and a folder with no remote at all is never asked to fetch
   git(folder, 'remote', 'remove', 'origin');
-  assert.equal(bringNewest({ folder }).state, 'unreached');
+  assert.equal(bringNewest({ folder, fetch }).state, 'unreached');
 });

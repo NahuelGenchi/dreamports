@@ -15,6 +15,16 @@ import { REPO } from './lib/paths.mjs';
 /** Where the /dreamport command is written, and what says which packages the tools need. */
 const COMMAND = 'tools/commands', PACKAGES = 'package-lock.json';
 
+/** Fetches main from a remote into the folder's name for it, once more if the first try fails: what went wrong, or null. */
+function fetchMain(git, remote) {
+  let fetched;
+  for (let tries = 0; tries < 2; tries++) {
+    fetched = git(['fetch', '--quiet', '--no-tags', remote, `+refs/heads/main:refs/remotes/${remote}/main`]);
+    if (fetched.status === 0) return null;
+  }
+  return (fetched.stderr || '').trim().split('\n').pop() || 'git fetch failed';
+}
+
 /**
  * Brings `folder` to the newest main when it can, and answers what it found:
  *   { state: 'newest' }    it has main's last commit already
@@ -22,9 +32,9 @@ const COMMAND = 'tools/commands', PACKAGES = 'package-lock.json';
  *   { state: 'left' }      it's behind and stays as it is, `why` being 'changes', 'session' or 'git'
  *   { state: 'unreached' } main couldn't be fetched, or the folder has no remote
  * `command` lists the command's files that differ on main, and `packages` says the packages do. `here()` is the task
- * another session makes in this folder, or null.
+ * another session makes in this folder, or null, and `fetch(git, remote)` fetches main, which the tests give.
  */
-export function bringNewest({ folder = REPO, here = () => null } = {}) {
+export function bringNewest({ folder = REPO, here = () => null, fetch = fetchMain } = {}) {
   const git = args => spawnSync('git', args, { cwd: folder, encoding: 'utf8' });
   const said = args => {
     const ran = git(args);
@@ -33,9 +43,9 @@ export function bringNewest({ folder = REPO, here = () => null } = {}) {
   const names = (said(['remote']) ?? '').split('\n').filter(Boolean);
   const remote = ['upstream', 'origin'].find(name => names.includes(name));
   if (!remote) return { state: 'unreached', why: 'this folder has no remote named upstream or origin' };
-  const fetched = git(['fetch', '--quiet', '--no-tags', remote, `+refs/heads/main:refs/remotes/${remote}/main`]);
+  const failed = fetch(git, remote);
   const main = `${remote}/main`, tip = said(['rev-parse', '--verify', '--quiet', main]);
-  if (fetched.status !== 0 || !tip) return { state: 'unreached', why: (fetched.stderr || '').trim().split('\n').pop() || `${remote} has no main` };
+  if (failed || !tip) return { state: 'unreached', why: failed || `${remote} has no main` };
   if (git(['merge-base', '--is-ancestor', tip, 'HEAD']).status === 0) return { state: 'newest', main };
 
   const differs = path => (said(['diff', '--name-only', 'HEAD', tip, '--', path]) ?? '').split('\n').filter(Boolean);
