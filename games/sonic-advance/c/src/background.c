@@ -327,16 +327,33 @@ u8 console_load8(u32 at);
 #define BG_MAP_LDRH(at) ({ u32 at_ = (u32)(at), h_ = console_load16(at_); at_ & 1 ? h_ >> 8 | h_ << 24 : h_; })
 #endif
 
+// The original keeps sixteen words of its own on the stack, under its eight pushes, and a pointer can lead a read into
+// them, so each is stored where and when the original stores it. `frame` is where they start, 0x60 bytes under the
+// stack pointer as the function was called: the map's width at 0, a wide row's second half at 4, a tile's bytes at 8, a
+// row's at 12, the column and row the view starts at at 16 and 20, a level's block column, the column in it, a run's
+// bytes and the next column at 24, 28, 32 and 56, or at 36, 40, 44 and 52 when it scrolls, the columns past the map's
+// edge, 16 bits up, at 48, and a DMA's control or the place a turned tile goes at 60.
+#ifdef MATCHING
+#define BG_FRAME_AT() 0
+#define BG_FRAME(frame, at, value) ((void)0)
+#else
+#define BG_FRAME_AT() ((u32)gba_stack_asm_sp(-0x60))
+// (through the kit's stack, from where the running function's own frame starts, so the stack knows how far down it went)
+#define BG_FRAME(frame, at, value) gba_stack_store((s32)((frame) + (at) - gba_stack_sp()), (u32)(value), 4)
+#endif
+
 // `rows` rows of the map, a tile at a time, each turned by `flip`: across, from `from`, forward or back, as many as the
 // background is wide, read again after each tile, when `wide`, or else `count`, none when that's 0 or below, as a
 // wrap past the map's edge by a negative count has; down, `from` moves `step` bytes a row and `to` a row of video
-// memory, `line` bytes.
-static void bg_rows_by_tile(const struct Background *bg, u32 to, u32 from, u16 rows, u32 line, u32 step, u32 flip, int back, int wide, s32 count) {
+// memory, `line` bytes. When `keeps`, the place each tile goes is kept on the stack before the tile is read.
+static void bg_rows_by_tile(const struct Background *bg, u32 to, u32 from, u16 rows, u32 line, u32 step, u32 flip, int back, int wide, s32 count, u32 frame, int keeps) {
   while (rows-- != 0) {
     u32 next = to + line;
     u16 k;
-    for (k = 0; wide ? k < bg->targetTilesX : (s32)k < count; k++)
+    for (k = 0; wide ? k < bg->targetTilesX : (s32)k < count; k++) {
+      if (keeps) BG_FRAME(frame, 60, to + k * 2u);
       BG_SPRITE_STORE16(to + k * 2u, (u16)(BG_MAP_LDRH(back ? from - k * 2u : from + k * 2u) ^ flip));
+    }
     to = next;
     from += step;
   }
@@ -354,19 +371,21 @@ static void bg_rows_by_dma(u32 to, u32 from, u16 rows, u32 line, u32 step, u32 c
 // A level's map, built of blocks of tiles that the block map names a byte each, from column `x` and row `y` of the
 // whole map: as much of each block's rows at a time as the background shows, each row by DMA. `size` is the bytes of
 // a tile's number, `line` of a row in video memory, and `xTiles` the background's width as the step first read it.
-static void bg_copy_level(struct Background *bg, u16 x, u16 y, u32 line, u32 size, u32 xTiles) {
+static void bg_copy_level(struct Background *bg, u16 x, u16 y, u32 line, u32 size, u32 xTiles, u32 frame, int scrolled) {
   s32 i = 0;
   while (i < (s32)bg->targetTilesX) {
     s32 at = x + i;
     s32 blockX = Div(at, bg->xTiles);
-    s32 inX = at - blockX * (s32)bg->xTiles;
-    s32 rowsLeft = bg->targetTilesY;
+    s32 inX = (BG_FRAME(frame, scrolled ? 36 : 24, blockX), at - blockX * (s32)bg->xTiles);
+    s32 rowsLeft = (BG_FRAME(frame, scrolled ? 40 : 28, inX), bg->targetTilesY);
     s32 across = (s32)bg->targetTilesX - i;
     s32 cols = (s32)bg->xTiles - inX;
     s32 bytes, j = 0, nextI;
     if (cols > across) cols = across;
     bytes = cols * (s32)size;
+    BG_FRAME(frame, scrolled ? 44 : 32, bytes);
     nextI = cols + i;
+    BG_FRAME(frame, scrolled ? 52 : 56, nextI);
     if (j < rowsLeft) {
       do {
         s32 atY = y + j;
@@ -381,6 +400,10 @@ static void bg_copy_level(struct Background *bg, u16 x, u16 y, u32 line, u32 siz
         j += count;
         if (count > rowsLeft) count = rowsLeft;
         rowsLeft -= count;
+        if (count != 0) {
+          BG_FRAME(frame, 60, bytes / 2);
+          BG_FRAME(frame, 60, 0x80000000u | (u32)(bytes / 2));
+        }
         while (count-- != 0) {
           BG_COPY(from, to, 0x80000000u | (u32)(bytes / 2));
           to += line;
@@ -394,7 +417,7 @@ static void bg_copy_level(struct Background *bg, u16 x, u16 y, u32 line, u32 siz
 
 // A background that doesn't scroll, copied whole: by DMA a row at a time, or, turned, a tile at a time. A 512-wide
 // tiled background whose rows run past its first 256 pixels has each row in two, the second half `gap` bytes on.
-static void bg_copy_whole(struct Background *bg, u32 flags, u32 affine, u32 line, u32 size, u32 xTiles, u32 gap) {
+static void bg_copy_whole(struct Background *bg, u32 flags, u32 affine, u32 line, u32 size, u32 xTiles, u32 gap, u32 frame) {
   u32 to = (u32)bg->layoutVram + bg->unk24 * line;
   u32 left = bg->unk22, from;
   u16 rows;
@@ -403,14 +426,14 @@ static void bg_copy_whole(struct Background *bg, u32 flags, u32 affine, u32 line
   if (flags & BACKGROUND_FLIP_X) {
     if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xTiles * size + (u32)(bg->unk1E + bg->targetTilesX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0, frame, 0);
     } else {
       from = (u32)bg->layout + (u32)bg->unk20 * xTiles * size + (u32)(bg->unk1E + bg->targetTilesX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
+      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0, frame, 0);
     }
   } else if (flags & BACKGROUND_FLIP_Y) {
     from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xTiles * size + (u32)bg->unk1E * size;
-    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0);
+    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0, frame, 0);
   } else if ((affine & 1) && size == 2 && (s32)(32 - left) > 0 && (s32)(bg->targetTilesX + left - 32) > 0) {
     u32 first = (32 - left) * 2, second = (bg->targetTilesX + left - 32) * 2;
     u32 control1 = 0x80000000u | (u32)((s32)first >> 1), control2 = 0x80000000u | (u32)((s32)second >> 1);
@@ -434,7 +457,7 @@ static void bg_copy_whole(struct Background *bg, u32 flags, u32 affine, u32 line
 // A background that scrolls: kept within its map, unless it's a level's, its scroll's last 3 bits to the scroll
 // registers, and copied when it has moved onto another tile, from the tile it's on. Past the map's right edge, the
 // columns left over come from the map's left edge, after the rest.
-static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 line, u32 size, u32 xTiles) {
+static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 line, u32 size, u32 xTiles, u32 frame) {
   u32 x = bg->scrollX, tileX, xt, tX, from, to;
   u16 colX, rowY, wrap, rows;
   if (!(flags & BACKGROUND_FLAG_IS_LEVEL_MAP)) {
@@ -459,13 +482,17 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
   flags = bg->flags;
   if (flags & BACKGROUND_FLAG_IS_LEVEL_MAP) {
     colX = (u16)(tileX + bg->unk1E);
+    BG_FRAME(frame, 16, colX);
     rowY = (u16)((bg->scrollY >> 3) + bg->unk20);
-    bg_copy_level(bg, colX, rowY, line, size, xTiles);
+    BG_FRAME(frame, 20, rowY);
+    bg_copy_level(bg, colX, rowY, line, size, xTiles, frame, 1);
     return;
   }
 
   colX = (u16)(bg->unk1E + tileX);
+  BG_FRAME(frame, 16, colX);
   rowY = (u16)((bg->scrollY >> 3) + bg->unk20);
+  BG_FRAME(frame, 20, rowY);
   to = (u32)bg->layoutVram + bg->unk24 * line + bg->unk22 * size;
   tX = bg->targetTilesX;
   xt = bg->xTiles;
@@ -474,14 +501,14 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
   if (flags & BACKGROUND_FLIP_X) {
     if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(bg->unk20 + rows - 1) * xt * size + (u32)(bg->unk1E + tX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0, frame, 1);
     } else {
       from = (u32)bg->layout + (u32)bg->unk20 * xt * size + (u32)(bg->unk1E + tX - 1) * size;
-      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
+      bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0, frame, 1);
     }
   } else if (flags & BACKGROUND_FLIP_Y) {
     from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size + (u32)colX * size;
-    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0);
+    bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 1, 0, frame, 1);
   } else {
     s32 before = (s16)wrap - 1;
     from = (u32)bg->layout + (u32)rowY * xt * size + (u32)colX * size;
@@ -503,14 +530,15 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
     if (flags & BACKGROUND_FLIP_X) {
       if (flags & BACKGROUND_FLIP_Y) {
         from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size + (u32)(w - 1) * size;
-        bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0);
+        bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_X | TILE_FLIP_Y, 1, 1, 0, frame, 0);
       } else {
         from = (u32)bg->layout + (u32)rowY * xt * size + (u32)(w - 1) * size;
-        bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0);
+        bg_rows_by_tile(bg, to, from, rows, line, xTiles * size, TILE_FLIP_X, 1, 1, 0, frame, 0);
       }
     } else if (flags & BACKGROUND_FLIP_Y) {
       from = (u32)bg->layout + (u32)(rowY + rows - 1) * xt * size;
-      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 0, w);
+      if (rows != 0) BG_FRAME(frame, 48, (u32)wrap << 16);
+      bg_rows_by_tile(bg, to, from, rows, line, 0u - xTiles * size, TILE_FLIP_Y, 0, 0, w, frame, 1);
     } else {
       from = (u32)bg->layout + (u32)rowY * xt * size;
       bg_rows_by_dma(to, from, rows, line, xTiles * size, 0x80000000u | (u32)((s32)((u32)w * size) / 2));
@@ -524,6 +552,8 @@ static void bg_copy_scrolled(struct Background *bg, u32 flags, u32 bgId, u32 lin
  *  keeps the code its long jumps go on into as five functions of their own, of which this is the twin too. */
 bool32 sa2__sub_8002B20(void) {
   u32 gap = 0;   // where a wide background's row goes on, kept from one background to the next as the original keeps it
+  u32 frame = BG_FRAME_AT();
+  BG_FRAME(frame, 4, 0);
   // (timed with nothing waiting: the way out is the function's end, reached by a `bl` the compiler wrote as a long jump)
   if (gBackgroundsCopyQueueCursor == gBackgroundsCopyQueueIndex) {
     TIME(0x08001AA4, 0x08001AC6, 0x0800258D, IW, IW);
@@ -544,24 +574,38 @@ bool32 sa2__sub_8002B20(void) {
     if ((flags & BACKGROUND_SCROLLS) && bg->scrollX == bg->prevScrollX && bg->scrollY == bg->prevScrollY) continue;
 
     xTiles = bg->xTiles;
+    BG_FRAME(frame, 0, xTiles);
     bgId = flags & 3;
     if (bgId > 1 && (gDispCnt & 3)) {
       // a rotating background: a byte a tile, its rows 16 tiles wide or more as its size says
       affine = gBgCntRegs[bgId] >> 14;
       line = (0x100000u << affine) >> 16;
+      BG_FRAME(frame, 12, line);
       size = 1;
     } else {
       // a tiled one: a halfword a tile, 32 to a row
       line = 32;
+      BG_FRAME(frame, 12, line);
       affine = gBgCntRegs[bgId] >> 14;
-      if (affine == 1 || affine == 3) gap = 0x800;
+      if (affine == 1 || affine == 3) {
+        gap = 0x800;
+        BG_FRAME(frame, 4, gap);
+      }
       size = 2;
     }
+    BG_FRAME(frame, 8, size);
     line = (u16)(line * size);
+    BG_FRAME(frame, 12, line);
     flags = bg->flags;
-    if (flags & BACKGROUND_SCROLLS) bg_copy_scrolled(bg, flags, bgId, line, size, xTiles);
-    else if (flags & BACKGROUND_FLAG_IS_LEVEL_MAP) bg_copy_level(bg, bg->unk1E, bg->unk20, line, size, xTiles);
-    else bg_copy_whole(bg, flags, affine, line, size, xTiles, gap);
+    if (flags & BACKGROUND_SCROLLS) bg_copy_scrolled(bg, flags, bgId, line, size, xTiles, frame);
+    else if (flags & BACKGROUND_FLAG_IS_LEVEL_MAP) {
+      u16 x = bg->unk1E, y;
+      BG_FRAME(frame, 16, x);
+      y = bg->unk20;
+      BG_FRAME(frame, 20, y);
+      bg_copy_level(bg, x, y, line, size, xTiles, frame, 0);
+    }
+    else bg_copy_whole(bg, flags, affine, line, size, xTiles, gap, frame);
 
     REG_READ16(REG_VCOUNT);
     bg->prevScrollX = bg->scrollX;
