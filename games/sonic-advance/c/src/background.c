@@ -639,6 +639,8 @@ bool32 sa2__sub_8002B20(void) {
   BG_FRAME_ROOM
   u32 frame = BG_FRAME_AT();
   BG_FRAME_PUSHES(frame);
+  // (the frame takes its room down to its first word, which the original stores only once a background is copied)
+  S(0, L(0));
   // where a wide background's row goes on, kept from one background to the next as the original keeps it
   S(4, 0);
   // (timed with nothing waiting: the way out is the function's end, reached by a `bl` the compiler wrote as a long jump)
