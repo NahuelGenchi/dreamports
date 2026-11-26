@@ -172,7 +172,8 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
       run(15, '.github/workflows/builds-on.yml', 'a', 'in_progress'),
       run(16, '.github/workflows/ps1.yml', 'a', 'queued'),
       run(17, '.github/workflows/check.yml', 'z', 'in_progress'),
-      // ended before the line was there: passed in full, failed in full, and an older run of a workflow run since
+      // ended before the line was there, and left as they are: passed in full, failed in full, and an older run of a
+      // workflow run since
       run(18, '.github/workflows/gba.yml', 'a', 'completed', 'success'),
       run(19, '.github/workflows/psp.yml', 'a', 'completed', 'failure'),
       run(9, '.github/workflows/nes.yml', 'a', 'completed', 'success'),
@@ -196,8 +197,22 @@ test("a pull request newly naming one it carries stops the runs Stack let throug
   });
   await stop({ gh, event: { action: 'edited', pull_request: pull(2, 'b', { body: 'Builds on #1' }), changes: { body: { from: '' } } }, gated: GATED, log: line => lines.push(line), wait: async () => {} });
   assert.deepEqual(gh.cancelled, [12, 11]);
-  assert.deepEqual(gh.rerun, [20, 18, 12, 11]);
+  assert.deepEqual(gh.rerun, [20, 12, 11]);
   assert.match(lines.join('\n'), /Stopped check\.yml on #1 \(https:\/\/github\.com\/r\/11\), as #2 carries it\./);
+});
+
+test("the top of one stack whose runs passed stays ready to merge by itself when the next stack builds on it", async () => {
+  // #1, the top of the stack before, passed in full; #2, the next stack's first piece, takes it in
+  const passed = {
+    runs: [run(11, '.github/workflows/check.yml', 'a', 'completed', 'success'), run(12, '.github/workflows/clips.yml', 'a', 'completed', 'success')],
+    jobs: { 11: [job('Stack', 'completed', 'success'), job('Check', 'completed', 'success')], 12: [job('Clips', 'completed', 'success', [step('Stack', 'completed', 'success')])] },
+  };
+  const next = pull(2, 'b', { body: 'Builds on #1' });
+  const gh = stand({ pulls: [pull(1, 'a'), next], parents: PARENTS, ...passed });
+  await stop({ gh, event: { action: 'opened', pull_request: next }, gated: GATED, ...quiet });
+  assert.deepEqual([gh.cancelled, gh.rerun], [[], []]);
+  // a new push to it is tested through the next stack's top, as any lower piece is
+  assert.match(await said(gh, pull(1, 'a')), /tested through #2\b/);
 });
 
 test('a run that was going before Stack was there stops and stays stopped, and one that takes too long to stop is left', async () => {

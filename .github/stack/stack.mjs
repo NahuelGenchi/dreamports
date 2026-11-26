@@ -13,9 +13,9 @@
 //
 // node .github/stack/stack.mjs --stop runs on a pull request's own events (.github/workflows/stack.yml). For each pull
 // request its Builds on lines name, now or before the edit, that it carries, it stops the heavy runs whose Stack already
-// let them through, and runs them and any that passed again so Stack says why; for one that nothing carries any more, it
-// runs again in full the runs Stack stopped. It reads only pull requests and runs through the API, and runs nothing from
-// them.
+// let them through and are still queued or running, and runs them again so Stack says why, leaving any that passed in
+// full as they are; for one that nothing carries any more, it runs again in full the runs Stack stopped. It reads only
+// pull requests and runs through the API, and runs nothing from them.
 import { appendFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -179,12 +179,13 @@ export async function stop({ gh, event, gated, log = console.log, wait = sleep, 
       log(`#${upper.number} carries #${number} at ${lower.head.sha.slice(0, 8)}: its runs that Stack let through stop.`);
       for (const run of latest.values()) {
         const jobs = await jobsOf(gh, run);
-        // one that passed in full before #upper carried it runs again too, so it never looks ready to merge on its own, and
-        // so does one stopped before that never ran again
+        // one that ended stays as it is: one that passed in full tested this pull request's own tree, so it can still merge
+        // by itself, as the top of one stack does while the next builds on it; only one stopped before, and never run
+        // again, runs again now
         if (run.status === 'completed') {
-          if (!['success', 'cancelled'].includes(run.conclusion) || stackOf(jobs)?.conclusion !== 'success') continue;
+          if (run.conclusion !== 'cancelled' || stackOf(jobs)?.conclusion !== 'success') continue;
           await gh.post(`/actions/runs/${run.id}/rerun`);
-          log(`Ran ${run.name} on #${number} again (${run.html_url}), which Stack let through before #${upper.number} carried it, for Stack to say which pull request carries it.`);
+          log(`Ran ${run.name} on #${number} again (${run.html_url}), which was stopped and never ran again, for Stack to say which pull request carries it.`);
           continue;
         }
         if (leftAlone(jobs)) continue;
