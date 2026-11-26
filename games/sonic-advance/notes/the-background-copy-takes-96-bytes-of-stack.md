@@ -1,6 +1,6 @@
 # A copy 435 rows long runs over the background copy's stack, so its twin has to take the original's 96 bytes.
 
-About: 0x08001AA4; sa2__sub_8002B20; The language screen, at the first start
+About: 0x08001AA4; The language screen, at the first start
 
 Proof: #1901; #2054
 

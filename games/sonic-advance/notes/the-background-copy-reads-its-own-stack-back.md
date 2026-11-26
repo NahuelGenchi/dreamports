@@ -1,6 +1,6 @@
 # The background copy keeps sixteen words on its stack and reads them back, even after its own copy wrote over them.
 
-About: 0x08001AA4; sa2__sub_8002B20; The language screen, at the first start
+About: 0x08001AA4; The language screen, at the first start
 
 Proof: #1901; #1896
 
