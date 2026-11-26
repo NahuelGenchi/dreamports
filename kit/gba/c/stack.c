@@ -53,7 +53,8 @@ void gba_stack_start(uint32_t start) {
 void gba_stack_begin(uint32_t start) {
   started = 1;
   sp = low = start;
-  // what the original's call starts with in its registers is the check's, which the twin's C doesn't give
+  // what the original's call starts with in its registers is the check's, which the twin's C doesn't give: the check
+  // says what r4 to r11 hold and where the call goes back to, with gba_stack_reg and gba_stack_call
   known = 0;
   return_known = 0;
   depth = 0;

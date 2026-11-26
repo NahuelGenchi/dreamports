@@ -15,6 +15,8 @@ extern char gFar[];
 // what each of the later functions left on the stack, as Look finds it
 struct Left { int word[6]; };
 extern int gThroughLeft[6], gFarLeft[6], gLocalLeft[6], gPassLeft[6], gHandLeft[6];
+// what Top finds from its own frame's start up, and a value it keeps across its call
+extern int gTop, gTopLeft[6];
 
 void Inner(void);
 void Push(void);
@@ -156,6 +158,17 @@ void Again(void) {
   Keep();
   Read();
   *wrap = 2;
+}
+
+/** Top, 0x08000880: six words of its stack from its frame's start: its box, one word set, and above it the register it
+ *  saved for whoever called it and where it goes back to, which only the function check's own call gives it
+ *  (../../gba/twin.mjs). */
+void Top(void) {
+  int *top = &gTop;
+  struct Box box;
+  box.a = 5;
+  Take((struct Left *)&box, gTopLeft);
+  *top = 6;
 }
 
 /** Main, 0x08000740: Keep, then Read, at the same depth, and then each of the rest, with two addresses kept across

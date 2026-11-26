@@ -19,7 +19,9 @@
 // table keeps one). With each rule the stack is mGBA's, and without it it isn't.
 //
 // And the function check (../gba/twin.mjs) builds the same copy for a call of Again, which does what Main's first two
-// calls do in one call: the same memory as the original's with the copy, and not without it.
+// calls do in one call: the same memory as the original's with the copy, and not without it. And for a call of Top,
+// which copies what it pushed itself: the register the check's call starts with and where it goes back to, which the
+// program that calls the original says (#1896).
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -41,11 +43,11 @@ const HERE = fileURLToPath(new URL('./stack/', import.meta.url));
 const WORK = join(LOCAL, 'tmp', 'stack-test');
 const PROGRAM = join(HERE, 'leftovers.c'), ROUTINES = join(HERE, 'routines.s');
 const compiler = { name: 'agbcc', flags: ['-mthumb-interwork', '-O2', '-fprologue-bugfix'] };
-const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000740, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640, Hand: 0x08000700, Again: 0x08000800 };
+const FUNCTIONS = { Keep: 0x08000200, Push: 0x08000240, Inner: 0x08000280, Read: 0x080002C0, Copy: 0x08000300, Main: 0x08000740, Deep: 0x08000380, Through: 0x080003C0, Far: 0x08000400, Local: 0x08000440, Pass: 0x08000480, Wrap: 0x080004C0, Take: 0x08000600, Look: 0x08000640, Hand: 0x08000700, Again: 0x08000800, Top: 0x08000880 };
 // those the cartridge has as the console's compiler builds the C, all but the routine in assembly
 const COMPILED = new Set(Object.keys(FUNCTIONS).filter(name => name !== 'Hand'));
 const NAMED = new Map([['gKept', 0x03000100], ['gOther', 0x03000104], ['gInner', 0x03000108], ['gDone', 0x0300010C], ['gOut', 0x03000110],
-  ['gMore', 0x03000120], ['gFirst', 0x03000124], ['gSecond', 0x03000128], ['gThrough', 0x0300012C], ['gSeen', 0x03000130], ['gSeed', 0x03000134], ['gLocal', 0x03000138], ['gPass', 0x0300013C], ['gWrap', 0x03000140], ['gHanded', 0x03000144],
+  ['gMore', 0x03000120], ['gFirst', 0x03000124], ['gSecond', 0x03000128], ['gThrough', 0x0300012C], ['gSeen', 0x03000130], ['gSeed', 0x03000134], ['gLocal', 0x03000138], ['gPass', 0x0300013C], ['gWrap', 0x03000140], ['gHanded', 0x03000144], ['gTop', 0x03000148], ['gTopLeft', 0x03000200],
   ['gThroughLeft', 0x03000180], ['gFarLeft', 0x03000198], ['gLocalLeft', 0x030001B0], ['gPassLeft', 0x030001C8], ['gHandLeft', 0x030001E0],
   ['gFar', 0x0E000000]]);
 // the functions that call the BIOS, and what they keep; the cartridge's stubs for its division and its copy, swi 6 and
@@ -253,18 +255,22 @@ check(noSwi.left('gSplitLeft')[4] !== splitBack && !sameLeft(noSwi, 'gFillLeft')
 console.log('The function check, with the console\'s stack:');
 ensureCaller(console.log);
 const opened = await openOriginal(cartridge, 3);
-const checked = async copies => {
+const checked = async (copies, name = 'Again') => {
   const result = await checkFile({
     original: opened.original, start: opened.start, copy: cartridge, file: PROGRAM, build: openBuild({ root: HERE, files: [PROGRAM], stacked: copies }),
-    only: FUNCTIONS.Again, addressOf: name => NAMED.get(name) ?? null, options: { calls: 50, seconds: 2 },
+    only: FUNCTIONS[name], addressOf: name => NAMED.get(name) ?? null, options: { calls: 50, seconds: 2 },
   });
-  return result.functions?.find(f => f.name === 'Again') ?? { line: result.error ?? `no address for ${result.missing}` };
+  return result.functions?.find(f => f.name === name) ?? { line: result.error ?? `no address for ${result.missing}` };
 };
 try {
   const onStack = await checked(new Map([[PROGRAM, stacked]]));
   check(onStack.kind === 'same', `built as the version's build builds it, Again leaves the same memory as the original's: ${onStack.line}`);
   const plainly = await checked(null);
   check(plainly.kind === 'differs' && /at 0x0300011[0-9A-F]/.test(plainly.line), `built from its file as it is, it differs at gOut, where Copy puts Read's box: ${plainly.line}`);
+  const top = await checked(new Map([[PROGRAM, stacked]]), 'Top');
+  check(top.kind === 'same', `Top copies the register and the return address it pushed, the ones the original's call starts with: ${top.line}`);
+  const topPlainly = await checked(null, 'Top');
+  check(topPlainly.kind === 'differs' && /at 0x0300021[0-7]/.test(topPlainly.line), `and built from its file as it is, it differs there: ${topPlainly.line}`);
   // Under's division takes the stack 8 bytes under its box, and Poke then sets a word in them: the stack's own, put
   // back after the call on both sides, once the twin's stub says its swi
   const under = async copy => {
