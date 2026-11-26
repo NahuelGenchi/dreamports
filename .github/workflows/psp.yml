@@ -68,8 +68,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # fails a pull request that one above it in a stack carries, so none of the jobs after it starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
   linux:
     name: Linux (PlayStation Portable)
+    needs: stack
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -110,6 +129,7 @@ jobs:
 
   mac:
     name: Mac (PlayStation Portable)
+    needs: stack
     runs-on: macos-latest
     timeout-minutes: 120
     steps:
@@ -159,6 +179,7 @@ jobs:
 
   windows:
     name: Windows (PlayStation Portable)
+    needs: stack
     runs-on: windows-latest
     timeout-minutes: 120
     steps:
@@ -202,8 +223,8 @@ jobs:
 
   same:
     name: Same on Linux, a Mac and Windows (PlayStation Portable)
-    needs: [linux, mac, windows]
-    if: ${{ !cancelled() }}
+    needs: [stack, linux, mac, windows]
+    if: ${{ !cancelled() && needs.stack.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
