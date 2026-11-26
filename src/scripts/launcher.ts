@@ -171,8 +171,9 @@ function start(launcher: HTMLElement) {
     logoPose: storedLogo.pose,
     logoColour: storedLogo.colour,
     aboutSec: 'dreamport',
-    // whether the Dreamports row shows those whose code isn't all ported, which it doesn't until Settings say so
-    unfinished: store.get('unfinished') === 'show',
+    // whether the Dreamports row shows the early ones, without enough of their code ported, which it doesn't until
+    // Settings say so: the choice keeps its name from before #2038, unfinished
+    early: store.get('unfinished') === 'show',
     // the system whose Dreamports the row shows, or none while it shows the systems
     system: null as string | null,
     // what the search field holds while a search is on
@@ -225,10 +226,10 @@ function start(launcher: HTMLElement) {
   // what a place is known by when the row is built again: its game, or its system
   const keyAt = (i: number) => slots[i]?.dataset.game ?? slots[i]?.dataset.system ?? null;
 
-  // the game whose own address the page was asked for, which keeps its place in the row even while unfinished ones are left out
+  // the game whose own address the page was asked for, which keeps its place in the row even while early ones are left out
   let asked: string | null = null;
-  // whether a game is in its row: an unfinished Dreamport isn't, until Settings show them
-  const shown = (el: HTMLElement) => state.unfinished || el.dataset.unfinished === undefined || el.dataset.game === asked;
+  // whether a game is in its row: an early Dreamport isn't, until Settings show them
+  const shown = (el: HTMLElement) => state.early || el.dataset.early === undefined || el.dataset.game === asked;
   const allPlaces = (f = state.filter) => $$('.slot', FILTERS[f].template.content);
   // A row's places as its template has them, without those left out. A row has two levels (#1168, #1179): the
   // systems that have Dreamports to show, and once one is picked, that system's Dreamports. What is for no system, the
@@ -257,7 +258,7 @@ function start(launcher: HTMLElement) {
   // keep: the game or system to stay on, where the new row has it, or else the first place
   function buildRow(keep?: string | null) {
     sleepRow();
-    // a system with nothing left to show, as when Settings stop showing unfinished Dreamports, gives way to the systems
+    // a system with nothing left to show, as when Settings stop showing early Dreamports, gives way to the systems
     if (state.system && FILTERS[state.filter].systems && !places().length) state.system = null;
     rowEl.replaceChildren(...wanted().map((el) => el.cloneNode(true)));
     settleRow(keep);
@@ -282,7 +283,7 @@ function start(launcher: HTMLElement) {
     const f = FILTERS[state.filter];
     const words = searchWords();
     // with nothing to show, one empty place says so
-    if (!rowEl.children.length) rowEl.append(words.length ? emptyPlace('Nothing matches') : leftOut() ? emptyPlace(NONE_FINISHED, SHOW_THEM) : emptyPlace('Nothing here yet'));
+    if (!rowEl.children.length) rowEl.append(words.length ? emptyPlace('Nothing matches') : leftOut() ? emptyPlace(NONE_YET, SHOW_THEM) : emptyPlace('Nothing here yet'));
     slots = $$('.slot', rowEl);
     if (keep !== undefined) state.sel[state.filter] = Math.max(0, slots.findIndex((el) => (el.dataset.game ?? el.dataset.system) === keep));
     state.sel[state.filter] = Math.min(sel(), slots.length - 1);
@@ -847,9 +848,9 @@ function start(launcher: HTMLElement) {
       .trim();
   const searchWords = () => (state.search ? plain(state.search).split(' ').filter(Boolean) : []);
 
-  // what an empty Dreamports row says while unfinished ones are left out
-  const NONE_FINISHED = 'No finished Dreamports yet';
-  const SHOW_THEM = 'Settings can show the unfinished ones.';
+  // what an empty Dreamports row says while early ones are left out
+  const NONE_YET = 'No Dreamport is far enough along yet';
+  const SHOW_THEM = 'Settings can show the early ones.';
   const matches = (el: HTMLElement, words: string[]) => !!el.dataset.title && words.every((w) => plain(el.dataset.title!).includes(w));
   // help: a second line under the note, such as where to find what the row leaves out
   function emptyPlace(note: string, help?: string) {
@@ -871,7 +872,7 @@ function start(launcher: HTMLElement) {
     }
     const n = slots.filter((el) => el.dataset.game).length;
     const systems = slots.filter((el) => el.dataset.system).length;
-    if (!n && !systems && leftOut()) return `${f.label}: ${NONE_FINISHED}. ${SHOW_THEM}`;
+    if (!n && !systems && leftOut()) return `${f.label}: ${NONE_YET}. ${SHOW_THEM}`;
     // the Make row's way to start a Dreamport, by its name
     const others = slots.filter((el) => !el.dataset.game && !el.dataset.system && el.dataset.title).map((el) => el.dataset.title);
     if (systems) return `${f.label}: ${[`${systems} ${systems === 1 ? 'system' : 'systems'}`, ...others].join(', ')}`;
@@ -1421,7 +1422,7 @@ function start(launcher: HTMLElement) {
 
   // settings
   const sndSwitch = $('#snd-switch', settingsCard);
-  const unfinishedSwitch = $('#unfinished-switch', settingsCard);
+  const earlySwitch = $('#early-switch', settingsCard);
   const settingsMark = $<SVGSVGElement>('#set-mark', settingsCard);
   function syncSettings(opening = false) {
     // The logo as picked. With Settings up, a pose just picked is moved into, or faded to under calm motion (#1328);
@@ -1432,7 +1433,7 @@ function start(launcher: HTMLElement) {
       void import('./mark-morph').then((morph) => morph.showSettingsLogo(settingsMark, pose, how)).catch(() => {});
     }
     sndSwitch.setAttribute('aria-checked', String(state.sound));
-    unfinishedSwitch.setAttribute('aria-checked', String(state.unfinished));
+    earlySwitch.setAttribute('aria-checked', String(state.early));
     $<HTMLInputElement>('#theme-light', settingsCard).checked = !isDark();
     $<HTMLInputElement>('#theme-dark', settingsCard).checked = isDark();
     $<HTMLInputElement>('#motion-full', settingsCard).checked = !calm();
@@ -1444,7 +1445,7 @@ function start(launcher: HTMLElement) {
     if (store.get('sound')) kept.push('menu sounds on');
     if (store.get('theme')) kept.push(store.get('theme') + ' appearance');
     if (store.get('motion')) kept.push(store.get('motion') + ' motion');
-    if (store.get('unfinished')) kept.push('unfinished Dreamports shown');
+    if (store.get('unfinished')) kept.push('early Dreamports shown');
     if (store.get(TRANSITION_KEY)) kept.push('your transition');
     if (store.get(LOGO_KEYS.pose) || store.get(LOGO_KEYS.colour)) kept.push('your logo');
     const versions = store.keys('version:').length;
@@ -1468,24 +1469,24 @@ function start(launcher: HTMLElement) {
     updateStatus();
   }
   sndSwitch.addEventListener('click', toggleSound);
-  // unfinished Dreamports are left out as the site comes, which is kept as nothing at all
-  function showUnfinished(show: boolean) {
-    if (state.unfinished === show) return;
-    state.unfinished = show;
+  // early Dreamports are left out as the site comes, which is kept as nothing at all
+  function showEarly(show: boolean) {
+    if (state.early === show) return;
+    state.early = show;
     if (show) {
       store.set('unfinished', 'show');
-      delete root.dataset.unfinished;
+      delete root.dataset.early;
     } else {
       store.del('unfinished');
-      root.dataset.unfinished = 'hide';
+      root.dataset.early = 'hide';
     }
     // the row behind Settings, on the game or system it was on if that one is still there
     buildRow(keyAt(sel()));
   }
-  unfinishedSwitch.addEventListener('click', () => {
-    showUnfinished(!state.unfinished);
+  earlySwitch.addEventListener('click', () => {
+    showEarly(!state.early);
     syncSettings();
-    sound.play(state.unfinished ? 'on' : 'off');
+    sound.play(state.early ? 'on' : 'off');
   });
   for (const input of $$<HTMLInputElement>('input[name="theme"]', settingsCard)) {
     input.addEventListener('change', () => {
@@ -1543,7 +1544,7 @@ function start(launcher: HTMLElement) {
     state.transition = TRANSITIONS[0];
     state.logoPose = 'leap';
     state.logoColour = 'deep';
-    showUnfinished(false);
+    showEarly(false);
     void showLogo('leap', 'deep');
     applyTheme();
     applyMotion();
@@ -2808,7 +2809,7 @@ function start(launcher: HTMLElement) {
     // the filter that shows this address, and the game it is about
     let f = FILTERS.findIndex((filter) => filter.paths.includes(path));
     if (game) f = FILTERS.findIndex((filter) => filter.key === card!.dataset.filter);
-    // a game's own address keeps its place in the row, even an unfinished one's while those are left out
+    // a game's own address keeps its place in the row, even an early one's while those are left out
     const back = !!game && asked !== game && f >= 0 && allPlaces(f).some((el) => el.dataset.game === game && !shown(el));
     if (back) asked = game;
     // the level of the row the address asks for: a game's system, or the one after its #
