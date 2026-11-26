@@ -47,6 +47,8 @@ import { proofFolder, sharedProofFolder } from './paths.mjs';
 import { looksLikeArm } from '../gba/functions.mjs';
 import { INSTRUCTIONS } from '../nes/6502.mjs';
 import { findFunctions as findNesFunctions, nesProgram } from '../nes/functions.mjs';
+import { findFunctions as findGbFunctions } from '../gbc/functions.mjs';
+import { decode as decodeSm83 } from '../gbc/sm83.mjs';
 import { instructionsIn as snesInstructionsIn } from '../snes/functions.mjs';
 import { SECTOR, loadedCopy, mipsInstructionsOf, vuInstructionsOf } from '../ps2/ledger.mjs';
 import { playedPercent } from '../../src/lib/entries.mjs';
@@ -70,12 +72,14 @@ const unpack = (text, bytes) => {
 const isNes = codeMap => codeMap.console === 'nes';
 const isSnes = codeMap => codeMap.console === 'snes';
 const isPs2 = codeMap => codeMap.console === 'ps2';
-// a console whose places are bytes of its cartridge's program, where a code map's address is: the NES and the Super
-// Nintendo
-const byBytes = codeMap => isNes(codeMap) || isSnes(codeMap);
+const isGb = codeMap => codeMap.console === 'gb' || codeMap.console === 'gbc';
+// a console whose places are bytes of its cartridge's program, where a code map's address is: the NES, the Super
+// Nintendo, the Game Boy and the Game Boy Color
+const byBytes = codeMap => isNes(codeMap) || isSnes(codeMap) || isGb(codeMap);
 
-/** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven. */
-export const followsContent = codeMap => !byBytes(codeMap);
+/** Whether the tools follow the cartridge's data on a code map's console, for the content's share of gameplay proven:
+ *  not on the GameCube yet, whose emulator doesn't tell the tools what a game reads in play. */
+export const followsContent = codeMap => !byBytes(codeMap) && codeMap.console !== 'gamecube';
 
 // the cells of the cartridge's or disc's data, and those that hold anything: { count, holds }
 function cellsHeld(codeMap, cartridge) {
@@ -96,7 +100,7 @@ export const cellAddress = (codeMap, cell) => (isPs2(codeMap) ? cell : CARTRIDGE
 
 /** Where each of the code map's functions has its places: { first, places, bytes, unit }, `first[i]` the place of
  *  function i's first two bytes, `bytes` how long a set of all of them is, and `unit` how many bytes a place is: two,
- *  or one on the NES and the Super Nintendo. */
+ *  or one on the NES, the Super Nintendo and the Game Boy. */
 export function layoutOf(codeMap) {
   const unit = byBytes(codeMap) ? 1 : isPs2(codeMap) ? 4 : 2;
   const first = new Uint32Array(codeMap.functions.length + 1);
@@ -218,6 +222,30 @@ export function nesInstructionsOf(codeMap, copy) {
     for (let i = low; i < at.length && at[i] < f.address + f.size; i++) {
       instructions.add(at[i] - f.address);
       if (INSTRUCTIONS[prg[at[i]]].mode === 'rel') branches.add(at[i] - f.address);
+    }
+    return { instructions, branches };
+  };
+}
+
+/**
+ * The same for a Game Boy or Game Boy Color game: what its function finder walked, with each jump, call and return
+ * that has a condition as a branch, which goes one way or the other. `copy` is the whole copy, which is its program.
+ */
+export function gbInstructionsOf(codeMap, copy) {
+  const walked = new Map();
+  findGbFunctions(copy, codeMap.functions.map(({ address, size }) => ({ address, size })), new Set(), { walked });
+  const at = [...walked.keys()].sort((a, b) => a - b);
+  return f => {
+    const instructions = new Set(), branches = new Set();
+    let low = 0, high = at.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (at[middle] < f.address) low = middle + 1;
+      else high = middle;
+    }
+    for (let i = low; i < at.length && at[i] < f.address + f.size; i++) {
+      instructions.add(at[i] - f.address);
+      if (decodeSm83(copy, at[i])?.when !== undefined) branches.add(at[i] - f.address);
     }
     return { instructions, branches };
   };
@@ -644,7 +672,7 @@ export function writePlayed(game, { original, codeMap, cartridge, sets, used, ma
   }
   const known = unpack(sameMap ? before.code : null, layout.bytes), code = new Uint8Array(layout.bytes);
   let total = 0, played = 0;
-  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : isSnes(codeMap) ? snesInstructionsIn(codeMap.functions, cartridge.copy()) : null, ps2 = isPs2(codeMap);
+  const unit = layout.unit, nesCode = isNes(codeMap) ? nesInstructionsOf(codeMap, cartridge.copy()) : isGb(codeMap) ? gbInstructionsOf(codeMap, cartridge.copy()) : isSnes(codeMap) ? snesInstructionsIn(codeMap.functions, cartridge.copy()) : null, ps2 = isPs2(codeMap);
   codeMap.functions.forEach((f, index) => {
     const first = layout.first[index], places = layout.first[index + 1] - first;
     // a PlayStation 2 function's bytes are its own program's, a module's or a vector unit's among them (ps2/ledger.mjs)

@@ -46,6 +46,9 @@ import { twinsIn } from './gba/match.mjs';
 import { proofVersions, readCodeMap, readOriginal } from './lib/proof-files.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, versionOf, writtenIn } from '../src/lib/languages.mjs';
 import { nesNames } from './nes/functions.mjs';
+import { cartOfLayout, mapOf } from './snes/cartridge.mjs';
+import { snesNames } from './snes/functions.mjs';
+import { gbNames } from './gbc/functions.mjs';
 
 // a label's word and its address, or a number's: in the cartridge, or in the work RAMs, where a game copies or unpacks
 // code to run it
@@ -58,6 +61,12 @@ const PS1_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(80[0-7][0-9A-Fa-f]{5})\b/g;
 // a PlayStation 2 address in the console's 32 MB, above the kernel's half megabyte, as a number or in a label, such as
 // func_00123450
 const PS2_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(00(?:[1-9A-Fa-f][0-9A-Fa-f]|0[89A-Fa-f])[0-9A-Fa-f]{4}|01[0-9A-Fa-f]{6})\b/g;
+// a PlayStation Portable address in the console's memory for games, 0x08800000 to 0x0BFFFFFF, as a number or in a label,
+// such as sub_08804120
+const PSP_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(0(?:8[89A-Fa-f]|9[0-9A-Fa-f]|[ABab][0-9A-Fa-f])[0-9A-Fa-f]{5})\b/g;
+
+// a GameCube address in the console's 24 MB, as a number or in a label, such as fn_80003100
+const GAMECUBE_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(8(?:0[0-9A-Fa-f]|1[0-7])[0-9A-Fa-f]{5})\b/g;
 
 /** How a console's code names an address: `pattern`, whose first group is a label's word and second its digits,
  *  `bases`, the addresses code uses as the base of others and not as names, and `address(digits)`, the address. A
@@ -65,7 +74,9 @@ const PS2_NAME = /\b(?:([A-Za-z][A-Za-z0-9]*)_|0x)(00(?:[1-9A-Fa-f][0-9A-Fa-f]|0
 export function namesOf(console) {
   // a Nintendo 64 address in the console's 8 MB is written as a PlayStation one is, 0x80246000 or func_80246000
   if (console === 'ps1' || console === 'n64') return { pattern: PS1_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
+  if (console === 'gamecube') return { pattern: GAMECUBE_NAME, bases: new Set([0x80000000]), address: digits => parseInt(digits, 16) };
   if (console === 'ps2') return { pattern: PS2_NAME, bases: new Set(), address: digits => parseInt(digits, 16) };
+  if (console === 'psp') return { pattern: PSP_NAME, bases: new Set([0x08800000]), address: digits => parseInt(digits, 16) };
   return { pattern: NAME, bases: BASES, address: digits => parseInt(digits, 16) & ~1 };
 }
 // the words that mark a stop, in any language's code
@@ -78,6 +89,17 @@ function namer(console, codeMap) {
   if (console === 'nes') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
     return line => nesNames(line, banks).map(([name, offset]) => [name, offset, true]);
+  }
+  // a Super Nintendo one is a place in the ROM, from a label such as sub_808123, in any bank that shows it, as the
+  // code map says the cartridge is laid out (snes/cartridge.mjs); a code map that doesn't say names none
+  if (console === 'snes') {
+    const map = codeMap.layout ? mapOf(cartOfLayout(codeMap.layout)) : null;
+    return line => (map ? snesNames(line, map).map(([name, offset]) => [name, offset, true]) : []);
+  }
+  // a Game Boy's is the offset in the program too, from a label such as sub_02_4123 (gbc/functions.mjs)
+  if (console === 'gb' || console === 'gbc') {
+    const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
+    return line => gbNames(line, banks).map(([name, offset]) => [name, offset, true]);
   }
   const { pattern, bases, address: of } = namesOf(console);
   return line => [...line.matchAll(pattern)].map(([name, label, digits]) => [name, of(digits), Boolean(label)]).filter(([, address]) => !bases.has(address));

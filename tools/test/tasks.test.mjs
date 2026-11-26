@@ -6,7 +6,7 @@ import { field } from '../lib/claims.mjs';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { holdGame, leftoverText, missingParts, startsByFunction, taskText, taskTitled, keepTaking } from '../tasks.mjs';
+import { holdGame, leftoverText, missingParts, startsByFunction, startsByPart, taskText, taskTitled, keepTaking } from '../tasks.mjs';
 import { leftoverPieces } from '../lib/played.mjs';
 
 const parts = [
@@ -22,12 +22,22 @@ test('leaves out a part with a recording, and one with a piece, open or closed, 
 });
 
 test('a new version in C starts a function at a time on every console whose functions\' proofs the tools keep', () => {
-  for (const console of ['gba', 'nes', 'ps1', 'ps2']) assert.equal(startsByFunction(console, 'c', []), true, console);
-  for (const console of ['snes', 'n64', 'gb', 'gbc', 'md', 'psp', 'made-up']) assert.equal(startsByFunction(console, 'c', []), false, console);
+  for (const console of ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds']) assert.equal(startsByFunction(console, 'c', []), true, console);
+  for (const console of ['md', 'made-up']) assert.equal(startsByFunction(console, 'c', []), false, console);
   // a version with a task already, open or closed, stays as it is, and another language's tasks aren't its own
   assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu in C', state: 'closed' }]), false);
   assert.equal(startsByFunction('ps2', 'c', [{ title: 'Task: The main menu', state: 'open' }]), true);
   assert.equal(startsByFunction('ps2', 'js', []), false);
+});
+
+test('a new version that keeps its proofs takes its game\'s parts for tasks before its first one', () => {
+  const listed = [{ name: 'The logos' }], kept = { original: 'a'.repeat(40), parts: new Map() };
+  assert.equal(startsByPart(listed, null, 'c', []), true);
+  // once the game keeps what each part runs, with a task already, or with no parts listed, it's as it was
+  assert.equal(startsByPart(listed, kept, 'c', []), false);
+  assert.equal(startsByPart(listed, null, 'c', [{ title: 'Task: Functions 08000200 to 08000380 in C', state: 'closed' }]), false);
+  assert.equal(startsByPart(listed, null, 'c', [{ title: 'Task: The logos', state: 'open' }]), true, 'another language\'s task');
+  assert.equal(startsByPart([], null, 'c', []), false);
 });
 
 test('needs nothing when every part has its task', () => {

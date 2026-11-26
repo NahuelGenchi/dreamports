@@ -1,0 +1,273 @@
+name: Linux, Mac and Windows (Nintendo DS)
+
+# The Nintendo DS's tools on the three kinds of computer a contributor has: on Linux with what GitHub's runner has, on a
+# Mac with Apple's chip, set up as Getting ready says, with Apple's command line tools and Homebrew's Node.js and CMake,
+# and on Windows with only git and Node.js, where the tools get their own compiler and CMake. Each builds melonDS from
+# its makers' source at the commit tools/consoles.mjs fixes, with the tools' own front, and runs npm run test:real-nds:
+# a made-up program's two screens, its buttons, its touches and its sound, the same on all three by a hash the test
+# keeps (docs/CONSOLES.md#the-nintendo-ds), and npm run test:nds-twin, the function check, with the original in melonDS's own
+# processors and a made-up cartridge's twins in C, and npm run test:nds-flow, a made-up game taken through the new way of
+# making one, a part at a time, from proofs --start --parts to a part done, with a stand-in for GitHub, and
+# npm run test:nds-kit, the kit in C's pieces proven against melonDS with programs of the project's own. Nothing from any game's copy is needed, and nothing is sent anywhere.
+#
+# It isn't part of Check, as the emulator takes minutes to build. It runs on pull requests that touch what those tools
+# are made of, after they merge, every week, so the newest systems GitHub has try it too, and by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nds.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/nds/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/nds.svg'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/match.mjs'
+      - 'tools/gba/new-game/**'
+      - 'tools/gba/on-windows.h'
+      - 'tools/gba/thumb.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/read-copy.mjs'
+      - 'tools/lib/recording.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/melonds.patch'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/nds/**'
+      - 'tools/new.mjs'
+      - 'tools/play.mjs'
+      - 'tools/portmap.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-nds-bg.mjs'
+      - 'tools/test/made-up-nds-cart.mjs'
+      - 'tools/test/made-up-nds-dma.mjs'
+      - 'tools/test/made-up-nds-ipc.mjs'
+      - 'tools/test/made-up-nds-irq.mjs'
+      - 'tools/test/made-up-nds-math.mjs'
+      - 'tools/test/made-up-nds-obj.mjs'
+      - 'tools/test/made-up-nds-parts.mjs'
+      - 'tools/test/made-up-nds-twin.mjs'
+      - 'tools/test/made-up-nds.c'
+      - 'tools/test/made-up-nds.mjs'
+      - 'tools/test/nds-flow.mjs'
+      - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
+      - 'tools/test/nds-twin.mjs'
+      - 'tools/test/nds-twin/**'
+      - 'tools/test/real-nds.mjs'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nds.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/nds/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/nds.svg'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/match.mjs'
+      - 'tools/gba/new-game/**'
+      - 'tools/gba/on-windows.h'
+      - 'tools/gba/thumb.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/read-copy.mjs'
+      - 'tools/lib/recording.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/melonds.patch'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/nds/**'
+      - 'tools/new.mjs'
+      - 'tools/play.mjs'
+      - 'tools/portmap.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-nds-bg.mjs'
+      - 'tools/test/made-up-nds-cart.mjs'
+      - 'tools/test/made-up-nds-dma.mjs'
+      - 'tools/test/made-up-nds-ipc.mjs'
+      - 'tools/test/made-up-nds-irq.mjs'
+      - 'tools/test/made-up-nds-math.mjs'
+      - 'tools/test/made-up-nds-obj.mjs'
+      - 'tools/test/made-up-nds-parts.mjs'
+      - 'tools/test/made-up-nds-twin.mjs'
+      - 'tools/test/made-up-nds.c'
+      - 'tools/test/made-up-nds.mjs'
+      - 'tools/test/nds-flow.mjs'
+      - 'tools/test/nds-flow/**'
+      - 'tools/test/nds-kit.mjs'
+      - 'tools/test/nds-kit/**'
+      - 'tools/test/nds-twin.mjs'
+      - 'tools/test/nds-twin/**'
+      - 'tools/test/real-nds.mjs'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+  schedule:
+    - cron: '23 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nds-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # fails a pull request that one above it in a stack carries, so none of the jobs after it starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
+  linux:
+    name: Linux (Nintendo DS)
+    needs: stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
+
+  mac:
+    name: Mac (Nintendo DS)
+    needs: stack
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Mac has or installs: Apple's command line tools give git and the compiler, and Homebrew gives
+      # Node.js and CMake
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          cc --version | head -1
+          brew install --quiet node cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+          cmake --version | head -1
+      - name: The tools' packages
+        run: |
+          node --version
+          npm ci
+      - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit
+
+  windows:
+    name: Windows (Nintendo DS)
+    needs: stack
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js. The tools get the compiler and CMake themselves
+      # (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:real-nds
+      - run: npm run test:nds-twin
+      - run: npm run test:nds-flow
+      - run: npm run test:nds-kit

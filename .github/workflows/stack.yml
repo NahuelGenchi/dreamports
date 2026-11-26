@@ -1,0 +1,47 @@
+name: Stack
+
+# A stack merges through its top pull request, which carries the commits of each one below it, so only the top's tests
+# decide anything, and each heavy workflow's first job, Stack, stops a lower one's run (.github/stack/stack.mjs, #2034).
+# This runs on the events of a pull request from this repository that names another in a line "Builds on #<number>", or
+# did before an edit. For each one below that it now carries, it stops the heavy runs Stack had already let through, as
+# when the line is new or the one below was pushed first, and runs them again so Stack says which one to merge it
+# through. A run that already passed in full stays as it is, as it tested the one below's own tree, which can then merge
+# by itself, as the top of one stack does while the next builds on it.
+# For one that nothing carries any more, as when this one is closed without merging or its line is taken out, it runs
+# again in full the runs Stack stopped. It reads pull requests and runs through the API, and runs nothing from them.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, ready_for_review, closed]
+
+permissions:
+  contents: read
+
+# one at a time for each pull request, each to its end, so a run it stopped is always started again
+concurrency:
+  group: stack-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  stack:
+    name: Runs of the pull requests below
+    # a fork's pull request carries no one's tests, and its token can't stop a run anyway
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.body, 'builds on #') || contains(github.event.changes.body.from, 'builds on #'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            .github/stack
+            .github/workflows
+      - name: Stop the runs a pull request above carries, and run again those nothing carries now
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs --stop

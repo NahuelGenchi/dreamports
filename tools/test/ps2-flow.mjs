@@ -8,12 +8,12 @@
 // With --safari it opens that version's page in Safari too, on a Mac, through Apple's safaridriver, which has to be
 // switched on once (`safaridriver --enable`), and plays the same frames there and in Chrome: every picture and every
 // draw list has to be the same in both. It isn't run on every pull request, as the emulator takes minutes to build, and
-// runs on Linux and macOS alone, where the tools give the emulator a graphics context (docs/CONSOLES.md). The Mac
+// runs on Linux, macOS and Windows, where the tools give the emulator a graphics context (docs/CONSOLES.md). The Mac
 // workflow runs it on GitHub's Mac with Apple's chip.
 
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { delimiter, join } from 'node:path';
+import { join } from 'node:path';
 import { LOCAL, REPO, gameFolder, proofFolder, resultFolder } from '../lib/paths.mjs';
 import { serveRepository } from '../lib/server.mjs';
 import { go, openChrome } from '../lib/chrome.mjs';
@@ -36,10 +36,10 @@ const check = (ok, what) => {
 };
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-// the tools as a person's agent runs them, with the stand-in's gh first on the PATH
+// the tools as a person's agent runs them, with the stand-in's gh in the GitHub CLI's place (lib/github.mjs, DREAMPORTS_GH)
 const bin = join(WORK, 'bin'), site = join(WORK, 'github.json');
 const dp = (...args) => {
-  const env = { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, STAND_IN_GITHUB: site, STAND_IN_LOGIN: 'sam', STAND_IN_WORK: WORK };
+  const env = { ...process.env, DREAMPORTS_GH: join(bin, 'gh'), STAND_IN_GITHUB: site, STAND_IN_LOGIN: 'sam', STAND_IN_WORK: WORK };
   const { status, stdout, stderr } = spawnSync(process.execPath, [join(REPO, 'tools', 'dp.mjs'), ...args], { cwd: REPO, encoding: 'utf8', maxBuffer: 2 ** 26, env });
   return { status, out: stdout + stderr };
 };

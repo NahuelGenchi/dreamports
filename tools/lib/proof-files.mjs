@@ -11,6 +11,7 @@
 //   foundations, each piece with what it needs (src/lib/pieces.mjs)
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
+import { bytesAt as ndsBytesAt, ndsCartridge } from '../nds/functions.mjs';
 import { join, basename } from 'node:path';
 import { REPO, gameFolder, proofFolder, sharedProofFolder } from './paths.mjs';
 import { readRecording } from './recording.mjs';
@@ -18,6 +19,7 @@ import { nesProgram } from '../nes/functions.mjs';
 import { exeReader, ps1Program, readProgram } from '../ps1/functions.mjs';
 import { readCartridge } from '../snes/cartridge.mjs';
 import { loadCopy, loadedCopy } from '../ps2/ledger.mjs';
+import { dolReader, gamecubeCode, readGamecubeCode } from '../gamecube/functions.mjs';
 import { LANGUAGES, OTHER_LANGUAGES, TRIALS, languageOf, versionName, versionOf } from '../../src/lib/languages.mjs';
 
 /** The games that have proof files. */
@@ -160,12 +162,16 @@ export function writeCodeMap(game, map) {
 }
 
 /** A code map's text, as writeCodeMap writes it, with the mode each function starts in where the finder knows it, after
- *  the functions, as `modes`, a function's key to its mode. */
-export function formatCodeMap({ original, from, functions, copies = [] }) {
+ *  the functions, as `modes`, a function's key to its mode, and for a Super Nintendo game how its cartridge is laid
+ *  out, `layout` (snes/cartridge.mjs, layoutOf), which says where an address a game's code names is in the ROM, and
+ *  for a Nintendo 64 game where its code loads, `layout.load`, eight hexadecimal digits (n64/functions.mjs), and where
+ *  the program starts, `start`, on a console whose code map says so, the PlayStation Portable's (psp/functions.mjs): a
+ *  function that never comes back, which no call can prove (proofs.mjs, beyondProof). */
+export function formatCodeMap({ original, from, functions, copies = [], layout = null, start = null }) {
   const lines = functions.map(f => '    ' + JSON.stringify([functionKey(f), f.size, ...(f.name ? [f.name] : [])]));
   const copied = copies.map(c => '    ' + JSON.stringify([hex(c.ram), hex(c.cartridge), c.size, ...(c.packed ? [c.packed, ...(c.from ? [c.from] : [])] : [])]));
   const modes = functions.filter(f => f.mode).map(f => `    ${JSON.stringify(functionKey(f))}: ${JSON.stringify(f.mode)}`);
-  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}${modes.length ? `,\n  "modes": {\n${modes.join(',\n')}\n  }` : ''}\n}\n`;
+  return `{\n  "original": ${JSON.stringify(original)},\n  "from": ${JSON.stringify(from)},\n  "functions": [\n${lines.join(',\n')}\n  ]${copies.length ? `,\n  "copies": [\n${copied.join(',\n')}\n  ]` : ''}${modes.length ? `,\n  "modes": {\n${modes.join(',\n')}\n  }` : ''}${layout ? `,\n  "layout": ${JSON.stringify(layout)}` : ''}${start !== null ? `,\n  "start": "${hex(start)}"` : ''}\n}\n`;
 }
 
 // 16 hexadecimal digits, the bytes in order, as two little-endian words
@@ -175,7 +181,8 @@ export const bytesText = bytes => Array.from(bytes.subarray(0, 8), b => b.toStri
 
 /** A copy's bytes at an address of a code map, read from the file only when asked: a Game Boy Advance's cartridge
  *  starts at 0x08000000, and with `console` 'nes' the address is a place in the NES program, past the file's header
- *  (nes/functions.mjs), and with 'snes' a place in the Super Nintendo cartridge's ROM (snes/cartridge.mjs). Its `copy()`
+ *  (nes/functions.mjs), with 'snes' a place in the Super Nintendo cartridge's ROM (snes/cartridge.mjs), and with 'gb' or
+ *  'gbc' a place in the Game Boy's program, which is the whole file (gbc/functions.mjs). Its `copy()`
  *  gives the whole file. With 'ps2' the address is where the EE runs the program the
  *  disc boots, `disc` is the copy's path, whose sectors are its content, and `code(f)` what a function of the code map
  *  is made of, on whichever processor and in whichever program of the disc, once prepareCopy has read it (ps2/ledger.mjs).
@@ -185,30 +192,53 @@ export function cartridgeOf(path, console = 'gba') {
   let bytes = null, program = null;
   const copy = () => (bytes ??= readFileSync(path));
   if (console === 'ps2') return Object.assign((address, count) => (program ??= loadedCopy(path).read)(address, count), { copy, disc: path, code: f => loadedCopy(path).codeOf(f), modules: () => loadedCopy(path).modules });
+  // a Nintendo DS cartridge's programs, read once: an address is where the ARM9's own program runs, and `code(f)` is a
+  // function's bytes in whichever program or overlay it's in (nds/functions.mjs)
+  if (console === 'nds') {
+    let code = null;
+    const programs = () => (code ??= ndsCartridge(path));
+    return Object.assign((address, count) => ndsBytesAt(programs(), null, address, count) ?? Buffer.alloc(count), { copy, code: f => ndsBytesAt(programs(), f.program, f.address, f.size), programs });
+  }
   if (console === 'ps1') {
     const exe = () => readProgram(path) ?? (() => { throw new Error(`The tools haven't read the program ${path} boots yet: lib/proof-files.mjs's prepareCopy reads it first.`); })();
     return Object.assign((address, count) => (program ??= exeReader(exe()))(address, count), { copy: exe });
+  }
+  if (console === 'gamecube') {
+    const code = () => readGamecubeCode(path) ?? (() => { throw new Error(`The tools haven't read the program ${path} boots yet: lib/proof-files.mjs's prepareCopy reads it first.`); })();
+    return Object.assign((address, count) => (program ??= dolReader(code().boot))(address, count), { copy: () => code().boot });
   }
   const read = console === 'nes'
     ? (address, count) => (program ??= nesProgram(copy()).prg).subarray(address, address + count)
     : console === 'snes'
       ? (address, count) => (program ??= readCartridge(copy()).rom).subarray(address, address + count)
-      : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
+      : console === 'gb' || console === 'gbc'
+        ? (address, count) => copy().subarray(address, address + count)
+        : (address, count) => copy().subarray(address - 0x08000000, address - 0x08000000 + count);
   return Object.assign(read, { copy });
 }
 
 /** Reads what a copy's console needs read at once before cartridgeOf can give its bytes: a PlayStation 2's program
- *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs), and the program a PlayStation
- *  disc boots. Nothing for another console. */
+ *  and its disc's sectors, read from the disc a few sectors at a time (ps2/ledger.mjs), the program a PlayStation disc
+ *  boots, and a GameCube disc's program and modules. Nothing for another console. */
 export async function prepareCopy(path, console) {
   if (console === 'ps2') await loadCopy(path);
   if (console === 'ps1') await ps1Program(path);
+  if (console === 'gamecube') await gamecubeCode(path);
 }
 
 /** Where the code map's functions run, for the program that plays the original (lib/run-reference.mjs): each at its
  *  address, those the game makes in RAM only with their bytes there, and each cartridge function a copy holds where the
  *  copy runs, with its bytes, so it counts when the copy is there. `cartridge(address, bytes)` reads the copy's bytes. */
 export function watchesOf(codeMap, cartridge) {
+  // on the Nintendo DS every function, of each program and overlay, with its first bytes, as its code is all in memory
+  // and an overlay's place holds whichever the game last loaded, and with the processor that runs it
+  if (codeMap.console === 'nds') {
+    return codeMap.functions.map((f, index) => {
+      const first = Buffer.alloc(8);
+      cartridge.code(f)?.copy(first, 0, 0, 8);
+      return { address: f.address, size: f.size, index, bytes: wordsOf(bytesText(first)), ...(/^(ARM7|OVERLAY7_)/.test(f.program ?? '') ? { arm7: true } : {}) };
+    });
+  }
   // on the PlayStation 2, the functions of the program the disc boots alone: another program's, a module's and a vector
   // unit's are at addresses of their own, and count from what ran where their bytes are (lib/played.mjs)
   const watches = codeMap.functions.map((f, index) => ({ address: f.address, size: f.size, index, ...(f.bytes ? { bytes: wordsOf(f.bytes) } : {}) })).filter((_, index) => !codeMap.functions[index].program && !codeMap.functions[index].vu);

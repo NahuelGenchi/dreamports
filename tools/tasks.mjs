@@ -43,7 +43,7 @@ import { field, readClaims } from './lib/claims.mjs';
 import { kindText, readSorted } from './untouched.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { asksForProofs, groupNamed, KEEPS_PROOFS, stateOf, stateText } from './lib/proofs.mjs';
-import { leftOf, tasksOf } from './lib/part-functions.mjs';
+import { leftOf, readPartFunctions, tasksOf } from './lib/part-functions.mjs';
 import { dreamports } from './readme.mjs';
 
 const USAGE = 'Usage: npm run dp -- tasks <game>[/c] [--repo <owner/name>] [--yes] [--update]';
@@ -134,6 +134,13 @@ export function startsByFunction(console, language, pieces) {
   return language === 'c' && KEEPS_PROOFS.includes(console) && !pieces.some(piece => pieceOf(piece).language === language);
 }
 
+/** Whether a version that keeps its proofs has to take its game's parts for tasks before its first one (#1904): one
+ *  with no task yet, open or closed, in a game that lists its parts and doesn't keep what each runs
+ *  (lib/part-functions.mjs). One that has tasks by address already stays as it is until its lead runs proofs --parts. */
+export function startsByPart(parts, kept, language, pieces) {
+  return parts.length > 0 && !kept && !pieces.some(piece => pieceOf(piece).language === language);
+}
+
 /**
  * The tasks of functions a version still needs, from its `groups` (lib/proofs.mjs), its functions' `states` by key
  * and the game's `pieces`, open and closed: { open, wanted, waiting }. `open` are the groups whose task is open,
@@ -179,6 +186,23 @@ export function functionTaskText(version, group, states) {
   ].join('\n');
 }
 
+/**
+ * What a part's task says of the functions its list leaves out (#1919): the list is what the original ran, so a
+ * function the part's code only names, as an address it keeps or hands on, or calls on a path its recording never
+ * takes, isn't in it. It's in the part whose recording runs it, or, when none does, in the groups by address that
+ * come after the parts.
+ */
+export const NAMED_ONLY = version => `The list is what the original ran in the part's frames. A function its code only names, as an address it keeps or hands on, or calls on a path the recording never takes, isn't in it: it belongs to the part whose recording runs it, or to the code no recording ran, which comes after the parts. A twin can name one before it has C of its own, and \`npm run dp -- proofs ${version} <address>\` says where any function stands.`;
+
+/**
+ * Where the tasks of some of a version's `groups` go, as words (#1919): a part's task under the version's own issue,
+ * `versionHome`, and a group of functions under the issue of its stretch of the game's code, `stretches`.
+ */
+export function homesOf(groups, versionHome, stretches) {
+  const parts = groups.some(group => group.part), others = groups.some(group => !group.part);
+  return parts && others ? `${versionHome} for the game's parts, and ${stretches} for the groups of functions` : parts ? versionHome : stretches;
+}
+
 /** As many of a part's functions as its task lists by name, those with no proof first: `proofs` lists them all. */
 export const PART_LISTS = 120;
 
@@ -198,7 +222,7 @@ export function partTaskText(version, group, states) {
   const what = !group.recorded ? [
     `${group.name}, one of the game's parts. It has no recording of the original yet, which is where its task starts: a recording that plays the whole part on the original, named with the part's first and last frames in \`games/${game}/proof/parts.json\` (\`tools/README.md#proving-a-part\`). \`npm run dp -- prove ${version}\` then keeps the functions the original runs in it, and \`npm run dp -- tasks ${version} --update --yes\` lists them here.`,
   ] : [
-    `${group.name}, one of the game's parts. The original runs ${count(group.functions.length)} function${group.functions.length === 1 ? '' : 's'} in it that no part before it runs, from its recording, and ${done === group.functions.length ? 'each has its proof' : `${count(left.length)} ${left.length === 1 ? 'has' : 'have'} no proof yet`}. Each needs its twin in \`games/${version}/\`, written by hand with every path of the original's, and its proof (\`docs/STANDARD.md#twins-and-their-proof\`). The part plays as its functions come in, and it can go out in more than one pull request, each with the proofs it adds and naming this task with \`Refs\` until the last.`,
+    `${group.name}, one of the game's parts. The original runs ${count(group.functions.length)} function${group.functions.length === 1 ? '' : 's'} in it that no part before it runs, from its recording, and ${done === group.functions.length ? 'each has its proof' : `${count(left.length)} ${left.length === 1 ? 'has' : 'have'} no proof yet`}. Each needs its twin in \`games/${version}/\`, written by hand with every path of the original's, and its proof (\`docs/STANDARD.md#twins-and-their-proof\`). The part plays as its functions come in, and it can go out in more than one pull request, each with the proofs it adds and naming this task with \`Refs\` until the last. ${NAMED_ONLY(version)}`,
     ...(left.length ? ['', ...left.slice(0, PART_LISTS).map(line)] : []),
     ...(left.length > PART_LISTS ? ['', `And ${count(left.length - PART_LISTS)} more with no proof yet: \`npm run dp -- proofs ${version} ${named}\` lists every one.`] : []),
     '',
@@ -226,8 +250,14 @@ async function openFunctionTasks(version, repo, yes, update) {
   if (!home) throw new Error(`Nobody has claimed ${game} with a New Dreamport issue in ${repo} yet, and its tasks go under that issue.`);
   // each under the issue of its stretch of the game's code, which is under the version's issue (#1473)
   const where = `the issues of its code's stretches, in its issue for ${LANGUAGES[language].name}, under #${home.number}`;
+  // and a part's task right under the version's issue, which is the game's own for its main language (#1919)
+  const versionHome = language === (dreamport?.language ?? 'js') ? `#${home.number}` : `its issue for ${LANGUAGES[language].name}, under #${home.number}`;
+  const under = some => homesOf(some, versionHome, where);
   const states = new Map(stateOf(version, { codeMap }).map(state => [state.key, state]));
   const pieces = claims.piecesOf(game, entry);
+  if (startsByPart(readPartsFile(game).parts ?? [], readPartFunctions(game), language, pieces)) {
+    throw new Error(`${version} has no task yet, and a new game's tasks are its parts, each with the functions it runs: run npm run dp -- proofs ${version} --parts, commit the file it writes, and run this again, which then opens a task for each part.`);
+  }
   const groups = tasksOf(version, codeMap), byPart = groups.some(group => group.part);
   const played = new Set((dreamport?.language === language ? dreamport.proof : dreamport?.versions.find(v => v.language === language)?.proof)?.gameplay?.parts?.filter(part => part.proven).map(part => part.name) ?? []);
   const { open, wanted, waiting } = functionTasks(groups, states, pieces, language, OPEN_AT_ONCE, played);
@@ -251,15 +281,15 @@ async function openFunctionTasks(version, repo, yes, update) {
     }
     return 0;
   }
-  const later = waiting ? ` ${waiting.toLocaleString('en')} more group${waiting === 1 ? '' : 's'} of its functions come after, ${OPEN_AT_ONCE} open at once: run this again as tasks close.` : '';
+  const later = waiting ? ` ${waiting.toLocaleString('en')} more ${byPart ? `task${waiting === 1 ? '' : 's'}` : `group${waiting === 1 ? '' : 's'} of its functions`} come after, ${OPEN_AT_ONCE} open at once: run this again as tasks close.` : '';
   if (!wanted.length) {
-    console.log(open.length || waiting ? `${version} has ${open.length} task${open.length === 1 ? '' : 's'} of functions open already, under ${where}.${later}` : `Every function of ${version} in the cartridge has its proof, so it needs no task.`);
+    console.log(open.length || waiting ? `${version} has ${open.length} task${open.length === 1 ? '' : 's'}${open.some(group => group.part) ? '' : ' of functions'} open already, under ${under(open.length ? open : groups)}.${later}` : `Every function of ${version} in the cartridge has its proof, so it needs no task.`);
     return 0;
   }
   const left = group => group.functions.filter(f => !states.get(f.key)?.kind).length;
   if (!yes) {
     const about = group => (group.part ? (group.recorded ? `${left(group)} of ${group.functions.length} to prove, a part of the game` : 'a part of the game with no recording of the original yet') : `${left(group)} of ${group.functions.length} to prove, in ${stretchName(stretchOf(group.functions[0].address))}`);
-    console.log(`${version} is made a function at a time, so its tasks are ${byPart ? 'its game\'s parts, each with the functions the original runs in it, then groups of what no part runs' : 'groups of functions from its code map'}. A task for each of these ${wanted.length} would go under ${byPart ? `#${home.number} or ${where}` : where} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${about(group)}`).join('\n')}`);
+    console.log(`${version} is made a function at a time, so its tasks are ${byPart ? 'its game\'s parts, each with the functions the original runs in it, then groups of what no part runs' : 'groups of functions from its code map'}. A task for each of these ${wanted.length} would go under ${under(wanted)} in ${repo}, public and in your name:\n${wanted.map(group => `  ${group.name}: ${about(group)}`).join('\n')}`);
     console.log(`\nNothing was opened: --yes opens them, once you have said yes.${later}`);
     return 0;
   }
@@ -275,12 +305,12 @@ async function openFunctionTasks(version, repo, yes, update) {
       }
       const issue = api(`repos/${repo}/issues`, { method: 'POST', body: { title, body: functionTaskText(version, group, states) } });
       opened++;
-      console.log(`#${issue.number} ${group.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${where} yet, and will`}`);
+      console.log(`#${issue.number} ${group.name}${await underItsGame(repo, issue.number) ? '' : `: the bot hasn't put it under ${under([group])} yet, and will`}`);
     }
   } finally {
     release();
   }
-  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${where}.${later}`);
+  console.log(`\nOpened ${opened} task${opened === 1 ? '' : 's'} under ${under(wanted)}.${later}`);
   return 0;
 }
 

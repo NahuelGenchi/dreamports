@@ -1,0 +1,255 @@
+name: Mac and Windows (PlayStation)
+
+# The PlayStation's tools on a Mac with Apple's chip and on Windows, as a person starting a PlayStation game on either
+# will have them (#1938), on GitHub's own computers, each got ready as tools/README.md says: on a Mac, Apple's command
+# line tools and Homebrew's Node.js; on Windows, only Node.js and git, where the tools get a compiler for each build by
+# themselves (tools/gba/windows.mjs). Each builds PCSX ReARMed from its makers' source with the tools' change to it,
+# and runs what Check runs on Linux: npm run test:ps1-gcc, GCC 2.x as WebAssembly; test:ps1-call and test:ps1-twin,
+# the function check against the emulator's own interpreter; test:ps1-match; test:ps1-libraries; test:ps1-memories,
+# the memories of play the function check starts from; and test:ps1-kit, the kit in C proven against the emulator, in
+# the computer's own browser; and test:ps1-parts, a game whose parts are its tasks, from its first day to a part done
+# (#1943). Nothing from any game is needed, and nothing is sent anywhere.
+#
+# It runs on pull requests that touch what the PlayStation's games need, after they merge, every week, and by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ps1.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/copy/cd.js'
+      - 'kit/ps1/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/ps1.svg'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/match.mjs'
+      - 'tools/gba/new-game/**'
+      - 'tools/gba/on-windows.h'
+      - 'tools/gba/twin.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/libraries.mjs'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libraries.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/pcsx.patch'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/new.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ps1/**'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-disc.mjs'
+      - 'tools/test/made-up-ps1.mjs'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/ps1-call.mjs'
+      - 'tools/test/ps1-gcc.mjs'
+      - 'tools/test/ps1-kit.mjs'
+      - 'tools/test/ps1-kit/**'
+      - 'tools/test/ps1-libraries.mjs'
+      - 'tools/test/ps1-match.mjs'
+      - 'tools/test/ps1-match/**'
+      - 'tools/test/ps1-memories.mjs'
+      - 'tools/test/ps1-memories/**'
+      - 'tools/test/ps1-parts.mjs'
+      - 'tools/test/ps1-parts/**'
+      - 'tools/test/ps1-twin.mjs'
+      - 'tools/test/ps1-twin/**'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ps1.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/copy/cd.js'
+      - 'kit/ps1/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/ps1.svg'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/match.mjs'
+      - 'tools/gba/new-game/**'
+      - 'tools/gba/on-windows.h'
+      - 'tools/gba/twin.mjs'
+      - 'tools/gba/windows.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/libraries.mjs'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libraries.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/pcsx.patch'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/new.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ps1/**'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-disc.mjs'
+      - 'tools/test/made-up-ps1.mjs'
+      - 'tools/test/parts-flow.mjs'
+      - 'tools/test/ps1-call.mjs'
+      - 'tools/test/ps1-gcc.mjs'
+      - 'tools/test/ps1-kit.mjs'
+      - 'tools/test/ps1-kit/**'
+      - 'tools/test/ps1-libraries.mjs'
+      - 'tools/test/ps1-match.mjs'
+      - 'tools/test/ps1-match/**'
+      - 'tools/test/ps1-memories.mjs'
+      - 'tools/test/ps1-memories/**'
+      - 'tools/test/ps1-parts.mjs'
+      - 'tools/test/ps1-parts/**'
+      - 'tools/test/ps1-twin.mjs'
+      - 'tools/test/ps1-twin/**'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+  schedule:
+    - cron: '43 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ps1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # fails a pull request that one above it in a stack carries, so none of the jobs after it starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
+  mac:
+    name: Mac (PlayStation)
+    needs: stack
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, Homebrew gives
+      # Node.js, and Chrome is there
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          cc --version | head -1
+          brew install --quiet node
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - run: npm ci
+      - run: npm run test:ps1-gcc
+      - run: npm run test:ps1-call
+      - run: npm run test:ps1-twin
+      - run: npm run test:ps1-match
+      - run: npm run test:ps1-libraries
+      - run: npm run test:ps1-memories
+      - run: npm run test:ps1-kit
+      - run: npm run test:ps1-parts
+
+  windows:
+    name: Windows (PlayStation)
+    needs: stack
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js, and Edge, which comes with Windows. Each build gets
+      # the compiler itself (tools/gba/windows.mjs)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      - run: npm run test:ps1-gcc
+      - run: npm run test:ps1-call
+      - run: npm run test:ps1-twin
+      - run: npm run test:ps1-match
+      - run: npm run test:ps1-libraries
+      - run: npm run test:ps1-memories
+      - run: npm run test:ps1-kit
+      - run: npm run test:ps1-parts

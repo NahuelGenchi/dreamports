@@ -5,8 +5,9 @@ name: Mac and Windows (Game Boy Advance)
 # GitHub CLI and CMake, and on Windows with only git and Node.js, where setup gets its own compiler and CMake. Each runs npm run test:match and test:twin, the function check, test:rebuild and test:libraries, which run
 # match and twin from npm run dp on games of the project's own, and test:same-memory, which builds a program of the
 # project's own as a cartridge and as a Dreamport from the same C and proves every frame and the whole work memory the
-# same in mGBA and in the computer's own browser. The Mac also runs test:function-tasks, whose stand-in for the GitHub
-# CLI is a script Windows can't start by that name. A Mac with Intel's chip is left out, as Apple no longer makes one,
+# same in mGBA and in the computer's own browser, and test:function-tasks, a game made a function at a time against a
+# stand-in for GitHub, which the tools start with Node.js on every system (#1912), and test:part-tasks, a game whose
+# parts are its tasks from its first day to its last task done, on the Game Boy Advance. A Mac with Intel's chip is left out, as Apple no longer makes one,
 # and GitHub's Macs, five at a time, are shared with the PlayStation 2's workflow: Linux on Intel builds agbcc on the
 # same kind of chip.
 #
@@ -22,52 +23,160 @@ on:
   pull_request:
     paths:
       - '.github/workflows/gba.yml'
-      - 'kit/c/**'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
       - 'kit/consoles.js'
       - 'kit/gba/**'
-      - 'src/lib/**'
-      - 'package.json'
       - 'package-lock.json'
-      - 'tools/**'
-      - '!tools/**/*.md'
-      - '!tools/commands/**'
-      - '!tools/libretro/**'
-      - '!tools/nes/**'
-      - '!tools/ps1/**'
-      - '!tools/ps2/**'
-      - '!tools/test/made-up-ps*'
-      - '!tools/test/nes-*'
-      - '!tools/test/nes-twin/**'
-      - '!tools/test/ps1-*'
-      - '!tools/test/ps1-*/**'
-      - '!tools/test/ps2-*'
-      - '!tools/test/ps2-*/**'
-      - '!tools/test/real-ps2.mjs'
+      - 'package.json'
+      - 'public/systems/gba.svg'
+      - 'src/lib/languages.mjs'
+      - 'src/lib/shared-map.mjs'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/**'
+      - 'tools/lib/binaryen.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/libraries.mjs'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/played.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/proven-step.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/lib/twins.mjs'
+      - 'tools/libraries.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/play.mjs'
+      - 'tools/portmap.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ps1/match.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/function-tasks.mjs'
+      - 'tools/test/gba-same.mjs'
+      - 'tools/test/libraries.mjs'
+      - 'tools/test/made-up-game.c'
+      - 'tools/test/made-up-game.mjs'
+      - 'tools/test/match.mjs'
+      - 'tools/test/match/**'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/**'
+      - 'tools/test/rebuild.mjs'
+      - 'tools/test/rebuild/**'
+      - 'tools/test/same-memory.mjs'
+      - 'tools/test/same-memory/**'
+      - 'tools/test/stand-in/**'
+      - 'tools/test/twin.mjs'
+      - 'tools/test/twin/**'
+      - 'tools/twin.mjs'
   push:
     branches: [main]
     paths:
       - '.github/workflows/gba.yml'
-      - 'kit/c/**'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
       - 'kit/consoles.js'
       - 'kit/gba/**'
-      - 'src/lib/**'
-      - 'package.json'
       - 'package-lock.json'
-      - 'tools/**'
-      - '!tools/**/*.md'
-      - '!tools/commands/**'
-      - '!tools/libretro/**'
-      - '!tools/nes/**'
-      - '!tools/ps1/**'
-      - '!tools/ps2/**'
-      - '!tools/test/made-up-ps*'
-      - '!tools/test/nes-*'
-      - '!tools/test/nes-twin/**'
-      - '!tools/test/ps1-*'
-      - '!tools/test/ps1-*/**'
-      - '!tools/test/ps2-*'
-      - '!tools/test/ps2-*/**'
-      - '!tools/test/real-ps2.mjs'
+      - 'package.json'
+      - 'public/systems/gba.svg'
+      - 'src/lib/languages.mjs'
+      - 'src/lib/shared-map.mjs'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/**'
+      - 'tools/lib/binaryen.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/libraries.mjs'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/played.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/proven-step.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/lib/twins.mjs'
+      - 'tools/libraries.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/play.mjs'
+      - 'tools/portmap.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/ps1/match.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/function-tasks.mjs'
+      - 'tools/test/gba-same.mjs'
+      - 'tools/test/libraries.mjs'
+      - 'tools/test/made-up-game.c'
+      - 'tools/test/made-up-game.mjs'
+      - 'tools/test/match.mjs'
+      - 'tools/test/match/**'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/**'
+      - 'tools/test/rebuild.mjs'
+      - 'tools/test/rebuild/**'
+      - 'tools/test/same-memory.mjs'
+      - 'tools/test/same-memory/**'
+      - 'tools/test/stand-in/**'
+      - 'tools/test/twin.mjs'
+      - 'tools/test/twin/**'
+      - 'tools/twin.mjs'
   schedule:
     - cron: '47 6 * * 1'
   workflow_dispatch:
@@ -80,8 +189,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # fails a pull request that one above it in a stack carries, so none of the jobs after it starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
   linux:
     name: Linux on ${{ matrix.chip }} (Game Boy Advance)
+    needs: stack
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -110,6 +238,7 @@ jobs:
 
   mac:
     name: Mac (Game Boy Advance)
+    needs: stack
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -154,9 +283,11 @@ jobs:
       - run: npm run test:libraries
       - run: npm run test:function-tasks
       - run: npm run test:same-memory
+      - run: npm run test:part-tasks -- gba
 
   windows:
     name: Windows (Game Boy Advance)
+    needs: stack
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -184,13 +315,15 @@ jobs:
       - run: npm run test:twin
       - run: npm run test:rebuild
       - run: npm run test:libraries
+      - run: npm run test:function-tasks
       - run: npm run test:same-memory
+      - run: npm run test:part-tasks -- gba
 
   same:
     name: The same compiler on every computer (Game Boy Advance)
-    needs: [linux, mac, windows]
+    needs: [stack, linux, mac, windows]
     # even when a later test on the Mac or Windows failed, as each computer's builds are written before them
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.stack.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, test } from 'node:test';
 import { optionsOf } from '../update.mjs';
-import { withRowOf } from '../readme.mjs';
+import { shownOf, table, withRowOf } from '../readme.mjs';
+import { formatProofs, parseProofs } from '../lib/proofs.mjs';
 import { builtOn, finishMerge, holding, isHolding, keepMainsTable, merging, newGames, provedOnBothSides, startMerge } from '../lib/merge-main.mjs';
 
 const START = '<!-- The proof tools write this table from each Dreamport\'s entry: npm run dp -- readme. -->';
@@ -34,6 +35,8 @@ beforeEach(() => {
   git('init', '-q', '-b', 'main');
   git('config', 'user.name', 'Test');
   git('config', 'user.email', 'test@example.com');
+  // the same files on every computer, whatever its own git turns line endings into (#2004)
+  git('config', 'core.autocrlf', 'false');
   put({ 'docs/STATUS.md': readme('table 0'), [MAP]: 'map 0', [PORT]: 'port 0', [PROGRESS]: progress({ a: { matched: 5 } }), 'games/one/code.js': 'a\nb\nc\n' });
   git('switch', '-qc', 'work');
 });
@@ -58,6 +61,25 @@ test('proofs both sides added are both kept, a function to a line, and the branc
     { [PROOFS]: proofs([['08000100', 'bytes', 'a', 'b'], ['08000180', 'bytes', 'main', 'b'], ['08000300', 'bytes', 'e', 'f']]) });
   assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
   assert.deepEqual(JSON.parse(read(PROOFS)).functions, [['08000100', 'bytes', 'a', 'b'], ['08000180', 'memory', 'mine', 'b', 2000], ['08000200', 'bytes', 'c', 'd'], ['08000300', 'bytes', 'e', 'f']]);
+});
+
+test('the functions that start as the original\'s do are kept from both sides too, as match writes them', () => {
+  const PROOFS = 'games/one/c/proof/proofs.json', mark = letter => letter.repeat(16);
+  const file = (functions, starts) => formatProofs({ original: 'x', functions: new Map(functions), starts: new Map(starts) });
+  const proof = letter => ({ kind: 'bytes', twin: mark(letter), original: mark('0') }), start = (letter, bytes) => ({ twin: mark(letter), original: mark('0'), bytes });
+  put({ [PROOFS]: file([['08000100', proof('a')]], [['08000400', start('b', 10)], ['08000500', start('c', 14)]]) });
+  git('switch', '-q', 'main');
+  git('merge', '-q', 'work');
+  git('switch', '-q', 'work');
+  // the branch proves a function and changes a twin that only starts as the original's does, and main finds another
+  // that starts so, and proves by the same bytes one that only started so before
+  both({ [PROOFS]: file([['08000100', proof('a')], ['08000200', proof('d')]], [['08000400', start('e', 76)], ['08000500', start('c', 14)]]) },
+    { [PROOFS]: file([['08000100', proof('a')], ['08000500', proof('f')]], [['08000300', start('1', 62)], ['08000400', start('b', 10)]]) });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
+  const merged = parseProofs(JSON.parse(read(PROOFS)));
+  assert.deepEqual([...merged.functions.keys()], ['08000100', '08000200', '08000500']);
+  assert.deepEqual([...merged.starts], [['08000300', start('1', 62)], ['08000400', start('e', 76)]]);
+  assert.equal(read(PROOFS), formatProofs(merged), 'and the file is as the tools write it');
 });
 
 test('a branch with main in it has nothing to do', () => {
@@ -313,10 +335,30 @@ test('a new game adds only its own row to the table main has, however far behind
   // written whole, the table has one's new number too, which main's own workflow hasn't written yet
   const leading = readme(`${head}\n${row('new/c', '0%')}\n${row('one/c', '24.68%')}\n${row('two', '5%')}`);
   assert.equal(withRowOf(before, leading, 'new/c'), readme(`${head}\n${row('new/c', '0%')}\n${row('one/c', '21.94%')}\n${row('two', '5%')}`));
-  // a version under its game's row goes after that row
-  const under = readme(`${head}\n${row('one/c', '24.68%')}\n${row('one', '0%')}\n${row('two', '5%')}`);
-  assert.equal(withRowOf(before, under, 'one'), readme(`${head}\n${row('one/c', '21.94%')}\n${row('one', '0%')}\n${row('two', '5%')}`));
+  // a game has one row, so its new version in C takes the place of the row it had, wherever the new one would go (#2040)
+  const inC = readme(`${head}\n${row('one/c', '24.68%')}\n${row('two/c', '0%')}`);
+  assert.equal(withRowOf(before, inC, 'two/c'), readme(`${head}\n${row('one/c', '21.94%')}\n${row('two/c', '0%')}`));
   assert.equal(withRowOf(before, leading, 'one/c'), null, 'a row the table has already');
   assert.equal(withRowOf(before, leading, 'other'), null, 'no row to add');
   assert.equal(withRowOf(readme(head), leading, 'new/c'), null, 'a table with no row to put it by');
+});
+
+test('the table has one row per game, with its numbers in C, from the most code ported to the least (#2040)', () => {
+  const proof = (percent, parts) => ({ ported: { percent }, gameplay: { percent: parts * 10, proven: parts, total: 10, units: { played: 1, total: 2 } } });
+  const entry = (title, issue) => ({ title, platform: 'Game Boy Advance', issue, lead: 'someone', ownCopy: { links: [{ label: 'Play', href: `https://example.test/${issue}/`, icon: 'play' }] } });
+  const list = [
+    // a game that started in JavaScript shows its version in C, however far its JavaScript one is
+    { entry: entry('One Dreamport', 1), name: 'one', language: 'js', proof: proof(60, 6), versions: [{ name: 'one/c', language: 'c', proof: proof(5, 1) }] },
+    { entry: entry('Two Dreamport', 2), name: 'two/c', language: 'c', proof: proof(40, 4), versions: [] },
+    // a game with no version in C shows the one it has
+    { entry: { ...entry('Three | Dreamport', 3), team: ['other'] }, name: 'three', language: 'js', proof: { ported: { percent: 20 } }, versions: [] },
+  ];
+  assert.deepEqual(shownOf(list[0]).name, 'one/c');
+  assert.equal(table(list, 'o/r'), [
+    '| Game | Console | Code ported | Gameplay proven | Lead | Try it |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- |',
+    '| [Two](../games/two/c/) | Game Boy Advance | [40%](https://github.com/o/r/issues/2) | [40%, 4 of 10 parts](../.github/readme/progress/two-c.svg) | [someone](https://github.com/someone) | [▶&nbsp;Play](https://example.test/2/) |',
+    '| [Three \\|](../games/three/) | Game Boy Advance | [20%](https://github.com/o/r/issues/3) | No parts listed yet | [someone](https://github.com/someone), with [other](https://github.com/other) | [▶&nbsp;Play](https://example.test/3/) |',
+    '| [One](../games/one/c/) | Game Boy Advance | [5%](https://github.com/o/r/issues/1) | [10%, 1 of 10 parts](../.github/readme/progress/one-c.svg) | [someone](https://github.com/someone) | [▶&nbsp;Play](https://example.test/1/) |',
+  ].join('\n'));
 });

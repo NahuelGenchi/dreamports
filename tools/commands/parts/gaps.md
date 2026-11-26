@@ -14,15 +14,19 @@ Otherwise open its issue with `gh issue create --repo NahuelGenchi/dreamports --
 
 Three rules hold whatever it is:
 
-- It adds what's missing and never makes a comparison looser. No frame, byte or sound is left out, no recording is changed, and nothing makes `prove`, `match` or `twin` say the same where they said different. If that's the only way through, you're stuck, which is below.
+- It adds what's missing and never makes a comparison looser. No frame, byte or sound is left out, no recording is changed, and nothing makes `prove`, `match` or `twin` say the same where they said different. A way through that does is closed, so take the one that keeps the comparison whole, however much longer it is.
 - Nothing of the game goes in the kit, the tools or a test. Test it with a program of the project's own, the way the tests `CONTRIBUTING.md` lists for that kit or tool do, and add yours beside them.
 - The console is the reference. Where the kit's README says how it keeps the console's time or its hardware, follow that.
 
 It's done when `npm run check` passes with the tests of what you changed. Commit it as `fix: <what it is> (#<issue>)` and open its pull request as step 12 does for a change that isn't a Dreamport's, with `Closes #<issue>`, not as a draft. Then go back to the task's branch, merge the fix's branch into it, and write `Builds on #<its pull request>` in the task's pull request, which merges after it.
 
+## When something has to be decided
+
+A Dreamport is the original, one to one, and that answers every decision the work can meet. So none is ever left for the person, the game's lead or the project's owner, and none is a reason to stop. Where neither the code nor `docs/` says how the console or the project should behave, take the way closest to the real console: the one that compares more and leaves nothing out, even when it's the longer one. Check it against the reference emulator's source or the original's own instructions, and against a second reference where there is one. Then write what you chose and what shows it in the fix's issue and as a line in `docs/HISTORY.md`, and carry on.
+
 ## Really stuck
 
-Stop only if the fix would make a comparison looser, if it needs a decision about how the console or the project behaves that neither the code nor `docs/` settles, or if ten rounds in a row have changed nothing, as with a frame that won't match. Then open the issue all the same, or add to the one that's there, with what's missing and what shows it: the frame, the addresses and what the tools printed, and nothing of the game. End as `tools/commands/parts/unfinished.md` says under Not finished, with that issue named in the sentence that says why and under the template's Limitations.
+Stop only if ten rounds in a row have changed nothing, as with a frame that won't match. Then open the issue all the same, or add to the one that's there, with what's missing and what shows it: the frame, the addresses and what the tools printed, and nothing of the game. End as `tools/commands/parts/unfinished.md` says under Not finished, with that issue named in the sentence that says why and under the template's Limitations.
 
 ## Tell them
 

@@ -1,5 +1,8 @@
 // What ran of the original, on a console whose emulator tells the tools of every instruction: the NES, in FCEUmm with
-// the tools' change to it (fceumm.patch), and the Super Nintendo, in Snes9x with theirs (snes9x.patch). The program
+// the tools' change to it (fceumm.patch), the Super Nintendo, in Snes9x with theirs (snes9x.patch), and the Game Boy
+// and the Game Boy Color, in Gambatte with theirs (gambatte.patch), where a place is in the program as on the NES
+// (../gbc/functions.mjs), a call is a CALL or an RST, a jump through a pointer a JP (HL), a return a RET or a RETI, and
+// a branch any JR, JP, CALL or RET with a condition. The program
 // that drives the emulators includes this (host.c), and writes what the Game Boy Advance's writes (../gba/original.c,
 // ../gba/ran.h), for the same tools.
 //
@@ -78,6 +81,9 @@ static struct {
 	FILE* entriesFile;
 	FILE* registersFile;
 	int beforeOp, beforeS;   // the instruction before this one, and the stack pointer it started with, or -1
+	// on a console whose code map is of addresses in its memory, as the PlayStation Portable's is, where a place's
+	// count starts, and how far the game's memory reaches from it: a place is an address less `base`
+	uint32_t base, reach;
 } ran = { .beforeOp = -1 };
 
 static void ranCant(const char* path) {
@@ -108,9 +114,12 @@ static int ranOpen(const uint32_t* functions, size_t words, int byPlace) {
 	ran.inFrame = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(uint32_t));
 	ran.inFrameOf = malloc((ran.functionCount ? ran.functionCount : 1) * sizeof(struct ranFunction*));
 	for (size_t i = 0; i < ran.functionCount; i++) {
-		uint32_t place = functions[i * 6], size = functions[i * 6 + 1];
+		uint32_t place = functions[i * 6] - ran.base, size = functions[i * 6 + 1];
+		// a Nintendo 64 function's address is where its processor sees the console's memory, at 0x80000000 or at
+		// 0xA0000000, and its place is where that is in the memory, as its emulator says an instruction's
+		if (place >= 0x80000000 && place < 0xC0000000) place &= 0x1FFFFFFF;
 		ran.functions[i].index = functions[i * 6 + 2];
-		if (!byPlace || !size || place + size < place) continue;
+		if (!byPlace || !size || place + size < place || functions[i * 6] < ran.base || (ran.reach && place + size > ran.reach)) continue;
 		ranReach(place + size - 1);
 		ran.starts[place] = (uint32_t) i + 1;
 		memset(ran.marks + place, 1, size);
@@ -136,9 +145,11 @@ static void ranStretch(const struct ranPlayed* p, int what) {
 	fwrite(record, 4, 5, ran.playedFile);
 }
 
+// a stretch begins when nothing came before it, which is -1, and so is the frame before frame 0: so a first one at frame
+// 0 begins too, and its first frame isn't left as the memory happened to hold it
 static void ranHappened(struct ranPlayed* p, int what) {
 	if (p->last[what] == ran.frame) return;
-	if (p->last[what] != ran.frame - 1) {
+	if (p->last[what] < 0 || p->last[what] != ran.frame - 1) {
 		if (p->last[what] >= 0) ranStretch(p, what);
 		p->start[what] = (uint32_t) ran.frame;
 	}
@@ -162,6 +173,21 @@ static void ranStarted(struct ranFunction* f, uint32_t axys, uint32_t p) {
 	f->registers[f->held][0] = axys;
 	f->registers[f->held][1] = p | (uint32_t) ran.frame << 8;
 	f->held++;
+}
+
+/** A place the PlayStation's processor is at, for a core that tells only where it's about to run, as PCSX ReARMed does
+ *  with the tools' change to it (pcsx.patch, dreamports_watch_pc): its address in the console's 2 MB, which the
+ *  console sees again at 0x80000000 and 0xA0000000, or RAN_NOWHERE outside it, as in the BIOS. */
+static uint32_t ranPlaystationPlace(uint32_t address) {
+	return (address & 0x1FFFFFFF) < 0x200000 ? address & 0x1FFFFF : RAN_NOWHERE;
+}
+
+/** What such a core calls as the processor is about to run the instruction at `pc`: a function of FUNCTIONS whose
+ *  first instruction it is ran in this frame. Nothing more is told of it, so nothing is written for DP_PLAYED. */
+static void ranReachedPc(uint32_t pc) {
+	uint32_t place = ranPlaystationPlace(pc);
+	if (place >= ran.size || !ran.starts[place]) return;
+	ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
 }
 
 /** What the emulator calls between reading an instruction and running it: its address, its place in the program or
@@ -268,6 +294,104 @@ static void ranInstruction65816(uint32_t pc, uint32_t place, uint32_t op, const 
 		static const uint32_t FLAG[4] = { 0x80, 0x40, 0x01, 0x02 };
 		ranHappened(now, !(p & FLAG[op >> 6]) == !(op & 0x20) ? TAKEN : NOT_TAKEN);
 	}
+}
+
+// the Game Boy's processor (gambatte.patch): where a CALL or an RST, a JP (HL) and a RET or a RETI send it, as the change
+// in the stack pointer after it says, and which way a JR, JP, CALL or RET with a condition goes
+static int ranSm83Calls(int op) { return op == 0xCD || (op & 0xE7) == 0xC4 || (op & 0xC7) == 0xC7; }
+static int ranSm83Returns(int op) { return op == 0xC9 || op == 0xD9 || (op & 0xE7) == 0xC0; }
+static int ranSm83TwoWays(int op) { return (op & 0xE7) == 0x20 || (op & 0xE7) == 0xC2 || (op & 0xE7) == 0xC4 || (op & 0xE7) == 0xC0; }
+
+/** What Gambatte calls between reading an instruction and running it: its address, its place in the cartridge's
+ *  program or RAN_NOWHERE, its first byte, and the flags, A and the stack pointer, from the lowest byte. */
+static void ranInstructionSm83(uint32_t pc, uint32_t place, uint32_t op, uint32_t fasp) {
+	(void) pc;
+	int sp = (int) (fasp >> 16), way = 0;
+	uint32_t f = fasp & 0xFF;
+	if (ranSm83Calls(ran.beforeOp) && sp == ((ran.beforeS - 2) & 0xFFFF)) way = CALLED;
+	else if (ran.beforeOp == 0xE9 && sp == ran.beforeS) way = JUMPED;
+	else if (ranSm83Returns(ran.beforeOp) && sp == ((ran.beforeS + 2) & 0xFFFF)) way = RETURNED;
+	ran.beforeOp = (int) op;
+	ran.beforeS = sp;
+	if (place == RAN_NOWHERE) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (way && ran.entriesFile && !(ran.marks[place] & 2 << way)) {
+		ran.marks[place] |= 2 << way;
+		uint32_t record[3] = { place, (uint32_t) way, (uint32_t) ran.frame };
+		fwrite(record, 4, 3, ran.entriesFile);
+	}
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
+	if (!ran.playedFile) return;
+	if (!ran.played[place]) {
+		if (ran.count == ran.room) {
+			ran.room = ran.room ? ran.room * 2 : 1 << 14;
+			ran.list = realloc(ran.list, ran.room * sizeof(struct ranPlayed));
+		}
+		struct ranPlayed* new = &ran.list[ran.count++];
+		new->place = place;
+		new->code = op;
+		new->processor = 0;
+		new->other = 0;
+		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
+		ran.played[place] = (uint32_t) ran.count;
+	}
+	struct ranPlayed* now = &ran.list[ran.played[place] - 1];
+	ranHappened(now, RAN);
+	// a condition's two bits say NZ, Z, NC or C: the zero flag is bit 7 of F and the carry bit 4
+	if (ranSm83TwoWays((int) op)) {
+		int when = (int) (op >> 3) & 3, set = (int) (f & (when < 2 ? 0x80 : 0x10)) != 0;
+		ranHappened(now, set == (when & 1) ? TAKEN : NOT_TAKEN);
+	}
+}
+
+/** What PPSSPP calls after its interpreter runs an instruction, with the tools' change to it (ppsspp.patch): where it
+ *  was, its word, and for a conditional branch which way it went, 1 to its target and 2 on, or 0. A function runs when
+ *  its first instruction does, and a place is the address less `base`, in the game's memory, or nowhere. */
+static void ranInstructionMips(uint32_t pc, uint32_t op, uint32_t way) {
+	uint32_t place = pc - ran.base;
+	if (pc < ran.base || place >= ran.reach) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
+	if (!ran.playedFile) return;
+	if (!ran.played[place]) {
+		if (ran.count == ran.room) {
+			ran.room = ran.room ? ran.room * 2 : 1 << 14;
+			ran.list = realloc(ran.list, ran.room * sizeof(struct ranPlayed));
+		}
+		struct ranPlayed* new = &ran.list[ran.count++];
+		new->place = pc;
+		new->code = op;
+		new->processor = 0;
+		new->other = 0;
+		for (int what = 0; what < HAPPENINGS; what++) new->last[what] = -1;
+		ran.played[place] = (uint32_t) ran.count;
+	}
+	struct ranPlayed* now = &ran.list[ran.played[place] - 1];
+	ranHappened(now, RAN);
+	if (way) ranHappened(now, way == 1 ? TAKEN : NOT_TAKEN);
+}
+
+/** What Parallel N64 calls before each instruction its cached interpreter runs (parallel-n64.patch): its address, and
+ *  its place in the console's memory, or RAN_NOWHERE. It says where the processor is and nothing of the instruction,
+ *  so which functions ran in each frame is all that's kept of it: nothing is written for DP_PLAYED, DP_ENTRIES or
+ *  DP_REGISTERS, which the tools don't ask of this console (reference.mjs). */
+static void ranAt(uint32_t pc, uint32_t place) {
+	(void) pc;
+	if (place == RAN_NOWHERE) {
+		ran.elsewhere++;
+		return;
+	}
+	ranReach(place);
+	if (ran.starts[place]) ranInThisFrame(&ran.functions[ran.starts[place] - 1]);
+	if (!(ran.marks[place] & 1)) ran.outside++;
 }
 
 /** The functions that ran in the frame just played, by their numbers in the code map, and how many: begun again for the next. */

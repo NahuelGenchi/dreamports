@@ -1,0 +1,250 @@
+name: Mac and Windows (NES)
+
+# The NES's proof tools on a Mac and on Windows, as a person making a Dreamport on one has them, on GitHub's own
+# computers, as the Game Boy Advance's workflow tries that console's (gba.yml): a Mac with Apple's chip, got ready as
+# tools/README.md has it, with Homebrew's Node.js and CMake, and Windows with only git and Node.js. Each runs
+# test:nes-twin, the function check, which builds a program of its own each time it runs: with Apple's compiler on a
+# Mac, and on Windows with w64devkit's, which the tools get once and keep (#1957). GitHub's Windows has a gcc of its
+# own on the PATH, which a person's seldom has, so that job takes it off the PATH first, and the tools get their own.
+# Then each builds the NES's reference emulator, FCEUmm, from its makers' source, as setup does on a person's computer,
+# and runs test:real-console, which proves a program of the project's own on it in the computer's own browser (#1967).
+# Linux runs it in Check. Nothing from any game's copy is needed, and nothing is sent anywhere.
+#
+# Each also runs test:part-tasks, a game whose parts are its tasks, as far as the NES's tools reach (#1970).
+#
+# It isn't part of Check, as a Mac and Windows take longer to start and build. It runs on pull requests that touch
+# what those tools are made of, after they merge, every week, and by hand.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nes.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/nes/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/nes.svg'
+      - 'tools/capture.mjs'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/**'
+      - 'tools/lib/binaryen.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/fceumm.patch'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/nes/**'
+      - 'tools/new.mjs'
+      - 'tools/play.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/read.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-nes.c'
+      - 'tools/test/made-up-nes.mjs'
+      - 'tools/test/nes-libraries.mjs'
+      - 'tools/test/nes-twin.mjs'
+      - 'tools/test/nes-twin/**'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/**'
+      - 'tools/test/real-console.mjs'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+      - 'tools/untouched.mjs'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/nes.yml'
+      - '.node-version'
+      - '.npmrc'
+      - 'kit/c/console.c'
+      - 'kit/c/disc.c'
+      - 'kit/c/disc.h'
+      - 'kit/c/game.js'
+      - 'kit/c/kit.c'
+      - 'kit/c/kit.h'
+      - 'kit/c/libc.c'
+      - 'kit/c/native.c'
+      - 'kit/c/page.h'
+      - 'kit/c/pause.c'
+      - 'kit/c/worklet.js'
+      - 'kit/consoles.js'
+      - 'kit/nes/**'
+      - 'package-lock.json'
+      - 'package.json'
+      - 'public/systems/nes.svg'
+      - 'tools/capture.mjs'
+      - 'tools/codemap.mjs'
+      - 'tools/consoles.mjs'
+      - 'tools/dp.mjs'
+      - 'tools/find.mjs'
+      - 'tools/gba/**'
+      - 'tools/lib/binaryen.mjs'
+      - 'tools/lib/c.mjs'
+      - 'tools/lib/chrome.mjs'
+      - 'tools/lib/explore.h'
+      - 'tools/lib/new-game.mjs'
+      - 'tools/lib/paths.mjs'
+      - 'tools/lib/proof-files.mjs'
+      - 'tools/lib/proofs.mjs'
+      - 'tools/lib/taking.mjs'
+      - 'tools/libretro/build.mjs'
+      - 'tools/libretro/calls.h'
+      - 'tools/libretro/fceumm.patch'
+      - 'tools/libretro/held.h'
+      - 'tools/libretro/host.c'
+      - 'tools/libretro/new-game/**'
+      - 'tools/libretro/ran-ps2.h'
+      - 'tools/libretro/ran.h'
+      - 'tools/libretro/reference.mjs'
+      - 'tools/libretro/starts.h'
+      - 'tools/match.mjs'
+      - 'tools/nes/**'
+      - 'tools/new.mjs'
+      - 'tools/play.mjs'
+      - 'tools/proofs.mjs'
+      - 'tools/prove.mjs'
+      - 'tools/read.mjs'
+      - 'tools/ready.mjs'
+      - 'tools/rom.mjs'
+      - 'tools/setup.mjs'
+      - 'tools/tasks.mjs'
+      - 'tools/test/made-up-nes.c'
+      - 'tools/test/made-up-nes.mjs'
+      - 'tools/test/nes-libraries.mjs'
+      - 'tools/test/nes-twin.mjs'
+      - 'tools/test/nes-twin/**'
+      - 'tools/test/part-tasks.mjs'
+      - 'tools/test/part-tasks/**'
+      - 'tools/test/real-console.mjs'
+      - 'tools/test/stand-in/**'
+      - 'tools/twin.mjs'
+      - 'tools/untouched.mjs'
+  schedule:
+    - cron: '17 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # fails a pull request that one above it in a stack carries, so none of the jobs after it starts (.github/stack/stack.mjs)
+  stack:
+    name: Stack
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/stack
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
+
+  mac:
+    name: Mac (NES)
+    needs: stack
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # what a person's Mac has or installs: Apple's command line tools give git and the C compiler, Homebrew gives
+      # Node.js and CMake
+      - name: Getting ready on a Mac
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          sw_vers
+          test "$(uname -m)" = arm64
+          xcode-select -p
+          cc --version | head -1
+          git --version
+          brew install --quiet node cmake
+          echo "$(brew --prefix)/bin" >> "$GITHUB_PATH"
+      - name: The tools' packages
+        run: |
+          test "$(command -v node)" = "$(brew --prefix)/bin/node"
+          node --version
+          npm ci
+      # it builds the emulator itself, as prove does the first time it needs it
+      - run: npm run test:part-tasks -- nes
+      - run: npm run test:nes-twin
+      - run: npm run dp -- setup nes
+      - run: npm run test:real-console
+
+  windows:
+    name: Windows (NES)
+    needs: stack
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # what a person's Windows has or installs: git and Node.js
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          check-latest: true
+          cache: npm
+      - run: npm ci
+      # it builds the emulator itself, as prove does the first time it needs it, with GitHub's own gcc for the function check
+      - run: npm run test:part-tasks -- nes
+      # no compiler of the computer's own, as on most people's Windows: the tools get their own
+      - name: No gcc on the PATH
+        shell: pwsh
+        run: |
+          $kept = ($env:PATH -split ';' | Where-Object { $_ -and -not (Test-Path (Join-Path $_ 'gcc.exe')) }) -join ';'
+          "PATH=$kept" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: The tools get their own compiler
+        shell: pwsh
+        run: |
+          if (Get-Command gcc -ErrorAction SilentlyContinue) { throw 'gcc is still on the PATH' }
+          npm run test:nes-twin
+          if (-not (Test-Path "$env:ProgramData\dreamports-compiler\w64devkit\bin\gcc.exe")) { throw 'the tools kept no compiler' }
+      - run: npm run dp -- setup nes
+      - run: npm run test:real-console

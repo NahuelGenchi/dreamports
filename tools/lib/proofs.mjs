@@ -20,7 +20,13 @@
 // the start of a SHA-1: the twin's of its own code, of what its file holds outside every function, and of the game's
 // own headers the file includes, without their comments, and the original's of its bytes. So a proof goes stale by
 // itself: once the twin's code changes, or a line of its file outside the functions, or a header of its file, or the
-// code map gives the function other bytes, its line no longer counts, and the tool has to prove it again.
+// code map gives the function other bytes, its line no longer counts, and the tool has to prove it again. The
+// original's mark is taken the way the console's code is laid out. A Super Nintendo function's is of its bytes in the
+// ROM with the processor's mode it starts in, as the code map says it, and the address its code runs at, bank and all
+// (snes/functions.mjs, addressOf): the same bytes read in another mode are other instructions, and run from another
+// bank they call and push other addresses. A Nintendo 64 function's is of its bytes in the cartridge, where the code
+// the cartridge starts has them, with the address the game's boot code loads that code at (n64/functions.mjs,
+// programOf): its jumps and calls are absolute, so the same bytes loaded elsewhere go elsewhere.
 //
 // A function `match` found different can still start as the original's does: "starts" lists each such one, its key,
 // the two marks, and how many of its first bytes are the same, `["08012D4C", "1f0c…", "9a3e…", 64]`. It's no proof of
@@ -42,16 +48,21 @@ import { copyWith } from './copies.mjs';
 import { versionTwins } from './twins.mjs';
 import { codeOf, piecesIn, throughOf } from '../gba/match.mjs';
 import { contractsIn } from '../nes/twin.mjs';
+import { cartOfLayout, mapOf, placeIn, readCartridge, ROM } from '../snes/cartridge.mjs';
+import { addressOf as snesAddressOf } from '../snes/functions.mjs';
+import { contractsIn as gbContractsIn } from '../gbc/twin.mjs';
+import { n64Cartridge, programOf as n64ProgramOf } from '../n64/functions.mjs';
 import { portMap } from '../portmap.mjs';
 import { keptPiece, keptProgram } from '../ps2/original-program.mjs';
 import { exeReader, keptProgram as keptPs1Program, readProgram } from '../ps1/functions.mjs';
+import { functionBytes, keptGamecubeCode, readGamecubeCode } from '../gamecube/functions.mjs';
 import { stoppedFunctions } from '../../src/lib/entries.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
 
 export const PROOFS = 'proofs.json';
 /** The consoles whose functions' proofs the tools keep, so a version on one can be made a function at a time, and a
  *  new game on one is (tasks.mjs, #1864). */
-export const KEEPS_PROOFS = ['gba', 'nes', 'ps1', 'ps2'];
+export const KEEPS_PROOFS = ['gba', 'nes', 'snes', 'n64', 'gb', 'gbc', 'ps1', 'ps2', 'psp', 'nds', 'gamecube'];
 /** The two proofs, by what a line calls each, with how people say it. */
 export const KINDS = { bytes: 'the same bytes', memory: 'the same memory' };
 const FROM = 'Each function\'s proof, as npm run dp -- match and npm run dp -- twin found it: nothing else writes one';
@@ -61,6 +72,8 @@ const MARK = /^[0-9a-f]{16}$/;
 // of the cartridge that isn't a function, which is the game's data
 const MOST_FUNCTIONS = 12, MOST_BYTES = 2048, WIDEST_GAP = 0x400;
 
+// where the console starts a Game Boy game
+const GB_START = 0x0100;
 // where a Game Boy Advance cartridge starts, and where its code does, after its header
 const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
 
@@ -71,12 +84,38 @@ const GBA_CARTRIDGE = 0x08000000, GBA_AFTER_HEADER = 0x080000C0;
  * they run once, before any function is called, and never come back, so no call of them can be compared, and they
  * aren't C the console's compiler built. In a Dreamport that work is the kit's. A PlayStation 2 function of another
  * program of the disc, a module for its second processor or another for the EE, and a vector unit's program each
- * have their proof by `twin` (ps2/twin.mjs).
+ * have their proof by `twin` (ps2/twin.mjs). On the Super Nintendo it's 'reset' for the function the console starts
+ * the cartridge at, its reset vector's: it sets the game up and goes round its main loop, and never comes back, so no
+ * call of it can be compared with a twin's, and it's the frames of play that say a Dreamport does what it does. On
+ * the Nintendo 64 it's the function the cartridge's boot code jumps to, at the address the code loads at, which never
+ * comes back either. The code map says where each is (`layout`), so a computer with no copy of the game knows. On the
+ * PlayStation Portable it's 'start' for the program's start, which its code map names: the console starts its first
+ * thread there, and it goes round the game's loop and never comes back.
  */
 export function beyondProof(codeMap, f) {
   if (f.bytes) return 'memory';
+  // a PlayStation Portable program's start, which its code map names: the console starts the program's first thread
+  // there, and it goes round the game's loop and never comes back
+  if (codeMap.console === 'psp') return codeMap.start && functionKey(f) === codeMap.start ? 'start' : null;
+  if (codeMap.console === 'snes') return codeMap.layout && f.address === snesReset(codeMap.layout) ? 'reset' : null;
+  // and on the Nintendo 64, the function at the address the code loads at, where the boot code jumps to
+  if (codeMap.console === 'n64') return /^[0-9A-F]{8}$/.test(codeMap.layout?.load ?? '') && f.address === parseInt(codeMap.layout.load, 16) ? 'reset' : null;
+  // and on the GameCube, the function the program its disc boots starts at
+  if (codeMap.console === 'gamecube') return /^[0-9A-F]{8}$/.test(codeMap.layout?.entry ?? '') && !f.program && f.address === parseInt(codeMap.layout.entry, 16) ? 'reset' : null;
+  // a Game Boy game starts at $0100 and never comes back from there
+  if ((codeMap.console === 'gb' || codeMap.console === 'gbc') && f.address === GB_START) return 'start';
   const starts = codeMap.console === 'gba' && codeMap.functions.some(each => each.address === GBA_CARTRIDGE && each.size === 4);
   return starts && (f.address === GBA_CARTRIDGE || f.address === GBA_AFTER_HEADER) ? 'start' : null;
+}
+
+// where a Super Nintendo cartridge's reset vector is in its ROM, by its layout as a code map keeps it
+const resets = new WeakMap();
+function snesReset(layout) {
+  if (!resets.has(layout)) {
+    const cart = cartOfLayout(layout), { what, at } = placeIn(mapOf(cart), cart.reset);
+    resets.set(layout, what === ROM ? at : null);
+  }
+  return resets.get(layout);
 }
 
 /** A mark of some text or bytes: the first 16 digits of its SHA-1. */
@@ -165,7 +204,9 @@ const onDisk = path => (existsSync(path) && statSync(path).isFile() ? readFileSy
  * Every twin a version in C has, as it's written now: a Map of each function's key in the code map to
  * { name, file, line, mark }, the twin's name, its file in the version's folder, its line and its mark. On the Game
  * Boy Advance a twin is a function whose comment names the original's (lib/twins.mjs); on the NES one with a contract
- * beside it, whose words are part of what's marked (nes/twin.mjs). A function the game makes in its work memory has
+ * beside it, whose words are part of what's marked (nes/twin.mjs); on the Super Nintendo what a contract calls, the
+ * contract's words and the C function's code both marked, at the place in the ROM the address in its label is, as
+ * the code map says the cartridge is laid out (snes/contracts.mjs). A function the game makes in its work memory has
  * no twin here, as neither proof reaches one yet.
  */
 export function twinMarks(version, codeMap = readCodeMap(version)) {
@@ -195,13 +236,26 @@ export function marksIn(codeMap, { folder, files, twinsOf, givenOf = () => null,
     if (key === undefined || marks.has(key) || !twin.code) return;
     marks.set(key, { name: twin.name, file: inFolder(file), line: twin.line, mark: markOf(`${more}${twin.code}\n${built(file)}`) });
   };
-  if (codeMap.console === 'nes') {
+  if (codeMap.console === 'nes' || codeMap.console === 'gb' || codeMap.console === 'gbc') {
     const banks = Math.floor(Math.max(...codeMap.functions.map(f => f.address)) / 0x4000) + 1;
+    // a twin with a contract beside it, as each of these consoles' check reads them (nes/twin.mjs, gbc/twin.mjs)
+    const read_ = codeMap.console === 'nes' ? (text, file) => contractsIn(text, banks, givenOf(file)) : text => gbContractsIn(text, banks);
     for (const file of files) {
       const defined = new Map(twinsOf.get(file).map(twin => [twin.name, twin]));
-      for (const contract of contractsIn(read(file) ?? '', banks, givenOf(file)).contracts) {
+      for (const contract of read_(read(file) ?? '', file).contracts) {
         const twin = defined.get(/^[A-Za-z_]\w*/.exec(contract.call)?.[0]);
         if (twin) keep(contract.offset, twin, file, `${contract.text}\n`);
+      }
+    }
+    return marks;
+  }
+  if (codeMap.console === 'snes') {
+    const map = mapOf(cartOfLayout(codeMap.layout));
+    for (const file of files) {
+      const defined = new Map(piecesIn(read(file) ?? '', [], null, 'snes').functions.map(written => [written.name, written]));
+      for (const twin of twinsOf.get(file)) {
+        const { what, at } = placeIn(map, twin.address), written = defined.get(twin.name);
+        if (what === ROM && written) keep(at, { name: twin.name, line: written.line, code: written.code }, file, `${twin.code}\n`);
       }
     }
     return marks;
@@ -239,7 +293,32 @@ export function originalMarks(version, codeMap = readCodeMap(version)) {
     const exe = readProgram(copy.path) ?? keptPs1Program(original.sha1);
     return exe && (read => f => markOf(read(f.address, f.size)))(exeReader(exe));
   }
+  // a Nintendo 64 function's, from the code the cartridge starts, in the console's byte order whatever order the
+  // copy's in, with where it loads; null for one outside that code, of which nothing is known
+  if ((codeMap?.console ?? original.console) === 'n64') {
+    let program = null;
+    return f => {
+      const { load, text } = program ??= n64ProgramOf(n64Cartridge(copy.path)), at = f.address - load;
+      return at < 0 || at + f.size > text.length ? null : markOf(Buffer.concat([Buffer.from(`${load.toString(16).toUpperCase().padStart(8, '0')}\n`), text.subarray(at, at + f.size)]));
+    };
+  }
+  // a GameCube game's, from the program its disc boots or the module a function's key names, as twin keeps them on
+  // this computer as it reads them, and until one has nothing is known of them
+  if ((codeMap?.console ?? original.console) === 'gamecube') {
+    const code = readGamecubeCode(copy.path) ?? keptGamecubeCode(original.sha1);
+    return code && (f => (functionBytes(code, f) ? markOf(functionBytes(code, f)) : null));
+  }
   const cartridge = cartridgeOf(copy.path, codeMap?.console ?? original.console);
+  // a Nintendo DS game's, from whichever program or overlay of the cartridge the function is in, or nothing known of
+  // one the cartridge doesn't have there
+  if ((codeMap?.console ?? original.console) === 'nds') return f => (bytes => (bytes ? markOf(bytes) : null))(cartridge.code(f));
+  // a Super Nintendo function's, with the mode it starts in and the address its code runs at, as the top of this
+  // file says
+  if ((codeMap?.console ?? original.console) === 'snes') {
+    let cart = null;
+    const runsAt = f => snesAddressOf(f.address, cart ??= readCartridge(cartridge.copy())).toString(16).toUpperCase().padStart(6, '0');
+    return f => markOf(Buffer.concat([Buffer.from(`${f.mode ?? ''} ${runsAt(f)}\n`), cartridge(f.address, f.size)]));
+  }
   return f => markOf(cartridge(f.address, f.size));
 }
 
@@ -279,7 +358,8 @@ export function stateText(state) {
   if (state.kind) return `proven by ${KINDS[state.kind]}${state.calls ? `, over ${state.calls.toLocaleString('en')} calls${state.runs ? ` in ${state.runs.length} runs, seeds ${listed(state.runs.map(([seed]) => seed))}` : ''}` : ''}`;
   return {
     'no twin': state.beyond === 'memory' ? 'no twin yet, and the game makes it in its work memory, which no proof reaches yet'
-      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet' : 'no twin yet',
+      : state.beyond === 'start' ? 'the cartridge\'s start, which is the kit\'s to do and no proof reaches yet'
+        : state.beyond === 'reset' ? 'where the console starts the cartridge, which never comes back, so no proof reaches it yet' : 'no twin yet',
     stop: 'not proven: its twin has a stop, a path marked as left out',
     unproven: 'not proven yet',
     'twin changed': 'not proven: its twin changed since its proof',
@@ -358,6 +438,16 @@ export function keptText(version, result, kind) {
   ];
 }
 
+// the program of a PlayStation 2 disc a function is in, the one the disc boots being none, and a vector unit's apart
+const program = f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`;
+
+/** Some of a code map's functions in the order a task lists them: a PlayStation 2 disc's programs one after another,
+ *  the one it boots first, as each one's addresses are its own, and each program's in the code map's order. */
+export function inProgramOrder(codeMap, functions) {
+  const place = new Map(codeMap.functions.map((f, n) => [f.key, n]));
+  return [...functions].sort((a, b) => (program(a) < program(b) ? -1 : program(a) > program(b) ? 1 : place.get(a.key) - place.get(b.key)));
+}
+
 /**
  * A version's tasks: the code map's functions that a proof can be given of (beyondProof), in groups that sit together,
  * [{ name, first, functions }], each `functions` those of the map. A group ends after 12 functions or two
@@ -367,11 +457,8 @@ export function keptText(version, result, kind) {
 export function groupsOf(codeMap) {
   const groups = [];
   let group = null, bytes = 0;
-  const bank = f => (codeMap.console === 'nes' ? Math.floor(f.address / 0x4000) : 0);
-  // a PlayStation 2 disc's programs one after another, the one it boots first, as each one's addresses are its own
-  const program = f => `${f.program ?? ''}${f.vu ? '~vu' : ''}`;
-  const inOrder = codeMap.functions.filter(f => !beyondProof(codeMap, f)).map((f, n) => [f, n]).sort(([a, x], [b, y]) => (program(a) < program(b) ? -1 : program(a) > program(b) ? 1 : x - y)).map(([f]) => f);
-  for (const f of inOrder) {
+  const bank = f => (['nes', 'gb', 'gbc'].includes(codeMap.console) ? Math.floor(f.address / 0x4000) : 0);
+  for (const f of inProgramOrder(codeMap, codeMap.functions.filter(f => !beyondProof(codeMap, f)))) {
     const last = group?.at(-1);
     if (!group || group.length >= MOST_FUNCTIONS || bytes + f.size > MOST_BYTES || f.address - (last.address + last.size) > WIDEST_GAP || bank(f) !== bank(last) || program(f) !== program(last)) {
       group = [];

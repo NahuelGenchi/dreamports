@@ -1,7 +1,8 @@
 // Builds a game written in C on its console's kit in C (kit/c/README.md): to WebAssembly, which its page runs, and for
 // this computer, which runs the same C with no browser. Every console's kit is the base every console shares, kit/c/,
-// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the
-// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/ and the Nintendo 64 kit/n64/c/, and
+// with the console's own on top where it has one, as the Game Boy Advance has kit/gba/c/, the NES kit/nes/c/, the Game Boy and the Game Boy Color kit/gbc/c/, the
+// PlayStation kit/ps1/c/, the PlayStation 2 kit/ps2/c/, the Super Nintendo kit/snes/c/, the Nintendo 64 kit/n64/c/ and
+// the GameCube kit/gamecube/c/, and
 // with console.h, made here from kit/consoles.js, on every console but the Game Boy Advance. WebAssembly is built with Clang and its linker as WebAssembly themselves,
 // from npm (@yowasp/clang), so it needs nothing installed beyond `npm ci`, the same on every computer. A build for this
 // computer needs its own C compiler, the one the proof tools already need (tools/README.md).
@@ -48,7 +49,9 @@ const OWN = {
     // and in the function check, a game's own table of twins leaves an address with no twin to the check (twinsHeader)
     checkFlags: ['-DDP_TWIN_CHECK'],
   },
+  nds: { folder: fileURLToPath(new URL('../../kit/nds/c/', import.meta.url)), sources: ['nds.c', 'video.c', 'ipc.c', 'irq.c', 'dma.c', 'math.c', 'cart.c', 'sound.c'], header: true },
   nes: { folder: fileURLToPath(new URL('../../kit/nes/c/', import.meta.url)), sources: ['nes.c', 'ppu.c', 'apu.c'], header: true },
+  gb: { folder: fileURLToPath(new URL('../../kit/gbc/c/', import.meta.url)), sources: ['gb.c', 'lcd.c', 'apu.c'], header: true },
   ps2: { folder: fileURLToPath(new URL('../../kit/ps2/c/', import.meta.url)), sources: ['ps2.c', 'gs.c', 'gs-memory.c', 'gif.c', 'ee.c', 'floats.c', 'vu.c', 'bus.c', 'dmac.c', 'vif.c', 'mmi.c', 'iop.c', 'iop-bios.c', 'sif.c', 'spu2.c', 'pad.c', 'cdvd.c', 'mc.c'], header: true },
   ps1: { folder: fileURLToPath(new URL('../../kit/ps1/c/', import.meta.url)), sources: ['ps1.c', 'gpu.c', 'draw.c', 'sound.c', 'pad.c', 'clock.c', 'cd.c'], header: true,
     // psx_gpu, which draw.c builds as one with itself, dfsound, which sound.c does, and the emulator's CD drive, which
@@ -63,15 +66,33 @@ const OWN = {
   // the function check builds it noting each read and write of the hardware, to compare with the original's; and a game
   // keeps its own values above the console's 16 MB, as its C keeps the console's at their own addresses (snes.h)
   snes: { folder: fileURLToPath(new URL('../../kit/snes/c/', import.meta.url)), sources: ['snes.c', 'ppu.c', 'dma.c', 'apu.c', 'dsp.c', 'timing.c', 'frame.c'], header: true, checkFlags: ['-DDP_TWIN_CHECK'], gameFlags: ['-Wl,--global-base=16777216', '-Wl,--initial-memory=33554432'] },
+  // a game keeps its own values above the console's memory, which is at the console's own addresses, the scratchpad
+  // from 64 KB, the video memory from 64 MB and the main memory up to 192 MB (kit/psp/c/memory.c)
+  psp: { folder: fileURLToPath(new URL('../../kit/psp/c/', import.meta.url)), sources: ['psp.c', 'memory.c', 'kernel.c', 'display.c', 'ctrl.c', 'audio.c', 'ge.c', 'sync.c', 'mutex.c', 'vfpu.c'], header: true, trees: ['vfpu'], gameFlags: ['-Wl,--global-base=201326592', '-Wl,--initial-memory=218103808'] },
   n64: {
     folder: fileURLToPath(new URL('../../kit/n64/c/', import.meta.url)), sources: ['n64.c', 'rsp.c', 'vu.c', 'rdp.c', 'vi.c'], header: true,
+    // the function check builds it with each read and write the processor's own load or store, which its pass over
+    // the module sends to the console's memory, so a twin written on the kit is checked as it plays (n64.c)
+    checkFlags: ['-DDP_TWIN_CHECK'],
     // a char with no sign, as IDO, which most of its games were built with, has it, code that reads a value through a
     // pointer of another type or through address 0, and no two stores the compiler sees side by side made into one, as
     // the fold pass turns round each number by its own size, which two merged in the module's own order would undo
     // (wasm-fold.mjs)
     twinFlags: ['-funsigned-char', '-fno-strict-aliasing', '-fno-delete-null-pointer-checks', '-mllvm', '-combiner-store-merging=false'],
   },
+  gamecube: {
+    folder: fileURLToPath(new URL('../../kit/gamecube/c/', import.meta.url)), sources: ['gamecube.c', 'vi.c', 'audio.c', 'si.c', 'floats.c'], header: true,
+    // the function check builds it with each read and write the processor's own load or store, which its pass over
+    // the module sends to the console's memory, so a twin written on the kit is checked as it plays (gamecube.c); and
+    // no two stores the compiler sees side by side made into one, as the fold pass turns round each number by its own
+    // size, which two merged in the module's own order would undo (wasm-fold.mjs)
+    checkFlags: ['-DDP_TWIN_CHECK'],
+    twinFlags: ['-mllvm', '-combiner-store-merging=false'],
+  },
 };
+
+// the Game Boy Color's kit is the Game Boy's: one kit for both, as they share nearly all their hardware
+OWN.gbc = OWN.gb;
 
 const ident = name => name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 
@@ -96,7 +117,14 @@ export function consoleHeader(id) {
 #define CONSOLE_CLOCK ${clock}
 // how many sound samples it plays a second
 #define CONSOLE_SOUND_RATE ${machine.sound}
-
+// and the most a second can hold, a whole number, where the rate isn't one, as the Nintendo DS's
+#define CONSOLE_SOUND_MOST ${Math.ceil(machine.sound)}
+${machine.screens ? `
+// its screens in the picture, one above the other, and the one that's touched (kit_touch, kit.h)
+#define SCREEN_COUNT ${machine.screens.length}
+${machine.screens.map(([left, top, across, down], n) => `#define SCREEN_${n}_X ${left}\n#define SCREEN_${n}_Y ${top}\n#define SCREEN_${n}_W ${across}\n#define SCREEN_${n}_H ${down}`).join('\n')}
+#define TOUCHED_SCREEN ${machine.touch}
+` : ''}
 // its buttons as game_step gets them, a bit each, held or not
 enum {
 ${machine.buttons.map((name, bit) => `  BUTTON_${ident(name)} = 1 << ${bit},`).join('\n')}
@@ -167,7 +195,8 @@ function filesFor(sources, folders) {
   for (const folder of new Set([...all, ...trees])) {
     let place = tree;
     for (const part of relative(REPO, folder).split(sep).filter(Boolean)) place = place[part] ??= {};
-    for (const name of readdirSync(folder)) if (/\.[ch]$/.test(name)) place[name] = readFileSync(join(folder, name));
+    // and the tables a kit's C takes in whole with #embed, as the PlayStation Portable's vector unit's
+    for (const name of readdirSync(folder)) if (/\.([ch]|dat)$/.test(name)) place[name] = readFileSync(join(folder, name));
   }
   return tree;
 }
@@ -765,12 +794,20 @@ void *__twin_no_code(uint32_t address);
 #else
 #define TWIN_NONE(address) __builtin_trap();
 #endif
+/** How kit_twin is built: with nothing of clang's optimizer, which turns a switch whose cases sit evenly apart, as
+ *  twins at addresses 0x40 apart do, into a table of the functions in the module's data, where the build gives each
+ *  function's address in the original as any value in data, and the twin's number is lost (#1952). */
+#if defined(__clang__)
+#define TWIN_KEEPS_NUMBERS __attribute__((optnone, noinline))
+#else
+#define TWIN_KEEPS_NUMBERS
+#endif
 /** Defines kit_twin: write it once, in a file that declares every twin. A small number is a function of the module's
  *  own, as C keeps its pointers. An address with no twin, where the game copied one of the cartridge's functions, is
  *  that function's twin, as the console runs the copy as it would the original. */
 #define TWIN_TABLE \\
   TWIN_SAME_CODE \\
-  void *kit_twin(uint32_t address) { \\
+  TWIN_KEEPS_NUMBERS void *kit_twin(uint32_t address) { \\
     if (address < 0x10000u) return (void *)(uintptr_t)address; \\
     switch (address) { TWINS(TWIN_CASE) } \\
     TWIN_CODE(TWIN_COPY) \\

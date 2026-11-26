@@ -5,13 +5,21 @@ name: Clips
 # or a pull request that changes a game's code or recordings and links no clip of it (#1030), unless it changes no
 # frame and links the record of its proof, which is held to what would merge (#1060), or only proves functions of a game
 # with no recording yet and names each with its proof, held to what would merge too (#1474). It runs again whenever
-# the text changes. It fetches only the clips' own addresses, with a token that can only read.
+# the text changes. It fetches only the clips' own addresses, with a token that can only read. Its first step, Stack,
+# fails a pull request that one above it in a stack carries, naming the one to merge it through, as only that one's
+# clips decide anything (.github/stack/stack.mjs, #2034).
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
+  pull-requests: read
+
+# a new push or a new text cancels the pull request's older run, as only the newest one counts for a merge (#2011)
+concurrency:
+  group: clips-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   clips:
@@ -24,6 +32,12 @@ jobs:
           persist-credentials: false
           # the merge of the pull request into main and main itself, its first parent, so git can tell what it changes
           fetch-depth: 2
+      # fails a pull request that one above it in a stack carries, in a step and not a job of its own, so Clips is never
+      # skipped, which main's rules would count as passed
+      - name: Stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/stack/stack.mjs
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'

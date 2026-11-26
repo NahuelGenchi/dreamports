@@ -10,7 +10,8 @@
 // }
 //
 // A part's line is every function of the code map the original ran in the part's frames of its recording
-// (parts.json), whether or not a Dreamport matched them, as it's the original's side alone. Only `prove` writes it,
+// (parts.json) and in the frame after each, which a frame needs run to match the original's work memory (#1899),
+// whether or not a Dreamport matched them, as it's the original's side alone. Only `prove` writes it,
 // as it plays the original, on a computer with the game's copy, and a part it didn't play then keeps its line.
 //
 // With the file, a version that keeps its proofs (lib/proofs.mjs) has its parts for tasks, in the order parts.json
@@ -25,7 +26,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sharedProofFolder } from './paths.mjs';
 import { readParts } from './proof-files.mjs';
-import { beyondProof, groupsOf } from './proofs.mjs';
+import { beyondProof, groupsOf, inProgramOrder } from './proofs.mjs';
+import { layoutOf, playedIn, startedIn } from './played.mjs';
 import { versionOf } from '../../src/lib/languages.mjs';
 
 export const PART_FUNCTIONS = 'part-functions.json';
@@ -86,6 +88,23 @@ export function keepPartFunctions(game, original, found, names = readParts(game)
 }
 
 /**
+ * What the original ran in each part of a recording whose program says what ran and in which frames, and not which
+ * functions started in each frame, as the one that links several consoles does (gba/linked.mjs, #1919): for each of
+ * `parts`, those of the game that name the recording, with their `frames`, [its name, the keys of the code map's
+ * functions whose first instruction ran, on any console, in one of the part's frames or in the frame after one], as
+ * `prove` keeps it for a recording one console plays (#1899). `records` is what ran, as lib/played.mjs reads it, with
+ * the page's frame f the original's own frame f, `frames` how many the recording has, and `find` finderOf's.
+ */
+export function partsRanIn(parts, frames, codeMap, records, find) {
+  const layout = layoutOf(codeMap);
+  return parts.map(({ name, frames: [a, b] }) => {
+    const inPart = new Uint8Array(frames + 1);
+    for (let frame = Math.max(0, a); frame <= b && frame < frames; frame++) inPart[frame] = inPart[frame + 1] = 1;
+    return [name, startedIn(playedIn(records, inPart, layout, find), codeMap).sort()];
+  });
+}
+
+/**
  * The tasks that are a game's parts, from its `parts` (parts.json's), what each runs (`ran`, a Map by name, as
  * readPartFunctions gives) and its code map: [{ name, part: true, recorded, first, functions }] in the parts' order,
  * `functions` those of the code map a proof can be given of that the part runs and no part before it does, `first`
@@ -97,7 +116,8 @@ export function partGroups(parts, ran, codeMap) {
   const taken = new Set();
   const groups = parts.map(({ name }) => {
     const keys = ran.get(name);
-    const functions = (keys ?? []).map(key => byKey.get(key)).filter(f => f && !beyondProof(codeMap, f) && !taken.has(f.key));
+    // a program at a time on a PlayStation 2 disc, as a group of functions is, so a module's are together and in order
+    const functions = inProgramOrder(codeMap, (keys ?? []).map(key => byKey.get(key)).filter(f => f && !beyondProof(codeMap, f) && !taken.has(f.key)));
     for (const f of functions) taken.add(f.key);
     return { name, part: true, recorded: Boolean(keys), first: functions[0]?.key ?? null, functions };
   });

@@ -10,7 +10,7 @@ import { sizesIn } from './screens.mjs';
 const kit = name => new URL(`../gba/new-game/${name}`, import.meta.url);
 const otherKit = name => new URL(`../libretro/new-game/${name}`, import.meta.url);
 // the consoles with a kit in C of their own besides the Game Boy Advance, whose starting point in C is on it
-const OWN_C_START = { nes: 'c/nes.c.template', snes: 'c/snes.c.template', ps1: 'c/ps1.c.template', ps2: 'c/ps2.c.template', n64: 'c/n64.c.template' };
+const OWN_C_START = { nds: 'c/nds.c.template', nes: 'c/nes.c.template', gb: 'c/gb.c.template', gbc: 'c/gb.c.template', snes: 'c/snes.c.template', ps1: 'c/ps1.c.template', ps2: 'c/ps2.c.template', n64: 'c/n64.c.template', psp: 'c/psp.c.template', gamecube: 'c/gamecube.c.template' };
 const js = text => `'${text.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`;
 const html = text => text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
@@ -39,7 +39,7 @@ export function startingFiles(game, original, { language = 'js' } = {}) {
     const page = fill(readFileSync(kit('index.html.template'), 'utf8'), { NAME: html(name), TITLE: html(`${title} in C`) }).replaceAll('"../../kit/', '"../../../kit/');
     if (original.console !== 'gba') {
       // on a console with no kit in C of its own: the base every console's shares, kit/c/, at the game's screen. On the
-      // NES, its own kit (kit/nes/c/)
+      // NES, its own kit (kit/nes/c/), as on the others that have one
       const machine = CONSOLES[original.console];
       if (!machine) throw new Error(`proof/original.json names a console kit/consoles.js doesn't know: ${original.console}.`);
       const [width, height] = sizesIn(original.screen)?.[0] ?? machine.screen;
