@@ -1,5 +1,7 @@
 # Normalize line endings so Windows, macOS and Linux checkouts produce identical commits.
 * text=auto eol=lf
+# Every change adds a line to the history, so a merge keeps both sides' new lines by itself (#2064).
+docs/HISTORY.md merge=union
 *.png binary
 *.jpg binary
 *.gif binary
