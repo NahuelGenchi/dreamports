@@ -7,6 +7,8 @@ struct Box { int a, b, c, d; };
 // where the console keeps them, as the made-up cartridge places them: no file defines them
 extern int gKept, gOther, gInner, gDone;
 extern int gOut[4];
+// what the BIOS left on the stack after a division and after a copy, as Look finds it, and what each worked out
+extern int gSplit, gFill, gFilled[2], gUnder, gSplitLeft[6], gFillLeft[6];
 extern int gMore, gFirst, gSecond, gThrough, gSeen, gSeed, gLocal, gPass, gWrap, gHanded;
 // memory the console has far from where a Dreamport keeps it, as a save's flash is
 extern char gFar[];
@@ -19,6 +21,9 @@ extern int gTop, gTopLeft[6];
 void Inner(void);
 void Push(void);
 void Copy(struct Box *box);
+// the BIOS's division and its copy, each through a stub of the cartridge's, a swi and back
+int Div(int num, int denom);
+void CpuSet(const void *src, void *dest, unsigned int control);
 
 /** Inner, 0x08000280: a leaf, which pushes nothing. */
 void Inner(void) { gInner++; }
@@ -119,6 +124,33 @@ void Hand(int *out) {
   *out = 7;
 }
 
+/** Split, 0x08000900: keeps an address across a division by the BIOS, which pushes r2 and where the stub goes back to
+ *  on the game's stack, under Split's own pushes. Nothing in the C says what r2 holds then. */
+void Split(void) {
+  int *split = &gSplit;
+  *split = Div(gSeed, 3);
+}
+
+/** Fill, 0x08000940: keeps an address across a copy by the BIOS, which pushes r2, the copy's third value, and where
+ *  the stub goes back to, and then for its own routine where that goes back to in the BIOS and two of the registers
+ *  Fill and Main keep. */
+void Fill(void) {
+  int *fill = &gFill;
+  CpuSet(&gSeed, gFilled, 0x04000001);
+  *fill = 8;
+}
+
+/** Poke, 0x08000980: a word set just under the box it's handed. */
+void Poke(int *box) { box[-1] = 9; }
+
+/** Under, 0x080009C0: a division by the BIOS, which takes the stack 8 bytes under Under's box, and then a word set in
+ *  those 8 bytes, which are the stack's own from then on, as the function check has it (../../gba/twin.mjs). */
+void Under(void) {
+  int box[2];
+  gUnder = Div(gSeed, 3);
+  Poke(box);
+}
+
 /** Again, 0x08000800: Keep, then Read over what Keep's calls left, keeping an address of its own across both, another
  *  than Main keeps, as one call of the function check makes them (../../gba/twin.mjs). */
 void Again(void) {
@@ -157,6 +189,10 @@ void Main(void) {
   Look(gPassLeft);
   Hand(&gHanded);
   Look(gHandLeft);
+  Split();
+  Look(gSplitLeft);
+  Fill();
+  Look(gFillLeft);
   *done = 1;
   *more = 1;
 }
