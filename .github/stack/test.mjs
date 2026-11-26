@@ -66,10 +66,11 @@ function stand({ pulls = [], parents = {}, runs = [], jobs = {}, endsAfter = 1, 
   return gh;
 }
 
-const pull = (number, sha, { body = '', fork = false, base = 'main', state = 'open', merged = false } = {}) => ({
+const pull = (number, sha, { body = '', fork = false, base = 'main', state = 'open', merged = false, draft = false } = {}) => ({
   number,
   state,
   merged,
+  draft,
   body,
   base: { ref: base },
   head: { sha, repo: { full_name: fork ? 'someone/dreamports' : REPOSITORY } },
@@ -87,6 +88,33 @@ test('a pull request a stack above carries is tested through its top, which is n
   assert.equal(await said(gh, one), 'This pull request is tested through #3, which carries its commits at the top of its stack. Merge it through #3.');
   assert.match(await said(gh, two), /tested through #3\b/);
   assert.equal(await said(gh, three), null);
+});
+
+test('a draft above carries nothing, so the one below is tested in full and merges by itself', async () => {
+  const fix = pull(1, 'a');
+  const task = pull(2, 'b', { body: 'Refs #10\nBuilds on #1\n', draft: true });
+  const gh = stand({ pulls: [fix, task], parents: PARENTS });
+  assert.equal(await carries(gh, task, fix, 'a'), false);
+  assert.equal(await said(gh, fix), null);
+  // once it's ready for review it carries it, as any pull request above does
+  const ready = { ...task, draft: false };
+  assert.match(await said(stand({ pulls: [fix, ready], parents: PARENTS }), fix), /tested through #2\b/);
+  // and a draft in the middle of a stack leaves the one below it to itself, while the top still carries the draft
+  const top = pull(3, 'c', { body: 'Builds on #2' });
+  const three = stand({ pulls: [fix, task, top], parents: PARENTS });
+  assert.equal(await said(three, fix), null);
+  assert.match(await said(three, task), /tested through #3\b/);
+});
+
+test('a draft made ready stops the runs below it, and one made a draft again lets them run in full', async () => {
+  const fix = pull(1, 'a');
+  const run = { id: 7, name: 'Check', workflow_id: 70, head_sha: 'a', path: '.github/workflows/check.yml', status: 'completed', conclusion: 'failure', created_at: '2026-11-26T00:00:00Z', html_url: 'https://example.com/7', pull_requests: [{ number: 1 }] };
+  const jobs = { 7: [{ name: 'Stack', status: 'completed', conclusion: 'failure' }] };
+  const draft = pull(2, 'b', { body: 'Builds on #1', draft: true });
+  const gh = stand({ pulls: [fix, draft], parents: PARENTS, runs: [run], jobs });
+  await stop({ gh, event: { action: 'converted_to_draft', pull_request: draft }, gated: new Set(['.github/workflows/check.yml']), log: () => {}, wait: async () => {} });
+  assert.deepEqual(gh.rerun, [7], 'the run Stack stopped runs again in full');
+  assert.deepEqual(gh.cancelled, []);
 });
 
 test('a piece two pieces build on, with one on top of both, is tested through that one only', async () => {
@@ -338,7 +366,7 @@ test('runs are stopped and started only on the events of a pull request from thi
   };
   for (const path of gatedWorkflows(fileURLToPath(WORKFLOWS))) assert.equal(writes(path.split('/').at(-1)), false, path);
   const { on, permissions, jobs } = workflow('stack.yml');
-  assert.deepEqual(on.pull_request.types, ['opened', 'reopened', 'synchronize', 'edited', 'ready_for_review', 'closed']);
+  assert.deepEqual(on.pull_request.types, ['opened', 'reopened', 'synchronize', 'edited', 'ready_for_review', 'converted_to_draft', 'closed']);
   assert.deepEqual(permissions, { contents: 'read' });
   assert.match(jobs.stack.if, /^github\.event\.pull_request\.head\.repo\.full_name == github\.repository &&/);
   assert.equal(jobs.stack.steps.at(-1).run, 'node .github/stack/stack.mjs --stop');

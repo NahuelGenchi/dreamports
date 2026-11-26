@@ -38,6 +38,16 @@ test('a record of other files, another proof or fewer recordings doesn\'t stand,
   }
 });
 
+test('a note written after a whole proof leaves it standing, and any other file of the game doesn\'t', () => {
+  const proven = record({ trees: { game: 'g0', kit: 'k1', played: 'n1' } });
+  assert.deepEqual(recordProblems(proven, V, state({ trees: { game: 'g1', kit: 'k1', played: 'n1' } })), [], 'only its notes changed');
+  assert.match(recordProblems(proven, V, state({ trees: { game: 'g1', kit: 'k1', played: 'n2' } }))[0], /aren't as they were when a-game\/c was last proven whole/);
+  assert.match(recordProblems(proven, V, state({ trees: { game: 'g1', kit: 'k2', played: 'n1' } }))[0], /console's kit/);
+  // a record from before notes were told apart is held to every file
+  assert.match(recordProblems(record({ trees: { game: 'g0', kit: 'k1' } }), V, state({ trees: { game: 'g1', kit: 'k1', played: 'n1' } }))[0], /last proven whole/);
+  assert.match(recordProblems(record({ trees: { game: 'g0', kit: 'k1', played: null } }), V, state({ trees: { game: 'g1', kit: 'k1', played: null } }))[0], /last proven whole/);
+});
+
 test('what a step changes of a game: the versions whose code it changes, and its recordings', () => {
   const paths = ['games/a-game/c/src/act.c', 'games/a-game/c/src/levels.h', 'games/a-game/src/engine/game.js', 'games/other/src/main.js', 'tools/prove.mjs', 'games/a-game/notes/a.md'];
   assert.deepEqual(changesOf(paths, 'a-game'), { versions: ['a-game/c', 'a-game'], recordings: false });
@@ -108,6 +118,10 @@ test('the files as they are now are named as a commit of them would be', t => {
   assert.deepEqual(treesNow('sonic-battle/c'), stateAt('sonic-battle/c', 'HEAD', 'HEAD').trees);
   // and reading them leaves the folder's own index alone
   assert.equal(git('status', '--porcelain'), before);
+  // the tree without its notes is one of its own, where the game has notes, and the same tree where it has none
+  const trees = treesNow('sonic-battle/c'), notes = git('ls-tree', '--name-only', 'HEAD:games/sonic-battle/').split('\n').includes('notes');
+  assert.match(trees.played, /^[0-9a-f]{40}$/);
+  assert.equal(trees.played !== trees.game, notes);
   const held = stateAt('sonic-battle/c', 'HEAD', 'HEAD');
   assert.equal(held.progress, held.mains);
   assert.ok(held.recordings > 0);
