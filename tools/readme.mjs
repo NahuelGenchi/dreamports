@@ -1,7 +1,8 @@
 // npm run dp -- readme [--check]: writes the table of Dreamports in docs/STATUS.md from each Dreamport's entry,
 // games/<game>/entry.md, with its code ported and gameplay proven from its proof/ folder, and its lead, and each
-// Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links, and a row and a map for each
-// of its versions in other languages, such as <game>-c.svg (src/lib/languages.mjs), and below the table the shared code
+// Dreamport's progress map, in .github/readme/progress/<game>.svg, which the table links, and a map for each
+// of its versions in other languages, such as <game>-c.svg (src/lib/languages.mjs). A game has one row, with the numbers
+// of its version in C, the default language (#2040). Below the table is the shared code
 // of each console with a library in the kit, as a map in .github/readme/progress/shared.<console>.svg (#1508), whose
 // name has a dot, which no game's has. .github/workflows/readme.yml
 // runs it on main, so pull requests leave them alone and can't conflict over them. With --check it changes nothing and
@@ -12,8 +13,9 @@ import { dirname, join, relative, sep } from 'node:path';
 import { parse } from 'yaml';
 import { REPO } from './lib/paths.mjs';
 import { versionsOf } from './lib/proof-files.mjs';
-import { versionOf, versionTitle } from '../src/lib/languages.mjs';
-import { ENTRY, gameplayText, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
+import { UPSTREAM } from './lib/github.mjs';
+import { DEFAULT_LANGUAGE, versionOf } from '../src/lib/languages.mjs';
+import { ENTRY, mapOf, percentText, proofOf } from '../src/lib/entries.mjs';
 import { progressMap } from '../src/lib/progress-map.mjs';
 import { sharedMap } from '../src/lib/shared-map.mjs';
 import { sharedCode } from './libraries.mjs';
@@ -55,13 +57,20 @@ export function splitTable(text) {
  * main's own, written after each merge by the Readme workflow (#566), so it can be a few hours behind the games'
  * folders, and a new game's first files add its row to it as it is: written whole, they would carry other games' new
  * numbers along, which nothing that reads them could tell from words of someone's own. Null when there's no such row
- * to add, or `before` has it already.
+ * to add, or `before` has it already. A game has one row (#2040), so the row of a game's new version in C takes the
+ * place of the row the game had.
  */
 export function withRowOf(before, fresh, version) {
   const link = line => /\(\.\.\/games\/([^)]+)\/\)/.exec(line)?.[1];
   const written = fresh.split('\n'), lines = before.split('\n');
   const at = written.findIndex(line => link(line) === version);
   if (at < 0 || lines.some(line => link(line) === version)) return null;
+  const game = String(version).split('/')[0];
+  const had = lines.findIndex(line => link(line)?.split('/')[0] === game);
+  if (had >= 0) {
+    lines[had] = written[at];
+    return lines.join('\n');
+  }
   const follows = link(written[at - 1] ?? '');
   const after = follows ? lines.findIndex(line => link(line) === follows) : lines.findIndex(line => link(line)) - 1;
   if (after < 0) return null;
@@ -204,28 +213,40 @@ function checkEntry(game, entry, proof) {
   }
 }
 
-// one row for each Dreamport: its name, its two numbers, each a link to its progress map, its lead and
-// team, and where to play it
-function table(list) {
+/** The version of a Dreamport its row in the table is of, as { name, language, proof }: its version in the default
+ *  language, C, or its main one when it has none in C (#2040). */
+export function shownOf({ name, language, proof, versions }) {
+  return [{ name, language, proof }, ...versions].find(each => each.language === DEFAULT_LANGUAGE) ?? { name, language, proof };
+}
+
+/**
+ * One row for each game, from the most code ported to the least (#2040): its name alone, a link to the folder of the
+ * version its numbers are of (shownOf), which is how a row is found again (withRowOf), its console, its code ported,
+ * a link to the game's issue, where all of its porting is followed, its gameplay proven, short, a link to its progress
+ * map, which has the longer counts, its lead and team, and where to play it. `list` is dreamports()'s, and `repo` the
+ * repository the issues are in.
+ */
+export function table(list, repo = UPSTREAM) {
   const profile = name => `[${name}](https://github.com/${name})`;
   const cell = text => String(text).replaceAll('|', '\\|').replace(/\s+/g, ' ').trim();
-  const numbers = (name, proof) => {
-    const map = text => `[${text}](../${mapOf(name)})`;
-    const { gameplay } = proof;
-    return [map(percentText(proof.ported.percent)), gameplay ? map(gameplayText(gameplay)) : 'No parts listed yet'];
-  };
-  // a version in another language has a row of its own under the game's, with no way to play it from here yet
-  const rows = list.flatMap(({ entry, name: main, language: mainIn, proof, versions }) => {
-    const link = entry.ownCopy.links[0];
-    const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
-    return [
-      `| **[${cell(versionTitle(entry.title, mainIn))}](../games/${main}/)** | ${numbers(main, proof).join(' | ')} | ${profile(entry.lead)}${team} | [${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href}) |`,
-      ...versions.map(({ name, language, proof: theirs }) => `| [${cell(versionTitle(entry.title, language))}](../games/${name}/) | ${numbers(name, theirs).join(' | ')} | ${profile(entry.lead)}${team} | Not yet |`),
-    ];
-  });
+  const rows = list.map(dreamport => ({ ...dreamport, shown: shownOf(dreamport) }))
+    .sort((a, b) => b.shown.proof.ported.percent - a.shown.proof.ported.percent)
+    .map(({ entry, shown }) => {
+      const { ported, gameplay } = shown.proof;
+      const link = entry.ownCopy.links[0];
+      const team = entry.team?.length ? `, with ${entry.team.map(profile).join(', ')}` : '';
+      return '| ' + [
+        `[${cell(String(entry.title).replace(/\s+Dreamport$/i, ''))}](../games/${shown.name}/)`,
+        cell(entry.platform ?? ''),
+        `[${percentText(ported.percent)}](https://github.com/${repo}/issues/${entry.issue})`,
+        gameplay ? `[${percentText(gameplay.percent)}, ${gameplay.proven} of ${gameplay.total} parts](../${mapOf(shown.name)})` : 'No parts listed yet',
+        `${profile(entry.lead)}${team}`,
+        `[${link.icon === 'download' ? '⬇' : '▶'}&nbsp;${cell(link.label)}](${link.href})`,
+      ].join(' | ') + ' |';
+    });
   return [
-    '| Dreamport | Code ported | Gameplay proven | Lead | Try it |',
-    '| :--- | :--- | :--- | :--- | :--- |',
+    '| Game | Console | Code ported | Gameplay proven | Lead | Try it |',
+    '| :--- | :--- | :--- | :--- | :--- | :--- |',
     ...rows,
   ].join('\n');
 }
