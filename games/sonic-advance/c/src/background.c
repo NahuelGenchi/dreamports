@@ -120,7 +120,7 @@ extern const u8 gOamShapesSizes[12][2];
 // and height halfwords, offsetX and offsetY signed halfwords, at 0, 1, 2, 4, 6, 8 and 0x0A).
 #ifdef MATCHING
 #define BG_SPRITE_STORE16(at, value) (*(vu16 *)(at) = (value))
-#define BG_SPRITE_OAM(from, to) DMA3_SET(from, to, 0x80000003)
+#define BG_SPRITE_OAM(from, to, fetching) DMA3_SET(from, to, 0x80000003)
 #define ARM_LDR(at) (*(const vu32 *)(at))
 #define ARM_LDRH(at) ((u32)*(const vu16 *)(at))
 #define ARM_LDRSH(at) ((s32)*(const volatile s16 *)(at))
@@ -129,10 +129,11 @@ extern const u8 gOamShapesSizes[12][2];
 #else
 /** A halfword stored where the console has the address, the lowest bit dropped as its store drops it (hardware.c). */
 void console_store16(u32 at, u16 value);
-/** DMA channel 3 started as the console's is, copying into a value of the Dreamport's own, as onto the console's stack. */
-void console_dma3_into(u32 src, void *dest, u32 control);
+/** DMA channel 3 started as the console's is, copying into a value of the Dreamport's own, as onto the console's stack,
+ *  with where the original's processor is fetching as it starts, which a register nobody can read gives its first unit. */
+void console_dma3_into(u32 src, void *dest, u32 control, u32 fetching);
 #define BG_SPRITE_STORE16(at, value) console_store16((u32)(at), (value))
-#define BG_SPRITE_OAM(from, to) console_dma3_into((u32)(from), to, 0x80000003)
+#define BG_SPRITE_OAM(from, to, fetching) console_dma3_into((u32)(from), to, 0x80000003, (fetching))
 #define ARM_LDR(at) ({ u32 at_ = (u32)(at), w_ = *(const u32 *)(at_ & ~3u), by_ = (at_ & 3) * 8; by_ ? w_ >> by_ | w_ << (32 - by_) : w_; })
 #define ARM_LDRH(at) ({ u32 at_ = (u32)(at), h_ = *(const u16 *)(at_ & ~1u); at_ & 1 ? h_ >> 8 | h_ << 24 : h_; })
 #define ARM_LDRSH(at) ({ u32 at_ = (u32)(at); at_ & 1 ? (s32)*(const s8 *)at_ : (s32)*(const s16 *)at_; })
@@ -197,7 +198,7 @@ bool32 sa2__sub_80039E4(void) {
       // a rotating background: a byte a tile, its rows as wide as the background, 16 pixels at a time across
       rowBytes = (0x100000u << (cnt >> 14)) >> 16;
       for (part = 0; part < ARM_LDRH(dims + 2); part = nextPart) {
-        BG_SPRITE_OAM(from, oam);
+        BG_SPRITE_OAM(from, oam, 0x08002A4E);
         from += 6;
         tilesX = gOamShapesSizes[(oam[0] & 0xC000) >> 12 | (oam[1] & 0xC000) >> 14][0] >> 3;
         tilesY = gOamShapesSizes[(oam[0] & 0xC000) >> 12 | (oam[1] & 0xC000) >> 14][1] >> 3;
@@ -239,7 +240,7 @@ bool32 sa2__sub_80039E4(void) {
       for (part = 0; part < ARM_LDRH(dims + 2); part = nextPart) {
         u32 oamY, oamX, shapeSize, flip;
         s32 across;
-        BG_SPRITE_OAM(from, oam);
+        BG_SPRITE_OAM(from, oam, 0x08002C00);
         from += 6;
         shapeSize = (oam[0] & 0xC000) >> 12 | (oam[1] & 0xC000) >> 14;
         tilesX = gOamShapesSizes[shapeSize][0] >> 3;
@@ -314,8 +315,16 @@ s32 Div(s32 num, s32 denom);
 
 #ifdef MATCHING
 #define BG_COPY(from, to, control) DMA3_SET(from, to, control)
+#define BG_MAP_LDRH(at) ARM_LDRH(at)
+#define BG_MAP_LDRB(at) (*(const u8 *)(at))
 #else
 #define BG_COPY(from, to, control) console_dma3((u32)(from), (u32)(to), (control))
+/** A halfword loaded where the console has the address, in whichever memory shows there (hardware.c): a map's rows
+ *  read backwards can run off the start of a memory, which shows again below it. */
+u16 console_load16(u32 at);
+u8 console_load8(u32 at);
+#define BG_MAP_LDRB(at) console_load8((u32)(at))
+#define BG_MAP_LDRH(at) ({ u32 at_ = (u32)(at), h_ = console_load16(at_); at_ & 1 ? h_ >> 8 | h_ << 24 : h_; })
 #endif
 
 // `rows` rows of the map, a tile at a time, each turned by `flip`: across, from `from`, forward or back, as many as the
@@ -327,7 +336,7 @@ static void bg_rows_by_tile(const struct Background *bg, u32 to, u32 from, u16 r
     u32 next = to + line;
     u16 k;
     for (k = 0; wide ? k < bg->targetTilesX : (s32)k < count; k++)
-      BG_SPRITE_STORE16(to + k * 2u, (u16)(ARM_LDRH(back ? from - k * 2u : from + k * 2u) ^ flip));
+      BG_SPRITE_STORE16(to + k * 2u, (u16)(BG_MAP_LDRH(back ? from - k * 2u : from + k * 2u) ^ flip));
     to = next;
     from += step;
   }
@@ -365,7 +374,7 @@ static void bg_copy_level(struct Background *bg, u16 x, u16 y, u32 line, u32 siz
         s32 yTiles = bg->yTiles;
         s32 inY = atY - blockY * yTiles;
         s32 count = yTiles - inY;
-        u32 block = *(const u8 *)((u32)bg->metatileMap + (u32)bg->mapWidth * (u32)blockY + (u32)blockX);
+        u32 block = BG_MAP_LDRB((u32)bg->metatileMap + (u32)bg->mapWidth * (u32)blockY + (u32)blockX);
         u32 xt = bg->xTiles;
         u32 from = (u32)bg->layout + (block * xt * (u32)yTiles + (u32)inY * xt + (u32)inX) * size;
         u32 to = (u32)bg->layoutVram + bg->unk24 + line * (u32)j + bg->unk22 + (u32)i * size;
