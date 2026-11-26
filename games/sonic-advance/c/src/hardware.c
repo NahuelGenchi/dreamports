@@ -124,12 +124,15 @@ void console_write16(u32 at, u16 value) {
 // lines run those (console_vblank, console_hblank) and the sound's never run here, as the sound is the kit's. One to
 // start now runs at once, each address going up, down or nowhere as its control says, and is then off unless it
 // repeats. A value of the Dreamport's own, as a fill's is, is read where it is, as the console reads its stack.
-struct console_dma { u32 src, dest, count; u16 control; const u8 *own; u8 *into; };
+struct console_dma { u32 src, dest, count; u16 control; const u8 *own; u8 *into; int none; };
 static struct console_dma dma[4];
 // what the channels last moved, which a register no one can read gives a DMA in its place, as the bus still holds it:
 // a halfword twice over, or a word. A channel's first unit gets what the processor was fetching then instead, which
-// the Dreamport doesn't have, so it gets what the last channel moved
+// the Dreamport has only where a twin says it (console_dma3_into), and elsewhere it gets what the last channel moved
 static u32 dma_bus;
+// what a channel last moved, which one with no source moves again: a source below the work memory, 0x02000000, as it
+// was written, is none, and each of its units is the last one any channel read (mGBA 0.10.5's dma.c)
+static u32 dma_moved;
 
 // A register as a DMA reads it from 0x04000000 on, by how far it is from there, as mGBA 0.10.5's GBAIORead has it and
 // GBATEK's table of the registers agrees: one a game can read, as the processor reads it; the control of a channel as
@@ -183,6 +186,10 @@ static void dma_run(struct console_dma *d) {
     u8 *to = d->into ? d->into + (int)i * to_step : console_at(d->dest + i * to_step, 1);
     // past the cartridge's end the console reads what its bus is left holding: each halfword the address's own, halved
     u8 bus[4];
+    if (d->none) {
+      for (b = 0; b < wide; b++) bus[b] = (u8)(dma_moved >> (8 * b));
+      from = bus;
+    }
     if (from == NULL && at >> 24 >= 0x08 && at >> 24 <= 0x0D) {
       for (b = 0; b < wide; b += 2) { bus[b] = (u8)((at + b) >> 1); bus[b + 1] = (u8)((at + b) >> 9); }
       from = bus;
@@ -196,6 +203,7 @@ static void dma_run(struct console_dma *d) {
       }
       from = bus;
     }
+    if (from != NULL && !d->none) dma_moved = wide == 4 ? (u32)(from[0] | from[1] << 8 | from[2] << 16 | (u32)from[3] << 24) : (u32)(from[0] | from[1] << 8) * 0x10001u;
     if (from != NULL) dma_bus = wide == 4 ? (u32)(from[0] | from[1] << 8 | from[2] << 16 | (u32)from[3] << 24) : (u32)(from[0] | from[1] << 8) * 0x10001u;
     if (from != NULL && to != NULL) for (b = 0; b < wide; b++) to[b] = from[b];
     // a register is written as the processor writes one, a halfword at a time
@@ -240,6 +248,7 @@ static void dma_start(u32 n, u32 src, const u8 *own, u32 dest, u8 *into, u32 con
   // has at 27 bits and mGBA makes a source of 0 or leaves where they were, are taken as they come, as no game's are
   d->src = src & 0x0FFFFFFFu & ~(wide - 1);
   d->own = own;
+  d->none = own == NULL && src < 0x02000000u;
   d->into = into;
   d->dest = dest & 0x0FFFFFFFu & ~(wide - 1);
   d->count = control & (n == 3 ? 0xFFFF : 0x3FFF);
@@ -255,13 +264,31 @@ void console_dma3(u32 src, u32 dest, u32 control) { dma_start(3, src, NULL, dest
 void console_dma3_own(const void *src, u32 dest, u32 control) { dma_start(3, 0, (const u8 *)src, dest, NULL, control); }
 /** DMA channel 3 copying into a value of the Dreamport's own, as a twin's local is where the console's function has
  *  its stack: the channel starts, or doesn't, as the console's does, and what it copies lands there. */
-void console_dma3_into(u32 src, void *dest, u32 control) { dma_start(3, src, NULL, 0, (u8 *)dest, control); }
+// `fetching` is where the original's processor is fetching as the channel starts: the bus holds that halfword, twice
+// over, so a first unit from a register nobody can read gets it, and the units after it what the channel last moved
+void console_dma3_into(u32 src, void *dest, u32 control, u32 fetching) {
+  const u8 *op = fetching ? console_at(fetching, 0) : NULL;
+  if (op != NULL) dma_bus = (u32)(op[0] | op[1] << 8) * 0x10001u;
+  dma_start(3, src, NULL, 0, (u8 *)dest, control);
+}
 
 /** A halfword stored at an address of the console's, as its processor stores one: at the address with its lowest bit
  *  dropped, in whichever memory is there, and nowhere for the cartridge. */
 void console_store16(u32 at, u16 value) {
   u8 *to = console_at(at & ~1u, 1);
   if (to != NULL) { to[0] = (u8)value; to[1] = (u8)(value >> 8); }
+}
+/** A halfword loaded from an address of the console's, its lowest bit dropped, in whichever memory shows there: each
+ *  shows again all through its stretch of addresses, so one past the work memory's end reads its start. */
+u16 console_load16(u32 at) {
+  const u8 *from = console_at(at & ~1u, 0);
+  if (from == NULL) from = (const u8 *)(at & ~1u);
+  return (u16)(from[0] | from[1] << 8);
+}
+/** A byte loaded the same way. */
+u8 console_load8(u32 at) {
+  const u8 *from = console_at(at, 0);
+  return from != NULL ? *from : *(const u8 *)at;
 }
 /** A channel stopped as the console's library stops one: its timing, its request and its repeat off, then its switch,
  *  each store as the console's time takes it. */
