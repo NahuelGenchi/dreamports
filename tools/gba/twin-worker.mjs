@@ -105,6 +105,12 @@ parentPort.on('message', message => {
   const sp = stacked && message.sp ? message.sp >>> 0 : 0;
   const saved = sp ? memory.slice(sp - STACK_ROOM, sp) : null;
   if (sp) exports.gba_stack_begin(sp);
+  // what the original's call starts with in r4 to r11, and where it goes back to, so the first function's pushes are the
+  // original's (#1896)
+  if (sp && message.begins && exports.gba_stack_reg && exports.gba_stack_call) {
+    message.begins.kept.forEach((value, i) => exports.gba_stack_reg(4 + i, value >>> 0));
+    exports.gba_stack_call(message.begins.back >>> 0);
+  }
   let gave;
   try {
     gave = exports[message.call](...message.args) >>> 0;
