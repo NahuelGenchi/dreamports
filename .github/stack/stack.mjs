@@ -9,7 +9,8 @@
 // its Check and Clips never pass on their own. One above carries it when it's open, from this repository and not a fork,
 // on the same base, says "Builds on #<this one>", and its head has this one's head and more, so its run tests every
 // commit of this one and nobody else's pull request can switch this one's tests off. Anything less, as when the one above
-// is closed without merging or its line is taken out, or when GitHub doesn't answer, and it runs in full.
+// is closed without merging or its line is taken out, or when GitHub doesn't answer, and it runs in full. A draft above
+// carries nothing either, as nothing can merge through it (#2055).
 //
 // node .github/stack/stack.mjs --stop runs on a pull request's own events (.github/workflows/stack.yml). For each pull
 // request its Builds on lines name, now or before the edit, that it carries, it stops the heavy runs whose Stack already
@@ -63,6 +64,9 @@ export function github({ repository, token, fetch = globalThis.fetch }) {
 // line, with a head that has sha and more. A head that is sha itself carries nothing more, so two can't carry each other.
 export async function carries(gh, upper, lower, sha) {
   if (upper.number === lower.number || upper.state !== 'open') return false;
+  // a draft can't merge, so nothing merges through it: the one below is tested in full and merges by itself, as a fix
+  // does while the task built on it is still being made (#2055)
+  if (upper.draft) return false;
   if (upper.head?.repo?.full_name !== gh.repository || upper.base?.ref !== lower.base?.ref) return false;
   if (!namedBelow(upper.body).has(lower.number)) return false;
   const compared = await gh.get(`/compare/${sha}...${upper.head.sha}?per_page=1`);
