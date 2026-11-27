@@ -200,6 +200,14 @@
     "Task_LoadGameLogo": "0800D71D",
     "Task_800D7EC": "0800D7ED",
     "TaskDestructor_TitleScreen": "0800E021",
+    "sub_800D878": "0800D879",
+    "CreateMainMenu": "0800D8FC",
+    "Task_MainMenuInit": "0800DB6D",
+    "Task_SwitchToMainMenu": "0800E009",
+    "Task_SwitchToDemoInit": "0800DF89",
+    "Task_SwitchTo_Task_MainMenu_Select": "0800E045",
+    "sTitlescreenFrameTileSizes": "080B8326",
+    "sa2__sub_8003EE4": "08002E58",
     "m4aSongNumStart": "080977E5"
   }
 }
