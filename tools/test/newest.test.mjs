@@ -45,8 +45,18 @@ function folders() {
   git(github, 'config', 'core.autocrlf', 'false');
   commit(github, 'tools/commands/dreamport.md', 'the command, as it was\n');
   commit(github, 'package-lock.json', '{ "packages": 1 }\n');
-  git(base, 'clone', '--quiet', '--config', 'core.autocrlf=false', github, folder);
+  // the folder as a clone leaves one, made with no clone: git's way between two folders is what fails now and then,
+  // and it failed here too, in two of three full checks of one day (#2080)
+  mkdirSync(folder, { recursive: true });
+  git(folder, 'init', '--quiet', '--initial-branch=main');
+  git(folder, 'config', 'core.autocrlf', 'false');
   writeFileSync(join(folder, '.git', 'objects', 'info', 'alternates'), `${join(github, '.git', 'objects').replaceAll('\\', '/')}\n`);
+  const tip = git(github, 'rev-parse', 'main');
+  git(folder, 'remote', 'add', 'origin', github);
+  git(folder, 'update-ref', 'refs/remotes/origin/main', tip);
+  git(folder, 'reset', '--quiet', '--hard', tip);
+  git(folder, 'config', 'branch.main.remote', 'origin');
+  git(folder, 'config', 'branch.main.merge', 'refs/heads/main');
   const fetch = (run, remote) => (run(['update-ref', `refs/remotes/${remote}/main`, git(github, 'rev-parse', 'main')]).status === 0 ? null : 'the name for main didn\'t move');
   return { folder, fetch, onMain: (path, text) => commit(github, path, text), head: () => git(folder, 'rev-parse', 'HEAD') };
 }
