@@ -362,6 +362,13 @@ try {
   const ofCount = [[1, 1], [2, 16], [3, 16], [2, 16], [4, 16]], noneOrLess = value => (value | 0) <= 0;
   const nearestCount = sourceFor(5, 2, 6, ofCount, noneOrLess, 0), anotherCount = sourceFor(5, 2, 6, ofCount, noneOrLess, 0, [], () => 0);
   check(nearestCount === 0xFFFF && anotherCount === 0x7FFF, `the nearest value that fits is the one that gives a count of none, 0x${nearestCount?.toString(16)}, and another gives a count below it: 0x${anotherCount?.toString(16)}`);
+  // a halfword of 0 reads the same signed or not, and a signed comparison wants it below 0, which no unsigned value
+  // is: read as signed where unsigned finds nothing (#2060). One that only reads unsigned still finds nothing
+  const below = sourceFor(0, 2, 0, [], value => (value | 0) === -77, -77);
+  check(below === 0xFFB3, `a halfword of 0 a signed comparison wants at -77 is aimed with 0xFFB3: ${below === null ? 'nothing' : `0x${below.toString(16)}`}`);
+  const anyBelow = sourceFor(0, 1, 0, [], value => (value | 0) < 0, 0, [], () => 0);
+  check(anyBelow === 0x80, `and aimed at again, another value below 0 is found the same way: ${anyBelow === null ? 'nothing' : `0x${anyBelow.toString(16)}`}`);
+  check(sourceFor(0x8000, 2, 0x8000, [], value => (value | 0) < 0, 0) === null, 'a halfword that reads only as unsigned is never aimed below 0');
   // a flag of a word, read and masked: aimed at, only its bit changes too
   const wide = sourceFor(0x00000001, 4, 0, [[5, 0x10000], [3, 15]], value => value > 1, 1);
   check(wide === 0x00010001, `a word's flag aimed at changes only its own bit: 0x${wide?.toString(16)}`);
