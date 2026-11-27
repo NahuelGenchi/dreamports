@@ -16,7 +16,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { changedSince, clipLinks, clipProblems, clipsToShow, gamesToShow, reportOf, SHOW_IT } from './lib/clips.mjs';
+import { changedSince, clipLinks, clipProblems, clipsToShow, gamesToShow, repeatedClips, reportOf, SHOW_IT } from './lib/clips.mjs';
 import { changesOf, recordLinks, recordProblems, stateAt, versionIn } from './lib/same-proof.mjs';
 import { recordingsAt, showsProofs, standProblems, stepProofs } from './lib/proven-step.mjs';
 import { REPO } from './lib/paths.mjs';
@@ -64,6 +64,10 @@ export async function checkClips(text, { fetched = download, read = path => read
   for (const link of links.filter(l => !l.endsWith('.mp4'))) {
     const video = link.replace(/-still\.png$/, '.mp4');
     if (!link.endsWith('-still.png') || !videos.includes(video)) problems.push(`${link} isn't the frame of a clip the text links: a clip is a video prove made, which share publishes with its frame.`);
+  }
+  // a video is one clip, whichever recordings gave it: its lines once for each fill a pull request with one video (#2075)
+  for (const link of repeatedClips(text)) {
+    problems.push(`${link} is shown more than once, and a video is one clip, whichever recordings gave it: share again and paste .dreamports/share/clips.md under Clips.`);
   }
   const measured = [];
   for (const link of videos) {

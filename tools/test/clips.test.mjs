@@ -209,6 +209,10 @@ test('the pull request\'s check reads each clip\'s measures, and the video they\
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: Buffer.from('another'), [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read }))[0], /isn't the video its measures are of/);
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read: () => Buffer.from('{}') }))[0], /changed after prove/);
   assert.match((await checkClips(text, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures({ frames: 120, newFrames: 120 }))) }), read }))[0], /a-test: The clip of a-test is 120 frames/);
+  // a video shown once for each recording that gave it, as #2068 showed one 76 times, is one clip (#2075)
+  const twice = await checkClips(`${text}\n\n[![a](${at}-still.png)](${at}.mp4)\n\n[Watch the clip of another-test](${at}.mp4)`, { fetched: site({ [`${at}.mp4`]: video, [`${at}.json`]: Buffer.from(JSON.stringify(measures())) }), read });
+  assert.equal(twice.length, 1);
+  assert.match(twice[0], /is shown more than once, and a video is one clip/);
   // a picture on its own is a clip prove didn't make
   assert.match((await checkClips(`![a](${at}.png)`, { fetched: site({}), read }))[0], /isn't the frame of a clip the text links/);
   // the Dreamport on its own, as #1019 shared it, shows nothing of whether it does what the original does
