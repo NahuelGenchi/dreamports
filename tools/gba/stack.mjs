@@ -27,11 +27,17 @@
 // when the twin's assembly for the console's build is proven by the same bytes (#1726): a shared library keeps such routines in a table (library.json's "frames"), their assembly as a
 // decompilation writes it, which stack-map.mjs reads (routineMap), and the twin's frame is the routine's
 // (routineFrame): its stores to the stack written at the points of its C the table pairs with the routine's.
+//
+// A copy takes seconds to make, most of them clang writing the file's whole syntax tree, and a version has dozens of
+// files, so each copy is kept from one run to the next (stackedCopy, #2070): it's made again only when something it's
+// made from changes, and what that is, is all in its key. When in doubt it's made again.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
-import { preprocess } from './match.mjs';
+import { fileURLToPath } from 'node:url';
+import { filesIn, preprocess } from './match.mjs';
 import { compilerPath } from './agbcc.mjs';
 import { routineMap, stackMap } from './stack-map.mjs';
 
@@ -584,13 +590,153 @@ function render(text, edits) {
   return within(0, text.length);
 }
 
+// --- a copy kept from one run to the next
+
+const sha1 = bytes => createHash('sha1').update(bytes).digest('hex');
+// the tools a copy is made by: this file and what it reads the two compilers' work with
+const TOOLS = ['stack.mjs', 'stack-map.mjs', 'thumb.mjs', 'match.mjs'].map(name => fileURLToPath(new URL(`./${name}`, import.meta.url)));
+
+// A folder of names and bytes, as the compilers are given them, as a Map of each file's path to its bytes.
+function flat(folder, under, into) {
+  for (const [name, held] of Object.entries(folder)) {
+    if (Buffer.isBuffer(held) || held instanceof Uint8Array) into.set(`${under}${name}`, Buffer.from(held));
+    else flat(held, `${under}${name}/`, into);
+  }
+  return into;
+}
+
+/**
+ * Every file of `files`, a Map of paths to bytes, that the file at `start` can take in: itself, and each file an
+ * #include or an #embed names, or a __has_include asks after, in it or in one of those, sorted. A file is taken by its
+ * name alone, wherever it is among them, so it's every file the compiler could find by that name and more, never
+ * fewer, and a file asked after that isn't there yet is found once it is. All of them when a macro names one, as then
+ * the text doesn't say which.
+ */
+export function reachedFrom(start, files) {
+  const all = () => [...files.keys()].sort(), named = new Map();
+  for (const path of files.keys()) {
+    const name = path.split('/').pop();
+    if (!named.has(name)) named.set(name, []);
+    named.get(name).push(path);
+  }
+  const found = new Set([start]), queue = [start];
+  while (queue.length) {
+    // with each line that ends in a backslash joined to the next, as the compiler joins them first
+    const text = files.get(queue.pop()).toString('latin1').replace(/\\\r?\n/g, '');
+    const take = target => {
+      for (const path of named.get((target[1] ?? target[2]).split(/[\\/]/).pop()) ?? []) {
+        if (found.has(path)) continue;
+        found.add(path);
+        queue.push(path);
+      }
+    };
+    // read twice: as it is, where only a name written out counts, since a comment may say anything, and with its
+    // comments blanked, where a directive that names no file outright is one a macro names
+    for (const [code, strict] of [[text, false], [text.replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, ' '), true]]) {
+      for (const [, rest] of code.matchAll(/(?:#|%:)[ \t]*(?:include_next|include|import|embed)\b([^\n]*)/g)) {
+        const target = /^[ \t]*(?:"([^"\n]+)"|<([^>\n]+)>)/.exec(rest);
+        if (target) take(target);
+        else if (strict) return all();
+      }
+      // a file asked after: by its name, as an include's, and one that only asks whether the compiler has the
+      // question, as defined(__has_include) does, asks after none
+      for (const asked of code.matchAll(/__has_(?:include_next|include|embed)\b/g)) {
+        const target = /^\s*\(\s*(?:"([^"\n]+)"|<([^>\n]+)>)/.exec(code.slice(asked.index + asked[0].length));
+        if (target) take(target);
+        else if (strict && !/(?:defined\s*\(?\s*|(?:#|%:)\s*ifn?def\s+)$/.test(code.slice(Math.max(0, asked.index - 40), asked.index))) return all();
+      }
+    }
+  }
+  return [...found].sort();
+}
+
+// Everything a file's copy is made from but the answers of addressOf and valueOf, as one hash, or null when it can't
+// be said: the tools, the two compilers and what each is asked, the file and every file it can take in, of those
+// clang's tree is read from (`filesTree`) and those the console's compiler's preprocessor is given (`root`), and what
+// the version's proofs say of the functions the file defines. `seen` keeps what was read for the next file's key.
+function copyKey({ file, repo, root, includes, compiler, args, filesTree, clang, defined, matched, same, routines, routinesFrom, seen }) {
+  const inRepo = path => relative(repo, path).split('\\').join('/');
+  const once = (what, make) => {
+    if (!seen.has(what)) seen.set(what, make());
+    return seen.get(what);
+  };
+  const marked = path => once(`mark ${path}`, () => (existsSync(path) ? sha1(readFileSync(path)) : null));
+  const tools = TOOLS.map(marked), cc = marked(compilerPath(compiler.name));
+  if (!clang || !cc || tools.includes(null) || (routines && routinesFrom === undefined)) return null;
+  const tree = once('tree', () => flat(filesTree, '', new Map()));
+  const under = once(`under ${root}`, () => flat(filesIn(root), inRepo(root) ? `${inRepo(root)}/` : '', new Map()));
+  const files = new Map([...under, ...tree]), start = inRepo(file);
+  if (!files.has(start)) return null;
+  // a file the compiler is told to take in before the first line is one no text names: then every file there is
+  const forced = args.some(arg => /^-(include|imacros)/.test(arg));
+  const reached = (forced ? [...files.keys()].sort() : reachedFrom(start, files)).map(path => [path, once(`sha1 ${path}`, () => sha1(files.get(path)))]);
+  return sha1(JSON.stringify([
+    2070, tools, clang, compiler.name, compiler.flags, cc, args, start, inRepo(root), includes.map(inRepo), reached,
+    defined.map(t => [t.name, t.address]), [...matched].sort(), defined.map(t => same.get(t.name) ?? 0), routinesFrom === undefined ? null : sha1(routinesFrom),
+  ]));
+}
+
+/**
+ * One file's copy with the console's stack's calls in, in `out`, made or kept from the run before (#2070).
+ *   file, repo: the file, and the folder `args` and `filesTree` are from, the build's flags and files for clang's tree
+ *   root, includes, compiler: what the console's compiler builds it from and with, as stackOfFile takes them
+ *   defined: the twins it defines, each { name, address }; matched: the names of those proven by the same bytes;
+ *     same: a Map of each one's name to how many of its first bytes `match` found the same
+ *   routines, routinesFrom: a shared library's table of routines for it, and the text the table was read from
+ *   addressOf(name), valueOf(name): where the original has a function, odd in Thumb code, and a value, or null
+ *   clang: the version of the compiler that writes the tree, or null, with which nothing is kept
+ * A copy kept is taken as it is when its key is the one it was made with (copyKey), every name it asked addressOf and
+ * valueOf of still gets the answer it got, and the copy on the disk is still the one written. Answers { copy, gaps,
+ * made }: the copy's path, what its stack can't hold, and whether it was made now; or { error }, when the console's
+ * compiler didn't build the file.
+ */
+export async function stackedCopy({ file, repo, out, root, includes, compiler, args, filesTree, clang = null, defined, matched, same = new Map(), routines = null, routinesFrom, addressOf, valueOf = () => null, seen = new Map() }) {
+  const name = basename(file), copy = join(out, name), record = join(out, 'kept', `${name}.json`);
+  const key = copyKey({ file, repo, root, includes, compiler, args, filesTree, clang, defined, matched, same, routines, routinesFrom, seen });
+  if (key && existsSync(record) && existsSync(copy)) {
+    let kept = null;
+    try {
+      kept = JSON.parse(readFileSync(record, 'utf8'));
+    } catch {}
+    const asks = (list, ask) => Array.isArray(list) && list.every(([asked, answer]) => ask(asked) === answer);
+    if (kept?.key === key && Array.isArray(kept.gaps) && asks(kept.address, addressOf) && asks(kept.value, valueOf) && sha1(readFileSync(copy)) === kept.copy) return { copy, gaps: kept.gaps, made: false };
+  }
+  const map = await stackOfFile({ file, root, includes, compiler, work: join(out, 'work', basename(file, '.c')) });
+  if (map.error) return { error: map.error };
+  const text = readFileSync(file, 'utf8');
+  const tree = await syntaxOf(file, repo, args, filesTree);
+  // a function that isn't proven but starts as the original's does: `match` found its first bytes the same, as
+  // many as its start is long, or its first instruction where it has no start, with no word loaded from beside it
+  const starts = new Set(defined.filter(t => {
+    const start = map.functions[t.name]?.start;
+    return !matched.has(t.name) && start && !start.loads && (same.get(t.name) ?? 0) >= Math.max(start.bytes, 2);
+  }).map(t => t.name));
+  // each name asked after, with its answer: what the copy depends on of every other file's twins and values
+  const address = new Map(), value = new Map();
+  const noting = (asked, ask) => what => {
+    asked.set(what, ask(what));
+    return asked.get(what);
+  };
+  const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf: noting(address, addressOf), starts, routines, valueOf: noting(value, valueOf) });
+  const written = `${made.header}\n#line 1 "${name}"\n${made.text}`;
+  writeFileSync(copy, written);
+  if (key) {
+    mkdirSync(dirname(record), { recursive: true });
+    writeFileSync(record, `${JSON.stringify({ key, copy: sha1(written), address: [...address], value: [...value], gaps: made.gaps })}\n`);
+  }
+  return { copy, gaps: made.gaps, made: true };
+}
+
 /**
  * The game's own C files, and the shared libraries' it takes, with the console's stack, for a version made the stricter way (`game`, such as
  * 'sonic-advance/c', whose folder is `folder`): each file with a function proven by the same bytes is written
  * again under .dreamports/c/stack/, the rest kept. `args` are the build's own flags and folders and `filesTree` its files, both as from `repo`, for clang's tree.
- * Gives { sources, gaps }: the files to build, and what the stack can't hold, each as a line.
+ * Each copy is kept from the run before when nothing it's made from changed (stackedCopy), with `clang` the version of
+ * the compiler that writes the tree.
+ * Gives { sources, gaps, made }: the files to build, what the stack can't hold, each as a line, and the files whose
+ * copies were made in this run.
  */
-export async function stackSources({ game, folder, own, args, filesTree, out, repo }) {
+export async function stackSources({ game, folder, own, args, filesTree, out, repo, clang = null }) {
   const { readOriginal } = await import('../lib/proof-files.mjs');
   const { readProofs } = await import('../lib/proofs.mjs');
   const { versionTwins } = await import('../lib/twins.mjs');
@@ -598,7 +744,7 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   const original = readOriginal(game), proofs = readProofs(game);
   const bytes = new Set([...(proofs?.functions ?? new Map())].filter(([, p]) => p.kind === 'bytes').map(([key]) => key.slice(0, 8)));
   // with no function proven by the same bytes, or no compiler to build one with, there's nothing to read the stack from
-  if (!bytes.size || !original.compiler) return { sources: own, gaps: [] };
+  if (!bytes.size || !original.compiler) return { sources: own, gaps: [], made: [] };
   const compiler = readCompiler(original, `games/${game.split('/')[0]}/proof/original.json`);
   const { twinsOf, twins, named, libraries } = versionTwins(game);
   const addressOf = name => (twins.get(name)?.size === 1 ? [...twins.get(name)][0] | 1 : null);
@@ -607,10 +753,10 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
   const routinesOf = new Map();
   for (const { library, files } of libraries) {
     if (!library.frames) continue;
-    const { routines } = routineMap(readFileSync(library.frames, 'utf8'));
-    for (const each of files) routinesOf.set(each, routines);
+    const table = readFileSync(library.frames, 'utf8'), { routines } = routineMap(table);
+    for (const each of files) routinesOf.set(each, { routines, routinesFrom: table });
   }
-  const sources = [], gaps = [];
+  const sources = [], gaps = [], made = [], seen = new Map();
   mkdirSync(out, { recursive: true });
   for (const file of own) {
     const defined = (twinsOf.get(file) ?? []).filter(t => t.address !== null);
@@ -622,26 +768,21 @@ export async function stackSources({ game, folder, own, args, filesTree, out, re
     }
     // a shared library's file is built from its own folder, as match builds it
     const inside = !relative(folder, file).startsWith('..');
-    const map = await stackOfFile({ file, root: inside ? folder : dirname(file), includes: inside ? [dirname(file), join(folder, 'src')] : [dirname(file)], compiler: compilerAt(compiler, defined[0].address), work: join(out, 'work', basename(file, '.c')) });
-    if (map.error) {
-      gaps.push(`${basename(file)}: ${map.error}`);
+    const copied = await stackedCopy({
+      file, repo, out, root: inside ? folder : dirname(file), includes: inside ? [dirname(file), join(folder, 'src')] : [dirname(file)], compiler: compilerAt(compiler, defined[0].address),
+      args, filesTree, clang, defined, matched, addressOf, valueOf, seen, ...(routinesOf.get(file) ?? {}),
+      // how many of each function's first bytes `match` found the same
+      same: new Map(defined.map(t => [t.name, proofs.starts?.get(keyOf(t))?.bytes ?? 0])),
+    });
+    if (copied.error) {
+      gaps.push(`${basename(file)}: ${copied.error}`);
       sources.push(file);
       continue;
     }
-    const text = readFileSync(file, 'utf8');
-    const tree = await syntaxOf(file, repo, args, filesTree);
-    // a function that isn't proven but starts as the original's does: `match` found its first bytes the same, as
-    // many as its start is long, or its first instruction where it has no start, with no word loaded from beside it
-    const starts = new Set(defined.filter(t => {
-      const start = map.functions[t.name]?.start, same = proofs.starts?.get(keyOf(t))?.bytes ?? 0;
-      return !matched.has(t.name) && start && !start.loads && same >= Math.max(start.bytes, 2);
-    }).map(t => t.name));
-    const made = withStack({ file: relative(repo, file).split('\\').join('/'), text, tree, map, matched, addressOf, starts, routines: routinesOf.get(file) ?? null, valueOf });
-    const copy = join(out, basename(file));
-    writeFileSync(copy, `${made.header}\n#line 1 "${basename(file)}"\n${made.text}`);
-    sources.push(copy);
-    gaps.push(...made.gaps.map(g => `${basename(file)}: ${g}`));
+    if (copied.made) made.push(file);
+    sources.push(copied.copy);
+    gaps.push(...copied.gaps.map(g => `${basename(file)}: ${g}`));
   }
   writeFileSync(join(out, 'gaps.txt'), gaps.length ? `${gaps.join('\n')}\n` : '');
-  return { sources, gaps };
+  return { sources, gaps, made };
 }
