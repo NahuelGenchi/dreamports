@@ -38,7 +38,7 @@
 // key, such as 00000120@MCMAN.IRX or 00340010~vu, a name in the code map or a label with an address, and --bytes is its
 // only option.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { LOCAL } from './lib/paths.mjs';
@@ -58,7 +58,7 @@ import { readPs2 } from './ps2/read.mjs';
 import { readGamecube } from './gamecube/read.mjs';
 import { readSnes } from './snes/read.mjs';
 
-const USAGE = 'Usage: npm run dp -- read <game> <address or name> [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc] [--rsp <address>]';
+const USAGE = 'Usage: npm run dp -- read <game> <address or name>... [--quiet] [--arm | --thumb] [--bytes <n>] [--frame <n>] [--mode <mode>] [--spc] [--rsp <address>]';
 const CARTRIDGE = 0x08000000;
 // the work RAMs, where games copy code to run it faster
 const MEMORY = [[0x02000000, 0x02040000], [0x03000000, 0x03008000]];
@@ -76,8 +76,8 @@ const KNOWN = Object.keys(READERS).map(id => `the ${CONSOLES[id].name}`).join(',
 
 export async function run(args) {
   const { rest, flags } = options(args);
-  const [game, what] = rest;
-  if (!game || !what || rest.length > 2) throw new Error(USAGE);
+  const [game, ...whats] = rest;
+  if (!game || !whats.length) throw new Error(USAGE);
   const original = readOriginal(game);
   const reader = READERS[original.console];
   if (!reader) throw new Error(`read knows the instructions of ${KNOWN}, and no other console's yet: a disassembler on this computer reads ${original.console} code (docs/CONSOLES.md).`);
@@ -88,23 +88,66 @@ export async function run(args) {
   if (!copy) throw new Error(`read reads ${original.name}. Show the tools your copy first: npm run dp -- rom <file>.`);
   if ((await readAnyCopy(copy.path, original.console))?.sha1 !== original.sha1) throw new Error(`${copy.path} isn't ${original.name} any more: npm run dp -- rom checks it again.`);
   const bytes = OFF_DISC.has(original.console) ? null : readFileSync(copy.path);
-  const { key, text, has } = await reader({ game, what, original, codeMap, copy, bytes, flags });
   const folder = join(LOCAL, 'read', game);
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, `${key}.txt`), text);
-  console.log(text);
-  console.log(`Also kept in .dreamports/read/${game}/${key}.txt. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
-  const notes = notesAbout(game, has);
-  if (notes.length) {
-    console.log(`\nNotes on this function, from people who worked on it. ${NOTES_CAUTION}\n`);
-    showAll(notes);
+  const cache = {};
+  for (let i = 0; i < whats.length; i++) {
+    const { key, text, has } = await reader({ game, what: whats[i], original, codeMap, copy, bytes, flags, cache });
+    writeFileSync(join(folder, `${key}.txt`), text);
+    const notes = notesAbout(game, has);
+    if (flags.quiet) {
+      const summary = text.split('\n').find(line => line.trim() && !line.startsWith('Careful:')) ?? key;
+      console.log(`.dreamports/read/${game}/${key}.txt  ${summary}${notes.length ? ` (${notes.length} note${notes.length === 1 ? '' : 's'})` : ''}`);
+      if (notes.length) {
+        console.log(`Notes on ${key}. ${NOTES_CAUTION}`);
+        showAll(notes);
+      }
+    } else {
+      if (i > 0) console.log('');
+      console.log(text);
+      if (whats.length === 1) {
+        console.log(`Also kept in .dreamports/read/${game}/${key}.txt. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
+      } else {
+        console.log(`Also kept in .dreamports/read/${game}/${key}.txt.`);
+      }
+      if (notes.length) {
+        console.log(`\nNotes on this function, from people who worked on it. ${NOTES_CAUTION}\n`);
+        showAll(notes);
+      }
+    }
+  }
+  if (flags.quiet || whats.length > 1) {
+    console.log('These come from your copy of the game: never put them in a commit, an issue or a pull request. A coding agent that reads them sends them to the company that runs the agent\'s model.');
   }
   return 0;
 }
 
+// caches GBA findFunctions results per ROM SHA-1 in .dreamports/read/ so repeated reads don't re-trace the cartridge (#2088)
+function tracedGba(sha1, bytes) {
+  const file = join(LOCAL, 'read', `gba-${sha1}-traced.json`);
+  try {
+    if (existsSync(file)) {
+      const kept = JSON.parse(readFileSync(file, 'utf8'));
+      if (kept?.v === 1 && Array.isArray(kept.functions)) {
+        return kept.functions.map(([address, size, thumb]) => ({ address, size, thumb: Boolean(thumb) }));
+      }
+    }
+  } catch {
+    // rebuild below
+  }
+  const found = findFunctions(bytes);
+  try {
+    mkdirSync(join(LOCAL, 'read'), { recursive: true });
+    writeFileSync(file, JSON.stringify({ v: 1, functions: found.map(f => [f.address, f.size, f.thumb ? 1 : 0]) }));
+  } catch {
+    // ignore cache write failure
+  }
+  return found;
+}
+
 // what read prints for a Game Boy Advance game: { key, text, has }, the name its file is kept by, the text, and whether
 // something a note is about is in what it read
-function readGba({ game, what, original, codeMap, copy, bytes, flags }) {
+function readGba({ game, what, original, codeMap, copy, bytes, flags, cache = {} }) {
   const { address, label, kind } = resolve(game, codeMap, what);
   const inMemory = MEMORY.some(([from, to]) => address >= from && address < to);
   if (!inMemory && (address < CARTRIDGE || address >= CARTRIDGE + bytes.length)) {
@@ -114,7 +157,7 @@ function readGba({ game, what, original, codeMap, copy, bytes, flags }) {
   // the function it's in, and the one the tools find there by following the game's code, which knows whether it's
   // ARM or Thumb
   const owner = mapped?.address ?? address;
-  const found = inMemory ? [] : findFunctions(bytes);
+  const found = inMemory ? [] : (cache.found ??= tracedGba(original.sha1, bytes));
   const traced = found.find(f => owner >= f.address && owner < f.address + f.size);
 
   let start = address, length, extent;
@@ -132,7 +175,10 @@ function readGba({ game, what, original, codeMap, copy, bytes, flags }) {
     extent = `its first ${length} bytes, since the code map doesn't list it: --bytes <n> reads more`;
   }
   const frames = flags.frame ?? (inMemory ? FRAMES : 0);
-  ensureOriginal(console.log);
+  if (!cache.ensured) {
+    ensureOriginal(console.log);
+    cache.ensured = true;
+  }
   const read = (mode, from, count, functions) => {
     const result = spawnSync(READER, [copy.path, String(frames), mode, hex(from), String(count)], { input: functions, encoding: 'utf8', maxBuffer: 256 << 20 });
     if (result.error || result.status !== 0) throw new Error(`mGBA's decoder didn't run: ${result.error?.message ?? result.stderr.trim()}`);
@@ -154,10 +200,10 @@ function readGba({ game, what, original, codeMap, copy, bytes, flags }) {
     why += `: --${arm ? 'thumb' : 'arm'} reads them as ${arm ? 'Thumb' : 'ARM'}`;
   }
 
-  const names = new Map(codeMap.functions.filter(f => f.name).map(f => [f.address, f.name]));
+  const names = (cache.names ??= new Map(codeMap.functions.filter(f => f.name).map(f => [f.address, f.name])));
   // from the whole code map, so that what another entry's code loads shows as data, unless --arm or --thumb asks for
   // these bytes as one thing or the other
-  const functions = inMemory || flags.arm || flags.thumb ? '' : functionsFor(codeMap, bytes, found);
+  const functions = inMemory || flags.arm || flags.thumb ? '' : (cache.functions ??= functionsFor(codeMap, bytes, found));
   const lines = read(arm ? 'arm' : 'thumb', start, length, functions).map(line => {
     // a branch's or a call's address, a value loaded from the pool, or a word of it
     const text = line.split('\t')[1] ?? '';
@@ -198,7 +244,7 @@ function options(args) {
   const rest = [], flags = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === '--arm' || arg === '--thumb' || arg === '--spc') flags[arg.slice(2)] = true;
+    if (arg === '--arm' || arg === '--thumb' || arg === '--spc' || arg === '--quiet') flags[arg.slice(2)] = true;
     else if (arg === '--mode') {
       flags.mode = args[++i];
       if (!flags.mode) throw new Error(`--mode needs a mode. ${USAGE}`);

@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assemble } from '../gba/thumb.mjs';
 import { addressFinder, addressIn, compilerAt, readCompiler, runIn, throughIn, twinsIn } from '../gba/match.mjs';
-import { readAddresses } from '../match.mjs';
+import { formatListing, readAddresses } from '../match.mjs';
 
 const fixture = name => readFileSync(new URL(`./match/${name}`, import.meta.url), 'utf8');
 const halfwords = text => [...assemble(`\t.code\t16\n${text}\n`).sections['.text'].bytes.toString('hex').match(/..../g)].map(pair => pair.slice(2) + pair.slice(0, 2));
@@ -214,4 +214,23 @@ test('a stretch of the cartridge a library was built in has its own compiler', (
 test('a name less a number, as agbcc writes it, is the name with the number taken away', () => {
   const { relocations } = assemble('\t.code\t16\n\t.word\tgFoo+-0x8\n\t.word\tgFoo-0x8\n\t.word\tgFoo+0x8\n\t.word\tgFoo- -0x8\n');
   assert.deepEqual(relocations.map(r => [r.name, r.addend]), [['gFoo', -8], ['gFoo', -8], ['gFoo', 8], ['gFoo', 8]]);
+});
+
+test('match listing folds long matching stretches by default and keeps every instruction with full (#2088)', () => {
+  const ours = Array.from({ length: 24 }, (_, i) => ({ value: i === 12 ? 0x2001 : 0x2000 + i, text: `mov r0, #${i}` }));
+  const theirs = Array.from({ length: 24 }, (_, i) => ({ value: 0x2000 + i, text: `mov r0, #${i}` }));
+  const f = { name: 'BigFn', address: 0x08001000, same: false, differing: 1, halfwords: 24, ours, theirs };
+
+  const compact = formatListing(f, 'Test (USA)');
+  assert.ok(compact.includes('Matching stretches are folded; --full writes every instruction.'));
+  assert.ok(compact.includes('... (8 matching halfwords, 0x08001000 to 0x0800100E) ...'));
+  assert.ok(compact.includes('! 08001018  200C 2001'));
+  assert.ok(compact.includes('... (7 matching halfwords, 0x08001022 to 0x0800102E) ...'));
+  assert.ok(!compact.includes(' 08001000  2000 2000'));
+
+  const full = formatListing(f, 'Test (USA)', { full: true });
+  assert.ok(!full.includes('matching halfwords'));
+  assert.ok(full.includes(' 08001000  2000 2000'));
+  assert.ok(full.includes('! 08001018  200C 2001'));
+  assert.ok(full.includes(' 0800102E  2017 2017'));
 });
