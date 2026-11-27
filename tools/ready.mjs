@@ -1,5 +1,5 @@
 // npm run dp -- ready <game> [--no-worse] [--task <function or task>]: everything a step has to pass before it goes out, in one go: the port map,
-// every recording, `npm run check` and `npm run build`. For a version made a function at a time (lib/proofs.mjs) it
+// the notes' check, before anything is played, every recording, `npm run check` and `npm run build`. For a version made a function at a time (lib/proofs.mjs) it
 // goes by each function's proof too: every proof kept has to hold still, and with --task, a function's address or a
 // task's name, each function of that task has to have its proof (`npm run dp -- proofs <version> --check`). Such a
 // version with no recording yet, as a new game has while its first functions are proven, has nothing to play, which is said. With --no-worse, which `update` gives it for a merge, and for a version made a function at a time, which plays its game's recordings only as far as its proven functions go, recordings
@@ -44,6 +44,14 @@ export async function run(args) {
   step('port map', tool('portmap', game));
   // a version made a function at a time: its proofs hold, and its task's functions each have one
   if (asksForProofs(game)) step('proofs', tool('proofs', game, '--check', ...(task ? ['--task', task] : [])));
+  // a note the notes check refuses fails `npm run check` at the end, once every recording has played, and the proof
+  // then runs a second time. It takes a second and nothing the proof writes changes what it finds, so it's said here,
+  // and nothing is played until the notes are right (#2062)
+  step('notes', tool('notes', '--check'));
+  if (failed.includes('notes')) {
+    console.log(`Not ready: ${failed.join(', ')}. Nothing was played: put the notes right and run it again.`);
+    return 1;
+  }
   // what the recordings found is the point, so it shows as prove says it: in full where there's news, and summed up
   // where a recording came out as when last proven. Frames that differ fail the step
   // a game made a function at a time can have functions proven before any of it plays, and then nothing to play yet
