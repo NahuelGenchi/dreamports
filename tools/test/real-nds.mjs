@@ -3,7 +3,8 @@
 // small program written here (made-up-nds.mjs), so no game's copy is needed. It checks what the console's entry in
 // kit/consoles.js says against what the emulator does, that a recording's buttons and touches reach the program on the
 // frame they're given, that the program's two screens and its sound come out as the program makes them, and that every
-// frame's picture and every sample is the same in each run and on every computer, by a hash kept here. Then prove
+// frame's picture and every sample is the same in each run and on every computer, by a hash kept here, and when some of
+// the emulator's writes to the tools are turned away on the way. Then prove
 // compares a Dreamport of the program in C (made-up-nds.c), in a folder of its own that it removes after, with the
 // emulator on every frame, both screens and the sound, and finds one that puts a touch in the wrong place.
 
@@ -162,6 +163,13 @@ async function main() {
   second.sound.close();
   check(digest === again && new Set(first.hashes).size > 100, 'a second run gives the same pictures and the same samples');
   check(digest === SAME_EVERYWHERE, `and they're the ones kept here, the same on every computer: ${digest}`);
+  // what the emulator hands over arrives whole even when the system turns some of its writes away, as Windows can while
+  // the tools are slow to read it: a write lost then left part of a picture out, and a frame read from the middle of one (#2097)
+  const turnedAway = await reference.runOriginal({ copy, frames: FRAMES, buttons, sound: true, pictures, reads, env: { DP_REFUSED: '5' } }), refused = digestOf(turnedAway);
+  turnedAway.sound.close();
+  const pictureOf = (run, frame) => { const p = run.pictures.get(frame); return Buffer.from(p.buffer, p.byteOffset, p.byteLength); };
+  const samePictures = pictures.every(frame => pictureOf(turnedAway, frame).equals(pictureOf(first, frame)));
+  check(refused === SAME_EVERYWHERE && samePictures, `and the same, every picture too, when every fifth of the emulator's writes is turned away for a moment: ${refused}`);
 
   console.log('The same program as a Dreamport in C, on the Nintendo DS\'s kit in C');
   const original = { console: 'nds', name: 'Test Real DS (World)', title: header.title, code: header.code, sha1 };
