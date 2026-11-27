@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { REPO, LOCAL } from './lib/paths.mjs';
-import { stepClips } from './lib/clips.mjs';
+import { gameAt, mainBase, stepClips } from './lib/clips.mjs';
 import { merging } from './lib/merge-main.mjs';
 import { DIFFERS_AS_BEFORE } from './lib/as-before.mjs';
 import { asksForProofs, groupNamed } from './lib/proofs.mjs';
@@ -76,11 +76,13 @@ export async function run(args) {
   if (proved.status !== 0 && !asBefore) failed.push('prove');
   // a step whose every clip of what it changed breaks a rule has nothing share would publish, which share says only
   // after the work is committed and main brought in, a whole proof later: said here, from prove's own measures (#2082)
-  if (!nothingToPlay) {
+  // only for a game main has already, as share asks no clip of a game's first entry, which nobody can play yet (#1032)
+  const base = nothingToPlay ? null : mainBase();
+  if (base && gameAt(base, game.split('/')[0])) {
     const clips = stepClips(reportsOf(game), file => (existsSync(join(REPO, file)) ? readFileSync(join(REPO, file), 'utf8') : null));
     if (clips.none) {
       failed.push('clips');
-      console.log(`clips: ${clips.changed === 1 ? 'the one clip' : `none of the ${clips.changed} clips`} of what this step changed keeps the rules of a clip, so share would publish nothing. `
+      console.log(`clips: ${clips.changed === 1 ? 'the one clip of what this step changed breaks' : `none of the ${clips.changed} clips of what this step changed keeps`} the rules of a clip, so share would publish nothing. `
         + `The nearest, of ${clips.broken.length}:\n${clips.broken.slice(0, 3).map(clip => `  ${clip.recording}: ${clip.problems.join(' ')}`).join('\n')}\n`
         + 'Change a recording, or add one, until its clip keeps them: npm run dp -- prove <version> <recording>, without --quick, makes its clip and says the same.');
     } else if (clips.changed) console.log(`clips: ${clips.good} of the ${clips.changed} that show what this step changed ${clips.good === 1 ? 'keeps' : 'keep'} the rules.`);

@@ -1,0 +1,16 @@
+{
+  "about": "A made-up game's parts, in the order a player meets them.",
+  "parts": [
+    {
+      "name": "The title",
+      "recording": "the-whole-game",
+      "frames": [
+        0,
+        299
+      ]
+    },
+    {
+      "name": "The play"
+    }
+  ]
+}
