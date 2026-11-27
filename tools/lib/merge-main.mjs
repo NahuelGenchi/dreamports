@@ -51,15 +51,30 @@ function bothProgress(ours, theirs) {
 }
 
 /**
- * Both sides' proofs, a function to a line: each side proved its own functions, so a line only one side has stays,
- * and where both have one the branch's does, as it's of the branch's own code. A line that no longer holds once the
- * two are together is found by `npm run dp -- proofs --check`, which `ready` runs after the merge. The functions
- * that start as the original's do, its "starts", are kept the same way (#1916), with none for a function the two
- * together prove by the same bytes, as `match` keeps none there. The text is as lib/proofs.mjs writes it.
+ * Both sides' proofs, a function to a line: each side proved its own functions, so a line only one side has stays.
+ * Where both have one, the line is the side's that changed it since the two parted, which `base` holds: main's when
+ * the branch left its line as it was, as main proved that function again, which it does when the function's file
+ * changes there, and the branch's older line would be stale beside main's code (#2072). The branch's when the branch
+ * changed it, or when there's no telling how it was, as it's of the branch's own code. A line that no longer holds
+ * once the two are together is found by `npm run dp -- proofs --check`, which `ready` runs after the merge. The
+ * functions that start as the original's do, its "starts", are kept the same way (#1916), with none for a function
+ * the two together prove by the same bytes, as `match` keeps none there. The text is as lib/proofs.mjs writes it.
  */
-function bothProofs(ours, theirs) {
+function bothProofs(base, ours, theirs) {
   const mine = JSON.parse(ours), main = JSON.parse(theirs);
-  const both = name => new Map([...(main[name] ?? []), ...(mine[name] ?? [])].map(line => [line[0], line]));
+  let was = null;
+  try {
+    if (base !== null) was = JSON.parse(base);
+  } catch {
+    // a base nothing can read says nothing of how a line was
+  }
+  const keyed = lines => new Map((lines ?? []).map(line => [line[0], line]));
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const both = name => {
+    const kept = keyed(main[name]), before = keyed(was?.[name]);
+    for (const [key, line] of keyed(mine[name])) if (!kept.has(key) || !same(line, before.get(key))) kept.set(key, line);
+    return kept;
+  };
   const written = lines => [...lines.values()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(line => `    ${JSON.stringify(line)}`);
   const lines = both('functions'), starts = both('starts');
   for (const key of [...starts.keys()]) if (lines.get(key)?.[1] === 'bytes') starts.delete(key);
@@ -90,7 +105,7 @@ function settled(cwd, file) {
   }
   if (PROOFS.test(file) && ours !== null && theirs !== null) {
     try {
-      return bothProofs(ours, theirs);
+      return bothProofs(base, ours, theirs);
     } catch {
       return undefined;
     }
