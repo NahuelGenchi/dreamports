@@ -20,6 +20,7 @@
 #include "multi_sio.h"
 #include "screen.h"
 #include "stage.h"
+#include "stage_init.h"
 #include "ui.h"
 #include "ui_draw.h"
 #include "logos.h"
