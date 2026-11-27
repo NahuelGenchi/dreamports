@@ -3,8 +3,8 @@
 // twin of one of the original's, with every value where the console keeps it, and has its proof in
 // proof/proofs.json. src/main.js runs it on the page, built to WebAssembly as src/game.wasm (kit/gba/c/README.md).
 //
-// It plays as far as its twins go: from power-on through its logos and the story's opening to the title screen, until
-// Start opens the main menu, the same as the original's (proof/progress.json). The twins are made in the order the
+// It plays as far as its twins go: from power-on through its logos and the story's opening to the title screen and
+// the main menu, until its first line opens the character select, the same as the original's (proof/progress.json). The twins are made in the order the
 // game runs them.
 //
 // Its twins follow SAT-R's decompilation of Sonic Advance (https://github.com/SAT-R/sa1 at fdd8956).
@@ -59,6 +59,14 @@ void sub_800D878(void);
 void CreateMainMenu(u32 param0);
 void Task_MainMenuInit(void);
 void Task_SwitchToMainMenu(void);
+void Task_SwitchTo_Task_MainMenu_Select(void);
+void Task_MainMenu_Select(void);
+void Task_800DE44(void);
+void Task_800DEE4(void);
+void CreateCharacterSelectionScreen(u8 selectedCharacter);
+s32 UpdateSpriteAnimation_BG(struct Sprite *s);
+s32 animCmd_GetTiles_BG(void *cursor, struct Sprite *s);
+void DisplaySprite_BG(struct Sprite *s);
 void sa2__sub_8003EE4(u16 angle, s16 scaleX, s16 scaleY, s16 pivotX, s16 pivotY, s16 screenX, s16 screenY, struct BgAffineReg *affine);
 void IntroOpenTitlescreenSilent(void);
 void TaskDestructor_8065810(struct Task *t);

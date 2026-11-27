@@ -1,6 +1,6 @@
 // The title screen: its background, the PRESS START and copyright sprites, and the game's logo, loaded while the
-// screen comes out of white and then brought down to its size. Start opens the main menu, whose screen and first frame
-// are here too.
+// screen comes out of white and then brought down to its size. Start opens the main menu, which is here too: its
+// screen, its cursor and five lines, and the fade to white that leaves it for what was chosen.
 #include "console.h"
 #include "background.h"
 #include "core.h"
@@ -12,6 +12,9 @@
 #include "ui.h"
 #ifdef MATCHING
 void *memcpy(void *, const void *, unsigned int);
+struct MP2KPlayerState;
+void m4aSongNumStop(u16 n);
+void m4aMPlayImmInit(struct MP2KPlayerState *player);
 #else
 #include "m4a_internal.h"
 void *memcpy(void *dest, const void *src, unsigned long n);
@@ -24,6 +27,13 @@ void *memcpy(void *dest, const void *src, unsigned long n);
 #define TM_TITLE_LOGO_JP 73
 #define MUS_TITLE_FANFARE 2
 #define SE_SELECT 106
+#define SE_MENU_CURSOR_MOVE 108
+#define MUS_BOSS_FIGHT 29
+#define GAME_MODE_SINGLE_PLAYER 0
+#define DPAD_UP 0x0040
+#define DPAD_DOWN 0x0080
+#define DISPCNT_WIN0_ON 0x2000
+#define DISPCNT_WIN1_ON 0x4000
 #define ANIM_CHAO_HOVER_SIDE 699
 #define NUM_MAIN_MENU_ITEMS 5
 #define MENU_ITEMS_TOP_Y 93
@@ -78,10 +88,18 @@ void CreateMainMenu(u32 param0);
 void Task_MainMenuInit(void);
 void Task_SwitchToMainMenu(void);
 void TaskDestructor_TitleScreen(struct Task *t);
-/** The demo that plays when the title screen is left alone, and the main menu's own frames, by their addresses: the
- *  title screen only names them. */
-void Task_SwitchToDemoInit(void);
 void Task_SwitchTo_Task_MainMenu_Select(void);
+void Task_MainMenu_Select(void);
+void Task_800DE44(void);
+void Task_800DEE4(void);
+/** The demo that plays when the title screen is left alone, by its address: the title screen only names it. */
+void Task_SwitchToDemoInit(void);
+/** What each of the main menu's lines after the first opens: VS, Time Attack, Options and Tiny Chao Garden. */
+extern void (*const sMainMenuSecondaryItems[NUM_MAIN_MENU_ITEMS - 1])(void);
+/** The music's player, which the sound engine keeps. */
+extern struct MP2KPlayerState gMPlayInfo_BGM;
+/** The character select's screen and tasks, with the character it starts on (character_select.c). */
+void CreateCharacterSelectionScreen(u8 selectedCharacter);
 /** A rotating background's registers from an angle, a size each way and where it turns about (rotation.c). */
 void sa2__sub_8003EE4(u16 angle, s16 scaleX, s16 scaleY, s16 pivotX, s16 pivotY, s16 screenX, s16 screenY, struct BgAffineReg *affine);
 
@@ -445,6 +463,145 @@ void Task_MainMenuInit(void) {
   }
 }
 
+/** Task_MainMenu_Select, 0x0800DCFC: the main menu waits for a choice. Up and Down move the cursor, round from one
+ *  end to the other, the line chosen is drawn in its bright colours, and A starts the fade to white that leaves the
+ *  menu. */
+void Task_MainMenu_Select(void) {
+  s32 result;
+  u8 i;
+
+  struct MainMenu *menu = TASK_DATA(gCurTask);
+  struct Sprite *s = &menu->s;
+
+  if (gRepeatedKeys & DPAD_UP) {
+    m4aSongNumStart(SE_MENU_CURSOR_MOVE);
+
+    if (--menu->selectedItem > NUM_MAIN_MENU_ITEMS - 1) {
+      menu->selectedItem = NUM_MAIN_MENU_ITEMS - 1;
+    }
+  } else if (gRepeatedKeys & DPAD_DOWN) {
+    m4aSongNumStart(SE_MENU_CURSOR_MOVE);
+
+    if (++menu->selectedItem > NUM_MAIN_MENU_ITEMS - 1) {
+      menu->selectedItem = 0;
+    }
+  }
+
+  s->x = 72;
+  s->y = (menu->selectedItem * MENU_ITEMS_SPACE) + 107;
+
+  // the cursor's animation, on through any command that gives it another
+  while ((result = UpdateSpriteAnimation(s)) != 1) {
+    if (result == 0) {
+      break;
+    }
+  }
+
+  for (i = 0; i < NUM_MAIN_MENU_ITEMS; i++) {
+    s = &menu->items[i];
+
+    // the first line has colours of its own
+    if (i == menu->selectedItem) {
+      if (i != 0) {
+        s->palId = 1;
+      } else {
+        s->palId = i;
+      }
+    } else {
+      if (i != 0) {
+        s->palId = 0;
+      } else {
+        s->palId = 255;
+      }
+    }
+
+    UpdateSpriteAnimation(s);
+    DisplaySprite(s);
+  }
+
+  if (A_BUTTON & gPressedKeys) {
+    m4aSongNumStart(SE_SELECT);
+    gCurTask->main = CODE(Task_800DE44);
+    menu->unk1B0 = 0;
+
+    // Tiny Chao Garden, the last line, leaves the sprites out of the fade
+    if (menu->selectedItem == 4) {
+      gBldRegs.bldCnt = 0xBF;
+    } else {
+      gBldRegs.bldCnt = 0xFF;
+    }
+
+    gBldRegs.bldY = 0;
+  }
+}
+
+/** Task_800DE44, 0x0800DE44: the menu fades to white, a third of a step a frame. Once it is white, the two
+ *  backgrounds are set to be cleared, and the next frame leaves the menu. */
+void Task_800DE44(void) {
+  u8 i;
+
+  struct MainMenu *menu = TASK_DATA(gCurTask);
+
+  menu->unk1B0 += 0x55;
+
+  if (menu->unk1B0 >= Q(16)) {
+    menu->unk1B0 = Q(16);
+
+    gCurTask->main = CODE(Task_800DEE4);
+
+    gBgSprites_Unknown1[0] = 0;
+    gBgSprites_Unknown2[0][0] = 0;
+    gBgSprites_Unknown2[0][1] = 0;
+    gBgSprites_Unknown2[0][2] = 0xFF;
+    gBgSprites_Unknown2[0][3] = 0x20;
+    gBgSprites_Unknown1[2] = 0;
+    gBgSprites_Unknown2[2][0] = 0;
+    gBgSprites_Unknown2[2][1] = 0;
+    gBgSprites_Unknown2[2][2] = 0xFF;
+    gBgSprites_Unknown2[2][3] = 0x20;
+
+    gFlags &= ~FLAGS_EXECUTE_HBLANK_COPY;
+  }
+
+  gBldRegs.bldY = I(menu->unk1B0);
+
+  for (i = 0; i < NUM_MAIN_MENU_ITEMS; i++) {
+    DisplaySprite(&menu->items[i]);
+  }
+}
+
+/** Task_800DEE4, 0x0800DEE4: the menu is left for what was chosen. Its lines give their tiles back, its task ends,
+ *  and the music player is started on a song and stopped at once, which silences the title's. The first line opens
+ *  the character select, in the one player game. Each of the others has its own function, called with the fade off. */
+void Task_800DEE4(void) {
+  u8 selectedItem;
+  u8 i;
+
+  struct MainMenu *menu = TASK_DATA(gCurTask);
+
+  selectedItem = menu->selectedItem;
+
+  for (i = 0; i < NUM_MAIN_MENU_ITEMS; i++) {
+    VramFree(menu->items[i].graphics.dest);
+  }
+
+  TaskDestroy(gCurTask);
+  m4aSongNumStart(MUS_BOSS_FIGHT);
+  m4aMPlayImmInit(&gMPlayInfo_BGM);
+  m4aSongNumStop(MUS_BOSS_FIGHT);
+
+  if (selectedItem == 0) {
+    gGameMode = GAME_MODE_SINGLE_PLAYER;
+    CreateCharacterSelectionScreen(0);
+    return;
+  }
+
+  gDispCnt &= ~(DISPCNT_WIN0_ON | DISPCNT_WIN1_ON);
+  gBldRegs.bldCnt = 0;
+  gBldRegs.bldY = 0;
+  CALL(sMainMenuSecondaryItems[selectedItem - 1])();
+}
+
 /** Task_SwitchToMainMenu, 0x0800E008: from the title screen to the main menu, with no fade. */
 void Task_SwitchToMainMenu(void) {
   TaskDestroy(gCurTask);
@@ -457,4 +614,11 @@ void TaskDestructor_TitleScreen(struct Task *t) {
 
   VramFree(title->s.graphics.dest);
   VramFree(title->s2.graphics.dest);
+}
+
+/** Task_SwitchTo_Task_MainMenu_Select, 0x0800E044: the main menu's task becomes the one that waits for a choice, and
+ *  runs it this same frame. */
+void Task_SwitchTo_Task_MainMenu_Select(void) {
+  gCurTask->main = CODE(Task_MainMenu_Select);
+  CALL(gCurTask->main)();
 }

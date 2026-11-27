@@ -208,6 +208,16 @@
     "Task_SwitchTo_Task_MainMenu_Select": "0800E045",
     "sTitlescreenFrameTileSizes": "080B8326",
     "sa2__sub_8003EE4": "08002E58",
-    "m4aSongNumStart": "080977E5"
+    "m4aSongNumStart": "080977E5",
+    "gAnimCmdTable_BG": "0809B3C0",
+    "sMainMenuSecondaryItems": "080B8334",
+    "gMPlayInfo_BGM": "02002540",
+    "m4aMPlayImmInit": "080979D4",
+    "m4aSongNumStop": "080978B0",
+    "m4aSongNumStartOrContinue": "0809785C",
+    "gUiGraphics": "08680A38",
+    "Task_8059F9C": "08059F69",
+    "Task_nullsub_805B980": "0805B94D",
+    "Task_805B984": "0805B951"
   }
 }
