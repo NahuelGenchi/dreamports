@@ -36,7 +36,7 @@ import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal
 import { typesOfFile } from '../gba/twin-shapes.mjs';
 import { inImage } from '../gba/twin-memory.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
-import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, LINKED, LINKED_LENGTH, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withLinked, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
+import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, KEPT, LINKED, LINKED_LENGTH, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withKept, withLinked, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
 const HERE = fileURLToPath(new URL('./twin/', import.meta.url));
 const work = join(LOCAL, 'tmp', 'twin-test');
@@ -94,6 +94,12 @@ const rare = await matchFile({
   sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
 });
 check(!rare.error, `the function with a rare branch builds with ${compiler.name}${rare.error ? `: ${rare.error}` : ''}`);
+// and a function whose last branch goes by a value it keeps on its own stack, from a file of its own
+const stashing = await matchFile({
+  file: join(HERE, 'kept.c'), compiler, work: join(work, 'built', 'kept'), addressOf: name => addressOf(name) ?? null,
+  sizeOf: () => null, original: (address, bytes) => ({ bytes: Buffer.alloc(bytes) }),
+});
+check(!stashing.error && stashing.functions.find(f => f.name === 'Stash')?.length <= 0x80, `the function that keeps a value on its stack builds with ${compiler.name} and fits its place${stashing.error ? `: ${stashing.error}` : ''}`);
 // and a function that goes through a list of pointers to structs, from a file of its own
 const listed = await matchFile({
   file: join(HERE, 'through.c'), compiler, work: join(work, 'built', 'through'), addressOf: name => addressOf(name) ?? null,
@@ -113,7 +119,7 @@ const spilled = await matchFile({
 });
 check(!spilled.error && spilled.functions.find(f => f.name === 'Pour')?.length <= 0x1000 - (INSIDE.Pour - 0x08000000), `the function that writes through a pointer in its struct builds with ${compiler.name} and fits the cartridge${spilled.error ? `: ${spilled.error}` : ''}`);
 const copy = join(work, 'cartridge.gba');
-writeFileSync(copy, withLinked(withInside(withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')), readFileSync(join(work, 'built', 'inside.s'), 'utf8'))));
+writeFileSync(copy, withKept(withLinked(withInside(withTable(withThrough(withPeek(withTwice(withTurn(withAimed(withRegister(withVideo(withGives(withDivision(cartridge(assembly), readFileSync(join(work, 'built', 'bios.s'), 'utf8')), readFileSync(join(work, 'built', 'gives.s'), 'utf8')), readFileSync(join(work, 'built', 'video.s'), 'utf8')), readFileSync(join(work, 'built', 'register.s'), 'utf8')), readFileSync(join(work, 'built', 'aim.s'), 'utf8'))))), readFileSync(join(work, 'built', 'through.s'), 'utf8')), readFileSync(join(work, 'built', 'table.s'), 'utf8')), readFileSync(join(work, 'built', 'inside.s'), 'utf8'))), readFileSync(join(work, 'built', 'kept.s'), 'utf8')));
 
 // what git says has changed in the repository, to see that nothing the check keeps is among it
 const changed = () => execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: REPO, encoding: 'utf8' });
@@ -136,7 +142,7 @@ const program = (...replaced) => {
   return join(folder, 'program.c');
 };
 // how long the cartridge's functions are, as a game's code map says it
-const lengths = new Map([...spilled.functions.filter(f => INSIDE[f.name]).map(f => [INSIDE[f.name], f.length]), ...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...tabled.functions.filter(f => TABLE[f.name]).map(f => [TABLE[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
+const lengths = new Map([...stashing.functions.filter(f => KEPT[f.name]).map(f => [KEPT[f.name], f.length]), ...spilled.functions.filter(f => INSIDE[f.name]).map(f => [INSIDE[f.name], f.length]), ...listed.functions.filter(f => THROUGH[f.name]).map(f => [THROUGH[f.name], f.length]), ...tabled.functions.filter(f => TABLE[f.name]).map(f => [TABLE[f.name], f.length]), ...rare.functions.filter(f => AIMED[f.name]).map(f => [AIMED[f.name], f.length]), ...first.functions.map(f => [FUNCTIONS[f.name], f.length]), ...divides.functions.filter(f => DIVIDES[f.name]).map(f => [DIVIDES[f.name], f.length]), ...gives.functions.filter(f => GIVES[f.name]).map(f => [GIVES[f.name], f.length]), ...looks.functions.filter(f => VIDEO[f.name]).map(f => [VIDEO[f.name], f.length]), ...shifts.functions.filter(f => REGISTER[f.name]).map(f => [REGISTER[f.name], f.length])]);
 const sizeOf = address => lengths.get(address) ?? null;
 const checking = async (file, options = {}, more = {}) => {
   const result = await checkFile({
@@ -310,6 +316,24 @@ try {
   check(missed.by.Unlock?.kind === 'same', `a twin wrong on that branch alone isn't found without aiming: ${missed.by.Unlock?.line ?? missed.error}`);
   const hit = await checking(join(nearly, 'aim.c'));
   check(hit.by.Unlock?.kind === 'differs' && /at 0x0300010[67], in the work memory/.test(hit.by.Unlock.line), `and is found by an aimed call: ${hit.by.Unlock?.line ?? hit.error}`);
+  // Stash's last branch goes by a count it keeps on its stack and reads back: followed through the stack, the count
+  // is aimed with, and aimed at again, another value than the nearest, which is a count of none and ends it first (#2059)
+  const unstashed = await checking(join(HERE, 'kept.c'), { aim: false });
+  check(unstashed.by.Stash?.kind === 'same' && unstashed.by.Stash.whole === false && /left out/.test(unstashed.by.Stash.line), `without aiming, the branch that goes by a value kept on the stack is left out: ${unstashed.by.Stash?.line ?? unstashed.error}`);
+  const stashed = await checking(join(HERE, 'kept.c'));
+  check(stashed.by.Stash?.kind === 'same' && stashed.by.Stash.whole === true && /aimed at a branch way/.test(stashed.by.Stash.line), `aimed at through the stack, and past the nearest value, its calls take every path, and it's proven: ${stashed.by.Stash?.line ?? stashed.error}`);
+  const offStack = join(work, `changed-${++variants}`);
+  cpSync(HERE, offStack, { recursive: true });
+  writeFileSync(join(offStack, 'kept.c'), readFileSync(join(HERE, 'kept.c'), 'utf8').replace('gBall.hits = 55;', 'gBall.hits = 54;'));
+  const unfound = await checking(join(offStack, 'kept.c'), { aim: false });
+  check(unfound.by.Stash?.kind === 'same', `a twin wrong on that branch alone isn't found without aiming: ${unfound.by.Stash?.line ?? unfound.error}`);
+  const refound = await checking(join(offStack, 'kept.c'));
+  check(refound.by.Stash?.kind === 'differs' && /at 0x0300010[67], in the work memory/.test(refound.by.Stash.line), `and is found by a call aimed through the stack: ${refound.by.Stash?.line ?? refound.error}`);
+  // the count as the comparison reads it: one more than a halfword, as a halfword, made signed. The nearest value that
+  // isn't above none gives none, and another gives one below it
+  const ofCount = [[1, 1], [2, 16], [3, 16], [2, 16], [4, 16]], noneOrLess = value => (value | 0) <= 0;
+  const nearestCount = sourceFor(5, 2, 6, ofCount, noneOrLess, 0), anotherCount = sourceFor(5, 2, 6, ofCount, noneOrLess, 0, [], () => 0);
+  check(nearestCount === 0xFFFF && anotherCount === 0x7FFF, `the nearest value that fits is the one that gives a count of none, 0x${nearestCount?.toString(16)}, and another gives a count below it: 0x${anotherCount?.toString(16)}`);
   // a flag of a word, read and masked: aimed at, only its bit changes too
   const wide = sourceFor(0x00000001, 4, 0, [[5, 0x10000], [3, 15]], value => value > 1, 1);
   check(wide === 0x00010001, `a word's flag aimed at changes only its own bit: 0x${wide?.toString(16)}`);

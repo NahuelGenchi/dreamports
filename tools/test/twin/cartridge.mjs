@@ -17,6 +17,8 @@ export const VIA = { _call_via_r0: 0x08000500, _call_via_r1: 0x08000504, _call_v
 export const STEPS = [1, 2, 5, 9];
 // a function with a branch made-up calls almost never take, in a file of its own (aim.c)
 export const AIMED = { Unlock: 0x080006C0 };
+// a function whose last branch goes by a value it keeps on its own stack, in a file of its own (kept.c)
+export const KEPT = { Stash: 0x08000780 };
 // the BIOS's division, as a game calls it: a stub of its own in the cartridge, swi 6 and back
 export const BIOS = { Div: 0x08000510 };
 // and the function that calls it, in a file of its own (bios.c)
@@ -159,6 +161,13 @@ export function withDivision(rom, assembly) {
   const divided = Buffer.from(rom);
   place(divided, assembly, DIVIDES);
   return divided;
+}
+
+// The same cartridge with the function of twin/kept.c, whose last branch goes by a value it keeps on its stack.
+export function withKept(rom, assembly) {
+  const kept = Buffer.from(rom);
+  place(kept, assembly, KEPT);
+  return kept;
 }
 
 // The same cartridge with the function of twin/aim.c, whose rare branch the check has to aim at.

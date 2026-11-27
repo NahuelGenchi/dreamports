@@ -27,6 +27,7 @@ const TOOLS = {
   readme: 'Writes the table of Dreamports in docs/STATUS.md, with each one\'s numbers and lead, from their entries',
   commands: 'Writes the /dreamport command, from tools/commands/, in the form each coding agent reads',
   ready: 'Everything a step has to pass before it goes out, in one go, printing only what\'s wrong',
+  newest: 'Brings this folder to the newest main before /dreamport starts, where nothing would be lost, and says when the command changed',
   update: 'Brings a branch up to date with main: merges it, settles conflicts in files the tools write, runs ready and commits',
   help: 'Prints one section of the long documents, the ones whose headings have these words, or lists them',
 };
@@ -41,7 +42,7 @@ if (!TOOLS[tool]) {
 try {
   // a session's note of the task it makes in this folder counts while the tools run here (lib/taking.mjs). find reads
   // the notes, so it doesn't mark one that may be another session's
-  if (!['find', 'help'].includes(tool)) (await import('./lib/taking.mjs')).stillHere();
+  if (!['find', 'help', 'newest'].includes(tool)) (await import('./lib/taking.mjs')).stillHere();
   const { run } = await import(`./${tool}.mjs`);
   process.exitCode = (await run(args)) ?? 0;
 } catch (error) {
