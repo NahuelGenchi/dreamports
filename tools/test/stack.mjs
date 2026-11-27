@@ -273,11 +273,11 @@ try {
   check(topPlainly.kind === 'differs' && /at 0x0300021[0-7]/.test(topPlainly.line), `and built from its file as it is, it differs there: ${topPlainly.line}`);
   // Under's division takes the stack 8 bytes under its box, and Poke then sets a word in them: the stack's own, put
   // back after the call on both sides, once the twin's stub says its swi
-  const under = async copy => {
+  const under = async (copy, replay = null) => {
     const result = await checkFile({
       original: opened.original, start: opened.start, copy: cartridge, file: PROGRAM,
       build: openBuild({ root: HERE, files: [PROGRAM, BIOS_FILE, biosWork], stacked: new Map([[PROGRAM, stacked], [BIOS_FILE, copy]]) }),
-      only: FUNCTIONS.Under, addressOf: name => NAMED.get(name) ?? null, options: { calls: 50, seconds: 2 },
+      only: FUNCTIONS.Under, addressOf: name => NAMED.get(name) ?? null, options: { calls: 50, seconds: 2 }, replay,
     });
     return result.functions?.find(f => f.name === 'Under') ?? { line: result.error ?? `no address for ${result.missing}` };
   };
@@ -285,6 +285,12 @@ try {
   check(said.kind === 'same', `with the library's stub, which says its swi, Under leaves the same memory as the original's: ${said.line}`);
   const quiet = await under(biosQuiet);
   check(quiet.kind === 'differs' && /at 0x03007[0-9A-F]{3}/.test(quiet.line), `with a stub that says nothing, it differs on the stack, in the 8 bytes the BIOS took: ${quiet.line}`);
+  // that call made again by itself (#2069), on the stack and with the registers it started with, which the run kept
+  check(quiet.began?.sp === opened.stack && quiet.began.begins?.kept.length === 8, `the run keeps where that call's stack started and what r4 to r11 held: 0x0${quiet.began?.sp?.toString(16).toUpperCase()}`);
+  const quietAgain = await under(biosQuiet, quiet.began);
+  check(quietAgain.kind === 'differs' && quietAgain.line === quiet.line, `made again by itself, it differs on the stack as the run said: ${quietAgain.line}`);
+  const saidAgain = await under(biosStacked, quiet.began);
+  check(saidAgain.kind === 'same', `and with the library's stub the same call leaves the same memory: ${saidAgain.line}`);
 } finally {
   opened.original.close();
 }

@@ -20,6 +20,9 @@
 // and on the Game Boy Advance (gba/twin.mjs):
 //   --frames    how long the original plays from power-on before the first call, 600 frames unless said
 //   --addresses another file of names and addresses, shaped as the game's proof/addresses.json (match.mjs)
+//   --replay    with a function: makes one call again and no other, the call a run found its twin different at, stopped
+//               at or never back from, which the run kept in .dreamports/twin/ on this computer with the memory it
+//               started from (lib/twin-calls.mjs). It says of that call what a run does, and proves nothing
 // and on the PlayStation (ps1/twin.mjs) and the PlayStation 2 (ps2/twin.mjs) a call starts from the program as the
 // console loads it, with no --frames, or with --memories from each function's memories as it starts in play, in the
 // console's emulator, and --addresses is as on the Game Boy Advance; on the PlayStation 2 a function can also be named
@@ -50,7 +53,7 @@ import { CONSOLES } from './consoles.mjs';
 const SHARED = 'npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--seconds <n>]';
 const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- help twin).`;
 // the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
-const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]]`;
+const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]], or npm run dp -- twin <version> <function> --replay`;
 // the consoles the check knows, and where each one's is
 const CHECKS = { gba: './gba/twin.mjs', nes: './nes/twin.mjs', gb: './gbc/twin.mjs', gbc: './gbc/twin.mjs', snes: './snes/twin.mjs', ps1: './ps1/twin.mjs', n64: './n64/twin.mjs', ps2: './ps2/twin.mjs', psp: './psp/twin.mjs', nds: './nds/twin.mjs', gamecube: './gamecube/twin.mjs' };
 const NUMBERS = { '--calls': 'calls', '--seed': 'seed', '--frames': 'frames', '--seconds': 'seconds' };
@@ -84,10 +87,17 @@ export async function run(args) {
       // the recordings to take them from, every word up to the next option, or all of the game's
       options.memories = [];
       while (i + 1 < args.length && !args[i + 1].startsWith('--')) options.memories.push(args[++i]);
+    } else if (flag === '--replay') {
+      if (!check.REPLAYS) throw new Error(`twin makes one call again on the ${CONSOLES.gba.name} only, so far.`);
+      options.replay = true;
     } else if (flag.startsWith('--')) throw new Error(`twin has no ${flag}. ${USAGE_HERE}`);
     else rest.push(flag);
   }
   const [game, what] = rest;
   if (!game || rest.length > 2) throw new Error(USAGE_HERE);
+  // one call again is the call the run kept: how many calls, from which seed and memories were the run's to say
+  const runs = ['calls', 'seed', 'frames', 'memories'].filter(name => options[name] !== undefined);
+  if (options.replay && !what) throw new Error(`--replay makes one function's call again, so it needs the function: npm run dp -- twin ${game} <function> --replay.`);
+  if (options.replay && runs.length) throw new Error(`--replay makes one call again, the one a run kept, so it takes no --${runs[0]}: npm run dp -- twin ${game} ${what} --replay.`);
   return ended(await check.twin(game, { ...options, function: what, functions: what ? [what] : [] }));
 }

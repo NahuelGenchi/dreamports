@@ -6,7 +6,9 @@
 // a byte written to the kit's video memory as if it were plain memory, where the kit does what the hardware would; a
 // function reached only through a pointer; a function that divides through the BIOS, followed there and back; a twin
 // that never comes back, stopped and not hung; a function whose ways two runs take between them, and neither alone,
-// proven over both, of which a run that differs is no part; and a twin that calls
+// proven over both, of which a run that differs is no part; the call a twin differs at, kept with the memory it
+// started from and made again by itself, which says the same difference after one call of the original and is no
+// proof; and a twin that calls
 // something nothing built defines, which is said and not guessed at. A twin that names a function and a value of
 // another file is linked with that file, one written with the build's twins.h, as a game that keeps the console's
 // memory is, is checked as it is, and one that takes a struct as it is leaves the rest of its file checked. A function
@@ -34,7 +36,8 @@ import { twinsHeader } from '../lib/c.mjs';
 import { addressFinder, matchFile, runIn, throughOf, twinsIn } from '../gba/match.mjs';
 import { armIn, checkFile, ensureCaller, givesBackUsed, openCaller, openOriginal, sourceFor } from '../gba/twin.mjs';
 import { typesOfFile } from '../gba/twin-shapes.mjs';
-import { inImage } from '../gba/twin-memory.mjs';
+import { IMAGE, inImage } from '../gba/twin-memory.mjs';
+import { callsFolder, keepCall, readCall } from '../lib/twin-calls.mjs';
 import { memoriesKey, openMemories, takeMemories } from '../gba/twin-memories.mjs';
 import { AIMED, BIOS, cartridge, compiler, DIVIDES, FUNCTIONS, GIVES, INSIDE, KEPT, LINKED, LINKED_LENGTH, NAMED, PEEK, PEEK_LENGTH, PLAYED, REGISTER, SPILL_LENGTH, TABLE, THROUGH, TURN, TURN_LENGTH, TWICE, TWICE_PIECES, VIA, VIDEO, withAimed, withDivision, withGives, withInside, withKept, withLinked, withPeek, withPlay, withRegister, withTable, withThrough, withTurn, withTwice, withVideo } from './twin/cartridge.mjs';
 
@@ -177,6 +180,33 @@ try {
   check(again.by.Fall?.line === found.by.Fall?.line, 'the same seed finds it at the same call');
   const other = await checking(spoiled, { seed: 7 });
   check(other.by.Fall?.kind === 'differs', 'and another seed finds it too');
+
+  console.log('The call a twin differs at, kept and made again by itself:');
+  const differed = found.by.Fall?.began, callsAt = join(work, 'calls');
+  check(differed?.start?.length === IMAGE && differed.number >= 1 && Array.isArray(differed.args) && Array.isArray(differed.changed) && right.by.Fall?.began === undefined,
+    'a run gives what that call started from, the memory, what it was given and what was changed for it, and gives none for a twin that is the same');
+  keepCall(callsAt, 'Fall', { ...differed, name: 'Fall' });
+  const read = readCall(callsAt, 'Fall');
+  const rest = ({ start: memory, ...others }) => JSON.stringify(others);
+  check(read?.start.equals(differed.start) && rest(read) === rest({ ...differed, name: 'Fall' }) && readCall(callsAt, 'Step') === null,
+    'kept in a folder and read back it\'s the same call, and a function with none kept has none');
+  // how many calls the original makes, to see that one call is all a replay makes
+  let made = 0;
+  const calling = original.call.bind(original);
+  original.call = asked => {
+    made++;
+    return calling(asked);
+  };
+  const replayed = await checking(spoiled, {}, { only: FUNCTIONS.Fall, replay: read });
+  check(made === 1 && replayed.functions?.length === 1 && replayed.by.Fall?.replayed === true, `made again, the original is called once, and no other function is: ${made} call${made === 1 ? '' : 's'}`);
+  check(replayed.by.Fall?.kind === 'differs' && replayed.by.Fall.line === found.by.Fall.line, `and it says the difference the run said: ${replayed.by.Fall?.line ?? replayed.error}`);
+  made = 0;
+  const mended = await checking(program(), {}, { only: FUNCTIONS.Fall, replay: read });
+  check(made === 1 && mended.by.Fall?.kind === 'same' && /^call [\d,]+, Fall\(.*: the twin leaves the same memory as the original/.test(mended.by.Fall.line), `with the twin put right, the same call leaves the same memory: ${mended.by.Fall?.line ?? mended.error}`);
+  check(mended.by.Fall?.whole === undefined && mended.by.Fall?.compared === undefined && mended.by.Fall?.ran === undefined, 'which is one call and no proof: nothing says its paths were taken');
+  delete original.call;
+  const stale = await checking(spoiled, {}, { only: FUNCTIONS.Fall, replay: { ...read, sp: 0x03007E00 } });
+  check(stale.by.Fall?.kind === 'stale', `and a call kept by a build with the console's stack isn't made again by one without: ${stale.by.Fall?.line ?? stale.error}`);
 
   console.log('Two runs, each taking a way of a branch the other never takes:');
   // from the memory of power-on, nothing changed, the ball never gets past the floor; from the same memory with it
@@ -431,9 +461,12 @@ try {
 
   console.log('A twin that never comes back:');
   const began = Date.now();
-  const stuck = await checking(program(['return value * gSteps[kind & 3] + gFrame;', 'if (kind == 7) for (;;) gFrame++;\n  return value * gSteps[kind & 3] + gFrame;']));
+  const endless = program(['return value * gSteps[kind & 3] + gFrame;', 'if (kind == 7) for (;;) gFrame++;\n  return value * gSteps[kind & 3] + gFrame;']);
+  const stuck = await checking(endless);
   check(stuck.by.Scale?.kind === 'never' && /still going after 1 second/.test(stuck.by.Scale.line), `is stopped and said: ${stuck.by.Scale?.line}`);
   check(sameBut(stuck, ['Scale']) && Date.now() - began < 60000, 'and the others are still checked, in a thread started again');
+  const stuckAgain = await checking(endless, {}, { only: FUNCTIONS.Scale, replay: stuck.by.Scale?.began });
+  check(stuckAgain.by.Scale?.kind === 'never' && stuckAgain.by.Scale.line === stuck.by.Scale?.line, `and that call made again by itself is stopped and said the same: ${stuckAgain.by.Scale?.line ?? stuckAgain.error}`);
 
   console.log('What can\'t be checked:');
   const alone = await checking(program(['VIDEO8(TILES + at, colour);', '{ void nothing_built(void); nothing_built(); }']));
@@ -478,8 +511,8 @@ check(own.every(memory => memory.frame >= 20 && memory.image().readUInt32LE(0x40
 // how long Shine is in the cartridge, as a game's code map says it, so the check can say which of its paths ran
 const shineLength = play.functions.find(f => f.name === 'Shine').length, glowLength = play.functions.find(f => f.name === 'Glow').length, spareLength = play.functions.find(f => f.name === 'Spare').length;
 const second = await openOriginal(played, 2);
-const shining = async (file, options = {}, memories = null) => {
-  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : address === PLAYED.Glow ? glowLength : address === PLAYED.Spare ? spareLength : null), options: { calls: CALLS, seconds: 1, ...options } });
+const shining = async (file, options = {}, memories = null, more = {}) => {
+  const result = await checkFile({ original: second.original, start: second.start, copy: played, file, addressOf, memories, sizeOf: address => (address === PLAYED.Shine ? shineLength : address === PLAYED.Glow ? glowLength : address === PLAYED.Spare ? spareLength : null), options: { calls: CALLS, seconds: 1, ...options }, ...more });
   return { ...result, by: Object.fromEntries((result.functions ?? []).map(f => [f.name, f])) };
 };
 // play.c as it is, or with one thing replaced, in a folder of its own
@@ -518,6 +551,12 @@ try {
   const caught = await shining(wrong, {}, kept.memories);
   check(caught.by.Shine?.kind === 'differs' && /from the memory of made-up-play at frame \d+/.test(caught.by.Shine.line) && /at 0x0200044[0-3], in the work memory/.test(caught.by.Shine.line), `and is from a memory of play: ${caught.by.Shine?.line ?? caught.error}`);
 
+  // the call it differs at has the memory of play it started from with it, so it's made again with no memories at all
+  const recalled = await shining(wrong, {}, null, { only: PLAYED.Shine, replay: caught.by.Shine?.began });
+  check(recalled.by.Shine?.kind === 'differs' && recalled.by.Shine.line === caught.by.Shine?.line, `and that call made again by itself, with no memories of play to hand, says the same: ${recalled.by.Shine?.line ?? recalled.error}`);
+  const relit = await shining(playFile(), {}, null, { only: PLAYED.Shine, replay: caught.by.Shine?.began });
+  check(relit.by.Shine?.kind === 'same', `and with the twin as it should be, leaves the same memory: ${relit.by.Shine?.line ?? relit.error}`);
+
   const retaken = await taking('memories-again');
   const same = name => readFileSync(join(kept.folder, name)).equals(readFileSync(join(retaken.folder, name)));
   check(same('memories.bin') && same('memories.json'), 'the same recording gives the same memories again');
@@ -534,6 +573,9 @@ try {
   // by git's answer, as what it prints back has / where Windows' paths have \
   const ignored = spawnSync('git', ['check-ignore', '-q', inside], { cwd: REPO }).status === 0;
   check(!inside.startsWith('..') && inside.startsWith('.dreamports') && ignored, `the memories are in ${inside.split('\\').join('/')}/, which git leaves out`);
+  // a version's calls kept to be made again are beside its memories
+  const callsIn = relative(REPO, callsFolder('made-up/c'));
+  check(callsIn.split('\\').join('/') === '.dreamports/twin/made-up/c/calls' && spawnSync('git', ['check-ignore', '-q', callsIn], { cwd: REPO }).status === 0, `and the call a run keeps to be made again goes in ${callsIn.split('\\').join('/')}/, which git leaves out too`);
   const after = changed();
   check(after === before, `and nothing the repository tracks has changed${after === before ? '' : `: ${after.trim().split('\n').slice(0, 3).join('; ')}`}`);
 } finally {

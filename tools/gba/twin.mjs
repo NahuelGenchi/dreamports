@@ -29,6 +29,11 @@
 // the same memory, and one that differs loses that line. Only this tool and `match` write them. A function whose
 // calls took every path only with those of runs of other seeds before, kept on this computer, is proven over those
 // runs together, as each call of each was compared the same (../lib/twin-runs.mjs, #1768).
+//
+// A difference can come tens of thousands of calls into a run. So the call a function's twin differs at, stops at or
+// never comes back from is kept on this computer with what it started from (../lib/twin-calls.mjs), and --replay makes
+// that one call again by itself, in the original and in the twin as it's written now, and says what it leaves. A
+// replay is one call: it proves nothing, and keeps no proof and no run (#2069).
 
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
@@ -43,6 +48,7 @@ import { cKit, keptObject, SAME_FLAGS, stackedCopies, twinsFolder, WASM_FLAGS } 
 import { versionTwins } from '../lib/twins.mjs';
 import { asksForProofs, keepProofs, keptText, originalMarks, twinMarks } from '../lib/proofs.mjs';
 import { afterRun, readRuns, runsBefore, writeRuns } from '../lib/twin-runs.mjs';
+import { callsFolder, keepCall, readCall } from '../lib/twin-calls.mjs';
 import { NOT_TAKEN, TAKEN, WENT_ELSEWHERE, WENT_ON, instructionsOf, readUnreachable, waysLeft } from '../lib/played.mjs';
 import { namesOf, placeAddresses } from '../lib/wasm-addresses.mjs';
 import { versionOf, writtenIn } from '../../src/lib/languages.mjs';
@@ -881,12 +887,28 @@ const withChanges = (image, changes) => {
   return changed;
 };
 
+// What a twin's call left that the original's didn't: null when the image it left is the one expected and it gave back
+// what the original did, `gave`, or else the first byte that differs, as `memory`, and what each gave back when that
+// differs, as `gave`.
+function difference(f, ours, gave, expected) {
+  const image = Buffer.from(ours.image.buffer, ours.image.byteOffset, ours.image.length);
+  const mask = !f.returns ? 0 : f.returns.bits === 32 ? 0xFFFFFFFF : (1 << f.returns.bits) - 1;
+  const gaveSame = ((ours.gave ^ gave) & mask) === 0;
+  if (gaveSame && image.equals(expected)) return null;
+  let where = 0;
+  while (where < IMAGE && image[where] === expected[where]) where++;
+  return {
+    ...(gaveSame ? {} : { gave: { ours: (ours.gave & mask) >>> 0, theirs: (gave & mask) >>> 0 } }),
+    ...(where < IMAGE ? { memory: { ...addressAt(where), ours: image[where], theirs: expected[where] } } : {}),
+  };
+}
+
 /**
  * Calls each function of `functions` in the original and its twin until `calls` calls of it were compared, each
  * call from the memory the last one left. A function is { name, address (odd for Thumb), params, returns, call },
  * `call` the name the module gives what calls its twin.
  * Fills each in with `compared`, `tried`, what couldn't be compared and why (`aside`), and `result` when its twin
- * differed, stopped or never came back.
+ * differed, stopped or never came back, with what that call started from, `began`, for replayCall to make it again.
  * With `memories`, of play (twin-memories.mjs), a function's calls start from its own: the console's memory as it was
  * when the function started in a recording, with the arguments and the stack it had, half of them just as it was and
  * half with what it reads changed, and then a few calls on from what each leaves, as a function called every frame
@@ -1157,8 +1179,11 @@ export async function compareCalls({ original, twins, start, functions, options,
     const begins = about && { kept: about.kept.map((value, i) => (f.registers && 4 + i < f.params.length ? args[4 + i] ?? 0 : value)), back: about.back };
     const ours = await twins.call(f.call, args, changed, sp, begins);
     const call = { number: f.compared + f.tables.compared + 1, args, changed, hardware: theirs.hardware, ...(based ? { from: { recording: based.recording, frame: based.frame, calls: since - 1 } } : {}) };
+    // what this call started from, kept when it's the one the function's calls end at, to be made again by itself (#2069)
+    const began = () => ({ start: startedFrom, top, spare, sp, begins: begins || null });
     if (ours.never) {
       f.result = { kind: 'never', ...call };
+      f.began = began();
       mirror = expected;
       await twins.start(mirror);
       continue;
@@ -1175,13 +1200,12 @@ export async function compareCalls({ original, twins, start, functions, options,
     mirror = expected;
     if (ours.stopped) {
       f.result = { kind: 'stopped', why: ours.stopped, ...call };
+      f.began = began();
       await twins.set(mirror);
       continue;
     }
-    const image = Buffer.from(ours.image.buffer, ours.image.byteOffset, ours.image.length);
-    const mask = !f.returns ? 0 : f.returns.bits === 32 ? 0xFFFFFFFF : (1 << f.returns.bits) - 1;
-    const gaveSame = ((ours.gave ^ theirs.gave) & mask) === 0;
-    if (gaveSame && image.equals(expected)) {
+    const unlike = difference(f, ours, theirs.gave, expected);
+    if (!unlike) {
       if (later) {
         f.tables.compared++;
         if (retry?.slot?.targets) f.tables.inside++;
@@ -1222,17 +1246,51 @@ export async function compareCalls({ original, twins, start, functions, options,
       if (bytesOf && f.span && (aim || f.compared === AIM_AFTER || f.compared % AIM_EVERY === 0)) f.aim.branches = branchesLeft(f, bytesOf);
       continue;
     }
-    let where = 0;
-    while (where < IMAGE && image[where] === expected[where]) where++;
-    f.result = {
-      kind: 'differs', ...call,
-      ...(gaveSame ? {} : { gave: { ours: (ours.gave & mask) >>> 0, theirs: (theirs.gave & mask) >>> 0 } }),
-      ...(where < IMAGE ? { memory: { ...addressAt(where), ours: image[where], theirs: expected[where] } } : {}),
-    };
+    f.result = { kind: 'differs', ...call, ...unlike };
+    f.began = began();
     await twins.set(mirror);
   }
   twins.stop();
   if (top) await original.top(0);
+}
+
+/**
+ * One call again, by itself: the call a run's calls of `f` ended at, from what it started from, `kept`, as
+ * compareCalls leaves it in a function's `result` and `began`: { number, args, changed, from, start, top, spare, sp,
+ * begins }. The original and the twin, as it's built now, each make that call from that memory, and what they leave is
+ * compared as compareCalls compares it. `limit` and `seconds` are as DEFAULTS has them, and `stacked` whether the
+ * twins are built with the console's stack.
+ * Answers { kind, line }, as outcome does: 'differs', 'never' or 'stopped' with the line a run says of that call,
+ * 'same' when the twin now leaves what the original does, 'unchecked' when the twin calls what isn't built, and
+ * 'stale' when the original's call doesn't start or end as it did in the run, so the call kept isn't that call any more.
+ */
+export async function replayCall({ original, twins, f, kept, limit = DEFAULTS.limit, seconds = DEFAULTS.seconds, stacked = false }) {
+  const { args, changed, spare = [], top = 0 } = kept;
+  const call = { number: kept.number, args, changed, ...(kept.from ? { from: kept.from } : {}) };
+  const said = result => outcome({ ...f, result: { ...call, ...result } }, { calls: 1, seconds });
+  await twins.start(kept.start);
+  await original.set(kept.start);
+  await original.top(top);
+  try {
+    // the stack the original's call starts on now, which is the one the twin's was started on then
+    if ((stacked ? (await original.about()).stack : 0) !== (kept.sp ?? 0)) return { kind: 'stale', line: 'the original\'s call doesn\'t start on the stack it started on in the run' };
+    const theirs = await original.call({ address: f.address, span: f.span ?? 0, args, changes: changed, limit, spare, unaligned: f.unaligned, gives: f.registers?.gives ?? 0, takes: f.registers?.takes ?? 4 });
+    if (theirs.ended !== 0) return { kind: 'stale', line: 'the original\'s call doesn\'t come back as it did in the run' };
+    const expected = withChanges(kept.start, changed);
+    for (const run of theirs.runs) run.bytes.copy(expected, run.at);
+    const ours = await twins.call(f.call, args, changed, kept.sp ?? 0, kept.begins ?? null);
+    if (ours.never) return said({ kind: 'never', hardware: theirs.hardware });
+    if (ours.stopped === 'unbuilt' || ours.stopped === 'mismatch') {
+      return { kind: 'unchecked', line: `${callText(f.name, call)}: ${ours.stopped === 'unbuilt' ? `the twin calls ${ours.unbuilt}, which nothing built is the twin of` : 'a call through a pointer met a function that takes or gives something else, which WebAssembly stops'}.` };
+    }
+    if (ours.stopped) return said({ kind: 'stopped', why: ours.stopped, hardware: theirs.hardware });
+    const unlike = difference(f, ours, theirs.gave, expected);
+    if (unlike) return said({ kind: 'differs', hardware: theirs.hardware, ...unlike });
+    return { kind: 'same', line: `${callText(f.name, call)}: the twin leaves the same memory as the original${f.returns ? ' and gives back the same' : ''}.` };
+  } finally {
+    twins.stop();
+    if (top) await original.top(0);
+  }
 }
 
 /**
@@ -1411,10 +1469,15 @@ export function givesBackUsed(bytes, functions) {
  *   typesOf(file): the file's types as the console's compiler lays them out (twin-shapes.mjs typesOfFile), for calls
  *     that leave through a pointer to a struct the memory has none of to be made again with one made up, or none
  *   options: as DEFAULTS
+ *   replay: with `only`, the one call of that function to make again by itself, as a function's `began` gives it,
+ *     and nothing else is called (#2069)
  * Answers { error }, when it didn't build, { missing }, the values with no address, or { functions }, each with its
- * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }.
+ * `kind` and `line` as outcome gives them, and those with no address as { name, address: null }. A function whose
+ * twin differed, stopped or never came back has what that call started from too, `began`: { number, args, changed,
+ * from, start, top, spare, sp, begins }, `start` the console's memory as the call began. With `replay`, the one
+ * function has the `kind` and `line` replayCall gives, and `replayed`.
  */
-export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, typesOf = null, earlier = () => [], options = {}, seed = options.seed ?? DEFAULTS.seed }) {
+export async function checkFile({ original, start, copy, file, root = dirname(file), includes = [dirname(file)], files = [], console: id = 'gba', shifts = [], build = openBuild({ root, includes, files, console: id, shifts }), only = null, addressOf, isArm = () => false, memories = null, sizeOf = () => null, runOf = () => null, ruledOut = new Map(), givesBack = () => null, typesOf = null, earlier = () => [], options = {}, seed = options.seed ?? DEFAULTS.seed, replay = null }) {
   const all = { ...DEFAULTS, ...options };
   const built = await build.link({ file, only, addressOf });
   if (built.error) return { error: built.error };
@@ -1437,6 +1500,15 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
       f.line = f.span > 0 && holdsWord(cartridge(f.address & ~1, f.span), VCOUNT);
     }
     const runner = new Twins({ module: built.module, copy, seconds: all.seconds, registers, stacked: build.stacked === true });
+    // one call again, and nothing else
+    if (replay && only !== null) {
+      try {
+        const [f] = functions;
+        return { functions: [{ name: f.name, address: f.address & ~1, replayed: true, ...(await replayCall({ original, twins: runner, f, kept: replay, limit: all.limit, seconds: all.seconds, stacked: build.stacked === true })) }] };
+      } finally {
+        runner.stop();
+      }
+    }
     try {
       // the file's types as the console's compiler lays them out, for structs made up where a pointer leads to none
       const types = typesOf ? await typesOf(file) : null;
@@ -1454,7 +1526,12 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
   const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
   return {
     functions: [
-      ...functions.map(f => ({ name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...(f.run ? { run: f.run } : {}), ...whole(f, outcome(f, all), cartridge, ruledOut, earlier(f.address & ~1), seed) })),
+      ...functions.map(f => ({
+        name: f.name, address: f.address & ~1, line: f.line, compared: f.compared, ...(f.run ? { run: f.run } : {}),
+        // the call its twin differed at, stopped at or never came back from, with what it started from (#2069)
+        ...(f.began && f.result?.number ? { began: { number: f.result.number, args: f.result.args, changed: f.result.changed, ...(f.result.from ? { from: f.result.from } : {}), ...f.began } } : {}),
+        ...whole(f, outcome(f, all), cartridge, ruledOut, earlier(f.address & ~1), seed),
+      })),
       ...twins.filter(twin => twin.address === null && only === null).map(twin => ({ name: twin.name, address: null, line: twin.line })),
       ...unknown.filter(asked).map(name => ({ name, address: twins.find(twin => twin.name === name).address, kind: 'unchecked', line: 'the check can\'t read what it takes and gives back.' })),
     ],
@@ -1525,10 +1602,23 @@ const LABELS = { same: 'The same memory', differs: 'Differs', never: 'Never came
 export const armIn = rom => address => address >= CARTRIDGE && address % 4 === 0 && address - CARTRIDGE + 16 <= rom.length
   && rom.readUInt32LE(address - CARTRIDGE) >>> 28 === 0xE && looksLikeArm([0, 4, 8, 12].map(offset => rom.readUInt32LE(address - CARTRIDGE + offset)));
 
+/** Whether this console's check makes one call again by itself, with `replay` (../twin.mjs). */
+export const REPLAYS = true;
+
+// The command that makes a run again, from what it was given: the words after `twin <version> <function>`.
+function runWords({ calls, seed, frames, memories, addresses }) {
+  return [
+    ...(calls !== DEFAULTS.calls ? ['--calls', calls] : []), ...(seed !== DEFAULTS.seed ? ['--seed', seed] : []), ...(frames !== DEFAULTS.frames ? ['--frames', frames] : []),
+    ...(addresses ? ['--addresses', /\s/.test(addresses) ? `"${addresses}"` : addresses] : []), ...(memories ? ['--memories', ...(Array.isArray(memories) ? memories : [])] : []),
+  ].map(word => ` ${word}`).join('');
+}
+
 /** The function check of a Game Boy Advance game's version in C: `options.function` names one function, an address
  *  or a name, or every twin is checked; the rest are as DEFAULTS, `addresses` another file of names, and `memories`,
  *  true or a list of recordings, has the calls start from memories of play, taken from those recordings. It prints
- *  what it finds and answers 0, or 3 when a twin differed, stopped or never came back. */
+ *  what it finds and answers 0, or 3 when a twin differed, stopped or never came back. A run keeps the call each such
+ *  twin's calls ended at (../lib/twin-calls.mjs), and with `replay` the one function named has that call alone made
+ *  again, from what the run kept, and nothing is kept as proven (#2069). */
 export async function twin(game, options = {}) {
   const log = options.log ?? console.log;
   const all = { ...DEFAULTS, ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)) };
@@ -1556,13 +1646,20 @@ export async function twin(game, options = {}) {
     log(`games/${game}/ has no twins yet.`);
     return 0;
   }
+  // one call again: the one a run kept of this function, with how long the original had played before it and how long
+  // the run gave a twin, unless this says another
+  const keptAt = callsFolder(game);
+  if (all.replay && only === null) throw new Error(`--replay makes one function's call again: name the function, as in npm run dp -- twin ${game} <function> --replay.`);
+  const again = all.replay ? readCall(keptAt, hex(only)) : null;
+  if (all.replay && !again) throw new Error(`No call of ${at(only)} is kept in ${inRepo(keptAt)}/: a run of twin keeps the call a function's twin differs at, stops at or never comes back from, and --replay makes that one again.`);
+  if (again) Object.assign(all, { frames: again.frames ?? all.frames, limit: again.limit ?? all.limit, seconds: options.seconds ?? again.seconds ?? all.seconds });
   ensureCaller(log);
   const rom = readFileSync(copy.path);
   const isArm = armIn(rom);
   // memories of play, for every twin of the version, so one function asked for by itself starts where it does in a
   // check of them all
   const everyAddress = [...new Set(files.flatMap(file => twinsOf.get(file).map(t => t.address)).filter(address => address !== null))].sort((a, b) => a - b);
-  const memories = all.memories ? await memoriesOfPlay({ game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
+  const memories = all.memories && !again ? await memoriesOfPlay({ game, original, copy: copy.path, addresses: everyAddress, names: Array.isArray(all.memories) ? all.memories : [], log }) : null;
   const opened = await openOriginal(copy.path, all.frames);
   // the game's own folders, then the build's twins.h for a game that includes it, on the kit of the game's console
   const header = await twinsFolder(folder);
@@ -1593,17 +1690,18 @@ export async function twin(game, options = {}) {
   // the runs of other seeds kept on this computer, of functions their calls found the same without taking every path,
   // for a run that keeps its proofs (../lib/twin-runs.mjs, #1768), and the marks they go with: the twin's and the
   // original's as they are now
-  const keeping = asksForProofs(game) && !all.addresses && all.calls >= KEPT_FROM;
+  const keeping = asksForProofs(game) && !all.addresses && all.calls >= KEPT_FROM && !again;
   let kept = keeping ? readRuns(game) : null;
   const marksNow = keeping ? twinMarks(game, codeMap) : null, markOf = keeping ? originalMarks(game, codeMap) : null;
   const byKey = new Map(codeMap.functions.map(f => [f.key, f]));
   const marksOf = key => ({ twin: marksNow?.get(key)?.mark ?? null, original: byKey.has(key) && markOf ? markOf(byKey.get(key)) : null });
   const earlier = address => (kept ? runsBefore(kept, hex(address), marksOf(hex(address)), all.seed) : []);
-  let wholes = 0;
+  let wholes = 0, replayed = null;
+  const unlike = [];
   try {
     for (const file of chosen) {
       const result = await checkFile({
-        original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories,
+        original: opened.original, start: opened.start, copy: copy.path, file, build, only, addressOf, isArm, options: all, memories, replay: again,
         sizeOf: address => sizes.get(address) ?? null, ruledOut, givesBack, typesOf, earlier,
         runOf: twin => {
           const through = throughOf(twin, codeMap.functions);
@@ -1629,6 +1727,16 @@ export async function twin(game, options = {}) {
           log(`  No address  ${f.name}${f.line ? `, line ${f.line}` : ''}: the comment above it names the function of the original it's the twin of`);
           continue;
         }
+        if (f.replayed) {
+          replayed = f;
+          if (f.kind !== 'stale') log(`  ${LABELS[f.kind]}  ${at(f.address)} ${f.name}: ${f.line}`);
+          continue;
+        }
+        // the call its calls ended at, kept on this computer to be made again by itself
+        if (f.began) {
+          keepCall(keptAt, hex(f.address), { ...f.began, name: f.name, frames: all.frames, limit: all.limit, seconds: all.seconds, run: runWords(all) });
+          unlike.push(f.address);
+        }
         totals[f.kind]++;
         // a twin of a run proves each function of it (#1708)
         if (f.whole) {
@@ -1645,6 +1753,14 @@ export async function twin(game, options = {}) {
   } finally {
     opened.original.close();
   }
+  if (again) {
+    // a call that can't be had again, as the tools or the version's build aren't what made the run
+    const whole = `npm run dp -- twin ${game} ${at(only)}${again.run ?? ''}`;
+    if (replayed?.kind === 'stale') throw new Error(`The call kept of ${at(only)} can't be made again: ${replayed.line}, so the tools or the version's build aren't as they were. Make the run again: ${whole}.`);
+    if (!replayed) return 0;
+    log(`That was one call, the one the run kept, from ${inRepo(keptAt)}/. It proves nothing, and nothing was kept as proven: ${replayed.kind === 'same' ? `now make the run again, ${whole}` : `once it's the same, make the run again, ${whole}`}.`);
+    return ['differs', 'never', 'stopped'].includes(replayed.kind) ? 3 : 0;
+  }
   if (unnamed.size) log(`No address for ${[...unnamed].join(', ')}: give each in games/${base}/proof/addresses.json (tools/README.md, Matching the original's bytes).`);
   if (failed.length && chosen.length > 1) {
     log(`${count(failed.length)} file${failed.length === 1 ? '' : 's'} didn't build as twins. The first is ${failed[0]}. Name a function of a file to see all the compiler said of it.`);
@@ -1652,6 +1768,11 @@ export async function twin(game, options = {}) {
   const checked = Object.values(totals).reduce((sum, n) => sum + n, 0);
   log(`${count(totals.same)} of ${count(checked)} function${checked === 1 ? '' : 's'} left the same memory as the original's and gave back the same, over ${count(all.calls)} calls each, ${memories ? `from ${count(memories.count)} memories of play, which ${count(memories.functions)} of the version's functions have their own of` : `${count(all.frames)} frames in`} (seed ${all.seed}).`);
   if (totals.same) log(`${count(wholes)} of those ${count(totals.same)} took every path of the original's function in their calls, which is what makes the same memory a proof.`);
+  // the calls kept, and what makes one again
+  if (unlike.length) {
+    const replays = `npm run dp -- twin ${game} ${unlike.length === 1 ? at(unlike[0]) : '<function>'}${all.addresses ? runWords({ ...DEFAULTS, addresses: all.addresses }) : ''} --replay`;
+    log(`${unlike.length === 1 ? 'That call is' : `The call of each of those ${count(unlike.length)} functions is`} kept in ${inRepo(keptAt)}/, with the memory it started from: ${replays} makes ${unlike.length === 1 ? 'it' : 'one'} again by itself, in the original and in the twin as it's written then, with no other call made, and proves nothing. ${unlike.length === 1 ? 'It comes' : 'They come'} from your copy of the game: never put ${unlike.length === 1 ? 'it' : 'them'} in a commit, an issue or a pull request.`);
+  }
   // a proof is found with the game's own names, and over enough calls to be worth the name
   if (!asksForProofs(game)) return totals.differs || totals.never || totals.stopped ? 3 : 0;
   if (all.addresses) log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
