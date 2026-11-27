@@ -649,7 +649,7 @@ export function openBuild({ root, includes = [root], files = [], console: id = '
       // for C that names a twin by its address itself, with the build's twins.h, when the file with its table isn't here
       `__attribute__((weak)) void *kit_twin(unsigned address) { return ${CODE}(address); }`, more, '',
     ].join('\n');
-    const calls = first.calls.filter(call => only === null || call.address === only);
+    const calls = first.calls.filter(call => matchesOnly(only, call.address));
     const objects = Object.fromEntries(linked.map(each => [`__twin_unit${each.n}.o`, each.object]));
     const built = await compile([...kit.flags, '-Wl,--no-entry', '-Wl,--allow-undefined', '-Wl,--emit-relocs', `-Wl,--global-base=${layout.base}`, '-Wl,-z,stack-size=1048576',
       ...(layout.memory ? [`-Wl,--initial-memory=${layout.memory}`] : []),
@@ -1536,7 +1536,7 @@ export async function checkFile({ original, start, copy, file, root = dirname(fi
     const call = f.returns ? null : givesBack(f.address & ~1);
     if (call !== null) f.result = { kind: 'gives', call };
   }
-  const asked = name => only === null || twins.find(twin => twin.name === name).address === only;
+  const asked = name => matchesOnly(only, twins.find(twin => twin.name === name).address);
   return {
     functions: [
       ...functions.map(f => ({
@@ -1617,6 +1617,10 @@ export const armIn = rom => address => address >= CARTRIDGE && address % 4 === 0
 
 /** Whether this console's check makes one call again by itself, with `replay` (../twin.mjs). */
 export const REPLAYS = true;
+/** Whether this console's check accepts several functions in one run (../twin.mjs, #2088). */
+export const MANY = true;
+
+const matchesOnly = (only, address) => only === null || (only instanceof Set ? only.has(address) : address === only);
 
 // The command that makes a run again, from what it was given: the words after `twin <version> <function>`.
 function runWords({ calls, seed, frames, memories, addresses }) {
@@ -1649,11 +1653,19 @@ export async function twin(game, options = {}) {
   const { folder, shifts, files, twinsOf, twins, named, givenOf } = versionTwins(game, all.addresses ?? null);
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => starts.has(address) });
 
+  const wanted = all.functions?.length ? all.functions : all.function ? [all.function] : [];
   let chosen = files.filter(file => twinsOf.get(file).some(t => t.address !== null)), only = null;
-  if (all.function) {
-    only = twins.get(all.function)?.size === 1 ? [...twins.get(all.function)][0] : resolve(game, codeMap, all.function).address;
-    chosen = files.filter(file => twinsOf.get(file).some(t => t.address === only));
-    if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${all.function}: the comment above it names the address, as in /** 0x${hex(only)}: what it does */.`);
+  if (wanted.length) {
+    const addresses = new Set(), picked = new Set();
+    for (const name of wanted) {
+      const address = twins.get(name)?.size === 1 ? [...twins.get(name)][0] : resolve(game, codeMap, name).address;
+      const inFiles = files.filter(file => twinsOf.get(file).some(t => t.address === address));
+      if (!inFiles.length) throw new Error(`No function in games/${game}/ says it's the twin of ${name}: the comment above it names the address, as in /** 0x${hex(address)}: what it does */.`);
+      addresses.add(address);
+      for (const file of inFiles) picked.add(file);
+    }
+    only = addresses.size === 1 ? [...addresses][0] : addresses;
+    chosen = files.filter(file => picked.has(file));
   }
   if (!chosen.length) {
     log(`games/${game}/ has no twins yet.`);
@@ -1662,7 +1674,7 @@ export async function twin(game, options = {}) {
   // one call again: the one a run kept of this function, with how long the original had played before it and how long
   // the run gave a twin, unless this says another
   const keptAt = callsFolder(game);
-  if (all.replay && only === null) throw new Error(`--replay makes one function's call again: name the function, as in npm run dp -- twin ${game} <function> --replay.`);
+  if (all.replay && (only === null || only instanceof Set)) throw new Error(`--replay makes one function's call again: name one function, as in npm run dp -- twin ${game} <function> --replay.`);
   const again = all.replay ? readCall(keptAt, hex(only)) : null;
   if (all.replay && !again) throw new Error(`No call of ${at(only)} is kept in ${inRepo(keptAt)}/: a run of twin keeps the call a function's twin differs at, stops at or never comes back from, and --replay makes that one again.`);
   if (again) Object.assign(all, { frames: again.frames ?? all.frames, limit: again.limit ?? all.limit, seconds: options.seconds ?? again.seconds ?? all.seconds });

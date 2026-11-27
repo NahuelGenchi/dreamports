@@ -535,7 +535,7 @@ function routineFrame({ fn, body, text, file, tree, routine, address, addressOf,
   // its start, with the parameters the routine's registers hold kept as they arrive
   const kept = Object.values(routine.args ?? {}).map(arg => params.find(p => p.name === arg)).filter(Boolean);
   for (const arg of Object.values(routine.args ?? {})) if (!params.some(p => p.name === arg)) gaps.push(`${name}: the table names ${arg}, which isn't a parameter of its twin`);
-  const keep = kept.map(p => ` const uint64_t gba_arg_${p.name}_ = ${isPointer(p) ? `gba_stack_address((uint32_t)(uintptr_t)(${p.name}))` : `(uint32_t)(uintptr_t)(${p.name})`};`).join('');
+  const keep = kept.map(p => ` const uint64_t gba_arg_${p.name}_ __attribute__((unused)) = ${isPointer(p) ? `gba_stack_address((uint32_t)(uintptr_t)(${p.name}))` : `(uint32_t)(uintptr_t)(${p.name})`};`).join('');
   edits.push({ at: body.place.begin + 1, cut: 0, put: ` uint32_t gba_stack_in_ __attribute__((cleanup(gba_stack_leave))) = gba_stack_asm_enter(&${id});${keep}` });
   anchors.forEach((A, b) => {
     if (A.kind === 'call' || A.kind === 'jump') {

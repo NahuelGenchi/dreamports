@@ -62,7 +62,7 @@ import { rebuildOf } from './lib/rebuild.mjs';
 import { resolve } from './read.mjs';
 import { CONSOLES } from './consoles.mjs';
 
-const USAGE = 'Usage: npm run dp -- match <version> [<file or function>] [--addresses <file>]\n       npm run dp -- match <version> --whole [--all]';
+const USAGE = 'Usage: npm run dp -- match <version> [<file or function>...] [--addresses <file>] [--diff] [--full]\n       npm run dp -- match <version> --whole [--all]';
 const count = n => n.toLocaleString('en-US');
 const inRepo = path => relative(REPO, path).split(sep).join('/');
 
@@ -71,7 +71,12 @@ export { readAddresses };
 // what reads the original: the program `read` runs, asked for Thumb code with no list of functions, so every halfword
 // comes back as it is. Each line is an address, one or two halfwords, or a word, and what mGBA's decoder makes of them.
 function reader(copy) {
+  let ensured = false;
   return (address, bytes) => {
+    if (!ensured) {
+      ensureOriginal(console.log);
+      ensured = true;
+    }
     const result = spawnSync(READER, [copy, '0', 'thumb', hex(address), String(bytes)], { input: '', encoding: 'utf8', maxBuffer: 64 << 20 });
     if (result.error || result.status !== 0) throw new Error(`mGBA's decoder didn't run: ${result.error?.message ?? result.stderr.trim()}`);
     const halfwords = [], lines = [];
@@ -94,24 +99,33 @@ function reader(copy) {
 export async function run(args) {
   const rest = [];
   let more = null;
-  const whole = args.includes('--whole'), every = args.includes('--all');
+  const whole = args.includes('--whole'), every = args.includes('--all'), full = args.includes('--full'), diff = args.includes('--diff');
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--addresses') {
       more = args[++i];
       if (!more) throw new Error(`--addresses needs a file. ${USAGE}`);
-    } else if (['--whole', '--all'].includes(args[i])) continue;
+    } else if (['--whole', '--all', '--full', '--diff'].includes(args[i])) continue;
     else if (args[i].startsWith('--')) throw new Error(`match has no ${args[i]}. ${USAGE}`);
     else rest.push(args[i]);
   }
-  const [game, what] = rest;
-  if (!game || rest.length > 2) throw new Error(USAGE);
-  if (whole && (what || more)) throw new Error(`--whole rebuilds the whole cartridge from the version's own files and names, so it takes no file, function or --addresses. ${USAGE}`);
+  const [game, ...targets] = rest;
+  if (!game) throw new Error(USAGE);
+  if (whole && (targets.length || more || full || diff)) throw new Error(`--whole rebuilds the whole cartridge from the version's own files and names, so it takes no file, function, --addresses, --diff or --full. ${USAGE}`);
   if (every && !whole) throw new Error(`--all is for --whole, to list every stretch. ${USAGE}`);
   const { game: base, language } = versionOf(game);
   const original = readOriginal(game);
-  if (original.console === 'ps1') return (await import('./ps1/match.mjs')).matchGame({ game, what, more, whole, original });
-  if (original.console === 'ps2') return (await import('./ps2/match.mjs')).matchGame({ game, what, more, whole, original });
-  if (original.console === 'n64') return (await import('./n64/match.mjs')).matchGame({ game, what, more, whole, original });
+  if (original.console === 'ps1') {
+    if (targets.length > 1) throw new Error(USAGE);
+    return (await import('./ps1/match.mjs')).matchGame({ game, what: targets[0], more, whole, original });
+  }
+  if (original.console === 'ps2') {
+    if (targets.length > 1) throw new Error(USAGE);
+    return (await import('./ps2/match.mjs')).matchGame({ game, what: targets[0], more, whole, original });
+  }
+  if (original.console === 'n64') {
+    if (targets.length > 1) throw new Error(USAGE);
+    return (await import('./n64/match.mjs')).matchGame({ game, what: targets[0], more, whole, original });
+  }
   // a Super Nintendo game was written by hand in its processor's own language, or with a compiler no one can have, so
   // there's no compiler to give its bytes back, and the same memory is its functions' proof (docs/CONSOLES.md)
   // a PlayStation Portable game was built with Sony's SDK compiler or SN Systems', which no one can have freely, and a
@@ -134,16 +148,34 @@ export async function run(args) {
   const libraryOf = new Map(libraries.flatMap(library => library.files.map(file => [file, library])));
   const addressOf = addressFinder({ named, twins, shifts, startsFunction: address => sizes.has(address) });
 
-  // what to build: every file, the one named, or the one with the twin of the function named
-  let chosen = files, only = null;
-  if (what) {
-    const file = [resolvePath(what), join(folder, what)].find(path => path.endsWith('.c') && existsSync(path));
-    if (file) chosen = [file];
-    else {
-      const address = twins.get(what)?.size === 1 ? [...twins.get(what)][0] : resolve(game, codeMap, what).address;
-      chosen = files.filter(path => twinsOf.get(path).some(twin => twin.address === address));
-      if (!chosen.length) throw new Error(`No function in games/${game}/ says it's the twin of ${what}: the comment above it names the address, as in /** 0x${hex(address)}: what it does */.`);
-      only = address;
+  // what to build: every file, or each file and function named (#2088)
+  let chosen = files;
+  const onlyIn = new Map(), explicit = new Set();
+  if (targets.length) {
+    chosen = [];
+    const seen = new Set();
+    const pick = file => {
+      if (!seen.has(file)) {
+        seen.add(file);
+        chosen.push(file);
+      }
+    };
+    for (const target of targets) {
+      const file = [resolvePath(target), join(folder, target), join(folder, 'src', target)].find(path => path.endsWith('.c') && existsSync(path));
+      if (file) {
+        pick(file);
+        onlyIn.set(file, null);
+      } else {
+        const address = twins.get(target)?.size === 1 ? [...twins.get(target)][0] : resolve(game, codeMap, target).address;
+        const holding = files.filter(path => twinsOf.get(path).some(twin => twin.address === address));
+        if (!holding.length) throw new Error(`No function in games/${game}/ says it's the twin of ${target}: the comment above it names the address, as in /** 0x${hex(address)}: what it does */.`);
+        explicit.add(address);
+        for (const path of holding) {
+          pick(path);
+          if (!onlyIn.has(path)) onlyIn.set(path, new Set([address]));
+          else if (onlyIn.get(path) !== null) onlyIn.get(path).add(address);
+        }
+      }
     }
   }
   if (!chosen.length) {
@@ -167,10 +199,17 @@ export async function run(args) {
   }
   const needed = [...new Set([...builtWith.values()].filter(Boolean).map(way => way.name))].filter(name => !isCompilerBuilt(name));
   if (needed.length) withBuildTools(console.log, tools => buildCompilers(needed, console.log, tools));
-  ensureOriginal(console.log);
 
-  const read = reader(copy.path);
-  let same = 0, all = 0, sameBytes = 0, bytes = 0, kept = null;
+  // compare bytes in memory first, and spawn mGBA's decoder only for functions whose listing is written (#2088)
+  const cart = cartridgeOf(copy.path, 'gba'), romLength = cart.copy().length;
+  const fastRead = (address, count) => {
+    const offset = address - 0x08000000;
+    if (offset < 0 || offset >= romLength) return { bytes: Buffer.alloc(0) };
+    return { bytes: cart(address, Math.min(count, romLength - offset)) };
+  };
+  const decode = reader(copy.path);
+  let same = 0, all = 0, sameBytes = 0, bytes = 0;
+  const kept = [], keptSet = new Set();
   const failed = [];
   const unknown = new Set();
   // what goes in the version's proofs, when it keeps them (lib/proofs.mjs): each function of the code map tried
@@ -193,7 +232,7 @@ export async function run(args) {
     const compiler = builtWith.get(file);
     // a library's file is built from its own folder alone, as it's the same in every game that has it
     const result = await matchFile({
-      file, compiler, shifts, addressOf, original: read, given: givenOf(file),
+      file, compiler, shifts, addressOf, original: fastRead, given: givenOf(file),
       root: library ? library.folder : inside ? folder : dirname(file),
       includes: library ? [library.folder] : [dirname(file), ...(inside && existsSync(join(folder, 'src')) ? [join(folder, 'src')] : [])],
       work: join(LOCAL, 'match', game, library ? join('lib', ...library.id.split('/'), basename(file, '.c')) : inside ? relative(folder, file).replace(/\.c$/, '') : join('elsewhere', relative(dirname(file), file).replace(/\.c$/, ''))),
@@ -216,7 +255,8 @@ export async function run(args) {
       }
       continue;
     }
-    const shown = result.functions.filter(f => only === null || f.address === only);
+    const filter = onlyIn.get(file) ?? null;
+    const shown = result.functions.filter(f => filter === null || filter.has(f.address));
     if (!shown.length) continue;
     console.log(where);
     for (const f of shown) {
@@ -254,7 +294,13 @@ export async function run(args) {
         console.log(`  Differs   ${at} ${f.name}${run}: ${count(f.differing)} of ${count(f.halfwords)} halfwords, ${length}${first}${missing}${unmapped}`);
       }
       for (const name of f.missing) unknown.add(name);
-      if (only !== null) kept = listing(game, f, original.name);
+      if (explicit.has(f.address) || (!f.same && (targets.length > 0 || diff || full))) {
+        const written = listing(game, f, original.name, { decode, full });
+        if (!keptSet.has(written)) {
+          keptSet.add(written);
+          kept.push(written);
+        }
+      }
     }
   }
   if (unknown.size) console.log(`No address for ${[...unknown].join(', ')}: give each in games/${base}/proof/addresses.json (tools/README.md, Matching the original's bytes).`);
@@ -269,22 +315,64 @@ export async function run(args) {
     // a version made a part at a time keeps no proofs, and nothing is said of them
   } else if (more) console.log('Nothing was kept as proven: --addresses is for trying a file out, and a proof is found with the game\'s own names.');
   else for (const line of keptText(game, keepProofs(game, { kind: 'bytes', proven, failed: differing.map(f => f.key), starts: differing.filter(f => f.start > 0).map(f => ({ key: f.key, bytes: f.start })) }), 'bytes')) console.log(line);
-  if (kept) console.log(`Each of the original's instructions is beside the twin's in ${kept}. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
+  if (kept.length === 1) {
+    console.log(`Each of the original's instructions is beside the twin's in ${kept[0]}. It comes from your copy of the game: never put it in a commit, an issue or a pull request. A coding agent that reads it sends it to the company that runs the agent's model.`);
+  } else if (kept.length > 1) {
+    console.log(`The differing functions' instructions are beside their twins' in:\n${kept.map(path => `  ${path}`).join('\n')}\nThey come from your copy of the game: never put them in a commit, an issue or a pull request. A coding agent that reads them sends them to the company that runs the agent's model.`);
+  }
   return 0;
 }
 
-// one function, the original's instructions beside the twin's, kept where commits never reach
-function listing(game, f, name) {
+/** Formats one function's side-by-side instruction listing: folds long runs of matching halfwords unless `full` is true (#2088). */
+export function formatListing(f, name, { full = false, context = 4 } = {}) {
   const cell = value => (value === null ? '    ' : value.toString(16).toUpperCase().padStart(4, '0'));
-  const rows = f.ours.map((ours, i) => {
-    const theirs = f.theirs[i];
+  const row = i => {
+    const ours = f.ours[i], theirs = f.theirs[i];
     return `${ours.value === theirs.value ? ' ' : '!'} ${hex(f.address + i * 2)}  ${cell(theirs.value)} ${cell(ours.value)}  ${theirs.text.padEnd(34)} | ${ours.text}`;
-  });
-  const text = [
+  };
+  let rows;
+  if (full || f.same) {
+    rows = f.ours.map((_, i) => row(i));
+  } else {
+    const n = f.ours.length;
+    const keep = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      if (f.ours[i].value !== f.theirs[i].value) {
+        for (let j = Math.max(0, i - context); j <= Math.min(n - 1, i + context); j++) keep[j] = 1;
+      }
+    }
+    // never fold a 1- or 2-halfword gap
+    for (let i = 0; i < n;) {
+      if (keep[i]) { i++; continue; }
+      let end = i;
+      while (end < n && !keep[end]) end++;
+      if (end - i <= 2) for (let j = i; j < end; j++) keep[j] = 1;
+      i = end;
+    }
+    rows = [];
+    for (let i = 0; i < n;) {
+      if (keep[i]) {
+        rows.push(row(i++));
+        continue;
+      }
+      let end = i;
+      while (end < n && !keep[end]) end++;
+      rows.push(`  ... (${count(end - i)} matching halfwords, 0x${hex(f.address + i * 2)} to 0x${hex(f.address + (end - 1) * 2)}) ...`);
+      i = end;
+    }
+  }
+  return [
     `${f.name}, the twin of 0x${hex(f.address)} in ${name}: ${f.same ? 'the same bytes' : `${f.differing} of ${f.halfwords} halfwords differ`}.`,
-    'Each line is an address, the original\'s halfword there and the twin\'s, the original\'s instruction as mGBA\'s decoder shows it, and the line the compiler wrote for the twin\'s. A line that differs starts with !.',
+    `Each line is an address, the original's halfword there and the twin's, the original's instruction as mGBA's decoder shows it, and the line the compiler wrote for the twin's. A line that differs starts with !.${!full && !f.same ? ' Matching stretches are folded; --full writes every instruction.' : ''}`,
     '', ...rows, '',
   ].join('\n');
+}
+
+// one function, the original's instructions beside the twin's, kept where commits never reach
+function listing(game, f, name, { decode, full = false } = {}) {
+  const decoded = decode ? decode(f.address, Math.ceil(f.halfwords) * 2) : null;
+  const withText = decoded ? { ...f, theirs: f.theirs.map((t, i) => ({ ...t, text: decoded.lines[i] ?? t.text })) } : f;
+  const text = formatListing(withText, name, { full });
   const file = join(LOCAL, 'match', game, `${hex(f.address)}.txt`);
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, text);

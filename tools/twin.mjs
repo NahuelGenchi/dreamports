@@ -50,7 +50,7 @@ import { gameFolder } from './lib/paths.mjs';
 import { readOriginal } from './lib/proof-files.mjs';
 import { CONSOLES } from './consoles.mjs';
 
-const SHARED = 'npm run dp -- twin <version> [<function>] [--calls <n>] [--seed <n>] [--seconds <n>]';
+const SHARED = 'npm run dp -- twin <version> [<function>...] [--calls <n>] [--seed <n>] [--seconds <n>]';
 const USAGE = `Usage: ${SHARED}, and each console's own options (npm run dp -- help twin).`;
 // the options of the consoles whose check takes them from here, which today is the Game Boy Advance's
 const USAGE_HERE = `Usage: ${SHARED} [--frames <n>] [--addresses <file>] [--memories [<recording>...]], or npm run dp -- twin <version> <function> --replay`;
@@ -93,11 +93,11 @@ export async function run(args) {
     } else if (flag.startsWith('--')) throw new Error(`twin has no ${flag}. ${USAGE_HERE}`);
     else rest.push(flag);
   }
-  const [game, what] = rest;
-  if (!game || rest.length > 2) throw new Error(USAGE_HERE);
+  const [game, ...whats] = rest;
+  if (!game || (whats.length > 1 && !check.MANY)) throw new Error(USAGE_HERE);
   // one call again is the call the run kept: how many calls, from which seed and memories were the run's to say
   const runs = ['calls', 'seed', 'frames', 'memories'].filter(name => options[name] !== undefined);
-  if (options.replay && !what) throw new Error(`--replay makes one function's call again, so it needs the function: npm run dp -- twin ${game} <function> --replay.`);
-  if (options.replay && runs.length) throw new Error(`--replay makes one call again, the one a run kept, so it takes no --${runs[0]}: npm run dp -- twin ${game} ${what} --replay.`);
-  return ended(await check.twin(game, { ...options, function: what, functions: what ? [what] : [] }));
+  if (options.replay && whats.length !== 1) throw new Error(`--replay makes one function's call again, so it needs one function: npm run dp -- twin ${game} <function> --replay.`);
+  if (options.replay && runs.length) throw new Error(`--replay makes one call again, the one a run kept, so it takes no --${runs[0]}: npm run dp -- twin ${game} ${whats[0]} --replay.`);
+  return ended(await check.twin(game, { ...options, function: whats.length === 1 ? whats[0] : undefined, functions: whats }));
 }
