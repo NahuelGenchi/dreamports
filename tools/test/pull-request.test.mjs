@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { issueOfBranch, numberLines, pullRequestText, unfilled } from '../lib/pull-request.mjs';
+import { issueOfBranch, numberLines, pullRequestText, taskCloses, unfilled } from '../lib/pull-request.mjs';
 import { versionTitle } from '../../src/lib/languages.mjs';
 
 const TEMPLATE = readFileSync(new URL('../../.github/pull_request_template.md', import.meta.url), 'utf8');
@@ -90,4 +90,26 @@ test('angle brackets someone wrote aren\'t the template\'s words', () => {
     '<img width="480" alt="a frame of the clip" src="https://someone.github.io/dreamports/clips/walk/still.png">', 'Branch: feat/<issue>-walk was the plan.', 'Site build: not run'];
   assert.deepEqual(unfilled(written.join('\n'), TEMPLATE), []);
   assert.deepEqual(unfilled('Closes #<issue-number>\nSource/diff review: <actual scope>\nSources: the game <every source used, such as a decompilation or a port made elsewhere, with its license and whether code came in from it>', TEMPLATE).length, 3);
+});
+
+test('an unfinished part or function task writes Refs instead of Closes (#2087)', () => {
+  const text = pullRequestText(TEMPLATE, { ...KNOWN, closes: false });
+  assert.ok(text.split('\n').includes('Refs #741'));
+  assert.ok(!text.split('\n').includes('Closes #741'));
+  assert.ok(text.split('\n').includes('Builds on #730'));
+
+  const codeMap = { console: 'gba', functions: [{ key: '08000200', address: 0x08000200, size: 16 }, { key: '08000210', address: 0x08000210, size: 16 }] };
+  const parts = [{ name: 'The character select' }];
+  const partFunctions = { original: 'a'.repeat(40), parts: new Map([['The character select', ['08000200', '08000210']]]) };
+  const one = { functions: new Map([['08000200', { kind: 'bytes' }]]) };
+  const both = { functions: new Map([['08000200', { kind: 'bytes' }], ['08000210', { kind: 'memory', calls: 2000 }]]) };
+  const unproven = { parts: [{ name: 'The character select', proven: false }] };
+  const proven = { parts: [{ name: 'The character select', proven: true }] };
+
+  assert.equal(taskCloses('Task: The character select in C', { codeMap, parts, partFunctions, proofs: one, gameplay: unproven }), false);
+  assert.equal(taskCloses('Task: The character select in C', { codeMap, parts, partFunctions, proofs: both, gameplay: unproven }), false);
+  assert.equal(taskCloses('Task: The character select in C', { codeMap, parts, partFunctions, proofs: both, gameplay: proven }), true);
+  assert.equal(taskCloses('Task: Functions 08000200 to 08000210 in C', { codeMap, proofs: one }), false);
+  assert.equal(taskCloses('Task: Functions 08000200 to 08000210 in C', { codeMap, proofs: both }), true);
+  assert.equal(taskCloses('fix: unrelated bug', { codeMap, parts, partFunctions, proofs: one, gameplay: unproven }), true);
 });
