@@ -101,3 +101,40 @@ s32 animCmd_GetPalette(void *cursor, struct Sprite *s) {
   }
   return 1;
 }
+
+/** The command that sets one of a sprite's hitboxes, flipped to match the sprite's flags, or clears it when all four
+ *  bounds are zero. */
+struct ACmd_Hitbox {
+  /* 0x00 */ s32 cmdId;
+  /* 0x04 */ struct Hitbox hitbox;
+};
+
+/** 0x08003660, animCmd_AddHitbox: copies the command's hitbox into the sprite, clears it if all four bounds are zero,
+ *  and mirrors its vertical or horizontal bounds when the sprite is flipped. */
+s32 animCmd_AddHitbox(void *cursor, struct Sprite *s) {
+  struct ACmd_Hitbox *cmd = cursor;
+  s32 index = cmd->hitbox.index & 0xF;
+
+  s->animCursor += 3;
+  DMA3_COPY32(&cmd->hitbox, &s->hitboxes[index], 8);
+
+  if (cmd->hitbox.left == 0 && cmd->hitbox.top == 0 && cmd->hitbox.right == 0 && cmd->hitbox.bottom == 0) {
+    s->hitboxes[index].index = -1;
+  } else {
+    if (s->frameFlags & 0x800) {
+      s->hitboxes[index].top ^= s->hitboxes[index].bottom;
+      s->hitboxes[index].bottom ^= s->hitboxes[index].top;
+      s->hitboxes[index].top ^= s->hitboxes[index].bottom;
+      s->hitboxes[index].top = -s->hitboxes[index].top;
+      s->hitboxes[index].bottom = -s->hitboxes[index].bottom;
+    }
+    if (s->frameFlags & 0x400) {
+      s->hitboxes[index].left ^= s->hitboxes[index].right;
+      s->hitboxes[index].right ^= s->hitboxes[index].left;
+      s->hitboxes[index].left ^= s->hitboxes[index].right;
+      s->hitboxes[index].left = -s->hitboxes[index].left;
+      s->hitboxes[index].right = -s->hitboxes[index].right;
+    }
+  }
+  return 1;
+}

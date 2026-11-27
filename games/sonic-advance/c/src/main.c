@@ -3,9 +3,9 @@
 // twin of one of the original's, with every value where the console keeps it, and has its proof in
 // proof/proofs.json. src/main.js runs it on the page, built to WebAssembly as src/game.wasm (kit/gba/c/README.md).
 //
-// It plays as far as its twins go: from power-on through its logos and the story's opening to the title screen and
-// the main menu, until its first line opens the character select, the same as the original's (proof/progress.json). The twins are made in the order the
-// game runs them.
+// It plays as far as its twins go: from power-on through its logos, the story's opening, the title screen, the main
+// menu, and the character select screen, until confirming a character launches Neo Green Hill Act 1 (proof/progress.json).
+// The twins are made in the order the game runs them.
 //
 // Its twins follow SAT-R's decompilation of Sonic Advance (https://github.com/SAT-R/sa1 at fdd8956).
 
@@ -21,6 +21,7 @@
 #include "screen.h"
 #include "stage.h"
 #include "ui.h"
+#include "ui_draw.h"
 #include "logos.h"
 #include "malloc.h"
 #include "flash.h"
@@ -33,6 +34,7 @@
 
 // the twins no header of theirs declares
 struct OamData *OamMalloc(u8 order);
+s32 animCmd_AddHitbox(void *cursor, struct Sprite *s);
 void Timer1Intr(void);
 // and those of the compiler's helpers and the BIOS's stubs the game takes from the kit (kit/gba/c/lib/libgcc/ and
 // bios/), which only the twins' table names
@@ -64,6 +66,28 @@ void Task_MainMenu_Select(void);
 void Task_800DE44(void);
 void Task_800DEE4(void);
 void CreateCharacterSelectionScreen(u8 selectedCharacter);
+void Task_8059F9C(void);
+void Task_805A060(void);
+void sub_805A9A4(void);
+void Task_805AAF8(void);
+void Task_805AC00(void);
+void Task_805ACD8(void);
+void sub_805ADF0(void);
+void Task_805AE84(void);
+void Task_805AF24(void);
+void sub_805AFC4(void);
+void Task_805B11C(void);
+void Task_805B1E0(void);
+void sub_805B324(void);
+void Task_805B52C(void);
+void sub_805B694(void);
+void CheckCPUPartnerUnlock(void);
+void sub_805B858(void);
+void Task_805B880(void);
+void Task_805B8C0(void);
+void Task_805B930(void);
+void Task_nullsub_805B980(void);
+void Task_805B984(void);
 s32 UpdateSpriteAnimation_BG(struct Sprite *s);
 s32 animCmd_GetTiles_BG(void *cursor, struct Sprite *s);
 void DisplaySprite_BG(struct Sprite *s);
