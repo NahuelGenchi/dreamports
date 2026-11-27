@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, sameVideoOnce, savedLines, seenFirst, stillGood } from '../share.mjs';
+import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, sameVideoOnce, savedLines, seenFirst, stillGood, waitUntilOnline } from '../share.mjs';
 import { recordingHash, repeatedClips } from '../lib/clips.mjs';
 
 const COMMIT = 'a68edcf'.padEnd(40, '0');
@@ -189,4 +189,72 @@ test('a text linking a clip share didn\'t make for the branch is caught', () => 
     const title = `${SITE}clips/a-game/2026-11-08-7e9a578-5a4f393.mp4`;
     assert.deepEqual(foreignLinks(`${lines}\n\n[Watch the clip of other-fighter](${title}) (MP4, 0.04 MB)`, saved), [title]);
   });
+});
+
+test('waitUntilOnline does not re-trigger Pages while the pushed commit is already building (#2087)', async () => {
+  let time = 0, triggers = 0;
+  const statuses = [
+    ...Array.from({ length: 16 }, () => ({ commit: COMMIT, status: 'building', error: null })),
+    { commit: COMMIT, status: 'built', error: null },
+  ];
+  let poll = 0;
+  await waitUntilOnline('me/dreamports', COMMIT, 'https://me.github.io/dreamports/p/info.json', '2026-11-27T00:00:00Z', {
+    last: () => statuses[Math.min(poll++, statuses.length - 1)],
+    trigger: () => { triggers++; },
+    wait: async ms => { time += ms; },
+    fetch: async () => ({ json: async () => ({ made: '2026-11-27T00:00:00Z' }) }),
+    now: () => time,
+    write: () => {},
+  });
+  assert.equal(triggers, 0);
+  assert.ok(time >= 80_000);
+});
+
+test('waitUntilOnline triggers Pages once after 60s when no build started for the pushed commit (#2087)', async () => {
+  let time = 0, triggers = 0;
+  await waitUntilOnline('me/dreamports', COMMIT, 'https://me.github.io/dreamports/p/info.json', 'm1', {
+    last: () => (triggers ? { commit: COMMIT, status: 'built', error: null } : { commit: '0'.repeat(40), status: 'built', error: null }),
+    trigger: () => { triggers++; },
+    wait: async ms => { time += ms; },
+    fetch: async () => ({ json: async () => ({ made: 'm1' }) }),
+    now: () => time,
+    write: () => {},
+  });
+  assert.equal(triggers, 1);
+});
+
+test('waitUntilOnline tolerates a brief reasonless errored status while a replacement build starts, and fails on real errors (#2087)', async () => {
+  let time = 0, poll = 0;
+  const sequence = [
+    { commit: COMMIT, status: 'errored', error: null },
+    { commit: COMMIT, status: 'building', error: null },
+    { commit: COMMIT, status: 'built', error: null },
+  ];
+  await waitUntilOnline('me/dreamports', COMMIT, 'https://me.github.io/dreamports/p/info.json', 'm2', {
+    last: () => sequence[Math.min(poll++, sequence.length - 1)],
+    trigger: () => {},
+    wait: async ms => { time += ms; },
+    fetch: async () => ({ json: async () => ({ made: 'm2' }) }),
+    now: () => time,
+    write: () => {},
+  });
+  assert.equal(poll, 3);
+
+  await assert.rejects(() => waitUntilOnline('me/dreamports', COMMIT, 'https://me.github.io/dreamports/p/info.json', 'm2', {
+    last: () => ({ commit: COMMIT, status: 'errored', error: 'page build failed' }),
+    trigger: () => {},
+    wait: async () => {},
+    now: () => 0,
+    write: () => {},
+  }), /page build failed/);
+
+  let persistent = 0;
+  await assert.rejects(() => waitUntilOnline('me/dreamports', COMMIT, 'https://me.github.io/dreamports/p/info.json', 'm2', {
+    last: () => { persistent++; return { commit: COMMIT, status: 'errored', error: null }; },
+    trigger: () => {},
+    wait: async () => {},
+    now: () => 0,
+    write: () => {},
+  }), /it gave no reason/);
+  assert.equal(persistent, 3);
 });

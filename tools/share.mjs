@@ -524,38 +524,49 @@ function refuseUnfilled(text) {
 }
 
 // waits for GitHub to build the Pages site with the new commit, then for the preview's address to serve it
-async function waitUntilOnline(repository, pushed, probe, made) {
-  const wait = ms => new Promise(done => setTimeout(done, ms));
-  const started = Date.now();
-  let asked = false;
-  process.stdout.write('Waiting for GitHub Pages to build it, usually a minute or two');
+export async function waitUntilOnline(repository, pushed, probe, made, {
+  last = lastBuild, trigger = buildPages, wait = ms => new Promise(done => setTimeout(done, ms)),
+  fetch: get = fetch, now = Date.now, write = text => process.stdout.write(text),
+} = {}) {
+  const started = now();
+  let asked = false, errored = 0;
+  write('Waiting for GitHub Pages to build it, usually a minute or two');
   for (;;) {
-    const build = lastBuild(repository);
-    if (build?.commit === pushed && build.status === 'errored') throw new Error(`\nGitHub couldn't build the Pages site: ${build.error ?? 'it gave no reason'}.`);
+    const build = last(repository);
     if (build?.commit === pushed && build.status === 'built') break;
-    // a site switched on with the branch already there may need asking once
-    if (!asked && Date.now() - started > 60_000) {
-      buildPages(repository);
+    if (build?.commit === pushed && build.status === 'errored') {
+      // a cancelled build can report errored with no reason briefly while a replacement build starts; wait two more polls before failing
+      if (build.error || ++errored >= 3) {
+        throw new Error(`\nGitHub couldn't build the Pages site: ${build.error ?? 'it gave no reason'}.`);
+      }
+    } else {
+      errored = 0;
+    }
+    // a site switched on with the branch already there may need asking once, but never while GitHub is already
+    // building or queueing this commit, since asking again cancels the active build (#2087)
+    const active = build?.commit === pushed && (build.status === 'building' || build.status === 'queued');
+    if (!asked && !active && now() - started > 60_000) {
+      trigger(repository);
       asked = true;
     }
-    if (Date.now() - started > 10 * 60_000) {
+    if (now() - started > 10 * 60_000) {
       throw new Error(`\nGitHub hasn't built ${repository}'s Pages site after 10 minutes. Its Actions tab shows the build, called pages-build-deployment, `
         + 'and why it waits.');
     }
-    process.stdout.write('.');
+    write('.');
     await wait(5000);
   }
-  for (const until = Date.now() + 5 * 60_000; Date.now() < until; await wait(5000)) {
+  for (const until = now() + 5 * 60_000; now() < until; await wait(5000)) {
     try {
-      const served = await (await fetch(`${probe}?${Date.now()}`, { cache: 'no-store' })).json();
+      const served = await (await get(`${probe}?${now()}`, { cache: 'no-store' })).json();
       if (served.made === made) {
-        process.stdout.write('\n');
+        write('\n');
         return;
       }
     } catch {
       // not there yet
     }
-    process.stdout.write('.');
+    write('.');
   }
   throw new Error(`\nThe site was built, but ${probe} doesn't show the new preview yet: try the address again in a few minutes.`);
 }

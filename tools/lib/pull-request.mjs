@@ -9,6 +9,9 @@ import { languageOf, versionOf } from '../../src/lib/languages.mjs';
 import { notesIn } from '../../src/lib/notes.mjs';
 import { UPSTREAM, api, signedInAs } from './github.mjs';
 import { REPO } from './paths.mjs';
+import { parseCodeMap } from './proof-files.mjs';
+import { parsePartFunctions, partGroups } from './part-functions.mjs';
+import { groupNamed, groupsOf, parseProofs } from './proofs.mjs';
 
 /** The issue a branch is for, from its name, as in feat/741-ice-mountain-act-2, or null. */
 export const issueOfBranch = branch => Number(/^[a-z]+\/(\d+)-/.exec(branch ?? '')?.[1]) || null;
@@ -61,17 +64,37 @@ const withoutComments = template => template.replace(/<!--[\s\S]*?-->\n?/g, '');
 const labelOf = line => /^([A-Z][A-Za-z/ ]*?)(?: in [A-Z][A-Za-z+#]*)?:/.exec(line)?.[1] ?? null;
 
 /**
- * The pull request's text from the repository's `template`, with what `known` holds filled in: `issue` and its
- * `milestone`, the `branch`, `buildsOn`, the numbers of the pull requests in review the branch starts on top of,
- * `about`, what changed in a sentence or two, `lead`, the game's lead when it's someone else, `clips`, their lines as
- * share keeps them, or '' when it shared none,
+ * Whether a pull request for an issue titled `title` finishes its task at the shared commit, and so should write
+ * `Closes #<issue>` rather than `Refs #<issue>` (#2087). Returns true when the issue is not a part or function task
+ * of a version that keeps its proofs, or when every function in that task has a proof in `proofs` and, for a part
+ * task, the part is recorded and proven in `gameplay`.
+ */
+export function taskCloses(title, { codeMap = null, parts = [], partFunctions = null, proofs = null, gameplay = null } = {}) {
+  if (!title || !codeMap || !proofs) return true;
+  const groups = partFunctions && parts.length ? partGroups(parts, partFunctions.parts, codeMap) : groupsOf(codeMap);
+  const group = groupNamed(groups, title);
+  if (!group) return true;
+  if (group.part && !group.recorded) return false;
+  if (group.functions.some(f => !proofs.functions.has(f.key))) return false;
+  if (group.part && gameplay) {
+    const proven = new Set((gameplay.parts ?? []).filter(part => part.proven).map(part => part.name));
+    if (!proven.has(group.name)) return false;
+  }
+  return true;
+}
+
+/**
+ * The pull request's text from the repository's `template`, with what `known` holds filled in: `issue` (with `closes`,
+ * false for an unfinished task that uses `Refs`) and its `milestone`, the `branch`, `buildsOn`, the numbers of the
+ * pull requests in review the branch starts on top of, `about`, what changed in a sentence or two, `lead`, the game's
+ * lead when it's someone else, `clips`, their lines as share keeps them, or '' when it shared none,
  * `numbers` (numberLines), `notes`, the titles of the notes the step adds or changes, and `preview`, its address.
  * Anything not known keeps the template's own words. With `earlier`, a text made before for the same branch, everything
  * someone wrote in it stays, and only the lines the tools know better now are written again: the clips, the numbers,
  * the notes and the preview.
  */
 export function pullRequestText(template, known, earlier = null) {
-  const { issue, milestone, branch, buildsOn = [], about, lead, clips, numbers, notes, preview } = known;
+  const { issue, closes = true, milestone, branch, buildsOn = [], about, lead, clips, numbers, notes, preview } = known;
   // each line the tools write, by the label it starts with
   const own = {
     Clips: clips === undefined ? undefined : clips ? `Clips:\n\n${clips}\n` : 'Clips: none',
@@ -94,7 +117,7 @@ export function pullRequestText(template, known, earlier = null) {
     } else if (own[label] !== undefined) out.push(own[label]);
     else if (earlier) out.push(line);
     else if (once[label] !== undefined) out.push(once[label]);
-    else if (line.trim() === 'Closes #<issue-number>' && issue) out.push(`Closes #${issue}`, ...buildsOn.map(number => `Builds on #${number}`));
+    else if (line.trim() === 'Closes #<issue-number>' && issue) out.push(`${closes ? 'Closes' : 'Refs'} #${issue}`, ...buildsOn.map(number => `Builds on #${number}`));
     else if (line.trim() === '## Changes') out.push(line, '', about || CHANGES, ...(lead ? ['', `The game's lead is @${lead}.`] : []));
     else if (line.trim() === '## Limitations and follow-up') out.push(line, '', LIMITS);
     else out.push(line);
@@ -137,9 +160,11 @@ export function knownOf({ game, branch, commit, base, about, preview, clips }) {
   // its entry's lead
   const entry = at(commit)[0](`games/${versionOf(game).game}/entry.md`) ?? '';
   const home = Number(/^issue:\s*(\d+)/m.exec(entry)?.[1]) || null;
-  let milestone = null, buildsOn = [], lead = /^lead:\s*['"]?([\w-]+)/m.exec(entry)?.[1] ?? null;
+  let milestone = null, title = null, buildsOn = [], lead = /^lead:\s*['"]?([\w-]+)/m.exec(entry)?.[1] ?? null;
   try {
-    milestone = issue ? api(`repos/${UPSTREAM}/issues/${issue}`)?.milestone?.title ?? null : null;
+    const item = issue ? api(`repos/${UPSTREAM}/issues/${issue}`) : null;
+    milestone = item?.milestone?.title ?? null;
+    title = item?.title ?? null;
     lead = (home ? api(`repos/${UPSTREAM}/issues/${home}`)?.assignees?.[0]?.login : null) ?? lead;
     if (lead?.toLowerCase() === signedInAs().toLowerCase()) lead = null;
     // the pull requests in review whose commits the branch carries and main doesn't have, as a piece on top of one starts from it
@@ -148,11 +173,28 @@ export function knownOf({ game, branch, commit, base, about, preview, clips }) {
   } catch {
     // GitHub can't be read now
   }
+  const before = base ? proofAt(game, ...at(base)) : null, after = proofAt(game, ...at(commit));
+  let closes = true;
+  try {
+    const read = at(commit)[0], own = `games/${game}/proof`, shared = `games/${versionOf(game).game}/proof`;
+    const proofsText = read(`${own}/proofs.json`), mapText = read(`${shared}/code-map.json`);
+    if (title && proofsText && mapText) {
+      const original = read(`${shared}/original.json`) ? JSON.parse(read(`${shared}/original.json`)) : null;
+      const codeMap = { ...parseCodeMap(JSON.parse(mapText)), ...(original?.console ? { console: original.console } : {}) };
+      const parts = read(`${shared}/parts.json`) ? JSON.parse(read(`${shared}/parts.json`)).parts ?? [] : [];
+      const pfText = read(`${shared}/part-functions.json`);
+      const partFunctions = pfText ? parsePartFunctions(pfText) : null;
+      const proofs = parseProofs(JSON.parse(proofsText));
+      closes = taskCloses(title, { codeMap, parts, partFunctions, proofs, gameplay: after?.gameplay ?? null });
+    }
+  } catch {
+    // leave Closes when the proof files can't be read
+  }
   // the notes the step adds or changes, by their titles
   const changed = base ? git(['diff', '--name-only', '--diff-filter=d', base, commit, '--', 'games/*/notes/*.md', 'kit/*/notes/*.md']).split('\n').filter(Boolean) : [];
   const notes = changed.map(path => {
     const [top, name] = path.split('/');
     return notesIn(REPO, top, name).find(note => note.path === path)?.title;
   }).filter(Boolean);
-  return { issue, milestone, branch, buildsOn, about, lead, clips, numbers: numberLines(game, base ? proofAt(game, ...at(base)) : null, proofAt(game, ...at(commit))), notes, preview };
+  return { issue, closes, milestone, branch, buildsOn, about, lead, clips, numbers: numberLines(game, before, after), notes, preview };
 }
