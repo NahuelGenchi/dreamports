@@ -1,8 +1,0 @@
-{
-  "original": "9ba0fc66f5144857e78d37725ad13205c106985a",
-  "from": "The functions the original runs in each part's frames, as npm run dp -- prove found them: nothing else writes one",
-  "parts": {
-    "The red rows": ["80000400","80000524","80000538"],
-    "The blue rows": ["80000524","80000538","8000056C"]
-  }
-}
