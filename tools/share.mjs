@@ -25,7 +25,7 @@ import { LOCAL, REPO, gameFolder } from './lib/paths.mjs';
 import { knownOf, pullRequestText, unfilled } from './lib/pull-request.mjs';
 import { versionOf, versionTitle } from '../src/lib/languages.mjs';
 import { head, uncommitted, remotes, fileAt, fetchPreviews, pushPreviews, makePreview, BRANCH, CLIPS } from './lib/preview.mjs';
-import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, changedSince, clipsToShow, SHOW_IT } from './lib/clips.mjs';
+import { clipProblems, staleness, mainBase, clipLinks, reportOf, gamesToShow, changedSince, clipsToShow, repeatedClips, SHOW_IT } from './lib/clips.mjs';
 import { RECORD_END, changesOf, readRecord, recordLines, recordLinks, recordProblems, stateAt } from './lib/same-proof.mjs';
 import { proofLines, recordingsAt, standProblems, stepProofs } from './lib/proven-step.mjs';
 import { UPSTREAM, api, signedInAs, findFork, hasCommit, pagesOf, turnOnPages, lastBuild, buildPages } from './lib/github.mjs';
@@ -80,7 +80,11 @@ export async function run(args, { team = false } = {}) {
   const base = mainBase();
   // a step that changes the game's code and no frame has no clip to show: the record of its proof goes in one's place
   const stands = team ? null : standIn(game, commit, base);
-  const chosen = chooseClips(game, clipFile, commit, base, { team, stands });
+  // a video several recordings gave shows once, with the others named beside it (#2075)
+  const chosen = sameVideoOnce(chooseClips(game, clipFile, commit, base, { team, stands }));
+  for (const clip of chosen.filter(c => c.also.length)) {
+    console.log(`Shown once, as the clip of ${clip.recording}: ${clip.also.length === 1 ? 'one more recording' : `${clip.also.length} more recordings`} gave the very same video, ${clip.also.join(', ')}.`);
+  }
   const shared = chosen.map(clip => ({ clip, files: clipFiles(game, commit, clip, undefined, base) }));
   const stood = !chosen.length && stands && !stands.problems.length;
   const proof = stood && !stands.functions ? recordFile(game, commit, base, stands.record) : null;
@@ -116,7 +120,7 @@ export async function run(args, { team = false } = {}) {
   // leaves a pull request to write them by hand. A clip kept from before that breaks a rule now goes, and a share with
   // no clip still says so for the branch, which --check reads
   let saved = stillGood(readSaved(), branch, commit, base);
-  for (const { clip, files } of shared) saved = keepClip(saved, branch, clip.recording, clipLines(title, clip, files, siteUrl), measuresOf(clip, commit, base));
+  for (const { clip, files } of shared) saved = keepClip(saved, branch, clip.recording, clipLines(title, clip, files, siteUrl), measuresOf(clip, commit, base), clip.also);
   saved = seenFirst(saved);
   if (!shared.length) saved = keepNone(saved, branch);
   if (proof) saved = keepProof(saved, branch, game, recordLines(title, stands.record, `${siteUrl}${proof.path}`));
@@ -334,6 +338,8 @@ function measuresOf(clip, commit, base) {
   return {
     clip: 'dreamports', recording, recordingFile, recordingSha1, commit, base, sideBySide: clip.sideBySide,
     video: createHash('sha1').update(readFileSync(clip.file)).digest('hex'), measures: rest,
+    // the other recordings that gave this very video, which shows once for them all (#2075)
+    ...(clip.also?.length ? { also: clip.also } : {}),
   };
 }
 
@@ -348,6 +354,29 @@ export function clipFiles(game, commit, clip, day = new Date().toISOString().sli
   ];
 }
 
+// The clips that are one video, as one clip. A step that changes a screen many recordings pass through with the same
+// presses has the same frames cut out of each, so the same bytes, which have one address (clipFiles): shown once for
+// each recording, a pull request held one video 76 times (#2075). The first of them shows it, `also` names the other
+// recordings, and who the original plays is said only when all of them agree, as one video can't show two.
+export function sameVideoOnce(clips, hashOf = clip => createHash('sha1').update(readFileSync(clip.file)).digest('hex')) {
+  const videos = new Map();
+  for (const clip of clips) {
+    const hash = hashOf(clip), first = videos.get(hash);
+    if (!first) videos.set(hash, { ...clip, also: [] });
+    else {
+      first.also.push(clip.recording);
+      if (JSON.stringify(first.shows ?? null) !== JSON.stringify(clip.shows ?? null)) first.shows = null;
+    }
+  }
+  return [...videos.values()];
+}
+
+// the other recordings a clip stands for, as a sentence after its link: all of them when few, or how many and three
+const named = names => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]);
+const alsoOf = (also = []) => (!also.length ? ''
+  : also.length <= 3 ? ` The very same video came out of ${named(also)} too.`
+    : ` The very same video came out of ${also.length} more recordings, ${named(also.slice(0, 3))} among them.`);
+
 // the clip as the pull request shows it: a frame that links the video
 export function clipLines(title, clip, clips, siteUrl) {
   const video = `${siteUrl}${clips[0].path}`;
@@ -356,7 +385,7 @@ export function clipLines(title, clip, clips, siteUrl) {
   const name = clip.recording ? `${title}, ${clip.recording}` : title;
   return [
     ...(clips[1] ? [`[![${name}: a frame of the clip](${siteUrl}${clips[1].path})](${video})`, ''] : []),
-    `[Watch the clip${clip.recording ? ` of ${clip.recording}` : ''}](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})`,
+    `[Watch the clip${clip.recording ? ` of ${clip.recording}` : ''}](${video}) (MP4, ${(clip.bytes / 1e6).toFixed(1)} MB${what})${alsoOf(clip.also)}`,
   ].join('\n');
 }
 
@@ -369,10 +398,13 @@ function readSaved() {
 }
 
 // the branch's clips with this one added, or put in place of the one that played the same recording; another
-// branch's clips are another step's, and are left out. A proof's record shared from the branch stays beside them
-export function keepClip(saved, branch, key, lines, measures) {
+// branch's clips are another step's, and are left out. A proof's record shared from the branch stays beside them.
+// One kept from before goes too when it's the same video, or of a recording this clip stands for now, `also`, or one
+// that stood for this clip's recording, so a video never shows twice (#2075)
+export function keepClip(saved, branch, key, lines, measures, also = []) {
   const kept = saved?.branch === branch ? saved : null;
-  const clips = (kept?.clips ?? []).filter(c => c.key !== key);
+  const clips = (kept?.clips ?? []).filter(c => c.key !== key && !also.includes(c.key) && !(c.measures?.also ?? []).includes(key)
+    && !(measures?.video && c.measures?.video === measures.video));
   return { branch, clips: [...clips, { key, lines, ...(measures ? { measures } : {}) }], ...(kept?.proofs ? { proofs: kept.proofs } : {}) };
 }
 
@@ -467,6 +499,12 @@ function checkText(file) {
   if (foreign.length) {
     throw new Error(`The text links ${foreign.length === 1 ? 'a clip' : `${foreign.length} clips`} share didn't make for ${branch}: ${foreign.join(', ')}. `
       + 'Take them out, and paste .dreamports/share/clips.md under Clips as it is.');
+  }
+  // and a video shows once, whichever recordings gave it (#2075)
+  const twice = repeatedClips(text);
+  if (twice.length) {
+    throw new Error(`The text shows ${twice.length === 1 ? 'a video' : `${twice.length} videos`} more than once: ${twice.join(', ')}. `
+      + 'A video is one clip, whichever recordings gave it: paste .dreamports/share/clips.md under Clips as it is.');
   }
   const missing = missingLines(text, saved);
   if (missing.length) {

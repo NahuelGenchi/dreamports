@@ -5,8 +5,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, savedLines, seenFirst, stillGood } from '../share.mjs';
-import { recordingHash } from '../lib/clips.mjs';
+import { clipFiles, clipLines, foreignLinks, keepClip, missingLines, sameVideoOnce, savedLines, seenFirst, stillGood } from '../share.mjs';
+import { recordingHash, repeatedClips } from '../lib/clips.mjs';
 
 const COMMIT = 'a68edcf'.padEnd(40, '0');
 const SITE = 'https://someone.github.io/dreamports/';
@@ -138,6 +138,46 @@ test('a clip of a change that\'s only heard leaves the branch\'s clips once one 
   saved = keepClip(saved, 'feat/1-a', 'act', 'a', measures({ frame: 4326, why: 'w' }));
   assert.deepEqual(seenFirst(saved).clips.map(c => c.key), ['act']);
   assert.equal(seenFirst(null), null);
+});
+
+test('a video several recordings gave shows once, with the others named beside it', () => {
+  withClips(clip => {
+    const still = clip('clip-middle.png', 'a frame', null).file;
+    // five recordings pass the title screen with the same presses, so prove cut the same video out of each (#2075)
+    const title = ['amy-act', 'knuckles-act', 'sonic-act', 'tails-act', 'vs-menu'].map((name, i) => ({ ...clip(`${name}.mp4`, 'the title screen', name), still, shows: { character: i === 4 ? 'Sonic' : 'Amy' } }));
+    const reset = ['reset-act', 'reset-menu'].map(name => ({ ...clip(`${name}.mp4`, 'after a reset', name), still, shows: { character: 'Sonic' } }));
+    const own = { ...clip('own.mp4', 'its own', 'own-act'), still };
+    const once = sameVideoOnce([...title, own, ...reset]);
+    assert.deepEqual(once.map(c => [c.recording, c.also]), [['amy-act', ['knuckles-act', 'sonic-act', 'tails-act', 'vs-menu']], ['own-act', []], ['reset-act', ['reset-menu']]]);
+    const lines = once.map(c => clipLines(TITLE, c, clipFiles('a-game', COMMIT, c, '2026-11-27'), SITE));
+    const text = lines.join('\n\n');
+    assert.equal(text.split('a frame of the clip').length - 1, 3);
+    assert.equal(text.split('[Watch the clip').length - 1, 3);
+    assert.deepEqual(repeatedClips(text), []);
+    // who the original plays is said only when every recording of the video agrees, as one video can't show two
+    assert.match(lines[0], /with the same button presses\) The very same video came out of 4 more recordings, knuckles-act, sonic-act and tails-act among them\.$/);
+    assert.match(lines[1], /with the same button presses\)$/);
+    assert.match(lines[2], /and the original's character is Sonic\) The very same video came out of reset-menu too\.$/);
+    // and the text one clip for each recording made, as #2068 had, is refused
+    const each = [...title, own, ...reset].map(c => clipLines(TITLE, c, clipFiles('a-game', COMMIT, c, '2026-11-27'), SITE)).join('\n\n');
+    assert.equal(repeatedClips(each).length, 2);
+  });
+});
+
+test('a clip kept from before goes when a new one is the same video, or stands for its recording', () => {
+  const measures = (video, also) => ({ video, ...(also ? { also } : {}) });
+  let saved = keepClip(null, 'feat/1-a', 'amy-act', 'amy', measures('v1'));
+  saved = keepClip(saved, 'feat/1-a', 'sonic-act', 'sonic', measures('v1'));
+  assert.deepEqual(saved.clips.map(c => c.key), ['sonic-act']);
+  // a recording that had a clip of its own and now shares another's video
+  saved = keepClip(saved, 'feat/1-a', 'tails-act', 'tails', measures('v2'));
+  saved = keepClip(saved, 'feat/1-a', 'amy-act', 'amy and tails', measures('v3', ['tails-act']), ['tails-act']);
+  assert.deepEqual(saved.clips.map(c => c.key), ['sonic-act', 'amy-act']);
+  // and one that shared another's and has its own now
+  saved = keepClip(saved, 'feat/1-a', 'tails-act', 'tails alone', measures('v4'));
+  assert.deepEqual(saved.clips.map(c => c.key), ['sonic-act', 'tails-act']);
+  // clips with no measures, as a test's or an old share's, are told apart by their recording only
+  assert.deepEqual(keepClip(keepClip(null, 'feat/1-a', 'a', 'a'), 'feat/1-a', 'b', 'b').clips.map(c => c.key), ['a', 'b']);
 });
 
 test('a text linking a clip share didn\'t make for the branch is caught', () => {

@@ -268,6 +268,14 @@ export function clipLinks(text) {
   return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]).filter(link => !link.endsWith('-same-proof.json'));
 }
 
+/** The videos a text shows more than once, each by a "Watch the clip" link: a video is one clip, whichever recordings
+ *  gave it, so share writes its lines once (#2075). */
+export function repeatedClips(text) {
+  const shown = new Map();
+  for (const [, link] of String(text).matchAll(/\[Watch the clip[^\]]*\]\((https:\/\/[^\s()]+\.mp4)\)/g)) shown.set(link, (shown.get(link) ?? 0) + 1);
+  return [...shown].filter(([, times]) => times > 1).map(([link]) => link);
+}
+
 /** A game's code or recordings, as a path in the repository, with the game's folder: a step that changes either shows it in a clip. */
 export const GAME_CHANGE = /^games\/([a-z0-9-]+)\/(?:[a-z0-9-]+\/)?(?:src|proof\/recordings)\//;
 
