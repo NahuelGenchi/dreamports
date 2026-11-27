@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CLIP_FRAMES, baseWithMerge, changedText, clipLinks, clipProblems, clipsToShow, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { CLIP_FRAMES, baseWithMerge, changedText, clipLinks, clipProblems, clipsToShow, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash, stepClips } from '../lib/clips.mjs';
 import { pathsOf } from '../../.github/first-entry/rules.mjs';
 import { readRecording } from '../lib/recording.mjs';
 import { checkClips } from '../clips-check.mjs';
@@ -305,4 +305,22 @@ test('a clip made while update\x27s merge is open names the base the branch has 
   // a branch with no main of its own yet takes the merged side's, and no side at all gives none
   assert.equal(baseWithMerge(null, 'm2', isAncestor), 'm2');
   assert.equal(baseWithMerge(null, null, isAncestor), null);
+});
+
+test('ready says when no clip of what the step changed keeps the rules, before anything is shared', () => {
+  const textOf = file => (file === FILE ? RECORDING : null);
+  const named = (name, clip) => ({ ...report(clip), recording: name });
+  // #1880's first proof: every clip shows the step's change and none could go, the nearest named first
+  const none = stepClips([named('short-and-still', { frames: 242, seconds: 4.05, same: 240 }), named('still', { same: 295 }), named('unchanged', { changed: null })], textOf);
+  assert.deepEqual([none.changed, none.good, none.none], [2, 0, true]);
+  assert.deepEqual(none.broken.map(clip => clip.recording), ['still', 'short-and-still']);
+  assert.match(none.broken[0].problems[0], /so it's a still picture/);
+  // one that keeps them is enough, and a step that changed no frame has nothing to say
+  const one = stepClips([named('still', { same: 295 }), named('moving', {})], textOf);
+  assert.deepEqual([one.changed, one.good, one.none], [2, 1, false]);
+  assert.equal(stepClips([named('unchanged', { changed: null })], textOf).none, false);
+  assert.equal(stepClips([], textOf).none, false);
+  // a report of a recording that changed since, or that's gone, says nothing
+  assert.deepEqual(stepClips([named('still', { same: 295 })], () => '{}').changed, 0);
+  assert.deepEqual(stepClips([named('still', { same: 295 })], () => null).changed, 0);
 });

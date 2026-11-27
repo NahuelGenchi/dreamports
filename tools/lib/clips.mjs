@@ -268,6 +268,20 @@ export function clipLinks(text) {
   return [...String(text).matchAll(/https:\/\/[^\s()<>"'[\]]+\/clips\/[^\s()<>"'[\]]+\.(?:mp4|png|json)/g)].map(m => m[0]).filter(link => !link.endsWith('-same-proof.json'));
 }
 
+/**
+ * What a step's clips would show, from the reports prove just wrote, before anything is committed or shared (#2082):
+ * of the clips that show something the step changed, how many keep the rules, and those that don't with what each
+ * breaks, the nearest to keeping them first. `textOf(recordingFile)` is the recording as it is now, or null. A report
+ * that isn't of the recording as it is says nothing, and is left out. `none` is true when clips show a change and
+ * not one could go in a pull request, which share refuses. { changed, good, broken: [{ recording, problems }], none }
+ */
+export function stepClips(reports, textOf) {
+  const shown = reports.filter(report => report?.clip?.changed && !staleness(report, textOf(report.recordingFile)));
+  const each = shown.map(report => ({ recording: report.recording, problems: clipProblems(report, textOf(report.recordingFile)) }));
+  const broken = each.filter(clip => clip.problems.length).sort((a, b) => a.problems.length - b.problems.length);
+  return { changed: each.length, good: each.length - broken.length, broken, none: each.length > 0 && broken.length === each.length };
+}
+
 /** The videos a text shows more than once, each by a "Watch the clip" link: a video is one clip, whichever recordings
  *  gave it, so share writes its lines once (#2075). */
 export function repeatedClips(text) {
