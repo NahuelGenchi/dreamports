@@ -785,25 +785,19 @@ function throughSteps(value, steps) {
 export function sourceFor(held, bytes, now, steps, wanted, other, seen = [], another = null) {
   const bits = bytes * 8, mask = bytes === 4 ? 0xFFFFFFFF : (1 << bits) - 1;
   const signed = value => (bytes < 4 && value >> (bits - 1) & 1 ? value - 2 ** bits : value) >>> 0;
-  const read = [value => value >>> 0, signed].find(as => throughSteps(as(held), steps) === now);
-  if (!read) return null;
-  if (bytes < 4 && another) {
-    // not the nearest again: any other of all it could hold that does it, as the nearest can be the one value that
-    // changes the way to the branch, as a count of none ends a function before the branch a count below none takes (#2059)
-    const all = [];
-    for (let value = 0; value <= mask; value++) if (value !== held && wanted(throughSteps(read(value), steps))) all.push(value);
-    return all.length ? all[another(all.length)] >>> 0 : null;
-  }
-  if (bytes < 4) {
-    // through a mask, a flag among others: one bit changed first, as the nearest number can change many (#1570)
-    if (steps.some(([kind]) => kind === 5)) {
-      for (let bit = 0; bit < bits; bit++) if (wanted(throughSteps(read((held ^ 1 << bit) & mask), steps))) return ((held ^ 1 << bit) & mask) >>> 0;
-    }
-    for (let d = 1; d <= mask; d++) {
-      for (const value of [(held + d) & mask, (held - d) & mask]) if (wanted(throughSteps(read(value), steps))) return value >>> 0;
+  const reads = [value => value >>> 0, signed].filter(as => throughSteps(as(held), steps) === now);
+  if (!reads.length) return null;
+  // a byte or a halfword that reads the same signed or not, as 0 does, says nothing of which the comparison read:
+  // unsigned first, and signed where that finds nothing, as no unsigned value comes out below 0 (#2060)
+  if (bytes < 4 && reads.length > 1) {
+    for (const way of reads) {
+      const found = sourceRead(way, held, bits, mask, steps, wanted, another);
+      if (found !== null) return found;
     }
     return null;
   }
+  const read = reads[0];
+  if (bytes < 4) return sourceRead(read, held, bits, mask, steps, wanted, another);
   // a word the game itself kept there in a memory of play, as a pointer to one of its own things, which no number
   // near another is: a pointer compared with 0 is then used (#1709)
   for (const value of seen) if (value !== held && wanted(throughSteps(read(value), steps))) return value >>> 0;
@@ -821,6 +815,25 @@ export function sourceFor(held, bytes, now, steps, wanted, other, seen = [], ano
     } else added += by;
   }
   for (const want of CANDIDATES(now, other)) if (wanted(want)) return (sign * (want - added)) >>> 0;
+  return null;
+}
+
+// sourceFor for a byte or a halfword read one way, signed or not: the value to put there, or null when none does
+function sourceRead(read, held, bits, mask, steps, wanted, another) {
+  if (another) {
+    // not the nearest again: any other of all it could hold that does it, as the nearest can be the one value that
+    // changes the way to the branch, as a count of none ends a function before the branch a count below none takes (#2059)
+    const all = [];
+    for (let value = 0; value <= mask; value++) if (value !== held && wanted(throughSteps(read(value), steps))) all.push(value);
+    return all.length ? all[another(all.length)] >>> 0 : null;
+  }
+  // through a mask, a flag among others: one bit changed first, as the nearest number can change many (#1570)
+  if (steps.some(([kind]) => kind === 5)) {
+    for (let bit = 0; bit < bits; bit++) if (wanted(throughSteps(read((held ^ 1 << bit) & mask), steps))) return ((held ^ 1 << bit) & mask) >>> 0;
+  }
+  for (let d = 1; d <= mask; d++) {
+    for (const value of [(held + d) & mask, (held - d) & mask]) if (wanted(throughSteps(read(value), steps))) return value >>> 0;
+  }
   return null;
 }
 const CANDIDATES = (now, other) => [other, other + 1, other - 1, other + 2, other - 2, other ^ 0x80000000, 0, 1, 0xFFFFFFFF, 0x7FFFFFFF, 0x80000000, now + 1, now - 1, ~now].map(value => value >>> 0);
