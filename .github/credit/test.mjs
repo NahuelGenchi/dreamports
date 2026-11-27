@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { creditLines, creditProblems } from './credit.mjs';
+import { MARK, issueCredits, noteFor, whatToDo } from './issue.mjs';
 
 const found = text => creditLines(text).map(each => each.line);
 
@@ -44,4 +45,33 @@ test('each one found is said with where it is', () => {
     { where: 'Commit 1234abcd', text: 'fix: a thing (#1)\n\nCo-Authored-By: Claude <noreply@anthropic.com>' },
     { where: 'The pull request\'s description', text: 'Nothing to see.' },
   ]), ['Commit 1234abcd, line 3: "Co-Authored-By: Claude <noreply@anthropic.com>"']);
+});
+
+test('an issue\'s title, text and comments are read, and a pull request\'s comments only', () => {
+  const comments = [{ author: 'ana', body: 'Looks right.' }, { author: 'ben', body: 'Done.\n\n_Generated with Claude Code_' }];
+  assert.deepEqual(issueCredits({ title: 'fix: a thing', body: 'Why.\n\nCo-Authored-By: Claude <noreply@anthropic.com>' }, comments), [
+    'The description, line 3: "Co-Authored-By: Claude <noreply@anthropic.com>"',
+    'A comment by ben, line 3: "_Generated with Claude Code_"',
+  ]);
+  assert.deepEqual(issueCredits({ title: 'Made with Codex', body: null }), ['The title, line 1: "Made with Codex"']);
+  assert.deepEqual(issueCredits({ title: 'fix: a thing', body: 'Tested in OpenCode and Codex.' }, [comments[0]]), []);
+  // Check reads a pull request's own text and fails it, so only its comments are read here
+  assert.deepEqual(issueCredits({ title: 'Made with Codex', body: 'Written by AI', pullRequest: true }, comments), ['A comment by ben, line 3: "_Generated with Claude Code_"']);
+});
+
+test('the check leaves one comment, writes it again when the lines change, and takes it away once they\'re gone', () => {
+  const problems = issueCredits({ title: 'fix: a thing', body: 'Written by AI' });
+  const note = noteFor(problems);
+  assert.ok(note.startsWith(MARK));
+  assert.match(note, /Please edit this line out:\n\n> The description, line 1: "Written by AI"/);
+  // its own comment quotes the lines, and is never read as a credit
+  assert.deepEqual(issueCredits({ title: 'fix: a thing', body: 'Fine now.' }, [{ author: 'github-actions[bot]', body: note, own: true }]), []);
+  // and its mark typed by someone else hides nothing
+  assert.equal(issueCredits({ title: 'fix: a thing', body: 'Fine now.' }, [{ author: 'ben', body: `${MARK}
+Written by AI` }]).length, 1);
+  assert.equal(whatToDo(problems, null), 'post');
+  assert.equal(whatToDo(problems, { body: note }), 'nothing');
+  assert.equal(whatToDo([...problems, 'The title, line 1: "Made with Codex"'], { body: note }), 'update');
+  assert.equal(whatToDo([], { body: note }), 'delete');
+  assert.equal(whatToDo([], null), 'nothing');
 });

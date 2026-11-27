@@ -1,0 +1,40 @@
+name: Credit
+
+# Nothing public here credits a coding agent (AGENTS.md). Check reads a pull request's title, description and commits
+# and fails it. An issue and a comment have nothing to fail, so this reads them when one is opened or edited, and
+# leaves one comment that names each line that credits an agent, which goes once the lines are gone
+# (.github/credit/issue.mjs, #2084). It takes the check from the default branch, reads the issue's text through the
+# API and runs nothing from it.
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: credit-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  credit:
+    name: No issue or comment credits a coding agent
+    # the check's own comment starts a run too, which would find nothing new
+    if: github.event.sender.type != 'Bot'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Take the check from the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: .github/credit
+      - name: Read the issue and its comments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/credit/issue.mjs
