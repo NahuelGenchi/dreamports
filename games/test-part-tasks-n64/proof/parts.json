@@ -2,15 +2,20 @@
   "about": "A made-up game's parts, in the order a player meets them.",
   "parts": [
     {
-      "name": "The title",
+      "name": "The red rows",
       "recording": "the-whole-game",
       "frames": [
         0,
-        299
+        49
       ]
     },
     {
-      "name": "The play"
+      "name": "The blue rows",
+      "recording": "the-whole-game",
+      "frames": [
+        50,
+        119
+      ]
     }
   ]
 }
