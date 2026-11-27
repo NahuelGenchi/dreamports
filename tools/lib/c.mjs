@@ -702,7 +702,8 @@ async function partsOf(folder) {
 
 // A game of twins on the Game Boy Advance that matches the console's work memory has the console's stack too, as its
 // functions proven by the same bytes leave it (../gba/stack.mjs): its own files, and its shared libraries', are built
-// from copies with the stack's calls in. Each such file's copy, and the folders they're built with, or null.
+// from copies with the stack's calls in. Each such file's copy, and the folders they're built with, or null. A copy
+// is kept from one run to the next, and made again only when something it's made from changes (#2070).
 async function stackedOf(folder, { kit, own, libraries, sources, flags, all }) {
   const game = relative(join(REPO, 'games'), folder).split(sep).join('/');
   if (kit.id !== 'gba' || game.startsWith('..') || isAbsolute(game) || !readOriginalOf(game)?.workMemory) return null;
@@ -710,7 +711,7 @@ async function stackedOf(folder, { kit, own, libraries, sources, flags, all }) {
   const withSrc = [...all, join(folder, 'src')];
   const args = [...WASM_FLAGS, ...FLAGS, ...flags.filter(f => !f.startsWith('-Wl')), ...withSrc.flatMap(f => ['-I', inRepo(f)])];
   const stackable = [...own, ...libraries.flatMap(library => library.files)];
-  const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO });
+  const made = await stackSources({ game, folder, own: stackable, args, filesTree: filesFor(sources, withSrc), out: join(LOCAL, 'c', 'stack', ...game.split('/')), repo: REPO, clang: compilerVersion() });
   return { copies: new Map(stackable.map((file, i) => [file, made.sources[i]])), folders: withSrc };
 }
 

@@ -280,8 +280,8 @@ export function piecesIn(text, shifts = [], given = null, console = 'gba') {
   return { functions: twins, rest };
 }
 
-// a folder's C, as the folders of names and bytes the preprocessor is given
-function filesIn(folder) {
+/** A folder's C, as the folders of names and bytes the preprocessor is given. */
+export function filesIn(folder) {
   const files = {};
   for (const entry of readdirSync(folder, { withFileTypes: true })) {
     if (entry.isDirectory()) {

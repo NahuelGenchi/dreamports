@@ -23,7 +23,7 @@
 // which copies what it pushed itself: the register the check's call starts with and where it goes back to, which the
 // program that calls the original says (#1896).
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LOCAL, REPO } from '../lib/paths.mjs';
@@ -33,7 +33,7 @@ import { buildCompilers, isCompilerBuilt } from '../gba/agbcc.mjs';
 import { withBuildTools } from '../gba/build.mjs';
 import { ensureOriginal, runOriginal } from '../gba/original.mjs';
 import { memorySpec } from '../lib/memory.mjs';
-import { stackOfFile, syntaxOf, withStack } from '../gba/stack.mjs';
+import { reachedFrom, stackedCopy, stackOfFile, syntaxOf, withStack } from '../gba/stack.mjs';
 import { routineMap } from '../gba/stack-map.mjs';
 import { checkFile, ensureCaller, openBuild, openOriginal } from '../gba/twin.mjs';
 import { madeUpGame } from './made-up-game.mjs';
@@ -248,6 +248,72 @@ check(copies && filled[1] === NAMED.get('gMore') && filled[2] === BIOS_BACK && f
 check(sameLeft(mine, 'gFillLeft'), `and so has the Dreamport's, word for word: ${show(mine.left('gFillLeft'))}`);
 const noSwi = await dreamport(stacked, 'no-swi', biosQuiet);
 check(noSwi.left('gSplitLeft')[4] !== splitBack && !sameLeft(noSwi, 'gFillLeft') && sameLeft(noSwi, 'gHandLeft'), `with no stub saying its swi, they're missing: ${show(noSwi.left('gSplitLeft'))}; ${show(noSwi.left('gFillLeft'))}`);
+
+// A file's copy is kept from one run to the next, and made again only when something it's made from changes (#2070):
+// the program in a folder of its own, with a header it includes and one it doesn't
+console.log('A copy kept from one run to the next:');
+{
+  const src = join(WORK, 'kept-src'), keptIn = join(WORK, 'kept-copies'), own = join(src, 'leftovers.c');
+  for (const folder of [src, keptIn]) rmSync(folder, { recursive: true, force: true });
+  mkdirSync(src, { recursive: true });
+  const put = (name, content) => writeFileSync(join(src, name), content);
+  put('leftovers.c', `#include "taken.h"\n${text}`);
+  put('taken.h', '#define TAKEN 1\n');
+  put('left.h', '#define LEFT 1\n');
+  // the files clang's tree is read from, as they are on the disk now
+  const treeNow = () => {
+    const tree = { kit: { c: {}, gba: { c: { 'stack.h': readFileSync(join(REPO, 'kit', 'gba', 'c', 'stack.h')) } } } };
+    let at = tree;
+    for (const part of inRepo(src).split('/')) at = at[part] ??= {};
+    for (const name of readdirSync(src)) at[name] = readFileSync(join(src, name));
+    return tree;
+  };
+  const ownArgs = [...args, '-I', inRepo(src)], defined = Object.entries(FUNCTIONS).map(([name, address]) => ({ name, address }));
+  const copying = (more = {}) => stackedCopy({
+    file: own, repo: REPO, out: keptIn, root: src, includes: [src], compiler, args: ownArgs, filesTree: treeNow(), clang: 'made up', defined, matched: COMPILED,
+    routines: table, routinesFrom: routines, addressOf, valueOf: name => NAMED.get(name) ?? null, ...more,
+  });
+  const onDisk = () => readFileSync(join(keptIn, 'leftovers.c'), 'utf8');
+  const first = await copying();
+  // the same copy as the three steps make by hand
+  const byHand = withStack({
+    file: inRepo(own), text: readFileSync(own, 'utf8'), tree: await syntaxOf(own, REPO, ownArgs, treeNow()), map: await stackOfFile({ file: own, root: src, includes: [src], compiler, work: join(WORK, 'kept-by-hand') }),
+    matched: COMPILED, addressOf, routines: table, valueOf: name => NAMED.get(name) ?? null,
+  });
+  const firstText = onDisk();
+  check(first.made === true && firstText === `${byHand.header}\n#line 1 "leftovers.c"\n${byHand.text}` && JSON.stringify(first.gaps) === JSON.stringify(byHand.gaps), 'the first run makes the copy, the one the three steps make by hand');
+  const second = await copying();
+  check(second.made === false && second.copy === first.copy && onDisk() === firstText && JSON.stringify(second.gaps) === JSON.stringify(first.gaps), 'the next run takes it as it is, with its gaps, and makes nothing');
+  put('left.h', '#define LEFT 2\n');
+  check((await copying()).made === false, 'and so does one after a change to a header the file doesn\'t include');
+  put('taken.h', '#define TAKEN 2\n');
+  check((await copying()).made === true && (await copying()).made === false, 'a change to a header it includes makes it again, once');
+  put('leftovers.c', `#include "taken.h"\n${text}\n// a line more\n`);
+  const longer = await copying();
+  check(longer.made === true && onDisk().endsWith('// a line more\n') && (await copying()).made === false, 'and so does a change to the file itself');
+  // a function of another file that the copy asked the address of, and one it never asked of
+  const moved = name => (name === 'Keep' ? FUNCTIONS.Keep + 0x11 : name === 'Nobody' ? 0x08000001 : addressOf(name));
+  const unmoved = onDisk(), elsewhere = await copying({ addressOf: moved });
+  check(elsewhere.made === true && onDisk() !== unmoved, 'a twin it names that moves makes it again, and the copy is another');
+  check((await copying({ addressOf: moved })).made === false && (await copying()).made === true, 'and one it never names changes nothing, while the old address back makes it again');
+  check((await copying({ valueOf: name => (name === 'gNothing' ? 0x03000FF0 : NAMED.get(name) ?? null) })).made === false, 'a value it never asks after changes nothing');
+  check((await copying({ matched: new Set([...COMPILED].filter(name => name !== 'Push')) })).made === true && (await copying()).made === true, 'a function that loses its proof by the same bytes makes it again, and so does getting it back');
+  check((await copying({ same: new Map([['Hand', 4]]) })).made === true && (await copying()).made === true, 'and so does what match says of a function\'s start');
+  check((await copying({ compiler: { ...compiler, flags: [...compiler.flags, '-fno-inline'] } })).made === true && (await copying()).made === true, 'another flag for the console\'s compiler makes it again');
+  check((await copying({ clang: 'another' })).made === true && (await copying()).made === true, 'and so does another version of the compiler that writes the tree');
+  check((await copying({ routinesFrom: `${routines}\n` })).made === true && (await copying()).made === true, 'and another table of routines');
+  writeFileSync(join(keptIn, 'leftovers.c'), `${onDisk()}\n`);
+  check((await copying()).made === true && (await copying()).made === false, 'a copy that isn\'t the one written is made again');
+  check((await copying({ clang: null })).made === true && (await copying({ clang: null })).made === true, 'and with no compiler\'s version to go by, nothing is kept');
+  // which files a file can take in, read from its text: by name, wherever they are, and all of them when it can't be read
+  const map = entries => new Map(Object.entries(entries).map(([path, content]) => [path, Buffer.from(content)]));
+  const some = map({ 'src/a.c': '#include "x/b.h"\n# include <c.h>\n// #include NAME\n', 'kit/b.h': '%:include "d.h"\n', 'lib/b.h': '#embed "t.dat"\n', 'src/c.h': '', 'kit/d.h': '', 'lib/t.dat': '', 'src/e.h': '', 'src/other.c': '' });
+  check(reachedFrom('src/a.c', some).join() === 'kit/b.h,kit/d.h,lib/b.h,lib/t.dat,src/a.c,src/c.h', `a file takes in every file its includes name, by name, in every folder, and those they name: ${reachedFrom('src/a.c', some).join(', ')}`);
+  check(reachedFrom('src/a.c', map({ 'src/a.c': '#define NAME "b.h"\n/* one */ #include NAME\n', 'src/b.h': '', 'src/e.h': '' })).length === 3, 'with an include a macro names, every file there is');
+  check(reachedFrom('src/a.c', map({ 'src/a.c': '#if defined(__has_include)\n#if __has_include("e.h") && __has_include(<g.h>)\n#endif\n#endif\n', 'src/e.h': '', 'src/f.h': '' })).join() === 'src/a.c,src/e.h', 'a file asked after with __has_include is taken like one included, and one that isn\'t there yet is none');
+  check(reachedFrom('src/a.c', map({ 'src/a.c': '#if __has_include(NAME)\n#endif\n', 'src/e.h': '', 'src/f.h': '' })).length === 3 && reachedFrom('src/a.c', map({ 'src/a.c': '#define HAS __has_include\n', 'src/e.h': '', 'src/f.h': '' })).length === 3, 'and with one a macro asks after, or the question under another name, every file there is');
+  check(reachedFrom('src/a.c', map({ 'src/a.c': '#inc\\\nlude "e.h"\n', 'src/e.h': '', 'src/f.h': '' })).join() === 'src/a.c,src/e.h', 'a directive split over two lines is read as the compiler joins it');
+}
 
 // The function check builds a version's twins as its build does, from the copies with the stack's calls in, and starts
 // each call's stack where the original's call starts (../gba/twin.mjs): Again's call of Read then finds what Keep's
