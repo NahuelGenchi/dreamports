@@ -293,7 +293,7 @@ test('a claim the bot never answers stops waiting at its limit, and isn\'t their
   const { site, clock, ask, asked } = await claiming();
   let found = await ask('sam'), runs = 1;
   for (; found.state === 'waiting' && runs < 20; runs++) found = await ask('sam', found.about);
-  assert.deepEqual([found.state, runs, clock.slept, asked().length], ['unanswered', LIMIT / RUN, LIMIT, 1]);
+  assert.deepEqual([found.state, runs, clock.slept, asked().length], ['unanswered', Math.ceil(LIMIT / RUN), LIMIT, 1]);
   // an answer that comes after the limit is still read by the same command, with no more waiting
   clock.now += 3_600_000;
   await runClaims(site, 2, folder, { files: madeByFunctions });

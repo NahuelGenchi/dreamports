@@ -10,7 +10,7 @@ const MARK = /<!-- dreamports-claims: answers=(\S+)(?: (granted|released)=(\S+))
 
 /** How long a claim waits for its answer in all, how long one run of the tool waits, kept under the two minutes many
  *  coding agents give a command, and how often it asks GitHub. */
-export const LIMIT = 10 * 60_000, RUN = 100_000, EVERY = 5_000;
+export const LIMIT = 10 * 60_000, RUN = 115_000, EVERY = 5_000;
 
 /**
  * The bot's answer to `about`, a comment's id or 'issue', among an issue's `comments`: { text, did, who }, its words
