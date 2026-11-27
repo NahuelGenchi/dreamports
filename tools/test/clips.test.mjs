@@ -7,7 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CLIP_FRAMES, changedText, clipLinks, clipProblems, clipsToShow, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
+import { CLIP_FRAMES, baseWithMerge, changedText, clipLinks, clipProblems, clipsToShow, clipWindow, firstChanged, gameAt, gamesChanged, gamesShownIn, newFramesIn, recordingHash } from '../lib/clips.mjs';
 import { pathsOf } from '../../.github/first-entry/rules.mjs';
 import { readRecording } from '../lib/recording.mjs';
 import { checkClips } from '../clips-check.mjs';
@@ -287,4 +287,18 @@ test('a part the step proves and main didn\'t is what the step changed, from its
   assert.equal(firstChanged({ ...same, main: earlier, differs: [], parts: [stage] }).frame, 300);
   const heard = mainWith({ recordings: { 'a-test': { frames: 2000, matched: 1999, differs: [[200, 200]], soundDiffers: [[200, 200]] } } });
   assert.equal(firstChanged({ ...same, main: heard, differs: [], parts: [stage] }).frame, 400);
+});
+
+test('a clip made while update\x27s merge is open names the base the branch has once the merge is committed (#2066)', () => {
+  // main: m1, then m2. The branch left main at m1, and update merges m2 in
+  const past = { m2: ['m1'], m3: ['m2', 'm1'] };
+  const isAncestor = (older, newer) => older === newer || (past[newer] ?? []).includes(older);
+  assert.equal(baseWithMerge('m1', null, isAncestor), 'm1', 'no merge open: where HEAD left main');
+  assert.equal(baseWithMerge('m1', 'm2', isAncestor), 'm2', 'main being merged in: the main just merged');
+  // a pull request the branch is built on, merged in while it left main earlier than the branch did, moves nothing
+  assert.equal(baseWithMerge('m2', 'm1', isAncestor), 'm2');
+  assert.equal(baseWithMerge('m2', 'm2', isAncestor), 'm2');
+  // a branch with no main of its own yet takes the merged side's, and no side at all gives none
+  assert.equal(baseWithMerge(null, 'm2', isAncestor), 'm2');
+  assert.equal(baseWithMerge(null, null, isAncestor), null);
 });

@@ -30,7 +30,20 @@ export function mainBase() {
   const remotes = (git(['remote']) ?? '').split('\n').filter(Boolean);
   const ref = ['upstream', 'origin'].filter(r => remotes.includes(r)).map(r => `refs/remotes/${r}/main`).find(r => git(['rev-parse', '-q', '--verify', r]) !== null)
     ?? (git(['rev-parse', '-q', '--verify', 'refs/heads/main']) !== null ? 'refs/heads/main' : null);
-  return (ref && git(['merge-base', 'HEAD', ref])?.trim()) || null;
+  const from = at => (ref && git(['merge-base', at, ref])?.trim()) || null;
+  // while a merge is open, as update's is when it proves what the merge leaves, HEAD is still the commit before it
+  const merged = git(['rev-parse', '-q', '--verify', 'MERGE_HEAD']) !== null ? from('MERGE_HEAD') : null;
+  return baseWithMerge(from('HEAD'), merged, (older, newer) => git(['merge-base', '--is-ancestor', older, newer]) !== null);
+}
+
+/**
+ * Where a branch starts on main once an open merge is committed: the later of where each side of the merge left
+ * main. A clip made while `update` proves a merge of main then names the base the branch has after it, and `share`
+ * takes it, where it used to ask for the whole game proven once more (#2066). `isAncestor(older, newer)` says one
+ * commit is in another's past.
+ */
+export function baseWithMerge(base, merged, isAncestor) {
+  return merged && (!base || isAncestor(base, merged)) ? merged : base;
 }
 
 /**
