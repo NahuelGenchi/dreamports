@@ -82,6 +82,40 @@ test('the functions that start as the original\'s do are kept from both sides to
   assert.equal(read(PROOFS), formatProofs(merged), 'and the file is as the tools write it');
 });
 
+test('a proof the branch left as it was is main\'s when main made it again, and the branch\'s own when the branch changed it', () => {
+  const PROOFS = 'games/one/c/proof/proofs.json', mark = letter => letter.repeat(16);
+  const file = (functions, starts) => formatProofs({ original: 'x', functions: new Map(functions), starts: new Map(starts) });
+  const bytes = letter => ({ kind: 'bytes', twin: mark(letter), original: mark('0') });
+  const memory = (letter, calls, runs) => ({ kind: 'memory', twin: mark(letter), original: mark('0'), calls, ...(runs ? { runs } : {}) });
+  const start = (letter, count) => ({ twin: mark(letter), original: mark('0'), bytes: count });
+  put({ [PROOFS]: file([['08000100', bytes('a')], ['08000200', memory('b', 2000)], ['08000300', memory('c', 30000, [[2, 10000], [3, 10000], [4, 10000]])], ['08000400', memory('d', 2000)]],
+    [['08000600', start('e', 10)], ['08000700', start('f', 14)]]) });
+  git('switch', '-q', 'main');
+  git('merge', '-q', 'work');
+  git('switch', '-q', 'work');
+  // the branch changes one twin and one that only starts as the original's does, and proves a new function; main's
+  // code changed under the other three, which it proved again, and under both that only start so, and under the twin
+  // the branch changed too
+  both({ [PROOFS]: file([['08000100', bytes('a')], ['08000200', memory('b', 2000)], ['08000300', memory('c', 30000, [[2, 10000], [3, 10000], [4, 10000]])], ['08000400', memory('1', 4000)], ['08000500', bytes('2')]],
+    [['08000600', start('e', 10)], ['08000700', start('3', 20)]]) },
+  { [PROOFS]: file([['08000100', bytes('4')], ['08000200', memory('5', 2000)], ['08000300', memory('6', 30000, [[2, 10000], [3, 10000], [4, 10000]])], ['08000400', memory('7', 2000)]],
+    [['08000600', start('8', 12)], ['08000700', start('9', 16)]]) });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
+  const merged = parseProofs(JSON.parse(read(PROOFS)));
+  assert.deepEqual([...merged.functions], [['08000100', bytes('4')], ['08000200', memory('5', 2000)], ['08000300', memory('6', 30000, [[2, 10000], [3, 10000], [4, 10000]])],
+    ['08000400', memory('1', 4000)], ['08000500', bytes('2')]]);
+  assert.deepEqual([...merged.starts], [['08000600', start('8', 12)], ['08000700', start('3', 20)]]);
+  assert.equal(read(PROOFS), formatProofs(merged), 'and the file is as the tools write it');
+});
+
+test('with no proofs where the two parted, the branch\'s own line stays where both have one', () => {
+  const PROOFS = 'games/one/c/proof/proofs.json';
+  const proofs = lines => `{\n  "original": "x",\n  "from": "the tools",\n  "functions": [\n${lines.map(line => `    ${JSON.stringify(line)}`).join(',\n')}\n  ]\n}\n`;
+  both({ [PROOFS]: proofs([['08000100', 'bytes', 'mine', 'b'], ['08000200', 'bytes', 'c', 'd']]) }, { [PROOFS]: proofs([['08000100', 'bytes', 'main', 'b'], ['08000300', 'bytes', 'e', 'f']]) });
+  assert.deepEqual(startMerge(cwd, 'main').conflicts, []);
+  assert.deepEqual(JSON.parse(read(PROOFS)).functions, [['08000100', 'bytes', 'mine', 'b'], ['08000200', 'bytes', 'c', 'd'], ['08000300', 'bytes', 'e', 'f']]);
+});
+
 test('a branch with main in it has nothing to do', () => {
   assert.deepEqual(startMerge(cwd, 'main'), { upToDate: true, conflicts: [] });
   assert.equal(merging(cwd), false);
