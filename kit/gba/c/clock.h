@@ -40,7 +40,8 @@ void gba_clock_thumb(uint32_t pc, uint16_t op, uint32_t next, uint32_t value, co
 void gba_clock_arm(uint32_t pc, uint32_t op, uint32_t next, uint32_t cpsr, uint32_t value, const gba_access *access, int count);
 
 /** A swi, from the Thumb instruction at `pc`: the BIOS's code for it, as the emulator's own BIOS runs it, with its
- *  arguments, and back to the instruction after. CpuSet (11) calls `unit` for each halfword or word it fills or
+ *  arguments, and back to the instruction after. Div (6) takes `r0` divided by `r1`, for as long as the emulator
+ *  stalls for it, which the two numbers decide. CpuSet (11) calls `unit` for each halfword or word it fills or
  *  copies, as its store runs, for the game to do that work then. Halt (2), IntrWait (4) and VBlankIntrWait (5) halt
  *  the processor until an interrupt wakes it, the frames that end meanwhile ended and the game's handler run from
  *  inside the call, and the two waits go on until the handler has acknowledged one they wait for (gba_clock_on_wait);
