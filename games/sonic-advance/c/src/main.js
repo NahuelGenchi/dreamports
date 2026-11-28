@@ -1,6 +1,7 @@
 // Sonic Advance Dreamport: the player's copy, checked and kept in this browser, then the game a frame at a time, on the Game Boy
 // Advance kit (kit/gba/). The game's own code is in C, in main.c, which runs here built to WebAssembly (game.wasm), on
-// the kit in C (kit/gba/c/).
+// the kit in C (kit/gba/c/). It has no dreamportsProof.neverInPlay: its start point, ?unlocked (main.c), only gives
+// the character progress, the menus open with no countdown, and every frame of them is one a player sees.
 
 import '../../../../kit/gba/canvas.js';
 import { createRomSetup } from '../../../../kit/gba/ui/rom-setup.js';

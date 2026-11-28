@@ -89,6 +89,18 @@ void Task_805B8C0(void);
 void Task_805B930(void);
 void Task_nullsub_805B980(void);
 void Task_805B984(void);
+void sub_8061894(void);
+void CreateCourseSelect(u8 records);
+void Task_CourseSelectInit(void);
+void Task_8062140(void);
+void Task_8062540(void);
+void Task_8062A80(void);
+void Task_8062B38(void);
+void Task_8062C28(void);
+void Task_8062CB4(void);
+void Task_8062E18(void);
+void TaskDestructor_CourseSelect(struct Task *t);
+void StageMusicResume(void);
 s32 UpdateSpriteAnimation_BG(struct Sprite *s);
 s32 animCmd_GetTiles_BG(void *cursor, struct Sprite *s);
 void DisplaySprite_BG(struct Sprite *s);
@@ -142,14 +154,26 @@ void UpdateCamera(void);
 void RenderMetatileLayers(s32 x, s32 y);
 void StageBgUpdate_Zone1Acts12(s32 x, s32 y);
 
+// A start point's progress, for the proof's recordings that play the menus in both (tools/README.md, Start points):
+// `?unlocked=N&given=F` gives the character `character` (Sonic unless said) the level after the last one cleared, N, as
+// the recording's frame F starts, where its `sets` give the original the same value. The game's own code reads it
+// from there, so the character select, the course select and the save go as the original's do from that frame on.
+static int start_unlocked = -1, start_given = -1, start_character = 0;
+static int steps;
+
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) {
   gba_console_memory(1);
+  start_unlocked = (int)gba_start_number("unlocked", -1);
+  start_given = (int)gba_start_number("given", -1);
+  start_character = (int)gba_start_number("character", 0) & 3;
   console_power_on();
 }
 
 // every frame: the buttons held, then the game from where it last waited for the V-blank to its next wait
 void game_step(uint16_t keys) {
+  if (start_unlocked >= 0 && steps == start_given) gLoadedSaveGame.unlockedLevels[start_character] = (u16)start_unlocked;
+  steps++;
   console_set_keys(keys);
   kit_run(console_start);
 }

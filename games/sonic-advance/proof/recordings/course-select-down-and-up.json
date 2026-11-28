@@ -1,0 +1,26 @@
+{
+  "about": "From power-on with nothing saved, the language screen, the intro, the title and its menu, and Sonic in the character select, all played in both, with act 1 of Neo Green Hill given as cleared; then the course select, the cursor down to act 2 and back up to act 1, and A on act 1 and the act's first frames.",
+  "start": "unlocked=1&select=1&given=3760",
+  "frames": 4360,
+  "held": [
+    [0,[]],
+    [150,["A"]],
+    [156,[]],
+    [3600,["START"]],
+    [3606,[]],
+    [3700,["A"]],
+    [3706,[]],
+    [3790,["A"]],
+    [3796,[]],
+    [3860,["A"]],
+    [3866,[]],
+    [4060,["DOWN"]],
+    [4066,[]],
+    [4180,["UP"]],
+    [4186,[]],
+    [4240,["A"]],
+    [4246,[]]
+  ],
+  "sets": [{"frame": 3760, "address": "03005168", "bytes": 1, "value": 1}],
+  "clip": {"at": 3918, "frames": 300}
+}
