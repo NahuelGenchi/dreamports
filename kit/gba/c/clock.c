@@ -781,11 +781,12 @@ void gba_clock_start(void) {
 // A call to the BIOS from the Thumb instruction at `pc`: the swi, which keeps interrupts off, the vector's branch to
 // the dispatcher, which saves r11, r12 and lr, reads the call's number from the swi, looks its code up, keeps the mode,
 // goes to the system mode with interrupts as the caller had them, saves r2 and lr there and goes to the call's code.
-static void swi_enter(uint32_t pc, int off) {
+// `extra` is what the emulator adds to the swi itself, as it does for a call it stalls for (Div).
+static void swi_enter(uint32_t pc, int off, int extra) {
   begin(pc, 1);
   wait.region = (pc >> 24) & 15;
   irq.off = 1;
-  end(1 + wait.s16[wait.region] + jump_time(BIOS_CODE, 0));
+  end(1 + wait.s16[wait.region] + jump_time(BIOS_CODE, 0) + extra);
   wait_if_ended();
   bios(jump_time(BIOS_CODE, 0));
   bios(0);
@@ -892,10 +893,33 @@ static void settle(void) {
 // CpuSet copies or fills a halfword or a word at a time, and `unit` does the game's work of each, as its store runs,
 // `index` from 0. Halt, IntrWait and VBlankIntrWait wait for an interrupt, the game's handler run from inside them.
 int gba_clock_swi(uint32_t pc, uint8_t number, uint32_t r0, uint32_t r1, uint32_t r2, void (*unit)(uint32_t index)) {
-  if ((number != 0x0B && number != 0x02 && number != 0x04 && number != 0x05) || !running) return -1;
+  if ((number != 0x0B && number != 0x02 && number != 0x04 && number != 0x05 && number != 0x06) || !running) return -1;
   settle();
   int off = irq.off;
-  swi_enter(pc, off);
+  if (number == 0x06) {
+    // Div: the emulator works the division out at once and stalls for as long as the console's BIOS would take, 4
+    // cycles, 13 a bit the quotient can have and 7: 18 of them in its way in and out, what's over 18 by a multiple of
+    // 4 with the swi itself, and the rest in its StallCall loop, which takes 4 off r11 a step, the dispatcher having
+    // loaded the stall into r11 with an swi of the emulator's own, as long as any other of its instructions
+    int32_t num = (int32_t)r0, denom = (int32_t)r1;
+    int loops = (denom ? __builtin_clz((uint32_t)denom) : 32) - (num ? __builtin_clz((uint32_t)num) : 32);
+    if (loops < 1) loops = 1;
+    uint32_t stall = 4 + 13u * (uint32_t)loops + 7 - 18;
+    swi_enter(pc, off, (int)(stall & 3));
+    stall &= ~3u;
+    // subs r11, #4 and bhi back to it, taken while r11 is over 0, then bx lr
+    for (uint32_t left = stall; ; ) {
+      bios(0);
+      left = left >= 4 ? left - 4 : 0;
+      if (!left) break;
+      bios(jump_time(BIOS_CODE, 0));
+    }
+    bios(0);
+    bios(jump_time(BIOS_CODE, 0));
+    swi_leave(pc, off);
+    return 0;
+  }
+  swi_enter(pc, off, 0);
   if (number == 0x02) {
     // Halt: HALTCNT written, and back once the processor wakes
     bios(0);
