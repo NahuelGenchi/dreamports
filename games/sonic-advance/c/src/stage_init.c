@@ -65,6 +65,23 @@ void StageSetTimeLimit(u32 param0) {
   }
 }
 
+/** ApplyGameStageSettingsAndStart, 0x0803DBA0: resets the rings and lives for a new stage, moves the difficulty aside
+ *  where the mode plays without it, sets the time limit and starts the stage. */
+void ApplyGameStageSettingsAndStart(void) {
+  gUnknown_03005030 = 0;
+  gUnknown_03005024 = 3;
+  gUnknown_03005020 = gCurrentLevel;
+  if (gGameMode > 1) {
+    gUnknown_03005024 = 1;
+  }
+  if ((u8)(gGameMode - 1) <= 2 || (gStageFlags & 0x40)) {
+    gUnknown_03005080 = gLoadedSaveGame.difficultyLevel;
+    gLoadedSaveGame.difficultyLevel = 0;
+  }
+  StageSetTimeLimit(gLoadedSaveGame.timeLimitDisabled);
+  CreateGameStage();
+}
+
 /** CreateGameStage, 0x0803CE20: initializes stage player slots, stage timers, and launches the stage setup. */
 void CreateGameStage(void) {
   gUnknown_0300501C = 0;
