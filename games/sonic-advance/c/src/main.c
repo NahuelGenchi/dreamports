@@ -128,6 +128,15 @@ void Task_EntitiesManager(void);
 void sa2__sub_802486C(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
 void sa2__sub_8024B10(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
 void sa2__sub_8024F74(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
+struct Task *PlayerCreateSpindashDust(void);
+void PlayerUpdateAirInput(struct StagePlayer *p);
+void PlayerUpdateAirTimer(struct StagePlayer *p);
+void CreateStageHud(void);
+void LoadStageHudGfx(void);
+void CreateCollectRingEffect(s16 x, s16 y);
+s32 sa2__sub_801F100(s32 y, s32 x, s32 layer, s32 step, s32 (*func)(s32, s32, s32));
+s32 sa2__sub_801EC3C(s32 y, s32 x, s32 layer);
+void PlayerCollisionHelperB(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) {
