@@ -247,6 +247,7 @@ void RLUnCompWram(const void *src, void *dest);
 void sub_803DC98(void);
 void InitCamera(u32 level);
 void StageSetTimeLimit(u32 param0);
+void ApplyGameStageSettingsAndStart(void);
 void CreateGameStage(void);
 struct Task *sub_800CF04(u16 priority, u16 anim, u8 variant, TaskDestructor dtor);
 void Task_800CF90(void);
