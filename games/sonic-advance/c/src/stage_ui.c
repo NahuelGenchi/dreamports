@@ -414,6 +414,110 @@ struct Task *CreateStageUI(void) {
   return mainTask;
 }
 
+/** Task_StageIntroMain, 0x08055424: the title card's own task: a button skips ahead, its parts follow its timer and fade,
+ *  and at its end the act begins, with the HUD. */
+void Task_StageIntroMain(void) {
+  struct StageIntroMain *intro = TASK_DATA(gCurTask);
+  struct StageIntroPart *p0 = TASK_DATA(intro->tasks[0]);
+  struct StageIntroPart *p1 = TASK_DATA(intro->tasks[1]);
+  struct StageIntroPart *p2 = TASK_DATA(intro->tasks[2]);
+  struct StageIntroPart *p3 = TASK_DATA(intro->tasks[3]);
+  struct StageIntroPart *p4 = TASK_DATA(intro->tasks[4]);
+  struct StageIntroPart *p5 = TASK_DATA(intro->tasks[5]);
+
+  if ((gPressedKeys & 0xF3) && gGameMode <= 1) {
+    if ((s16)intro->timer > 35 && (s16)intro->timer < 215) {
+      intro->timer = 215;
+      intro->fade.unk8 = Div(0x2000 - intro->fade.unk6, 10);
+      if (intro->unk27 == 0) {
+        intro->unk26 = sub_805423C(&intro->fade);
+      }
+    }
+  }
+
+  p0->timer = intro->timer;
+  p1->timer = intro->timer;
+  p2->timer = intro->timer;
+  p3->timer = intro->timer;
+  p4->timer = intro->timer;
+  p5->timer = intro->timer;
+
+  p0->unk20 = intro->unk26;
+  p1->unk20 = intro->unk26;
+  p2->unk20 = intro->unk26;
+  p3->unk20 = intro->unk26;
+  p4->unk20 = intro->unk26;
+  p5->unk20 = intro->unk26;
+
+  p0->unk21 = intro->unk27;
+  p1->unk21 = intro->unk27;
+  p2->unk21 = intro->unk27;
+  p3->unk21 = intro->unk27;
+  p4->unk21 = intro->unk27;
+  p5->unk21 = intro->unk27;
+
+  if (intro->unk27 == 0) {
+    if ((s16)intro->timer <= 105 || !intro->unk26) {
+      if ((s16)intro->timer > 20) {
+        intro->unk26 = sub_805423C(&intro->fade);
+      } else {
+        sub_80543A4(&intro->fade);
+      }
+    }
+  }
+
+  if ((s16)++intro->timer > 225) {
+    if (intro->unk27 == 0) {
+      gDispCnt &= 0x1FFF;
+      gBldRegs.bldCnt = 0;
+      gBldRegs.bldY = 0;
+    }
+
+    if (gGameMode > 1) {
+      u32 i;
+      for (i = 0; i < 4; i++) {
+        struct StageMultiPlayerData *mpp;
+        if (gMultiplayerPlayerTasks[i] == NULL) break;
+        mpp = TASK_DATA(gMultiplayerPlayerTasks[i]);
+        mpp->flags &= ~2;
+      }
+      gStagePlayer.unk1C = 120;
+    }
+
+    gStageFlags &= ~1;
+    gStagePlayer.moveState &= ~0x200000;
+    gStagePartner.moveState &= ~0x200000;
+    gUnknown_03005020 = gCurrentLevel;
+    gStagePlayer.itemEffect &= ~0x80;
+    gStageFlags &= ~0x20;
+
+    if (gCurrentLevel == 6 || gCurrentLevel == 7) {
+      StageWaterPaletteInit();
+      StageWaterPaletteUpdate();
+    }
+
+    TaskDestroy(intro->tasks[5]);
+    TaskDestroy(intro->tasks[4]);
+    TaskDestroy(intro->tasks[3]);
+    TaskDestroy(intro->tasks[2]);
+    TaskDestroy(intro->tasks[1]);
+    TaskDestroy(intro->tasks[0]);
+    TaskDestroy(gCurTask);
+
+    if (gGameMode <= 3) {
+      CreateStageHud();
+    } else {
+      StageSetupMultiplayerRings();
+    }
+
+    if (gCurrentLevel == 13) {
+      StageMoonZoneIntro(0x7800, 0x5000);
+    }
+  } else if (gCurrentLevel == 6 || gCurrentLevel == 7) {
+    StageWaterPaletteUpdate();
+  }
+}
+
 /** Task_StageIntroBanner, 0x080556FC: slides and draws the character-colored title-card banner. */
 void Task_StageIntroBanner(void) {
   struct StageIntroPart *p = TASK_DATA(gCurTask);
@@ -430,6 +534,53 @@ void Task_StageIntroBanner(void) {
     sub_8052F78(gUnknown_086812A8, &p->box);
   } else {
     UiDrawTextFade(gUnknown_086812A8, &p->box);
+  }
+}
+
+/** Task_StageIntroZoneLetters, 0x08055764: slides and draws the four letters of the word ZONE on the title card, 32
+ *  pixels apart: in from the right at the start, still, and out to the left at the end. */
+void Task_StageIntroZoneLetters(void) {
+  s32 i;
+  struct StageIntroPart *p = TASK_DATA(gCurTask);
+  u16 timer = p->timer;
+
+  if ((s16)timer > 215) {
+    s16 shift = Div((timer - 215) << 7, 10);
+
+    for (i = 0; i < 4; i++) {
+      p->box.unkC = i * 32 - shift;
+      if ((s16)(i * 32 - shift) >= -32) {
+        if (p->timer <= 105 || p->unk20 == 0 || p->unk21 != 0) {
+          sub_8052F78(&gUnknown_08681290[i], &p->box);
+        } else {
+          UiDrawTextFade(&gUnknown_08681290[i], &p->box);
+        }
+      }
+    }
+  } else if ((s16)timer > 31) {
+    for (i = 0; i < 4; i++) {
+      p->box.unkC = i * 32;
+      if (p->timer <= 105 || p->unk20 == 0 || p->unk21 != 0) {
+        sub_8052F78(&gUnknown_08681290[i], &p->box);
+      } else {
+        UiDrawTextFade(&gUnknown_08681290[i], &p->box);
+      }
+    }
+  } else if ((s16)timer > 25) {
+    s16 start = (Div((timer - 215) << 7, 6) - 176) & 0x1FF;
+
+    for (i = 0; i < 4; i++) {
+      if (start > 421) {
+        p->box.unkC = start + i * 32;
+        if ((s16)(start + i * 32) >= -32) {
+          if (p->timer <= 105 || p->unk20 == 0 || p->unk21 != 0) {
+            sub_8052F78(&gUnknown_08681290[i], &p->box);
+          } else {
+            UiDrawTextFade(&gUnknown_08681290[i], &p->box);
+          }
+        }
+      }
+    }
   }
 }
 

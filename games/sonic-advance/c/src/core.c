@@ -315,10 +315,22 @@ void HBlankIntr(void) {
   u8 i;
   u8 vcount = REG_READ8(REG_VCOUNT);
 
+  // (timed on each path, and what the lines' callbacks do as far as their twins time it: each is called through the
+  // compiler's `bx r1`)
   if (vcount < DISPLAY_HEIGHT) {
-    for (i = 0; i < gNumHBlankIntrs; i++) CALL(gHBlankIntrs[i])(vcount);
+    TIME(0x08001314, 0x0800131E, 0x08001321, 0x04000006);
+    TIME(0x08001320, 0x08001328, gNumHBlankIntrs != 0 ? 0x0800132B : 0x08001347, IW);
+    for (i = 0; i < gNumHBlankIntrs; i++) {
+      TIME(i == 0 ? 0x0800132A : 0x0800132C, 0x08001336, 0x08099849, IW);
+      TIME(0x08099848, 0x08099848, (u32)gHBlankIntrs[i]);
+      CALL(gHBlankIntrs[i])(vcount);
+      TIME(0x08001338, 0x08001344, i + 1 < gNumHBlankIntrs ? 0x0800132D : 0x08001347, IW);
+    }
+  } else {
+    TIME(0x08001314, 0x0800131E, 0x08001347, 0x04000006);
   }
   REG_WRITE16(REG_IF, INTR_FLAG_HBLANK);
+  TIME(0x08001346, 0x08001350, BIOS_BACK, 0x04000202);
 }
 
 // The interrupts the game has nothing to do at, in its table from power-on: each only says it was seen to.

@@ -447,3 +447,23 @@ void StageInit(void) {
     }
   }
 }
+
+/** ApplyGameStageSettingsAndStart, 0x0803DBA0: a new score and lives, the difficulty kept aside in the modes that play at
+ *  normal, the time limit, and then the stage. */
+void ApplyGameStageSettingsAndStart(void) {
+  gUnknown_03005030 = 0;
+  gUnknown_03005024 = 3;
+  gUnknown_03005020 = gCurrentLevel;
+
+  if (gGameMode > 1) {
+    gUnknown_03005024 = 1;
+  }
+
+  if ((u8)(gGameMode - 1) <= 2 || (gStageFlags & 0x40)) {
+    gUnknown_03005080 = gLoadedSaveGame.difficultyLevel;
+    gLoadedSaveGame.difficultyLevel = 0;
+  }
+
+  StageSetTimeLimit(gLoadedSaveGame.timeLimitDisabled);
+  CreateGameStage();
+}

@@ -54,11 +54,16 @@ void DrawBackground(struct Background *background) {
 u32 sub_8004010(void) {
   u8 bg;
 
-  // (timed for a background with nothing to clear, and the loop's step on)
+  // (timed for a background with nothing to clear, a tiled one's clearing and the loop's step on; the fill's tile is on
+  // the stack, as the original's is)
   for (bg = 0; bg < 4; bg++) {
 #ifndef MATCHING
     if (gBgSprites_Unknown2[bg][1] == gBgSprites_Unknown2[bg][3] && gBgSprites_Unknown2[bg][0] == gBgSprites_Unknown2[bg][2])
       TIME(bg == 0 ? 0x08002F84 : 0x08002F98, 0x08002FC8, 0x080031B7, IW, IW, IW, IW);
+    else if (gBgSprites_Unknown2[bg][1] != gBgSprites_Unknown2[bg][3])
+      TIME(bg == 0 ? 0x08002F84 : 0x08002F98, 0x08002FB2, 0x08002FCB, IW, IW);
+    else
+      TIME(bg == 0 ? 0x08002F84 : 0x08002F98, 0x08002FC6, 0x08002FCB, IW, IW, IW, IW);
 #endif
     if (gBgSprites_Unknown2[bg][1] != gBgSprites_Unknown2[bg][3] || gBgSprites_Unknown2[bg][0] != gBgSprites_Unknown2[bg][2]) {
       u16 cnt = gBgCntRegs[bg];
@@ -66,6 +71,8 @@ u32 sub_8004010(void) {
       u8 y = gBgSprites_Unknown2[bg][1];
       u8 x = gBgSprites_Unknown2[bg][0];
 
+      TIME(0x08002FCA, 0x08002FF4, bg > 1 ? 0x08002FF7 : 0x080030DD, IW, IW, IW);
+      if (bg > 1) TIME(0x08002FF6, 0x08003000, (gDispCnt & 3) ? 0x08003003 : 0x080030DD, IW);
       if (bg > 1 && (gDispCnt & 3)) {
         // a rotating background's map: a byte a tile, its width by its size
         u16 width;
@@ -87,15 +94,23 @@ u32 sub_8004010(void) {
         int width = 32;
         map += x * 2;
         if ((u8)((gBgCntRegs[bg] >> 14) - 2) <= 1) width = 64;
+        TIME(0x080030DC, 0x080030F2, width == 64 ? 0x080030F5 : 0x080030F7, IW);
+        TIME(width == 64 ? 0x080030F4 : 0x080030F6, 0x080030FE, gBgSprites_Unknown2[bg][2] == 0xFF ? 0x08003101 : 0x0800314D, IW);
         if (gBgSprites_Unknown2[bg][2] == 0xFF) {
           DMA3_FILL16(gBgSprites_Unknown1[bg], map + y * width * 2, (gBgSprites_Unknown2[bg][3] - y) * width * 2);
+          TIME(0x08003100, 0x08003138, 0x080031A1, IW, width * 2, IW, 0x040000D4, 0x040000D8, IW, gBgSprites_Unknown2[bg][3] - y,
+               0x040000DC, 0x040000DC);
         } else {
+          TIME(0x0800314C, 0x0800315C, y > gBgSprites_Unknown2[bg][3] ? 0x080031A1 : 0x0800315F, IW);
           for (; y <= gBgSprites_Unknown2[bg][3]; y++) {
             DMA3_FILL16(gBgSprites_Unknown1[bg], map + y * width * 2, (gBgSprites_Unknown2[bg][2] - x + 1) * 2);
+            TIME(y == gBgSprites_Unknown2[bg][1] ? 0x0800315E : 0x0800316A, 0x0800319E, (u8)(y + 1) <= gBgSprites_Unknown2[bg][3] ? 0x0800316B : 0x080031A1, IW, y,
+                 IW, 0x040000D4, 0x040000D8, IW, 0x040000DC, 0x040000DC, IW);
           }
         }
       }
       DMA3_FILL32(0, gBgSprites_Unknown2[bg], 4);
+      TIME(0x080031A0, 0x080031B4, 0x080031B7, DMA3);
     }
     TIME(0x080031B6, bg + 1 < 4 ? 0x080031C0 : 0x080031BE, bg + 1 < 4 ? 0x08002F99 : 0x080031C3);
   }
