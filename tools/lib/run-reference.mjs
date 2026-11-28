@@ -113,8 +113,9 @@ export async function runReference({ program, args, env, width, height, stateByt
     // with no functions, its size is known, and it needs no second copy of itself to end up in one piece
     const size = functions.length ? 0 : frames * 12 + pictures.length * width * height * 2 + states.length * stateBytes;
     const out = [], err = [], whole = Buffer.allocUnsafeSlow(size);
-    let filled = 0;
+    let filled = 0, received = 0;
     child.stdout.on('data', chunk => {
+      received += chunk.length;
       if (size) filled += chunk.copy(whole, filled);
       else out.push(chunk);
     });
@@ -125,26 +126,35 @@ export async function runReference({ program, args, env, width, height, stateByt
     if (code !== 0) throw new Error(`The original didn't run: ${stderr}`);
     const data = size ? whole : Buffer.concat(out);
     out.length = 0;
+    // what it wrote holds every frame as read below, and nothing more, or it isn't read: a stream with part of a picture
+    // missing had that picture's pixels read as a frame's count of functions (#2097)
+    const broken = what => new Error(`The original's emulator handed over ${received.toLocaleString('en')} bytes, which don't hold its ${frames} frames as the tools read them: ${what}. That's the program that runs the original, not the game.`);
+    if (size && received !== size) throw broken(`${size.toLocaleString('en')} were wanted`);
     // views of what it wrote, which is all aligned, where each is the only thing that reads it
     const words = data.byteOffset % 4 ? data.buffer.slice(data.byteOffset, data.byteOffset + data.length) : data.buffer, origin = data.byteOffset % 4 ? 0 : data.byteOffset;
     const hashes = new Uint32Array(frames), plain = new Int32Array(frames), ran = new Array(frames), shown = new Map(), held = new Map();
     const wanted = new Set(pictures), wantedStates = new Set(states);
     let at = 0;
     for (let frame = 0; frame < frames; frame++) {
+      if (at + 12 > data.length) throw broken(`it ends before frame ${frame}`);
       hashes[frame] = data.readUInt32LE(at);
       plain[frame] = data.readInt32LE(at + 4);
       const count = data.readUInt32LE(at + 8);
+      if (at + 12 + count * 4 > data.length) throw broken(`frame ${frame} says ${count.toLocaleString('en')} functions ran, more than what's left holds`);
       ran[frame] = new Uint32Array(words, origin + at + 12, count);
       at += 12 + count * 4;
       if (wanted.has(frame)) {
+        if (at + width * height * 2 > data.length) throw broken(`it ends in frame ${frame}'s picture`);
         shown.set(frame, new Uint16Array(words, origin + at, width * height));
         at += width * height * 2;
       }
       if (wantedStates.has(frame)) {
+        if (at + stateBytes > data.length) throw broken(`it ends in frame ${frame}'s state`);
         held.set(frame, data.subarray(at, at + stateBytes));
         at += stateBytes;
       }
     }
+    if (at !== data.length) throw broken(`${(data.length - at).toLocaleString('en')} bytes are left after the last frame`);
     let drawn = null;
     if (draws) {
       const pairs = new Uint32Array(new Uint8Array(readFileSync(files.draws)).buffer);

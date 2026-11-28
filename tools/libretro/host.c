@@ -65,13 +65,18 @@
 // The environment's DP_LEAVE, when it's set, has the program end the moment its work is written, without the core's own
 // ending, for a core whose ending can fail or never come, as Dolphin's does on Windows: nothing of a run is kept past
 // it anyway.
+//
+// What goes to stdout goes whole, as `hand` below says. The environment's DP_REFUSED, only for the tests, has it treat
+// every so many of its writes as turned away, to show that what the tools read is the same (tools/test/real-nds.mjs).
 
+#include <errno.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #ifdef _WIN32
 #include <fcntl.h>
 #include <io.h>
@@ -155,6 +160,89 @@ static bool (*retro_unserialize)(const void*, size_t);
 
 static FILE* out;
 static FILE* err;
+
+// Ends the program at once, with what it said written, without what a core does as a program ends: PPSSPP's threads are
+// still running then, and what it tidies away under them stopped the program with an error. Windows runs a library's
+// tidying even as a program ends at once, so there the program is stopped from outside, by itself.
+static void endNow(int code) {
+	fflush(NULL);
+#ifdef _WIN32
+	TerminateProcess(GetCurrentProcess(), (UINT) code);
+#endif
+	_Exit(code);
+}
+
+// What the tools are handed on stdout, written whole, a piece of at most 64 KB at a time. A piece the system turns away
+// goes again once it takes it: on Windows a write to a pipe can be turned away while the tools are slow to read it, and
+// the C library then drops what it was writing and goes on, which left the tools a stream with part of a picture
+// missing, and frames read from the middle of one (#2097). Turned away for over a minute, or by tools that have
+// stopped reading, it stops with a sentence, and the tools say the original didn't run.
+static int handedTo = -1;
+static unsigned char handing[1 << 16];
+static size_t handingUsed;
+static unsigned long refusedEvery, tries;
+
+static void handOver(const unsigned char* at, size_t size) {
+	for (unsigned waits = 0; size;) {
+		size_t piece = size < sizeof handing ? size : sizeof handing;
+		size_t done = 0;
+		bool gone = false;
+		if (!refusedEvery || ++tries % refusedEvery) {
+#ifdef _WIN32
+			DWORD wrote = 0;
+			if (!WriteFile((HANDLE) _get_osfhandle(handedTo), at, (DWORD) piece, &wrote, NULL)) {
+				DWORD why = GetLastError();
+				gone = why == ERROR_BROKEN_PIPE || why == ERROR_NO_DATA;
+			}
+			done = wrote;
+#else
+			ssize_t wrote = write(handedTo, at, piece);
+			if (wrote < 0 && errno == EINTR) continue;
+			gone = wrote < 0 && errno == EPIPE;
+			done = wrote > 0 ? (size_t) wrote : 0;
+#endif
+		}
+		if (done) {
+			at += done;
+			size -= done;
+			waits = 0;
+			continue;
+		}
+		if (gone || waits == 6000) {
+			fprintf(err, "The original's emulator couldn't hand its work over to the tools: %s.\n", gone ? "they had stopped reading it" : "the system turned it away for over a minute");
+			endNow(2);
+		}
+		waits++;
+#ifdef _WIN32
+		Sleep(10);
+#else
+		nanosleep(&(struct timespec) { 0, 10000000 }, NULL);
+#endif
+	}
+}
+
+/** Hands the tools `count` things of `size` bytes, as fwrite would. */
+static void hand(const void* bytes, size_t size, size_t count) {
+	size_t total = size * count;
+	if (!total) return;
+	if (handingUsed + total > sizeof handing) {
+		handOver(handing, handingUsed);
+		handingUsed = 0;
+	}
+	if (total >= sizeof handing) {
+		handOver(bytes, total);
+		return;
+	}
+	memcpy(handing + handingUsed, bytes, total);
+	handingUsed += total;
+}
+
+/** Hands over what's waiting, as fflush would. */
+static void handNow(void) {
+	handOver(handing, handingUsed);
+	handingUsed = 0;
+}
+
 static int format = 0;   // 0RGB1555, as a core has until it asks for another
 static uint32_t held;
 static uint16_t* screen;
@@ -670,7 +758,7 @@ static void writePicture(void) {
 	for (unsigned y = 0; y < wantedH; y++) {
 		for (unsigned x = 0; x < wantedW; x++) picture[y * wantedW + x] = x < screenW && y < screenH ? screen[y * screenW + x] : 0;
 	}
-	fwrite(picture, 2, wantedW * wantedH, out);
+	hand(picture, 2, wantedW * wantedH);
 }
 
 static void* find(void* library, const char* name) {
@@ -841,8 +929,8 @@ static int serveCalls(void* library) {
 		return 2;
 	}
 	uint32_t memorySize = (uint32_t) retro_get_memory_size(MEMORY_SYSTEM_RAM);
-	fwrite(&memorySize, 4, 1, out);
-	fflush(out);
+	hand(&memorySize, 4, 1);
+	handNow();
 	uint32_t* in = NULL;
 	size_t inRoom = 0;
 	for (;;) {
@@ -866,8 +954,8 @@ static int serveCalls(void* library) {
 			memset(callWritten, 0, (callImageBytes >> 8) + 1);
 			if (fread(callImage, 1, callImageBytes, stdin) != callImageBytes) return 2;
 			for (uint32_t i = 0; i < count; i++) callCopy(callPlaces[i].at, callPlaces[i].bytes, callImage + callPlaces[i].at);
-			fputc('k', out);
-			fflush(out);
+			hand("k", 1, 1);
+			handNow();
 			continue;
 		}
 		if (command != 'C') {
@@ -894,17 +982,17 @@ static int serveCalls(void* library) {
 		callChunkCount = 0;
 		memset(callSeen, 0, sizeof callSeen);
 		call(in, result, ran, callNoted);
-		fwrite(result, 4, CALL_HEAD, out);
-		fwrite(ran, 1, span / 4, out);
+		hand(result, 4, CALL_HEAD);
+		hand(ran, 1, span / 4);
 		uint32_t reads = (uint32_t) callReadCount, chunks = (uint32_t) callChunkCount;
-		fwrite(&reads, 4, 1, out);
-		fwrite(callReads, 12, callReadCount, out);
-		fwrite(&chunks, 4, 1, out);
+		hand(&reads, 4, 1);
+		hand(callReads, 12, callReadCount);
+		hand(&chunks, 4, 1);
 		for (size_t i = 0; i < callChunkCount; i++) {
 			uint32_t chunk = callChunks[i], at = chunk << 8;
 			const uint8_t* now = callMemory(0, callAddressOf(at), 256);
-			fwrite(&chunk, 4, 1, out);
-			fwrite(now ? now : callImage + at, 1, 256, out);
+			hand(&chunk, 4, 1);
+			hand(now ? now : callImage + at, 1, 256);
 			// and the memory as it was
 			callCopy(at, 256, callImage + at);
 			callWritten[chunk] = 0;
@@ -913,7 +1001,7 @@ static int serveCalls(void* library) {
 			long at = callAt(changes[i * 3]);
 			if (at >= 0) callCopy((uint32_t) at, changes[i * 3 + 1], callImage + at);
 		}
-		fflush(out);
+		handNow();
 		free(ran);
 		free(changes);
 	}
@@ -923,6 +1011,7 @@ static int run(int argc, char** argv);
 
 int main(int argc, char** argv) {
 	int code = run(argc, argv);
+	if (handedTo >= 0) handNow();
 	if (getenv("DP_LEAVE")) {
 		fflush(NULL);
 #ifdef _WIN32
@@ -950,8 +1039,11 @@ static int run(int argc, char** argv) {
 	FILE* nothing = fopen(NULL_FILE, "w");
 	dup2(fileno(nothing), 1);
 	dup2(fileno(nothing), 2);
+	// the route finder's search writes its buttons to `out` (explore.h); everything else is handed over whole (hand)
 	static char outBuffer[1 << 16];
 	setvbuf(out, outBuffer, _IOFBF, sizeof outBuffer);
+	handedTo = fileno(out);
+	refusedEvery = getenv("DP_REFUSED") ? strtoul(getenv("DP_REFUSED"), NULL, 10) : 0;
 
 	// a search and a call show no picture, so they're given no size for one
 	int at = live ? 4 : route ? 3 : calls ? 2 : 10;
@@ -1100,13 +1192,8 @@ static int run(int argc, char** argv) {
 		int code = serveCalls(library);
 		// it ends here as a recording does below, with what it said written: what a core tidies away as a program ends
 		// stops PPSSPP's with an error, a thread of its own still running, which would hide how it ended and what it said
-		fflush(out);
-		fflush(err);
-		fflush(NULL);
-#ifdef _WIN32
-		TerminateProcess(GetCurrentProcess(), (UINT) code);
-#endif
-		_Exit(code);
+		handNow();
+		endNow(code);
 	}
 
 	if (live) {
@@ -1117,11 +1204,11 @@ static int run(int argc, char** argv) {
 			retro_run();
 			writePicture();
 			uint32_t size[2] = { screenW, screenH };
-			fwrite(size, 4, 2, out);
+			hand(size, 4, 2);
 			uint32_t count = sampleCount / 2;
-			fwrite(&count, 4, 1, out);
-			fwrite(samples, 2, sampleCount, out);
-			fflush(out);
+			hand(&count, 4, 1);
+			hand(samples, 2, sampleCount);
+			handNow();
 		}
 		return 0;
 	}
@@ -1201,10 +1288,10 @@ static int run(int argc, char** argv) {
 		uint32_t hash, plain, ranCount;
 		hashOf(&hash, &plain);
 		const uint32_t* ranNow = coreRan ? coreRan(&ranCount) : ranInFrame(&ranCount);
-		fwrite(&hash, 4, 1, out);
-		fwrite(&plain, 4, 1, out);
-		fwrite(&ranCount, 4, 1, out);
-		fwrite(ranNow, 4, ranCount, out);
+		hand(&hash, 4, 1);
+		hand(&plain, 4, 1);
+		hand(&ranCount, 4, 1);
+		hand(ranNow, 4, ranCount);
 		if (nextPicture < pictureCount && pictures[nextPicture] == (uint32_t) frame) {
 			writePicture();
 			nextPicture++;
@@ -1238,19 +1325,13 @@ static int run(int argc, char** argv) {
 	ps2Close();
 	heldClose();
 	startsClose();
-	fflush(out);
+	handNow();
 	fprintf(err, "{\"cartridge\":%u,\"memory\":%u,\"rate\":%.17g,\"fps\":%g,\"sizes\":[", ran.functionCount ? ran.outside : 0, ran.functionCount ? ran.elsewhere : 0, wantedRate ? wantedRate : av.sampleRate, av.fps);
 	for (size_t i = 0; i < sizeCount; i++) fprintf(err, "%s[%u,%u,%u]", i ? "," : "", sizes[i * 3], sizes[i * 3 + 1], sizes[i * 3 + 2]);
 	fprintf(err, "],\"drawnBy\":\"%s\",\"reads\":[", drawnBy);
 	for (size_t i = 0; i < readCount; i++) fprintf(err, "%s%u", i ? "," : "", readValues[i]);
 	fprintf(err, "]}\n");
-	fflush(err);
-	// everything is written, so it ends here, without what a core does as a program ends: PPSSPP's threads are still
-	// running then, and what it tidies away under them stopped the program with an error. Windows runs a library's
-	// tidying even as a program ends at once, so there the program is stopped from outside, by itself
-	fflush(NULL);
-#ifdef _WIN32
-	TerminateProcess(GetCurrentProcess(), 0);
-#endif
-	_Exit(0);
+	// everything is written, so it ends here, at once (endNow)
+	endNow(0);
+	return 0;
 }
