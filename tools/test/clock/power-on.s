@@ -1,7 +1,8 @@
 @ The kit's clock's test (../clock.mjs): a made-up program's power-on, with nothing from any game in it, that keeps the
 @ console busy across its first frames' ends as a game's power-on does: the cartridge's wait states and prefetch set,
 @ the sound's FIFO fed by DMA 1 at timer 0's rate, a long DMA fill of video memory, a loop of multiplies and stores
-@ to the slow work memory, and each of the BIOS's four kinds of CpuSet, then a loop that waits for nothing, long
+@ to the slow work memory, each of the BIOS's four kinds of CpuSet and four of its divisions, each a different
+@ number of the quotient's bits, one with nothing to find and one of a negative number, then a loop that waits for nothing, long
 @ enough for the test to leave a frame of it untimed. After it come the interrupts: a handler of the program's own,
 @ which the BIOS reaches through ARM instructions the test puts in the cartridge (../clock.mjs), as a dispatcher; the
 @ V-blank's interrupt taken out of the BIOS's VBlankIntrWait; timer 1's every 4,096 cycles, taken in the middle of a
@@ -65,6 +66,18 @@ main:
 	ldr r1, .Lhalfwords_copy
 	ldr r2, .Lcopy_halfwords
 	swi 11
+	ldr r0, .Lnumerator
+	mov r1, #7
+	swi 6
+	ldr r0, .Lnegative
+	mov r1, #3
+	swi 6
+	mov r0, #5
+	ldr r1, .Lnumerator
+	swi 6
+	ldr r0, .Lnumerator
+	mov r1, #1
+	swi 6
 	ldr r0, .Lidle
 .Lwait:
 	sub r0, #1
@@ -121,6 +134,8 @@ interrupt:
 	bx lr
 	.align 2
 .Lidle: .word 120000
+.Lnumerator: .word 0x00123456
+.Lnegative: .word 0xFFFFFC18
 .Lhandler_at: .word 0x03007FFC
 .Lhandler: .word 0x080000CC
 .Ldispstat: .word 0x04000004
