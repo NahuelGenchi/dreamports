@@ -380,6 +380,21 @@
     "PlayerDrown": "0804C398",
     "CreateWaterSplash": "0804C878",
     "PlayerMoveLeft": "0804393C",
-    "PlayerMoveRight": "080439F8"
+    "PlayerMoveRight": "080439F8",
+    "Task_PlayerDied": "080453E5",
+    "PlayerTailsMove": "08047B6C",
+    "PlayerKnucklesMove": "08048FCC",
+    "PlayerAmyMove": "08049778",
+    "CreateCollectRingEffect": "0801E43C",
+    "CreateMagneticRing": "08024B00",
+    "gPlayerCharacterIdleAnims": "084A6F04",
+    "CreateEntity_ItemBox": "0801E5D8",
+    "sCharStateAnimInfo": "084A6F0C",
+    "CreateBrakingDustEffect": "0804046C",
+    "TransformSprite": "080037D0",
+    "ArcTan2": "080997D8",
+    "gOamMatrixIndex": "0300504C",
+    "CreateAmyAttackHeartEffect": "0803C578",
+    "sa2__sub_8021BE0": "08042814"
   }
 }
