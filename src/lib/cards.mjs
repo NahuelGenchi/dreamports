@@ -2,7 +2,8 @@
 // theirs (src/lib/languages.mjs) (docs/LIVE-SITE.md): its card in the Dreamports row, at /dreamports/<id>/, which shows
 // a version at a time, the one Play opens, each in a block of its own under the numbers' plain names; its card in the
 // Make row, at /make/<game>/, which shows them all, each in a block of its own under its language's name, the one Play
-// opens first and the others folded under it (#1241); and its place in that row, at /make/. The build reads its own pages with this (src/integrations/live-site.mjs), and
+// opens first and the others folded under it (#1241); and its place in that row, at /make/, with the numbers of the
+// version Play opens (#2101). The build reads its own pages with this (src/integrations/live-site.mjs), and
 // .github/live-site/watch.mjs reads dreamports.net's, so what's checked is what a visitor gets.
 import { hasCode, isBeingMade, numbersText, pageOf, shortPercent } from './entries.mjs';
 import { LANGUAGES, playOrder } from './languages.mjs';
@@ -103,7 +104,9 @@ export async function problemsWith(dreamports, read) {
     if (making) {
       const row = await page('/make/');
       const shown = row ? [...row.matchAll(new RegExp(`<a\\b[^>]*\\bdata-card="make-${id}"[^>]*\\bdata-numbers="([^"]*)"`, 'g'))].map(match => plain(match[1])) : [];
-      const numbers = numbersText(proof);
+      // the numbers of the version Play opens, as the card shows first, never another's with no word saying which (#2101)
+      const first = playOrder(all.map(version => version.language))[0];
+      const numbers = numbersText(all.find(version => version.language === first)?.proof);
       if (!shown.length) problems.push(`/make/: ${entry.title} has no numbers in the Make row.`);
       for (const text of new Set(shown)) {
         if (text !== numbers) problems.push(`/make/: ${entry.title}'s place in the Make row says "${text}", and its proof makes "${numbers}".`);
