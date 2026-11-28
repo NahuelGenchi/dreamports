@@ -201,6 +201,143 @@ void Task_StageMusicManager(void) {
   }
 }
 
+#ifdef MATCHING
+struct StageSioBits {
+  u32 baudRate : 2;
+  u32 si : 1;
+  u32 sd : 1;
+  u32 id : 2;
+  u32 error : 1;
+  u32 enable : 1;
+  u32 unused : 6;
+  u32 intrEnable : 1;
+};
+#define STAGE_SIO_ID (((volatile struct StageSioBits *)0x04000128)->id)
+#else
+#define STAGE_SIO_ID ((u32)((REG_READ16(REG_SIOCNT) >> 4) & 3))
+#endif
+
+/** Task_GameStageMain, 0x0803D25C: the stage's own task each frame: the pause menu, the clocks, the multiplayer random
+ *  numbers and spectator camera, and the end of the time. */
+void Task_GameStageMain(void) {
+  u16 sioId = STAGE_SIO_ID;
+  u32 timeStep;
+
+  if (gGameMode <= 1) {
+    if (!(gStageFlags & 0x20) && (gPressedKeys & 8) && !(gStageFlags & 0x40)) {
+      CreatePauseMenu();
+    }
+    gUnknown_03005120++;
+    timeStep = 1;
+  } else {
+    u32 frames = gFrameCount - gUnknown_03005038;
+    timeStep = frames - gUnknown_03005120;
+    gUnknown_03005120 = frames;
+
+    if (gGameMode > 3) {
+      if ((frames & ~0x1FF) != ((frames - timeStep) & ~0x1FF)) {
+        u32 mask, rand;
+        gUnknown_03005010 = gUnknown_03005010 * 0x196225 + 0x3C6EF35F;
+        if ((frames & ~0xFFF) != ((frames - timeStep) & ~0xFFF)) {
+          u32 value = (gUnknown_03005074 >> 4) + 1;
+          gUnknown_03005074 = (gUnknown_03005074 & 0xF) | (value * 16);
+        }
+        rand = gUnknown_03005010;
+        mask = 7;
+        gUnknown_03005074 = (gUnknown_03005074 & 0xF8) | (rand & mask);
+      }
+    } else if ((frames & ~0x3F) != ((frames - timeStep) & ~0x3F)) {
+      gUnknown_03005010 = gUnknown_03005010 * 0x196225 + 0x3C6EF35F;
+    }
+
+    if (gStageCamera.unk26 & 4) {
+      if ((gInput & 0x300) == 0x300) {
+        if (sioId != 3) {
+          gStageCamera.unk3A = 3;
+        } else {
+          gStageCamera.unk3A = 2;
+        }
+      } else if (gInput & 0x200) {
+        if (sioId == 0) {
+          gStageCamera.unk3A = 1;
+        } else {
+          gStageCamera.unk3A = 0;
+        }
+      } else if (gInput & 0x100) {
+        if (sioId < 2) {
+          gStageCamera.unk3A = 2;
+        } else {
+          gStageCamera.unk3A = 1;
+        }
+      } else {
+        gStageCamera.unk3A = sioId;
+      }
+    } else {
+      gStageCamera.unk3A = sioId;
+    }
+
+    if (!((gMultiplayerConnections >> gStageCamera.unk3A) & 1)) {
+      gStageCamera.unk3A = sioId;
+    }
+
+    if (gUnknown_03004FE0 != 0) {
+      gUnknown_03004FE0--;
+    }
+  }
+
+  gUnknown_0300502C = gStageFlags;
+
+  if (gStageFlags & 1) return;
+
+  gUnknown_03004FE4 += timeStep;
+
+  if (gStageFlags & 4) {
+    gUnknown_03005034 -= timeStep;
+    if ((s32)gUnknown_03005034 > 0) return;
+
+    if (gGameMode <= 1) {
+      gStageFlags |= 1;
+      // the save's byte at 0x1A, which turns the time limit off
+      if (gLoadedSaveGame.language) return;
+
+      gStagePlayer.itemEffect = 0;
+      if (gStagePlayer.moveState & 0x40) {
+        gStagePlayer.speedAirY = -0x2A0;
+      } else {
+        gStagePlayer.speedAirY = -0x4E0;
+      }
+      if (gCurrentLevel == 10) {
+        StageCreateDrowningOverlay(0x800, 8, 16, -1, 0xD0);
+      }
+      gStagePlayer.moveState |= 0x80;
+      m4aSongNumStart(166);
+    } else {
+      gStageFlags |= 1;
+      StageMultiplayerTimeOver();
+    }
+  } else {
+    gUnknown_03005034 += timeStep;
+    if (gUnknown_03005034 <= 0x8CA0) return;
+
+    if (gGameMode <= 1) {
+      gStageFlags |= 1;
+      if (gLoadedSaveGame.language && (gGameMode == 0 || gGameMode > 1)) return;
+
+      gStagePlayer.itemEffect = 0;
+      if (gStagePlayer.moveState & 0x40) {
+        gStagePlayer.speedAirY = -0x2A0;
+      } else {
+        gStagePlayer.speedAirY = -0x4E0;
+      }
+      gStagePlayer.moveState |= 0x80;
+      m4aSongNumStart(166);
+    } else {
+      gStageFlags |= 1;
+      StageMultiplayerTimeOver();
+    }
+  }
+}
+
 /** StageInit, 0x0803CF68: creates stage tasks, initializes players, camera, entities, rings, water, and multiplayer slots. */
 void StageInit(void) {
   struct Task *uiTask;

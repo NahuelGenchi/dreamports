@@ -118,6 +118,16 @@ void sub_80656A4(void);
 void sub_806571C(void);
 void sub_8065794(void);
 void Task_IntroChaosEmeraldUpdate(void);
+void Task_PlayerMain(void);
+void PlayerHandleInputs(struct StagePlayer *p);
+s32 PlayerSensorCast(s32 pos, s32 other, s32 layer, s32 step, u8 *outRotation,
+                     s32 (*func)(s32 pos, s32 other, u32 layer, u8 *outRotation));
+void Task_RingsManager(void);
+void SpawnMapEntities(void);
+void Task_EntitiesManager(void);
+void sa2__sub_802486C(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
+void sa2__sub_8024B10(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
+void sa2__sub_8024F74(struct StagePlayer *p, struct PlayerSpriteInfo *psi);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) {
