@@ -1,6 +1,6 @@
 {
   "about": "From power-on with nothing saved, the language screen, the intro, the title and its menu, Sonic in the character select, the course select with act 1 cleared and act 2 chosen, and act 2's title card, all played in both; then Neo Green Hill Zone act 2, whole: Sonic crosses the act, Eggman flies in, the Egg Hammer Tank takes its eight hits, Sonic opens the capsule and the results count, and on into Secret Base Zone act 1's card. The act's first 1,900 frames are played as a person would. The route finder found the rest on the original, so from there Sonic hops about more than a player would and takes hits.",
-  "start": "unlocked=1&select=1",
+  "start": "unlocked=1&select=1&given=3760",
   "frames": 13022,
   "held": [
     [0,[]],

@@ -54,6 +54,26 @@ extern const struct StageMPlayEntry gStageMPlayTable[];
 extern const struct StageSongEntry gStageSongTable[];
 extern struct StageMPlayInfo gStageMPlayInfo_BGM;
 
+// the sound engine's player controls, from the kit (kit/gba/c/lib/m4a/)
+struct MP2KPlayerState;
+void m4aMPlayImmInit(struct MP2KPlayerState *mplayInfo);
+void m4aMPlayVolumeControl(struct MP2KPlayerState *mplayInfo, u16 trackBits, u16 volume);
+void m4aMPlayFadeIn(struct MP2KPlayerState *mplayInfo, u16 speed);
+void m4aMPlayTempoControl(struct MP2KPlayerState *mplayInfo, u16 tempo);
+
+/** StageMusicResume, 0x0803CB4C: the stage's song with its tracks set afresh, every one at full volume and fading
+ *  in, and twice as fast while the speed shoes last. */
+void StageMusicResume(void) {
+  struct MP2KPlayerState *bgm = (struct MP2KPlayerState *)&gStageMPlayInfo_BGM;
+
+  m4aMPlayImmInit(bgm);
+  m4aMPlayVolumeControl(bgm, 0xFF, 4);
+  m4aMPlayFadeIn(bgm, 4);
+  if (gStagePlayer.itemEffect & 4) {
+    m4aMPlayTempoControl(bgm, 0x200);
+  }
+}
+
 /** InitPlayerWrapper, 0x08046C84: forwards player initialization to InitPlayer. */
 void InitPlayerWrapper(s32 character, s32 level, u32 id, struct StagePlayer *player) {
   InitPlayer(character, level, id, player);
