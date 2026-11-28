@@ -137,7 +137,6 @@ void CreateCollectRingEffect(s16 x, s16 y);
 s32 sa2__sub_801F100(s32 y, s32 x, s32 layer, s32 step, s32 (*func)(s32, s32, s32));
 s32 sa2__sub_801EC3C(s32 y, s32 x, s32 layer);
 void PlayerCollisionHelperB(void);
-void ApplyGameStageSettingsAndStart(void);
 
 // once: the console's work memory at the console's addresses, and the player's copy where the console has the cartridge
 void game_start(void) {
