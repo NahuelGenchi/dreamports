@@ -77,7 +77,17 @@ const both = { ...one, versions: [{ language: 'c', proof: { ported: { percent: 2
 const JS = [['5%', 5.35], ['11%', 10.53]], C = [['2%', 2], ['0%', 0]];
 const inspectBoth = (js = JS, c = C, hidden = { js: true, c: false }) => `<dialog class="card view" id="inspect-one-dreamport" data-card="x">${block('c', ...c, hidden.c)}${block('js', ...js, hidden.js)}</dialog>`;
 const makeBoth = (c = C, js = JS) => `<dialog class="card view" id="make-one-dreamport" data-card="x">${section('c', ...c)}<details class="mk-others"><summary>Other languages</summary>${section('js', ...js)}</details></dialog>`;
-const BOTH = { ...PAGES, '/dreamports/one-dreamport/': inspectBoth(), '/make/one/': makeBoth() };
+const BOTH = { ...PAGES, '/dreamports/one-dreamport/': inspectBoth(), '/make/one/': makeBoth(), '/make/': slot('one-dreamport', 'Code ported 2% · Gameplay proven 0%') };
+
+test('a place in the Make row shows the numbers of the version Play opens, C when it has one', async () => {
+  // its JavaScript version's numbers, as every place showed before #2101, with no word saying which
+  const [problem, ...rest] = await problemsWith([both], reader({ ...BOTH, '/make/': PAGES['/make/'] }));
+  assert.equal(problem, '/make/: one Dreamport\'s place in the Make row says "Code ported 5% · Gameplay proven 11%", and its proof makes "Code ported 2% · Gameplay proven 0%".');
+  assert.deepEqual(rest, []);
+  // a game whose only version is in C shows it there too
+  const onlyC = { ...made('one', 2, 0), language: 'c' };
+  assert.deepEqual(await problemsWith([onlyC], reader({ ...PAGES, '/dreamports/one-dreamport/': card('inspect-one-dreamport', ...C).replace('"js"', '"c"'), '/make/one/': card('make-one-dreamport', ...C).replace('"js"', '"c"'), '/make/': BOTH['/make/'] })), []);
+});
 
 test('a version in another language has its own numbers on the card in the Make row, the one Play opens first', async () => {
   assert.deepEqual(await problemsWith([both], reader(BOTH)), []);
