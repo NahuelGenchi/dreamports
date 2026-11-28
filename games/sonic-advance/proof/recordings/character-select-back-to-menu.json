@@ -1,0 +1,6 @@
+{
+  "about": "From power-on with nothing saved, to Game Start on the main menu, Start coming once the logos are over, then B soon after the character select opens, back to the main menu, and the cursor down twice and up again.",
+  "frames": 2150,
+  "held": [[0, []], [150, ["A"]], [156, []], [950, ["START"]], [956, []], [1300, ["START"]], [1306, []], [1550, ["START"]], [1556, []], [1650, ["A"]], [1656, []], [1810, ["B"]], [1814, []], [1960, ["DOWN"]], [1964, []], [2020, ["DOWN"]], [2024, []], [2080, ["UP"]], [2084, []]],
+  "clip": { "at": 1800, "frames": 300 }
+}
