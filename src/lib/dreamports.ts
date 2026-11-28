@@ -72,8 +72,16 @@ export const mainLanguageOf = (game: string): keyof typeof LANGUAGES => language
 // what the proof tools measured for a game's main version
 const mainProof = (game: string) => proofFor(game, mainLanguageOf(game));
 
-/** A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row. */
-export const numbersOf = (data: Dreamport): string => numbersText(mainProof(data.game));
+// what the proof tools measured for the version a player plays first: its C one, as C is the default language, or its
+// JavaScript one in a game with no C version (src/lib/languages.mjs)
+const playedProof = (game: string) => proofFor(game, playOrder(languagesOf(game))[0]);
+
+/**
+ * A Dreamport's two numbers as text, such as "Code ported 38% · Gameplay proven 3%", for its place in the Make row: those
+ * of the version Play opens, as its card shows first. Until #2101 they were its main version's, so Sonic Advance's place
+ * said 33%, its JavaScript one's, while Play opened C at 11.46%.
+ */
+export const numbersOf = (data: Dreamport): string => numbersText(playedProof(data.game));
 
 // the kit's name, from its guide's heading, such as "Game Boy Advance kit"
 function kitName(kit: string): string {
@@ -175,8 +183,7 @@ export const PORTED_ENOUGH = 50;
  * default language, or its JavaScript one in a game with no C version (src/lib/languages.mjs). Until then the Dreamports
  * row leaves it out, unless the player's Settings show early Dreamports (#1154, #2038).
  */
-export const portedEnough = ({ data }: Game): boolean =>
-  (proofFor(data.game, playOrder(languagesOf(data.game))[0])?.ported?.percent ?? 0) >= PORTED_ENOUGH;
+export const portedEnough = ({ data }: Game): boolean => (playedProof(data.game)?.ported?.percent ?? 0) >= PORTED_ENOUGH;
 
 // What a Dreamport's page in the Make row shows besides its progress (#142): the sentence
 // that gets a newcomer's coding agent ready to help (#141), and its game's issue, where it's talked about; and from
